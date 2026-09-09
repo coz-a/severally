@@ -419,6 +419,39 @@ test('each consultant runs with its own vendor credentials and none of the other
   }
 });
 
+// The synthesised HOME is the only thing isolating the Antigravity
+// consultant, so nothing that could redirect agy at another config tree may
+// reach it -- while the credential prefixes it authenticates with must.
+test('the Antigravity consultant gets no config-redirecting variable', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const envOut = path.join(home, 'agy-narrow-env.json');
+  process.env.STUB_ENV_OUT = envOut;
+  process.env.XDG_CONFIG_HOME = '/tmp/some-other-config';
+  process.env.AGY_CLI_HIDE_LOGO = '1';
+  process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR = '/tmp/some-other-data';
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = '/tmp/adc.json';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(antigravityRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    const seen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+    assert.equal(seen.XDG_CONFIG_HOME, undefined, 'a redirected config dir must not survive');
+    assert.equal(seen.AGY_CLI_HIDE_LOGO, undefined);
+    assert.equal(seen.ANTIGRAVITY_EXECUTABLE_DATA_DIR, undefined);
+    assert.match(seen.HOME, /jobs\/.*\/home$/, 'HOME must still be the synthesised one');
+    assert.equal(
+      seen.GOOGLE_APPLICATION_CREDENTIALS, '/tmp/adc.json',
+      'an API-key/ADC credential is how some operators authenticate: it must survive',
+    );
+  } finally {
+    delete process.env.STUB_ENV_OUT;
+    delete process.env.XDG_CONFIG_HOME;
+    delete process.env.AGY_CLI_HIDE_LOGO;
+    delete process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+});
+
 // store.mjs claims everything it writes has been through redact(); the
 // question was the one field that had not.
 test('a credential pasted into the question never reaches the history file', async () => {

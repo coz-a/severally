@@ -11,10 +11,50 @@ const DROP_EXACT = new Set([
 const DROP_PREFIX = ['CLAUDE_CODE_', 'PEER_CONSULT_', 'MCP_'];
 
 // Each consultant sees only its own vendor's credentials.
+//
+// The antigravity row is also the consultant's *only* isolation boundary
+// besides the synthesised HOME: Codex and Claude Code hold theirs in flags
+// (--ignore-user-config, --restricted --strict-mcp-config) that the
+// environment cannot undo, while agy has no such flag -- everything comes
+// from ~/.gemini, so a variable that redirected that lookup would silently
+// bypass the empty mcp_config.json and the deny rules while the job still
+// succeeded. What was checked against agy 1.1.28 on Linux, and concluded:
+//
+//   XDG_CONFIG_HOME  Appears in the binary (5 times), but does not redirect
+//     config discovery. Probed directly: with HOME=<sandbox> holding an
+//     mcp_config.json that declares a sentinel server, `agy mcp list` reports
+//     that sentinel both with and without XDG_CONFIG_HOME pointed at an empty
+//     directory; and with the real HOME plus XDG_CONFIG_HOME pointed at the
+//     sandbox's .gemini, agy reports "No MCP servers configured". HOME alone
+//     decides. Dropped regardless: it costs nothing, and the whole isolation
+//     hangs on one variable.
+//   AGY_*  The binary carries only feature flags and telemetry event names
+//     under this prefix (AGY_CLI_HIDE_LOGO, AGY_CLI_DISABLE_LATEX,
+//     AGY_ONBOARDING_*, AGY_BUSINESS_PAYGO_TIER) plus AGY_ADC_AUTH; none
+//     names a config or data directory. Dropped as a class.
+//   ANTIGRAVITY_*  Does include names that point at state --
+//     ANTIGRAVITY_EXECUTABLE_DATA_DIR, ANTIGRAVITY_PROJECT_ID,
+//     ANTIGRAVITY_SIDECAR_*. Dropped as a class.
+//   GEMINI_* / GOOGLE_*  Kept: this is where an API-key credential lives
+//     (GEMINI_API_KEY, GOOGLE_API_KEY and GOOGLE_APPLICATION_CREDENTIALS all
+//     appear in the binary), and dropping them would break an operator who
+//     authenticates that way rather than with the OAuth token the sandbox
+//     links.
+//
+// The names came out of the binary with `strings`; only XDG_CONFIG_HOME was
+// probed behaviourally, so read the AGY_* line as "no evidence of a
+// config-dir override under that prefix", not as proof that none exists.
 const TARGET_DROP_PREFIX = {
   codex: ['ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_'],
   'claude-code': ['OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_'],
-  antigravity: ['ANTHROPIC_', 'OPENAI_', 'CODEX_'],
+  antigravity: ['ANTHROPIC_', 'OPENAI_', 'CODEX_', 'AGY_', 'ANTIGRAVITY_'],
+};
+
+// Exact names dropped for one target only (see the note above). Kept separate
+// from DROP_EXACT so the two other consultants, whose isolation has been
+// verified with these variables present, are not changed.
+const TARGET_DROP_EXACT = {
+  antigravity: ['XDG_CONFIG_HOME'],
 };
 
 /**
@@ -25,10 +65,11 @@ const TARGET_DROP_PREFIX = {
  */
 export function childEnv(target, extra = {}) {
   const dropPrefixes = [...DROP_PREFIX, ...(TARGET_DROP_PREFIX[target] ?? [])];
+  const dropExact = new Set([...DROP_EXACT, ...(TARGET_DROP_EXACT[target] ?? [])]);
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
-    if (DROP_EXACT.has(k)) continue;
+    if (dropExact.has(k)) continue;
     if (dropPrefixes.some((p) => k.startsWith(p))) continue;
     env[k] = v;
   }
