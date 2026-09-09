@@ -38,6 +38,30 @@ test('the trigger phrases cover the vendor aliases in both languages', () => {
   }
 });
 
+// The host CLI picks a skill by having its model read this description, not by
+// matching strings, so the listed phrases are examples that bias that judgement.
+// Saying so keeps a wording nobody listed -- a different particle, a synonym --
+// from reading as "not covered".
+test('the description says its trigger phrases are examples rather than an exact list', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const description = read(host).split('\n').find((l) => l.startsWith('description:'));
+    assert.match(
+      description,
+      /examples, not an exact list/i,
+      `${host} description must say the phrases are examples`,
+    );
+    assert.match(
+      description,
+      /any wording|any phrasing/i,
+      `${host} description must invite wordings it does not list`,
+    );
+    assert.ok(
+      description.includes('みんなに聞いて'),
+      `${host} description should carry a particle variant of the everyone phrasing`,
+    );
+  }
+});
+
 // Fan-out is the branch's headline feature and it lives entirely in the tool
 // arguments, so a skill that never mentions it makes the feature unreachable
 // for the agent that is supposed to use it.

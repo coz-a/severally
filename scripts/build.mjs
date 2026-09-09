@@ -50,6 +50,7 @@ const HOSTS = [
 // per peer like the ones below. Each host resolves them to its own two peers.
 const EVERYONE_TRIGGERS = [
   '"みんなで相談して"',
+  '"みんなに聞いて"',
   '"全員に聞いて"',
   '"両方に相談して"',
   '"ask everyone"',
