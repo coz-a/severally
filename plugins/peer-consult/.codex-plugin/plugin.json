@@ -25,7 +25,7 @@
   },
   "interface": {
     "displayName": "Peer Consult",
-    "shortDescription": "Ask Claude Code for an independent opinion, review or debate",
-    "longDescription": "Runs a fresh, sandboxed Claude Code session as a peer consultant: it may search and browse the web, but cannot edit files, run commands, or start consultations of its own. Returns a structured answer -- findings with their grounds, alternatives, unknowns, what would change the judgement, and next checks."
+    "shortDescription": "Ask Claude Code or Antigravity (Gemini) for an independent opinion, review or debate",
+    "longDescription": "Runs a fresh, sandboxed Claude Code or Antigravity (Gemini) session as a peer consultant: it may search and browse the web, but cannot edit files, run commands, or start consultations of its own. Returns a structured answer -- findings with their grounds, alternatives, unknowns, what would change the judgement, and next checks."
   }
 }

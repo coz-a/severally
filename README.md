@@ -213,14 +213,14 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | | Codex 子セッション | Claude Code 子セッション | Antigravity 子セッション |
 |---|---|---|---|
 | モデル | `-m gpt-6-astra` | `--model claude-fable-5-1` | `--model gemini-3.8-flash-high`（effort はモデル名に内包。`--effort` は渡さない） |
-| 編集・実行 | `-s read-only`（書き込み・ネットワーク遮断を実測確認） | `--restricted --tools WebSearch,WebFetch`（Read/Write/Edit/Bash なし） | 合成 HOME の `settings.json` で `permissions.deny` に `write_file(*)` / `read_file(*)` / `command(*)` / `execute_url(*)` / `unsandboxed(*)`、`permissions.allow` に `read_url(*)` のみ |
-| 親 MCP の継承 | `--ignore-user-config`（`config.toml` を読まない＝再帰防止） | `--strict-mcp-config`（`--mcp-config` なし＝MCP ゼロ） | 合成 HOME 内の `.gemini/config/mcp_config.json` が空 `{}`（MCP サーバ 0 件＝再帰防止） |
+| 編集・実行 | `-s read-only`（書き込み・ネットワーク遮断を実測確認） | `--restricted --tools WebSearch,WebFetch`（Read/Write/Edit/Bash なし） | 合成 HOME の `settings.json` で `permissions.deny` に `write_file(*)` / `read_file(*)` / `command(*)` / `mcp(*)` / `execute_url(*)` / `unsandboxed(*)`、`permissions.allow` に `read_url(*)` のみ |
+| 親 MCP の継承 | `--ignore-user-config`（`config.toml` を読まない＝再帰防止） | `--strict-mcp-config`（`--mcp-config` なし＝MCP ゼロ） | 二重の防止: 合成 HOME 内の `.gemini/config/mcp_config.json` が空 `{}`（MCP サーバ 0 件）に加え、`permissions.deny` にも `mcp(*)` が明示されている |
 | 親設定・フック | `--ignore-rules`, `hooks.enabled=false` | `--restricted`, `--setting-sources ''` | 合成 HOME には `hooks.json` / `skills/` / `plugins/` / `projects/` 一切なし。実 `$HOME` の `~/.gemini` を継承しない |
 | Skill | （下記の既知の制約を参照） | `--disable-slash-commands` | `--disable-slash-commands`（合成 HOME に skills も存在しない） |
 | Web | `tools.web_search=true` | `WebSearch` / `WebFetch` | `search_web`（無条件で許可）／`read_url`（`permissions.allow` で明示許可しないと閲覧できない） |
 | 作業ディレクトリ | ジョブ専用の空ディレクトリ（`-C`）。AGENTS.md / CLAUDE.md を拾わない | 同左（`cwd`） | 同左（`cwd`）。ブリーフは argv でなく stdin から渡す |
 | セッション永続化 | `--ephemeral` | `--no-session-persistence` | agy に同等フラグはないため、ジョブ専用の合成 HOME（`<jobdir>/home`, mode 0700）に会話状態を書かせ、ジョブ終了時にそのツリーごと削除する |
-| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー） |
+| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー。トークンが見つからない場合は未認証のまま起動し、認証エラーとして失敗する） |
 | 環境変数 | `CLAUDE_CODE_*` / `CLAUDECODE` / `MCP_*` / `PEER_CONSULT_*` と他社の認証情報を除去し、`PEER_CONSULT_ACTIVE=1` を付与 | 同左 | 同左 |
 | 承認プロンプト | なし（read-only 固定） | `--permission-prompts none`（プロンプトが必要な操作は自動拒否） | なし（ヘッドレスモードはプロンプトが要る操作を自動拒否し、deny ルールが優先される） |
 
@@ -239,6 +239,7 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | 環境変数 | 既定 | 範囲 |
 |---|---|---|
 | `PEER_CONSULT_CODEX_MODEL` | `gpt-6-astra` | – |
+| `PEER_CONSULT_CODEX_EFFORT` | `medium` | – |
 | `PEER_CONSULT_CLAUDE_MODEL` | `claude-fable-5-1` | – |
 | `PEER_CONSULT_AGY_BIN` | `agy` | – |
 | `PEER_CONSULT_AGY_MODEL` | `gemini-3.8-flash-high`（reasoning effort込みのモデル名。`--effort` は渡さない） | – |
@@ -248,6 +249,7 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | `PEER_CONSULT_MAX_CONCURRENT` | 3（fan-out は N 消費） | 1–4 |
 | `PEER_CONSULT_CLAUDE_MAX_BUDGET_USD` | 2 | 0.05–20 |
 | `PEER_CONSULT_MAX_WAIT_MS` | 45000 | 0–600000（60s 超は MCP クライアント側でタイムアウトする） |
+| `PEER_CONSULT_KILL_GRACE_MS` | 5000 | 500–60000（SIGTERM から SIGKILL までの猶予） |
 | `PEER_CONSULT_HOME` | `~/.peer-consult` | – |
 
 入力は 1 リクエスト 120,000 文字、artifact は 10 件・各 20,000 文字まで。出力側も要約 8,000 文字、
@@ -256,7 +258,8 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 
 ## 6. 検証
 
-`npm test` は実 API を呼ばずにスタブ CLI で全分岐を確認する（39 件）。
+`npm test` は実 API を呼ばずにスタブ CLI で全分岐を確認するオフライン検証一式。件数は変わり続けるので
+`npm test` の出力自体（`ℹ tests N` / `ℹ pass N`）を数の正とする。
 
 - リクエスト検証：mode 別必須項目、explore の推奨案伏せ、未知フィールド拒否、サイズ上限
 - 起動引数：制限フラグが付いていること、権限拡大フラグが付いていないこと（両方向）
