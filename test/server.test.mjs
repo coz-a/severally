@@ -24,7 +24,11 @@ test('exposes the three protocol tools plus a history listing', async () => {
   assert.deepEqual(names, ['consult_cancel', 'consult_get', 'consult_list', 'consult_start']);
   const start = tools.find((t) => t.name === 'consult_start');
   const req = start.inputSchema.properties.request;
-  assert.deepEqual(req.properties.target.enum, ['codex', 'claude-code']);
+  assert.deepEqual(req.properties.target.enum, [
+    'codex', 'gpt', 'chatgpt', 'openai',
+    'claude-code', 'claude', 'anthropic',
+    'antigravity', 'agy', 'gemini', 'google',
+  ]);
   assert.deepEqual(req.properties.mode.enum, ['explore', 'review', 'debate']);
   assert.equal(req.additionalProperties, false, 'requests must not accept extra fields');
   await close();

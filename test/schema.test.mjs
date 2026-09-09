@@ -52,7 +52,7 @@ test('unknown fields are rejected rather than silently ignored', () => {
 });
 
 test('unknown target and mode are rejected', () => {
-  rejects(reviewRequest({ target: 'gemini' }), 'invalid_request');
+  rejects(reviewRequest({ target: 'grok' }), 'invalid_request');
   rejects(reviewRequest({ mode: 'chat' }), 'invalid_request');
 });
 
@@ -65,4 +65,21 @@ test('oversized payloads are rejected', () => {
 test('per-field caps are enforced', () => {
   rejects(reviewRequest({ question: 'q'.repeat(4001) }), 'invalid_request');
   rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', artifacts: [{ name: 'n', kind: 'code', excerpt: 'x'.repeat(20_001) }] } }), 'invalid_request');
+});
+
+test('target accepts vendor aliases and normalises them to canonical ids', () => {
+  assert.equal(parseRequest(reviewRequest({ target: 'gpt' })).target, 'codex');
+  assert.equal(parseRequest(reviewRequest({ target: 'ChatGPT' })).target, 'codex');
+  assert.equal(parseRequest(reviewRequest({ target: 'Claude Code' })).target, 'claude-code');
+  assert.equal(parseRequest(reviewRequest({ target: 'claude' })).target, 'claude-code');
+  assert.equal(parseRequest(reviewRequest({ target: 'Gemini' })).target, 'antigravity');
+  assert.equal(parseRequest(reviewRequest({ target: 'agy' })).target, 'antigravity');
+  assert.equal(parseRequest(reviewRequest({ target: 'antigravity' })).target, 'antigravity');
+});
+
+test('an unknown target is rejected and the accepted names are listed', () => {
+  assert.throws(
+    () => parseRequest(reviewRequest({ target: 'grok' })),
+    (err) => err.code === 'invalid_request' && /gemini/.test(err.message),
+  );
 });

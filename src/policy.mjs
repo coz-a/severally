@@ -18,7 +18,34 @@ const str = (name, dflt) => {
   return raw === undefined || raw === '' ? dflt : raw;
 };
 
-export const TARGETS = ['codex', 'claude-code'];
+export const TARGETS = ['codex', 'claude-code', 'antigravity'];
+
+// Input aliases. The canonical ids above are what the rest of the server uses;
+// these are accepted at the tool boundary only, so a lead can say "gpt" or
+// "gemini" and reach the right consultant.
+const TARGET_ALIASES = Object.freeze({
+  codex: 'codex',
+  gpt: 'codex',
+  chatgpt: 'codex',
+  openai: 'codex',
+  'claude-code': 'claude-code',
+  claude: 'claude-code',
+  anthropic: 'claude-code',
+  antigravity: 'antigravity',
+  agy: 'antigravity',
+  gemini: 'antigravity',
+  google: 'antigravity',
+});
+
+export const TARGET_INPUTS = Object.freeze(Object.keys(TARGET_ALIASES));
+
+/** Canonical id for any accepted spelling of a target, or null. */
+export function resolveTarget(raw) {
+  if (typeof raw !== 'string') return null;
+  const key = raw.trim().toLowerCase().replace(/[\s_]+/g, '-');
+  return TARGET_ALIASES[key] ?? null;
+}
+
 export const MODES = ['explore', 'review', 'debate'];
 
 export const POLICY = Object.freeze({
@@ -30,12 +57,23 @@ export const POLICY = Object.freeze({
       model: str('PEER_CONSULT_CODEX_MODEL', 'gpt-6-astra'),
       reasoningEffort: str('PEER_CONSULT_CODEX_EFFORT', 'medium'),
       label: 'Codex CLI',
+      vendor: 'openai',
     }),
     'claude-code': Object.freeze({
       cli: str('PEER_CONSULT_CLAUDE_BIN', 'claude'),
       model: str('PEER_CONSULT_CLAUDE_MODEL', 'claude-fable-5-1'),
       label: 'Claude Code CLI',
+      vendor: 'anthropic',
       maxBudgetUsd: num('PEER_CONSULT_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
+    }),
+    antigravity: Object.freeze({
+      cli: str('PEER_CONSULT_AGY_BIN', 'agy'),
+      // The model name carries the reasoning effort; agy rejects --effort for it.
+      model: str('PEER_CONSULT_AGY_MODEL', 'gemini-3.8-flash-high'),
+      label: 'Antigravity CLI',
+      vendor: 'google',
+      // Where the real credentials live; the sandbox links the token from here.
+      credentialsHome: str('PEER_CONSULT_AGY_CRED_HOME', os.homedir()),
     }),
   }),
 
@@ -85,16 +123,16 @@ export function timeoutMs() {
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];
 
 export function limitsSummary() {
+  const models = {};
+  for (const t of TARGETS) models[t] = POLICY.targets[t].model;
   return {
-    models: {
-      codex: POLICY.targets.codex.model,
-      'claude-code': POLICY.targets['claude-code'].model,
-    },
+    models,
     timeout_ms: timeoutMs(),
     max_rounds_per_chain: POLICY.maxRounds,
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    consultant_permissions: 'web search/browse allowed; file edits, shell execution, and further consultations denied',
+    consultant_permissions:
+      'web search/browse allowed; file edits, shell execution, MCP tools, and further consultations denied',
   };
 }

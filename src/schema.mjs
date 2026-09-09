@@ -3,7 +3,7 @@
 // mode-specific protocol rule is enforced here rather than in the prompt.
 
 import { z } from 'zod';
-import { POLICY, TARGETS, MODES, artifactKinds } from './policy.mjs';
+import { POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds, resolveTarget } from './policy.mjs';
 
 const L = POLICY.input;
 const trimmed = (max, label) =>
@@ -30,7 +30,13 @@ export const contextSchema = z
 
 export const requestSchema = z
   .object({
-    target: z.enum(TARGETS),
+    target: z.preprocess(
+      (val) => {
+        if (typeof val !== 'string') return val;
+        return val.trim().toLowerCase().replace(/[\s_]+/g, '-');
+      },
+      z.enum(TARGET_INPUTS),
+    ),
     mode: z.enum(MODES),
     question: trimmed(L.questionMax, 'question'),
     objective: trimmed(L.objectiveMax, 'objective'),
@@ -72,6 +78,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
   const req = parsed.data;
+  req.target = resolveTarget(req.target);
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? '').trim();
   req.context.proposal = proposal.length ? proposal : null;
