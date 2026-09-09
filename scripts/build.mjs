@@ -46,6 +46,16 @@ const HOSTS = [
   { dir: 'antigravity', self: 'antigravity' },
 ];
 
+// Asking for *everyone* names no peer, so these phrases cannot be generated
+// per peer like the ones below. Each host resolves them to its own two peers.
+const EVERYONE_TRIGGERS = [
+  '"みんなで相談して"',
+  '"全員に聞いて"',
+  '"両方に相談して"',
+  '"ask everyone"',
+  '"ask both"',
+];
+
 // All four everyday-alias shapes for one peer: "ask X", "get X to review
 // this", the natural Japanese "XにVERBして" form, and "Xにレビューしてもらって".
 function triggersFor(peerId) {
@@ -81,7 +91,7 @@ export function renderSkills() {
     const text = tmpl
       .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
       .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))
-      .replaceAll('{{TRIGGERS}}', peers.flatMap(triggersFor).join(', '))
+      .replaceAll('{{TRIGGERS}}', [...peers.flatMap(triggersFor), ...EVERYONE_TRIGGERS].join(', '))
       .replaceAll('{{PEER_TABLE}}', table)
       .replaceAll('{{DEFAULT_TARGET}}', peers[0])
       // The other peer, used by the fan-out example so each host's skill shows

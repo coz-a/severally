@@ -1,6 +1,6 @@
 ---
 name: peer-consult
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "みんなで相談して", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
@@ -96,6 +96,13 @@ consult_start({ request: {
   ...
 }})
 ```
+
+When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, 「両方に相談して」, "ask everyone", "ask
+both" — that is exactly the two peers above, `codex` and `antigravity`, and never yourself.
+Consulting your own CLI is a fresh-context re-read rather than a third opinion, so adding it to a fan-out
+spends a concurrency slot and real quota for nothing. Send **one** `targets` call with both peers and poll the
+single `group_id`; two separate consultations would give each peer a slightly different brief and leave you
+nothing comparable.
 
 Every consultant receives the **byte-identical brief** — that is the whole point, because answers to slightly
 different questions are not comparable — and the server returns one `group_id` covering all of them. Poll

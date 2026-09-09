@@ -55,6 +55,37 @@ test('every skill teaches the fan-out: targets, group_id, and that agreement is 
   }
 });
 
+// "みんなで相談して" has to resolve to this host's two peers and never to
+// itself: consulting your own CLI is a fresh-context re-read, not a third
+// opinion, so including it in a fan-out spends a slot for nothing.
+test('every skill answers "ask everyone" with its own two peers, never itself', () => {
+  const SELF_ID = { claude: 'claude-code', codex: 'codex', antigravity: 'antigravity' };
+  const PEER_IDS = {
+    claude: ['codex', 'antigravity'],
+    codex: ['claude-code', 'antigravity'],
+    antigravity: ['codex', 'claude-code'],
+  };
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    const description = text.split('\n').find((l) => l.startsWith('description:'));
+    for (const phrase of ['みんなで相談して', '全員に聞いて', 'ask everyone']) {
+      assert.ok(description.includes(phrase), `${host} description must contain ${phrase}`);
+    }
+    assert.match(text, /everyone/i, `${host} skill must explain what "everyone" resolves to`);
+    assert.match(
+      text,
+      new RegExp(`targets: \\["${PEER_IDS[host][0]}", "${PEER_IDS[host][1]}"\\]`),
+      `${host} skill must show the everyone call as its own two peers`,
+    );
+    for (const call of text.match(/targets: \[[^\]]*\]/g) ?? []) {
+      assert.ok(
+        !call.includes(`"${SELF_ID[host]}"`),
+        `${host} must never put itself in a targets array: ${call}`,
+      );
+    }
+  }
+});
+
 test('the generated skills are in sync with the template', async () => {
   const { renderSkills } = await import('../scripts/build.mjs');
   const rendered = renderSkills();
