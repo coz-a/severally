@@ -70,6 +70,14 @@ test('a cross-vendor consultation carries no independence caveat', async () => {
   assert.equal(/same vendor/i.test(view.quality.caveat ?? ''), false);
 });
 
+test('with no caller in the request and no host markers in the environment, no caller is detected or recorded', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const view = await finish(mgr, mgr.start(reviewRequest()).job_id);
+  assert.equal(view.caller, null);
+  assert.equal(/same vendor/i.test(view.quality.caveat ?? ''), false);
+});
+
 test('the consultant is launched with the restriction flags and none that widen permissions', async () => {
   const argvOut = path.join(os.tmpdir(), `pc-argv-${Date.now()}.json`);
   process.env.STUB_BEHAVIOR = 'ok';

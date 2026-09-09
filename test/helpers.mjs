@@ -17,6 +17,18 @@ export function sandboxEnv(overrides = {}) {
     ...overrides,
   });
   delete process.env.PEER_CONSULT_ACTIVE;
+  // A test's recorded `caller` must come from the request, not from whichever
+  // CLI happens to be hosting the test suite -- strip every marker
+  // detectCaller() reads so the default is deterministically "no caller
+  // detected" unless a test opts in via an explicit `caller` field.
+  delete process.env.CLAUDECODE;
+  delete process.env.CLAUDE_CODE_ENTRYPOINT;
+  delete process.env.CODEX_HOME;
+  delete process.env.CODEX_SANDBOX;
+  delete process.env.CODEX_SANDBOX_NETWORK_DISABLED;
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('AGY_') || key.startsWith('ANTIGRAVITY_')) delete process.env[key];
+  }
   return home;
 }
 
