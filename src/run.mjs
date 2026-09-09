@@ -19,8 +19,9 @@ const TARGET_DROP_PREFIX = {
 
 /**
  * Build the child environment. The parent's agent-session wiring (messaging
- * sockets, session ids, entrypoint markers) and the other vendor's credentials
- * are removed; a recursion marker is added.
+ * sockets, session ids, entrypoint markers) is removed, as are the other two
+ * vendors' credentials -- each consultant keeps only its own; and a recursion
+ * marker is added.
  */
 export function childEnv(target, extra = {}) {
   const dropPrefixes = [...DROP_PREFIX, ...(TARGET_DROP_PREFIX[target] ?? [])];

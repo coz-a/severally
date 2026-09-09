@@ -364,31 +364,52 @@ test('antigravity: an ERROR envelope becomes a classified failure, not advice', 
   process.env.STUB_BEHAVIOR = 'ok';
 });
 
-test('each consultant runs without the other vendors credentials', async () => {
+// One key per prefix TARGET_DROP_PREFIX is meant to strip. The claude-code row
+// is the longest of the three and used to have no test at all, so a typo in it
+// would have leaked an OpenAI or Gemini key into the Claude consultant with
+// nothing to catch it.
+const VENDOR_KEYS = {
+  openai: { OPENAI_API_KEY: 'sk-oai-should-not-cross', CODEX_API_KEY: 'codex-should-not-cross' },
+  anthropic: {
+    ANTHROPIC_API_KEY: 'sk-ant-should-not-cross',
+    ANTHROPIC_AUTH_TOKEN: 'ant-token-should-not-cross',
+  },
+  google: { GEMINI_API_KEY: 'g-should-not-cross', GOOGLE_API_KEY: 'goog-should-not-cross' },
+};
+
+test('each consultant runs with its own vendor credentials and none of the others', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
-  process.env.ANTHROPIC_API_KEY = 'sk-ant-should-not-cross';
-  process.env.OPENAI_API_KEY = 'sk-oai-should-not-cross';
-  process.env.GEMINI_API_KEY = 'g-should-not-cross';
   const envOut = path.join(home, 'vendor-env.json');
   process.env.STUB_ENV_OUT = envOut;
+  for (const keys of Object.values(VENDOR_KEYS)) Object.assign(process.env, keys);
 
-  const mgr = new JobManager();
-  await finish(mgr, mgr.start(antigravityRequest()).job_id);
-  const agyEnv = JSON.parse(fs.readFileSync(envOut, 'utf8'));
-  assert.equal(agyEnv.ANTHROPIC_API_KEY, undefined);
-  assert.equal(agyEnv.OPENAI_API_KEY, undefined);
-  assert.equal(agyEnv.GEMINI_API_KEY, 'g-should-not-cross', 'its own vendor key must survive');
+  const cases = [
+    { target: 'codex', request: reviewRequest(), own: 'openai' },
+    { target: 'claude-code', request: exploreRequest(), own: 'anthropic' },
+    { target: 'antigravity', request: antigravityRequest(), own: 'google' },
+  ];
 
-  await finish(mgr, mgr.start(reviewRequest()).job_id);
-  const codexEnv = JSON.parse(fs.readFileSync(envOut, 'utf8'));
-  assert.equal(codexEnv.GEMINI_API_KEY, undefined);
-  assert.equal(codexEnv.ANTHROPIC_API_KEY, undefined);
-  assert.equal(codexEnv.OPENAI_API_KEY, 'sk-oai-should-not-cross');
-
-  delete process.env.STUB_ENV_OUT;
-  delete process.env.ANTHROPIC_API_KEY;
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.GEMINI_API_KEY;
+  try {
+    const mgr = new JobManager();
+    for (const c of cases) {
+      const view = await finish(mgr, mgr.start(c.request).job_id);
+      assert.equal(view.status, 'completed', `${c.target} consultation must have run`);
+      assert.equal(view.target, c.target);
+      const seen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+      for (const [vendor, keys] of Object.entries(VENDOR_KEYS)) {
+        for (const [key, value] of Object.entries(keys)) {
+          if (vendor === c.own) {
+            assert.equal(seen[key], value, `${c.target} must keep its own ${key}`);
+          } else {
+            assert.equal(seen[key], undefined, `${c.target} must never see ${key}`);
+          }
+        }
+      }
+    }
+  } finally {
+    delete process.env.STUB_ENV_OUT;
+    for (const keys of Object.values(VENDOR_KEYS)) for (const key of Object.keys(keys)) delete process.env[key];
+  }
 });
 
 // The sandbox has always computed credentials: 'missing'; nothing consumed it,
