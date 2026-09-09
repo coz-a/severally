@@ -1,7 +1,7 @@
 {
   "name": "peer-consult-mcp",
   "version": "1.0.0",
-  "description": "MCP server that lets Codex and Claude Code ask each other for independent opinions, reviews and structured debate via dedicated, sandboxed child sessions.",
+  "description": "MCP server that lets Codex, Claude Code and Antigravity ask each other for independent opinions, reviews and structured debate via dedicated, sandboxed child sessions.",
   "type": "module",
   "license": "MIT",
   "private": false,

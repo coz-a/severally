@@ -5,10 +5,10 @@ import { POLICY, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
 
-const SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from the other coding agent
-(Codex <-> Claude Code). Each consultation runs in a fresh child session of the other CLI: it can search and
-browse the web, it cannot edit files, run commands, or consult anyone else, and it never sees your session --
-only the brief you send.
+const SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from another coding agent:
+Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
+search and browse the web, it cannot edit files, run commands, load MCP tools, or consult anyone else, and it
+never sees your session -- only the brief you send.
 
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
@@ -18,9 +18,16 @@ Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per ch
 spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
 check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
 
-const startDescription = `Start one consultation with the other agent. Returns a job_id immediately; the work runs in the background.
+const startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
 
-target: "codex" (ask Codex) or "claude-code" (ask Claude Code).
+target: "codex" (Codex), "claude-code" (Claude Code) or "antigravity" (Gemini). The everyday names work too:
+        gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. Consulting your own CLI is allowed but is a
+        fresh-context check rather than an independent opinion, and the result says so.
+targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
+        Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
+        A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
+        annotate a same-vendor consultation.
 mode:
   explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
             options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.

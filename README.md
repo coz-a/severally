@@ -1,14 +1,17 @@
 # peer-consult
 
-Codex と Claude Code が、互いに**独立した見解・レビュー・追加議論**を求めあうための MCP サーバと Skill。
-両クライアントのプラグインとしてパッケージ済み（公開マーケットプレイス不要）。
+Codex、Claude Code、Antigravity (Gemini) が、互いに**独立した見解・レビュー・追加議論**を求めあうための
+MCP サーバと Skill。3 クライアントすべてのプラグインとしてパッケージ済み（公開マーケットプレイス不要）。
 
 相談は毎回**専用の子セッション**として起動する（既存セッションには接続しない）。相談相手には
 **Web 検索・閲覧のみ**を許可し、ファイル変更・コマンド実行・さらなる相談は実行環境レベルで禁止する。
+1 回の依頼で最大 3 者（`targets: [...]`）に同一のブリーフを同時に投げ、1 つの `group_id` でまとめて
+結果を取得することもできる。
 
 ```
-Claude Code ──(skill: peer-consult)──> mcp: peer-consult ──> codex exec   (gpt-6-astra)
-Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude -p    (claude-fable-5-1)
+Claude Code ──(skill: peer-consult)──> mcp: peer-consult ──> codex exec | agy      (Codex / Antigravity)
+Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude -p  | agy      (Claude Code / Antigravity)
+Antigravity ──(skill: peer-consult)──> mcp: peer-consult ──> codex exec | claude -p (Codex / Claude Code)
 ```
 
 ---
@@ -23,8 +26,10 @@ Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude 
 | `plugins/peer-consult/.claude-plugin/plugin.json` | Claude Code 用マニフェスト（`skills: ["./skills/claude"]`） |
 | `plugins/peer-consult/.mcp.json` | Claude Code 用 MCP 定義（`${CLAUDE_PLUGIN_ROOT}/dist/...`） |
 | `plugins/peer-consult/.codex-plugin/plugin.json` | Codex 用マニフェスト（skills と mcpServers を内包） |
-| `plugins/peer-consult/skills/claude/peer-consult/` | Claude Code 用 Skill（→ Codex に相談する） |
-| `plugins/peer-consult/skills/codex/peer-consult/` | Codex 用 Skill（→ Claude Code に相談する） |
+| `plugins/peer-consult/.antigravity-plugin/plugin.json` | Antigravity 用マニフェスト（skills と mcpServers を内包） |
+| `plugins/peer-consult/skills/claude/peer-consult/` | Claude Code 用 Skill（→ 他の2者に相談する） |
+| `plugins/peer-consult/skills/codex/peer-consult/` | Codex 用 Skill（→ 他の2者に相談する） |
+| `plugins/peer-consult/skills/antigravity/peer-consult/` | Antigravity 用 Skill（→ 他の2者に相談する） |
 | `plugins/peer-consult/dist/peer-consult-mcp.mjs` | 依存ゼロにバンドルした MCP サーバ（`npm run build` で生成、コミット済み） |
 | `.agents/plugins/marketplace.json` | Codex 用のリポジトリローカル marketplace（公開レジストリではない） |
 | `bin/`, `src/` | MCP サーバのソース（Node ESM、stdio） |
@@ -37,6 +42,7 @@ Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude 
 
 - Claude Code: `~/.claude/skills/peer-consult/`（skills-dir プラグインとして自動ロード。marketplace 不要）
 - Codex: `~/.codex/plugins/cache/peer-consult-local/peer-consult/<version>/`（ローカル marketplace 経由）
+- Antigravity: `~/.gemini/config/skills/peer-consult/`（agy にはまだ検証済みのプラグインインストール経路がないため、直接配置する）
 - MCP バイナリ: `npm install -g` → `peer-consult-mcp`（**Codex 側は必須**。理由は §2.2）
 - 実行時データ: `~/.peer-consult/`（履歴 `history/`、設定バックアップ `backups/`、権限 0700）
 
@@ -114,11 +120,18 @@ Skill は「問いと成功条件の整理 → mode 選択 → 資料の添付 �
 ### 3.2 ツール API
 
 ```
-consult_start({ request })  -> { job_id, chain_id, round, model, limits, ... }
+consult_start({ request })  -> 単一 target: { job_id, chain_id, round, model, limits, poll_with, ... }
+                             targets（fan-out）: { group_id, jobs: [{job_id, chain_id, target, model}, ...],
+                             poll_with: "consult_get({ group_id: ... })", ... } -- 全員が同一のブリーフを受け取る
 consult_get({ job_id, wait_ms? }) -> 状態／結果（wait_ms で完了まで待てる。上限 45s ＝ MCP クライアント側の
                              リクエストタイムアウト 60s を下回るようにしてある。相談は 1〜5 分かかるので
                              通常は数回ポーリングする）
+consult_get({ group_id, wait_ms? }) -> fan-out の状態／結果を1回でまとめて取得。`members`（各 target の状態・結果）、
+                             `comparison.by_target`（機械的な横並び。サーバは一致しているかどうかを判定しない）、
+                             履歴が刈られて一部メンバーが失われた場合の `members_expected` / `members_available` /
+                             `incomplete_note`、次に何をすべきかの `next_step` を含む
 consult_cancel({ job_id })  -> 中断（相談相手のプロセスグループごと停止）
+consult_cancel({ group_id }) -> fan-out 全員を中断
 consult_list({ limit? })    -> 直近の相談一覧
 ```
 
@@ -126,7 +139,9 @@ consult_list({ limit? })    -> 直近の相談一覧
 
 | フィールド | 必須 | 内容 |
 |---|---|---|
-| `target` | ✔ | `codex` / `claude-code` |
+| `target` | いずれか一方 | `codex` / `claude-code` / `antigravity`（エイリアス: gpt, chatgpt, openai / claude, anthropic / gemini, agy, google。大小文字・空白は無視） |
+| `targets` | いずれか一方 | `target` と排他。1〜3件、重複不可。同一ブリーフを全員に同時送信し、1つの `group_id` にまとまる |
+| `caller` | – | 呼び出し元 CLI（同じ表記が使える）。`target`/`targets` と同じベンダーだと `quality.caveat` に「独立した意見ではなくフレッシュコンテキストでの再チェック」と注記される |
 | `mode` | ✔ | `explore` / `review` / `debate` |
 | `question` | ✔ | 決めたい問いを一文で |
 | `objective` | ✔ | 何を達成したいか |
@@ -195,21 +210,23 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 相談相手は毎回新しい子セッションとして起動し、親の設定・MCP・フックを継承しない。
 ラッパーで権限解除フラグ（`--dangerously-*` 等）を渡すことは、コード側の禁止リストで拒否する。
 
-| | Codex 子セッション | Claude Code 子セッション |
-|---|---|---|
-| モデル | `-m gpt-6-astra` | `--model claude-fable-5-1` |
-| 編集・実行 | `-s read-only`（書き込み・ネットワーク遮断を実測確認） | `--restricted --tools WebSearch,WebFetch`（Read/Write/Edit/Bash なし） |
-| 親 MCP の継承 | `--ignore-user-config`（`config.toml` を読まない＝再帰防止） | `--strict-mcp-config`（`--mcp-config` なし＝MCP ゼロ） |
-| 親設定・フック | `--ignore-rules`, `hooks.enabled=false` | `--restricted`, `--setting-sources ''` |
-| Skill | （下記の既知の制約を参照） | `--disable-slash-commands` |
-| Web | `tools.web_search=true` | `WebSearch` / `WebFetch` |
-| 作業ディレクトリ | ジョブ専用の空ディレクトリ（`-C`）。AGENTS.md / CLAUDE.md を拾わない | 同左（`cwd`） |
-| セッション永続化 | `--ephemeral` | `--no-session-persistence` |
-| 環境変数 | `CLAUDE_CODE_*` / `CLAUDECODE` / `MCP_*` / `PEER_CONSULT_*` と他社の認証情報を除去し、`PEER_CONSULT_ACTIVE=1` を付与 | 同左 |
-| 承認プロンプト | なし（read-only 固定） | `--permission-prompts none`（プロンプトが必要な操作は自動拒否） |
+| | Codex 子セッション | Claude Code 子セッション | Antigravity 子セッション |
+|---|---|---|---|
+| モデル | `-m gpt-6-astra` | `--model claude-fable-5-1` | `--model gemini-3.8-flash-high`（effort はモデル名に内包。`--effort` は渡さない） |
+| 編集・実行 | `-s read-only`（書き込み・ネットワーク遮断を実測確認） | `--restricted --tools WebSearch,WebFetch`（Read/Write/Edit/Bash なし） | 合成 HOME の `settings.json` で `permissions.deny` に `write_file(*)` / `read_file(*)` / `command(*)` / `execute_url(*)` / `unsandboxed(*)`、`permissions.allow` に `read_url(*)` のみ |
+| 親 MCP の継承 | `--ignore-user-config`（`config.toml` を読まない＝再帰防止） | `--strict-mcp-config`（`--mcp-config` なし＝MCP ゼロ） | 合成 HOME 内の `.gemini/config/mcp_config.json` が空 `{}`（MCP サーバ 0 件＝再帰防止） |
+| 親設定・フック | `--ignore-rules`, `hooks.enabled=false` | `--restricted`, `--setting-sources ''` | 合成 HOME には `hooks.json` / `skills/` / `plugins/` / `projects/` 一切なし。実 `$HOME` の `~/.gemini` を継承しない |
+| Skill | （下記の既知の制約を参照） | `--disable-slash-commands` | `--disable-slash-commands`（合成 HOME に skills も存在しない） |
+| Web | `tools.web_search=true` | `WebSearch` / `WebFetch` | `search_web`（無条件で許可）／`read_url`（`permissions.allow` で明示許可しないと閲覧できない） |
+| 作業ディレクトリ | ジョブ専用の空ディレクトリ（`-C`）。AGENTS.md / CLAUDE.md を拾わない | 同左（`cwd`） | 同左（`cwd`）。ブリーフは argv でなく stdin から渡す |
+| セッション永続化 | `--ephemeral` | `--no-session-persistence` | agy に同等フラグはないため、ジョブ専用の合成 HOME（`<jobdir>/home`, mode 0700）に会話状態を書かせ、ジョブ終了時にそのツリーごと削除する |
+| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー） |
+| 環境変数 | `CLAUDE_CODE_*` / `CLAUDECODE` / `MCP_*` / `PEER_CONSULT_*` と他社の認証情報を除去し、`PEER_CONSULT_ACTIVE=1` を付与 | 同左 | 同左 |
+| 承認プロンプト | なし（read-only 固定） | `--permission-prompts none`（プロンプトが必要な操作は自動拒否） | なし（ヘッドレスモードはプロンプトが要る操作を自動拒否し、deny ルールが優先される） |
 
 再帰防止は三重: 子には MCP が存在しない／子環境の `PEER_CONSULT_ACTIVE=1` を見て `consult_start` を拒否する／
-ブリーフに「他のエージェントに相談・委譲しない」と明記する。
+ブリーフに「他のエージェントに相談・委譲しない」と明記する。サブエージェント経由の書き込み試行も、同じ
+`permissions.deny` に阻まれることを実機（agy 1.1.28）で確認済み。
 
 認証情報は、送信するブリーフ・相談結果・ディスク上の履歴すべてに対して正規表現ベースのマスキング
 （API キー、GitHub / Slack トークン、AWS キー、JWT、`Bearer`、PEM、`*_TOKEN=` 形式）を通す。
@@ -223,9 +240,12 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 |---|---|---|
 | `PEER_CONSULT_CODEX_MODEL` | `gpt-6-astra` | – |
 | `PEER_CONSULT_CLAUDE_MODEL` | `claude-fable-5-1` | – |
+| `PEER_CONSULT_AGY_BIN` | `agy` | – |
+| `PEER_CONSULT_AGY_MODEL` | `gemini-3.8-flash-high`（reasoning effort込みのモデル名。`--effort` は渡さない） | – |
+| `PEER_CONSULT_AGY_CRED_HOME` | 実行ユーザの `$HOME`（合成 HOME に symlink するトークンの取得元） | – |
 | `PEER_CONSULT_TIMEOUT_MS` | 600000 | 1000–1800000 |
 | `PEER_CONSULT_MAX_ROUNDS` | 3（初回1＋追加2） | 1–5 |
-| `PEER_CONSULT_MAX_CONCURRENT` | 2 | 1–4 |
+| `PEER_CONSULT_MAX_CONCURRENT` | 3（fan-out は N 消費） | 1–4 |
 | `PEER_CONSULT_CLAUDE_MAX_BUDGET_USD` | 2 | 0.05–20 |
 | `PEER_CONSULT_MAX_WAIT_MS` | 45000 | 0–600000（60s 超は MCP クライアント側でタイムアウトする） |
 | `PEER_CONSULT_HOME` | `~/.peer-consult` | – |

@@ -3262,8 +3262,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input2 = path4;
+    function removeDotSegments(path5) {
+      let input2 = path5;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3672,8 +3672,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path4 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const path5 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7185,12 +7185,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs2, exportName) {
+    function addFormats(ajv, list, fs3, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs2[f]);
+        ajv.addFormat(f, fs3[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7942,10 +7942,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path4) {
-  if (!path4)
+function getElementAtPath(obj2, path5) {
+  if (!path5)
     return obj2;
-  return path4.reduce((acc, key) => acc?.[key], obj2);
+  return path5.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -8357,11 +8357,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -8794,16 +8794,16 @@ function flattenError(error61, mapper = (issue2) => issue2.message) {
 }
 function formatError(error61, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error62, path4 = []) => {
+  const processError = (error62, path5 = []) => {
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path5, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path5, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -8842,17 +8842,17 @@ function formatError(error61, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error61, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error62, path4 = []) => {
+  const processError = (error62, path5 = []) => {
     var _a3;
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path4, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path5, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path4, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
       } else {
-        const fullpath = [...path4, ...issue2.path];
+        const fullpath = [...path5, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -8891,8 +8891,8 @@ function treeifyError(error61, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path4 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path4) {
+  const path5 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path5) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -14784,13 +14784,13 @@ var error20 = () => {
           return `${sizing?.longLabel ?? "\u05D0\u05E8\u05D5\u05DA"} \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DB\u05D4 \u05DC\u05D4\u05DB\u05D9\u05DC ${issue2.maximum.toString()} ${sizing?.unit ?? ""} ${issue2.inclusive ? "\u05D0\u05D5 \u05E4\u05D7\u05D5\u05EA" : "\u05DC\u05DB\u05DC \u05D4\u05D9\u05D5\u05EA\u05E8"}`.trim();
         }
         if (issue2.origin === "number") {
-          const comparison = issue2.inclusive ? `\u05E7\u05D8\u05DF \u05D0\u05D5 \u05E9\u05D5\u05D5\u05D4 \u05DC-${issue2.maximum}` : `\u05E7\u05D8\u05DF \u05DE-${issue2.maximum}`;
-          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison}`;
+          const comparison2 = issue2.inclusive ? `\u05E7\u05D8\u05DF \u05D0\u05D5 \u05E9\u05D5\u05D5\u05D4 \u05DC-${issue2.maximum}` : `\u05E7\u05D8\u05DF \u05DE-${issue2.maximum}`;
+          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison2}`;
         }
         if (issue2.origin === "array" || issue2.origin === "set") {
           const verb = issue2.origin === "set" ? "\u05E6\u05E8\u05D9\u05DB\u05D4" : "\u05E6\u05E8\u05D9\u05DA";
-          const comparison = issue2.inclusive ? `${issue2.maximum} ${sizing?.unit ?? ""} \u05D0\u05D5 \u05E4\u05D7\u05D5\u05EA` : `\u05E4\u05D7\u05D5\u05EA \u05DE-${issue2.maximum} ${sizing?.unit ?? ""}`;
-          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison}`.trim();
+          const comparison2 = issue2.inclusive ? `${issue2.maximum} ${sizing?.unit ?? ""} \u05D0\u05D5 \u05E4\u05D7\u05D5\u05EA` : `\u05E4\u05D7\u05D5\u05EA \u05DE-${issue2.maximum} ${sizing?.unit ?? ""}`;
+          return `\u05D2\u05D3\u05D5\u05DC \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison2}`.trim();
         }
         const adj = issue2.inclusive ? "<=" : "<";
         const be = verbFor(issue2.origin ?? "value");
@@ -14806,8 +14806,8 @@ var error20 = () => {
           return `${sizing?.shortLabel ?? "\u05E7\u05E6\u05E8"} \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DB\u05D4 \u05DC\u05D4\u05DB\u05D9\u05DC ${issue2.minimum.toString()} ${sizing?.unit ?? ""} ${issue2.inclusive ? "\u05D0\u05D5 \u05D9\u05D5\u05EA\u05E8" : "\u05DC\u05E4\u05D7\u05D5\u05EA"}`.trim();
         }
         if (issue2.origin === "number") {
-          const comparison = issue2.inclusive ? `\u05D2\u05D3\u05D5\u05DC \u05D0\u05D5 \u05E9\u05D5\u05D5\u05D4 \u05DC-${issue2.minimum}` : `\u05D2\u05D3\u05D5\u05DC \u05DE-${issue2.minimum}`;
-          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison}`;
+          const comparison2 = issue2.inclusive ? `\u05D2\u05D3\u05D5\u05DC \u05D0\u05D5 \u05E9\u05D5\u05D5\u05D4 \u05DC-${issue2.minimum}` : `\u05D2\u05D3\u05D5\u05DC \u05DE-${issue2.minimum}`;
+          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} \u05E6\u05E8\u05D9\u05DA \u05DC\u05D4\u05D9\u05D5\u05EA ${comparison2}`;
         }
         if (issue2.origin === "array" || issue2.origin === "set") {
           const verb = issue2.origin === "set" ? "\u05E6\u05E8\u05D9\u05DB\u05D4" : "\u05E6\u05E8\u05D9\u05DA";
@@ -14815,8 +14815,8 @@ var error20 = () => {
             const singularPhrase = issue2.origin === "set" ? "\u05DC\u05E4\u05D7\u05D5\u05EA \u05E4\u05E8\u05D9\u05D8 \u05D0\u05D7\u05D3" : "\u05DC\u05E4\u05D7\u05D5\u05EA \u05E4\u05E8\u05D9\u05D8 \u05D0\u05D7\u05D3";
             return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${singularPhrase}`;
           }
-          const comparison = issue2.inclusive ? `${issue2.minimum} ${sizing?.unit ?? ""} \u05D0\u05D5 \u05D9\u05D5\u05EA\u05E8` : `\u05D9\u05D5\u05EA\u05E8 \u05DE-${issue2.minimum} ${sizing?.unit ?? ""}`;
-          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison}`.trim();
+          const comparison2 = issue2.inclusive ? `${issue2.minimum} ${sizing?.unit ?? ""} \u05D0\u05D5 \u05D9\u05D5\u05EA\u05E8` : `\u05D9\u05D5\u05EA\u05E8 \u05DE-${issue2.minimum} ${sizing?.unit ?? ""}`;
+          return `\u05E7\u05D8\u05DF \u05DE\u05D3\u05D9: ${subject} ${verb} \u05DC\u05D4\u05DB\u05D9\u05DC ${comparison2}`.trim();
         }
         const adj = issue2.inclusive ? ">=" : ">";
         const be = verbFor(issue2.origin ?? "value");
@@ -25402,13 +25402,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path4 = ref.slice(1).split("/").filter(Boolean);
-  if (path4.length === 0) {
+  const path5 = ref.slice(1).split("/").filter(Boolean);
+  if (path5.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path4[0] === defsKey) {
-    const key = path4[1] === void 0 ? void 0 : decodeJSONPointerSegment(path4[1]);
+  if (path5[0] === defsKey) {
+    const key = path5[1] === void 0 ? void 0 : decodeJSONPointerSegment(path5[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -26438,8 +26438,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -26554,11 +26554,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -30109,11 +30109,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path4) {
-  if (path4.length === 0) {
+function getDotPath(path5) {
+  if (path5.length === 0) {
     return "object root";
   }
-  return path4.reduce((acc, seg, index) => {
+  return path5.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -35688,7 +35688,32 @@ var str = (name, dflt) => {
   const raw = process.env[name];
   return raw === void 0 || raw === "" ? dflt : raw;
 };
-var TARGETS = ["codex", "claude-code"];
+var TARGETS = ["codex", "claude-code", "antigravity"];
+var TARGET_ALIASES = Object.freeze({
+  codex: "codex",
+  gpt: "codex",
+  chatgpt: "codex",
+  openai: "codex",
+  "claude-code": "claude-code",
+  claude: "claude-code",
+  anthropic: "claude-code",
+  antigravity: "antigravity",
+  agy: "antigravity",
+  gemini: "antigravity",
+  google: "antigravity"
+});
+var TARGET_INPUTS = Object.freeze(Object.keys(TARGET_ALIASES));
+function resolveTarget(raw) {
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  return TARGET_ALIASES[key] ?? null;
+}
+function detectCaller(env = process.env) {
+  if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
+  if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return "codex";
+  if (Object.keys(env).some((k) => k.startsWith("AGY_") || k.startsWith("ANTIGRAVITY_"))) return "antigravity";
+  return null;
+}
 var MODES = ["explore", "review", "debate"];
 var POLICY = Object.freeze({
   home: str("PEER_CONSULT_HOME", path.join(os.homedir(), ".peer-consult")),
@@ -35697,20 +35722,31 @@ var POLICY = Object.freeze({
       cli: str("PEER_CONSULT_CODEX_BIN", "codex"),
       model: str("PEER_CONSULT_CODEX_MODEL", "gpt-6-astra"),
       reasoningEffort: str("PEER_CONSULT_CODEX_EFFORT", "medium"),
-      label: "Codex CLI"
+      label: "Codex CLI",
+      vendor: "openai"
     }),
     "claude-code": Object.freeze({
       cli: str("PEER_CONSULT_CLAUDE_BIN", "claude"),
       model: str("PEER_CONSULT_CLAUDE_MODEL", "claude-fable-5-1"),
       label: "Claude Code CLI",
+      vendor: "anthropic",
       maxBudgetUsd: num("PEER_CONSULT_CLAUDE_MAX_BUDGET_USD", 2, 0.05, 20)
+    }),
+    antigravity: Object.freeze({
+      cli: str("PEER_CONSULT_AGY_BIN", "agy"),
+      // The model name carries the reasoning effort; agy rejects --effort for it.
+      model: str("PEER_CONSULT_AGY_MODEL", "gemini-3.8-flash-high"),
+      label: "Antigravity CLI",
+      vendor: "google",
+      // Where the real credentials live; the sandbox links the token from here.
+      credentialsHome: str("PEER_CONSULT_AGY_CRED_HOME", os.homedir())
     })
   }),
   // Grace period between SIGTERM and SIGKILL of the child process group.
   killGraceMs: num("PEER_CONSULT_KILL_GRACE_MS", 5e3, 500, 6e4),
   // 1 initial round + 2 follow-ups.
   maxRounds: num("PEER_CONSULT_MAX_ROUNDS", 3, 1, 5),
-  maxConcurrent: num("PEER_CONSULT_MAX_CONCURRENT", 2, 1, 4),
+  maxConcurrent: num("PEER_CONSULT_MAX_CONCURRENT", 3, 1, 4),
   maxJobsRetained: num("PEER_CONSULT_MAX_JOBS_RETAINED", 200, 20, 2e3),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
@@ -35745,17 +35781,16 @@ function timeoutMs() {
 }
 var artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
 function limitsSummary() {
+  const models = {};
+  for (const t of TARGETS) models[t] = POLICY.targets[t].model;
   return {
-    models: {
-      codex: POLICY.targets.codex.model,
-      "claude-code": POLICY.targets["claude-code"].model
-    },
+    models,
     timeout_ms: timeoutMs(),
     max_rounds_per_chain: POLICY.maxRounds,
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    consultant_permissions: "web search/browse allowed; file edits, shell execution, and further consultations denied"
+    consultant_permissions: "web search/browse allowed; file edits, shell execution, MCP tools, and further consultations denied"
   };
 }
 
@@ -35775,8 +35810,20 @@ var contextSchema = external_exports.object({
   counterpoints: external_exports.array(trimmed(L.counterpointMax, "context.counterpoints[]")).max(L.counterpointsMax).default([]),
   artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).default([])
 }).strict();
+var normalizeTargetLike = (val) => {
+  if (typeof val !== "string") return val;
+  return val.trim().toLowerCase().replace(/[\s_]+/g, "-");
+};
 var requestSchema = external_exports.object({
-  target: external_exports.enum(TARGETS),
+  // Exactly one of `target` (one consultant) or `targets` (ask several the
+  // same question) is required; parseRequest below enforces the exclusivity,
+  // because zod cannot phrase that refusal usefully.
+  target: external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS)).optional(),
+  targets: external_exports.array(external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS))).min(1).max(TARGETS.length).optional(),
+  // Identifies the host CLI making this request, if it names itself. Purely
+  // an annotation input for the same-vendor caveat below: it must never
+  // gate permissions, limits, rounds, or which CLI gets launched.
+  caller: external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS)).nullish(),
   mode: external_exports.enum(MODES),
   question: trimmed(L.questionMax, "question"),
   objective: trimmed(L.objectiveMax, "objective"),
@@ -35810,6 +35857,35 @@ function parseRequest(raw, { isFollowup = false } = {}) {
     throw new RequestError(`request failed validation: ${issues.join("; ")}`, "invalid_request", issues);
   }
   const req = parsed.data;
+  const hasSingle = req.target !== void 0 && req.target !== null;
+  const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
+  if (hasSingle && hasMany) {
+    throw new RequestError("pass either target (one consultant) or targets (several), not both", "invalid_request");
+  }
+  if (!hasSingle && !hasMany) {
+    throw new RequestError(
+      `name the consultant: target: "codex" | "claude-code" | "antigravity" (aliases: ${TARGET_INPUTS.join(", ")}), or targets: [...] to ask several the same question`,
+      "target_required"
+    );
+  }
+  const resolved = (hasSingle ? [req.target] : req.targets).map((t) => resolveTarget(t));
+  const unique = [...new Set(resolved)];
+  if (unique.length !== resolved.length) {
+    throw new RequestError(
+      "the same consultant is named twice; asking one agent the same question twice does not add independence",
+      "duplicate_targets"
+    );
+  }
+  if (isFollowup && unique.length > 1) {
+    throw new RequestError(
+      "a follow-up continues the exchange with one consultant; name exactly one target",
+      "followup_fanout_not_allowed"
+    );
+  }
+  req.targets = unique;
+  req.target = unique[0];
+  req.fanout = unique.length > 1;
+  req.caller = resolveTarget(req.caller ?? "") ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? "").trim();
   req.context.proposal = proposal.length ? proposal : null;
@@ -36234,7 +36310,7 @@ function normalizeResult(raw) {
 var RULES = [
   [/\b(usage limit|quota exceeded|rate limit|out of credits|reached your .* limit|insufficient_quota|429)\b/i, "usage_limit"],
   [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
-  [/\b(unrecognized_model|model .* (not found|does not exist|unavailable)|no access to .*model|it may not exist|404)\b/i, "model_unavailable"]
+  [/\b(unrecognized_model|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|404)\b/i, "model_unavailable"]
 ];
 function classifyMessage(text, fallback = "cli_error") {
   if (!text) return fallback;
@@ -36257,8 +36333,9 @@ var DROP_EXACT = /* @__PURE__ */ new Set([
 ]);
 var DROP_PREFIX = ["CLAUDE_CODE_", "PEER_CONSULT_", "MCP_"];
 var TARGET_DROP_PREFIX = {
-  codex: ["ANTHROPIC_"],
-  "claude-code": ["OPENAI_", "CODEX_"]
+  codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
+  "claude-code": ["OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
+  antigravity: ["ANTHROPIC_", "OPENAI_", "CODEX_"]
 };
 function childEnv(target, extra = {}) {
   const dropPrefixes = [...DROP_PREFIX, ...TARGET_DROP_PREFIX[target] ?? []];
@@ -36428,6 +36505,11 @@ function persistRound(record2) {
     { mode: 384 }
   );
 }
+function persistGroup(group) {
+  const dir = path2.join(POLICY.home, "history", "groups");
+  fs.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs.writeFileSync(path2.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
+}
 function cleanupJobDir(jobId) {
   try {
     fs.rmSync(jobDir(jobId), { recursive: true, force: true });
@@ -36518,7 +36600,7 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
   }
   if (errorEvents.length) {
     const msg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usage, events: events.length };
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events.length };
   }
   if (!text) {
     const msg = (stderr || "").trim() || `codex exited with code ${code} and produced no final message`;
@@ -36526,11 +36608,11 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       ok: false,
       failureKind: code === 0 ? "invalid_output" : classifyMessage(msg),
       message: msg,
-      usage,
+      usageRaw: usage,
       events: events.length
     };
   }
-  return { ok: true, text, usage, events: events.length };
+  return { ok: true, text, usageRaw: usage, events: events.length };
 }
 function usageRecord(raw) {
   const u = raw ?? {};
@@ -36611,18 +36693,18 @@ function interpret2({ stdout, stderr, code }) {
   const payload = lastJsonObject(stdout);
   if (!payload) {
     const msg = (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `claude exited with code ${code} and produced no JSON result`;
-    return { ok: false, failureKind: code === 0 ? "invalid_output" : classifyMessage(msg), message: msg, payload: null };
+    return { ok: false, failureKind: code === 0 ? "invalid_output" : classifyMessage(msg), message: msg, payload: null, usageRaw: null };
   }
   if (payload.is_error) {
     const msg = typeof payload.result === "string" ? payload.result : JSON.stringify(payload).slice(0, 2e3);
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, payload };
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, payload, usageRaw: payload };
   }
   const structured = payload.structured_output ?? payload.structuredOutput ?? null;
   const text = structured ?? (typeof payload.result === "string" ? payload.result : null);
   if (!text) {
-    return { ok: false, failureKind: "invalid_output", message: "result payload contained no answer", payload };
+    return { ok: false, failureKind: "invalid_output", message: "result payload contained no answer", payload, usageRaw: payload };
   }
-  return { ok: true, text, payload, denials: payload.permission_denials ?? [] };
+  return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
 function usageRecord2(payload) {
   if (!payload) return null;
@@ -36639,12 +36721,158 @@ function usageRecord2(payload) {
   };
 }
 
+// src/adapters/antigravity.mjs
+var antigravity_exports = {};
+__export(antigravity_exports, {
+  FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS3,
+  buildInvocation: () => buildInvocation3,
+  interpret: () => interpret3,
+  prepareSandbox: () => prepareSandbox,
+  usageRecord: () => usageRecord3
+});
+
+// src/adapters/antigravity-sandbox.mjs
+import fs2 from "node:fs";
+import os2 from "node:os";
+import path4 from "node:path";
+var SANDBOX_ALLOW = Object.freeze(["read_url(*)"]);
+var SANDBOX_DENY = Object.freeze([
+  "write_file(*)",
+  "read_file(*)",
+  "command(*)",
+  "mcp(*)",
+  "execute_url(*)",
+  "unsandboxed(*)"
+]);
+var TOKEN_REL = path4.join(".gemini", "antigravity-cli", "antigravity-oauth-token");
+function credentialsHome() {
+  const raw = process.env.PEER_CONSULT_AGY_CRED_HOME;
+  return raw === void 0 || raw === "" ? os2.homedir() : raw;
+}
+function prepareSandbox({ workdir }) {
+  const root = path4.join(path4.dirname(workdir), "home");
+  const cliDir = path4.join(root, ".gemini", "antigravity-cli");
+  const cfgDir = path4.join(root, ".gemini", "config");
+  fs2.mkdirSync(cliDir, { recursive: true, mode: 448 });
+  fs2.mkdirSync(cfgDir, { recursive: true, mode: 448 });
+  fs2.chmodSync(root, 448);
+  fs2.writeFileSync(path4.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
+  fs2.writeFileSync(
+    path4.join(cliDir, "settings.json"),
+    `${JSON.stringify({ permissions: { allow: [...SANDBOX_ALLOW], deny: [...SANDBOX_DENY] } }, null, 2)}
+`,
+    { mode: 384 }
+  );
+  const source = path4.join(credentialsHome(), TOKEN_REL);
+  const link = path4.join(cliDir, "antigravity-oauth-token");
+  let credentials = "missing";
+  if (fs2.existsSync(source)) {
+    try {
+      fs2.symlinkSync(source, link);
+      credentials = "symlink";
+    } catch {
+      fs2.copyFileSync(source, link);
+      fs2.chmodSync(link, 384);
+      credentials = "copy";
+    }
+  }
+  return {
+    root,
+    credentials,
+    env: { HOME: root },
+    cleanup() {
+      try {
+        fs2.rmSync(root, { recursive: true, force: true });
+      } catch {
+      }
+    }
+  };
+}
+
+// src/adapters/antigravity.mjs
+var FORBIDDEN_FLAGS3 = [
+  "--dangerously-skip-permissions",
+  "--add-dir",
+  "--new-project",
+  // Each consultation must be a fresh session; these would attach to an old one.
+  "--continue",
+  "-c",
+  "--conversation",
+  "--prompt-interactive",
+  "-i"
+];
+function buildInvocation3({ schemaPath }) {
+  const t = POLICY.targets.antigravity;
+  const args = [
+    "--output-format",
+    "json",
+    "--json-schema",
+    schemaPath,
+    "--disable-slash-commands",
+    "--model",
+    t.model,
+    "--print-timeout",
+    `${Math.ceil(timeoutMs() / 1e3)}s`
+  ];
+  return { command: t.cli, args, model: t.model };
+}
+function lastJsonObject2(stdout) {
+  const lines = (stdout || "").split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+    }
+  }
+  return null;
+}
+function interpret3({ stdout, stderr, code }) {
+  const payload = lastJsonObject2(stdout);
+  if (!payload) {
+    const msg = (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `agy exited with code ${code} and produced no JSON envelope`;
+    return { ok: false, failureKind: code === 0 ? "invalid_output" : classifyMessage(msg), message: msg, usageRaw: null };
+  }
+  if (payload.status && payload.status !== "SUCCESS") {
+    const msg = typeof payload.error === "string" && payload.error.trim() ? payload.error : JSON.stringify(payload).slice(0, 2e3);
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: payload };
+  }
+  const structured = payload.structured_output ?? null;
+  const text = structured ?? (typeof payload.response === "string" && payload.response.trim() ? payload.response : null);
+  if (!text) {
+    return { ok: false, failureKind: "invalid_output", message: "envelope contained no answer", usageRaw: payload };
+  }
+  return { ok: true, text, usageRaw: payload, denials: payload.denied_actions ?? [] };
+}
+function usageRecord3(payload) {
+  if (!payload) return null;
+  const u = payload.usage ?? {};
+  const num2 = (v) => typeof v === "number" ? v : null;
+  return {
+    input_tokens: num2(u.input_tokens),
+    cached_input_tokens: num2(u.cache_read_tokens),
+    output_tokens: num2(u.output_tokens),
+    total_tokens: num2(u.total_tokens),
+    cost_usd: null,
+    // agy does not report a cost; do not guess one.
+    web_search_requests: null,
+    thinking_tokens: num2(u.thinking_tokens),
+    turns: num2(payload.num_turns),
+    // Which permissions the sandbox refused. A denied read_url usually explains
+    // a thin evidence basis, so it is worth keeping in the record.
+    denied_actions: Array.isArray(payload.denied_actions) ? payload.denied_actions.map((d) => d?.action).filter(Boolean) : null
+  };
+}
+
 // src/jobs.mjs
-var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports };
+var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports };
 var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 var JobManager = class {
   constructor() {
     this.jobs = /* @__PURE__ */ new Map();
+    this.groups = /* @__PURE__ */ new Map();
     this.order = [];
     ensureDirs();
   }
@@ -36655,8 +36883,10 @@ var JobManager = class {
     return {
       job_id: job.job_id,
       chain_id: job.chain_id,
+      group_id: job.group_id,
       round: job.round,
       target: job.target,
+      caller: job.caller,
       mode: job.mode,
       status: job.status,
       model: job.model,
@@ -36708,12 +36938,6 @@ var JobManager = class {
         "recursion_blocked"
       );
     }
-    if (this.running.length >= POLICY.maxConcurrent) {
-      throw new RequestError(
-        `${POLICY.maxConcurrent} consultations are already running; wait for one to finish (consult_get) or cancel it`,
-        "concurrency_limit"
-      );
-    }
     const followupTo = typeof rawRequest?.followup_to === "string" && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
     let parent = null;
     if (followupTo) {
@@ -36740,49 +36964,90 @@ var JobManager = class {
         "round_limit"
       );
     }
-    const chainId = parent ? parent.chain_id : id("chain");
-    const jobId = id("job");
-    const priorRounds = this.#chainHistory(chainId);
-    const job = {
-      job_id: jobId,
-      chain_id: chainId,
-      round,
-      target: req.target,
+    if (this.running.length + req.targets.length > POLICY.maxConcurrent) {
+      throw new RequestError(
+        `this would run ${this.running.length + req.targets.length} consultations at once; the cap is ${POLICY.maxConcurrent}. Wait for one to finish (consult_get) or cancel it`,
+        "concurrency_limit"
+      );
+    }
+    const groupId = id("group");
+    const members2 = req.targets.map((target) => {
+      const chainId = parent ? parent.chain_id : id("chain");
+      const jobId = id("job");
+      const job = {
+        job_id: jobId,
+        chain_id: chainId,
+        group_id: groupId,
+        round,
+        target,
+        mode: req.mode,
+        question: req.question,
+        caller: req.caller ?? detectCaller(),
+        followup_to: followupTo,
+        status: "queued",
+        model: POLICY.targets[target].model,
+        created_at: (/* @__PURE__ */ new Date()).toISOString(),
+        started_at: null,
+        finished_at: null,
+        duration_ms: null,
+        result: null,
+        quality: null,
+        usage: null,
+        failure: null,
+        cancelRequested: false,
+        _cancelFns: [],
+        _request: req
+      };
+      this.jobs.set(jobId, job);
+      this.order.push(jobId);
+      return job;
+    });
+    this.#evict();
+    const group = {
+      group_id: groupId,
+      created_at: (/* @__PURE__ */ new Date()).toISOString(),
       mode: req.mode,
       question: req.question,
-      followup_to: followupTo,
-      status: "queued",
-      model: POLICY.targets[req.target].model,
-      created_at: (/* @__PURE__ */ new Date()).toISOString(),
-      started_at: null,
-      finished_at: null,
-      duration_ms: null,
-      result: null,
-      quality: null,
-      usage: null,
-      failure: null,
-      cancelRequested: false,
-      _cancelFns: [],
-      _request: req
+      job_ids: members2.map((m) => m.job_id)
     };
-    this.jobs.set(jobId, job);
-    this.order.push(jobId);
-    this.#evict();
-    job.promise = this.#execute(job, req, { round, priorRounds }).catch((err) => {
-      this.#fail(job, "cli_error", err?.message ?? String(err));
-    });
-    return {
-      job_id: jobId,
-      chain_id: chainId,
+    this.groups.set(groupId, group);
+    try {
+      persistGroup(group);
+    } catch {
+    }
+    const chain = { round, priorRounds: this.#chainHistory(members2[0].chain_id) };
+    const brief = renderBrief(req, chain);
+    for (const job of members2) {
+      job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
+        this.#fail(job, "cli_error", err?.message ?? String(err));
+      });
+    }
+    const common = {
+      group_id: groupId,
       round,
       rounds_remaining: POLICY.maxRounds - round,
-      target: req.target,
       mode: req.mode,
-      model: job.model,
       status: "running",
-      accepted_at: job.created_at,
-      limits: limitsSummary(),
-      poll_with: `consult_get({ job_id: "${jobId}", wait_ms: 60000 })`
+      accepted_at: group.created_at,
+      limits: limitsSummary()
+    };
+    if (!req.fanout) {
+      const job = members2[0];
+      return {
+        ...common,
+        job_id: job.job_id,
+        chain_id: job.chain_id,
+        target: job.target,
+        model: job.model,
+        poll_with: `consult_get({ job_id: "${job.job_id}", wait_ms: 60000 })`
+      };
+    }
+    return {
+      ...common,
+      question: req.question,
+      jobs: members2.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, model: m.model })),
+      poll_with: `consult_get({ group_id: "${groupId}", wait_ms: 60000 })`,
+      note: "Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement."
     };
   }
   #chainHistory(chainId) {
@@ -36803,69 +37068,91 @@ var JobManager = class {
         break;
       }
       this.jobs.delete(oldest);
+      if (j) this.#dropGroupIfEmpty(j.group_id);
     }
   }
-  async #execute(job, req, chain) {
+  // A group is only a lens onto its member jobs. Once history has evicted the
+  // last member there is nothing left to compare, so drop the group rather than
+  // keep answering as a complete fan-out with no answers in it (and keep the
+  // Map, which holds the question text, from growing without bound).
+  #dropGroupIfEmpty(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return;
+    if (group.job_ids.some((jid) => this.jobs.has(jid))) return;
+    this.groups.delete(groupId);
+  }
+  async #execute(job, req, chain, brief) {
     const adapter = ADAPTERS[req.target];
     const workdir = makeWorkdir(job.job_id);
-    const brief = renderBrief(req, chain);
+    const text = brief ?? renderBrief(req, chain);
     const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
-    const invocation = req.target === "codex" ? adapter.buildInvocation({ workdir, schemaPath }) : adapter.buildInvocation({ workdir, guardrails: renderGuardrails() });
-    assertNoForbiddenFlags(req.target, invocation.args);
-    const budgetMs = timeoutMs();
-    job.status = "running";
-    job.started_at = (/* @__PURE__ */ new Date()).toISOString();
-    const t0 = Date.now();
-    const { handle, done } = runChild({
-      command: invocation.command,
-      args: invocation.args,
-      cwd: workdir,
-      env: childEnv(req.target),
-      input: brief,
-      timeoutMs: budgetMs,
-      onCancelSignal: (fn) => job._cancelFns.push(fn)
-    });
-    job._handle = handle;
-    if (job.cancelRequested) handle.stop();
-    const run = await done;
-    job.duration_ms = Date.now() - t0;
-    job.finished_at = (/* @__PURE__ */ new Date()).toISOString();
-    if (run.spawnError) {
-      return this.#fail(job, "spawn_error", `could not start ${invocation.command}: ${run.spawnError}`);
-    }
-    if (job.cancelRequested || run.cancelled) {
-      return this.#fail(job, "cancelled", "consultation cancelled by the lead");
-    }
-    if (run.timedOut) {
-      return this.#fail(job, "timeout", `consultant exceeded the ${budgetMs} ms budget and was stopped`);
-    }
-    const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
-    const interpreted = adapter.interpret({ ...run, lastMessageText });
-    if (!interpreted.ok) {
-      job.usage = req.target === "codex" ? adapter.usageRecord(interpreted.usage) : adapter.usageRecord(interpreted.payload);
-      return this.#fail(job, interpreted.failureKind, interpreted.message);
-    }
-    let normalized;
+    const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
-      normalized = normalizeResult(interpreted.text);
-    } catch (err) {
-      if (err instanceof OutputError) {
-        job.usage = req.target === "codex" ? adapter.usageRecord(interpreted.usage) : adapter.usageRecord(interpreted.payload);
-        return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
+      const invocation = adapter.buildInvocation({
+        workdir,
+        schemaPath,
+        guardrails: renderGuardrails(),
+        sandbox
+      });
+      assertNoForbiddenFlags(req.target, invocation.args);
+      const budgetMs = timeoutMs();
+      job.status = "running";
+      job.started_at = (/* @__PURE__ */ new Date()).toISOString();
+      const t0 = Date.now();
+      const { handle, done } = runChild({
+        command: invocation.command,
+        args: invocation.args,
+        cwd: workdir,
+        env: childEnv(req.target, sandbox?.env ?? {}),
+        input: text,
+        timeoutMs: budgetMs,
+        onCancelSignal: (fn) => job._cancelFns.push(fn)
+      });
+      job._handle = handle;
+      if (job.cancelRequested) handle.stop();
+      const run = await done;
+      job.duration_ms = Date.now() - t0;
+      job.finished_at = (/* @__PURE__ */ new Date()).toISOString();
+      if (run.spawnError) {
+        return this.#fail(job, "spawn_error", `could not start ${invocation.command}: ${run.spawnError}`);
       }
-      throw err;
+      if (job.cancelRequested || run.cancelled) {
+        return this.#fail(job, "cancelled", "consultation cancelled by the lead");
+      }
+      if (run.timedOut) {
+        return this.#fail(job, "timeout", `consultant exceeded the ${budgetMs} ms budget and was stopped`);
+      }
+      const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
+      const interpreted = adapter.interpret({ ...run, lastMessageText });
+      if (!interpreted.ok) {
+        job.usage = adapter.usageRecord(interpreted.usageRaw);
+        return this.#fail(job, interpreted.failureKind, interpreted.message);
+      }
+      let normalized;
+      try {
+        normalized = normalizeResult(interpreted.text);
+      } catch (err) {
+        if (err instanceof OutputError) {
+          job.usage = adapter.usageRecord(interpreted.usageRaw);
+          return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
+        }
+        throw err;
+      }
+      job.result = normalized.result;
+      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target)].filter(Boolean);
+      job.quality = {
+        ...normalized.quality,
+        evidence_basis: normalized.result.evidence_basis,
+        advice_usable: true,
+        caveat: notes.length ? notes.join("; ") : null
+      };
+      job.usage = adapter.usageRecord(interpreted.usageRaw);
+      job.status = "completed";
+      this.#finish(job);
+      return job;
+    } finally {
+      sandbox?.cleanup();
     }
-    job.result = normalized.result;
-    job.quality = {
-      ...normalized.quality,
-      evidence_basis: normalized.result.evidence_basis,
-      advice_usable: true,
-      caveat: adviceCaveat(normalized)
-    };
-    job.usage = req.target === "codex" ? adapter.usageRecord(interpreted.usage) : adapter.usageRecord(interpreted.payload);
-    job.status = "completed";
-    this.#finish(job);
-    return job;
   }
   #fail(job, kind, message, detail) {
     if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") return job;
@@ -36911,6 +37198,63 @@ var JobManager = class {
     if (job._handle) job._handle.stop();
     return { ...this.view(jobId), status: "cancelling", cancel_effect: "consultant process group signalled" };
   }
+  // Every field here is derived from the one `members` array it is handed, so a
+  // group view can never report one status in `members` and another in
+  // `comparison` or `status` for the same job.
+  #shapeGroup(group, members2) {
+    const cancelling = members2.some((m) => m.status === "cancelling");
+    const live = cancelling || members2.some((m) => m.status === "running" || m.status === "queued");
+    const missing = group.job_ids.length - members2.length;
+    return {
+      group_id: group.group_id,
+      status: cancelling ? "cancelling" : live ? "running" : "done",
+      mode: group.mode,
+      question: group.question,
+      members_expected: group.job_ids.length,
+      members_available: members2.length,
+      // History is capped, so an older member can already be gone. Say so:
+      // a fan-out that quietly reports fewer answers than it asked for is
+      // worse than one that admits the comparison is partial.
+      incomplete_note: missing > 0 ? `${missing} of ${group.job_ids.length} member consultation(s) have aged out of this session's history; the comparison below is partial` : null,
+      members: members2,
+      comparison: comparison(members2),
+      cancellable: live,
+      next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : "list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision",
+      limits: limitsSummary()
+    };
+  }
+  groupView(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid)).filter(Boolean));
+  }
+  async waitGroup(groupId, waitMs) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
+    if (budget > 0) {
+      const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
+      await Promise.race([
+        Promise.all(promises),
+        new Promise((r) => setTimeout(r, budget).unref?.())
+      ]);
+    }
+    return this.groupView(groupId);
+  }
+  cancelGroup(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    const signalled = group.job_ids.filter((jid) => {
+      const j = this.jobs.get(jid);
+      return j && (j.status === "running" || j.status === "queued");
+    }).length;
+    const members2 = group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean);
+    const total = group.job_ids.length;
+    return {
+      ...this.#shapeGroup(group, members2),
+      cancel_effect: signalled === 0 ? "nothing to signal: every consultant in this fan-out had already finished" : signalled === total ? "every consultant process group in this fan-out was signalled" : `${signalled} of ${total} consultant process groups in this fan-out were signalled; the rest had already finished`
+    };
+  }
   shutdown() {
     for (const job of this.running) {
       job.cancelRequested = true;
@@ -36934,6 +37278,28 @@ function adviceCaveat(normalized) {
   }
   return notes.length ? notes.join("; ") : null;
 }
+function sameVendorCaveat(caller, target) {
+  if (!caller || !POLICY.targets[caller] || !POLICY.targets[target]) return null;
+  if (POLICY.targets[caller].vendor !== POLICY.targets[target].vendor) return null;
+  return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}): this is a fresh-context check, not an independent opinion \u2014 prefer the other two consultants for genuine independence`;
+}
+function comparison(members2) {
+  return {
+    by_target: members2.map((m) => ({
+      target: m.target,
+      status: m.status,
+      failure_kind: m.failure?.kind ?? null,
+      confidence: m.result?.confidence ?? null,
+      evidence_basis: m.result?.evidence_basis ?? null,
+      summary: m.result?.summary ?? null,
+      finding_points: (m.result?.findings ?? []).map((f) => f.point),
+      alternative_options: (m.result?.alternatives ?? []).map((a) => a.option),
+      unknowns: (m.result?.unknowns ?? []).map((u) => u.item),
+      remaining_disagreements: m.result?.remaining_disagreements ?? []
+    })),
+    note: "This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. Compare the grounds behind each point yourself, and spend a follow-up only where a divergence would change your decision."
+  };
+}
 function nextStep(job) {
   if (job.status === "running" || job.status === "queued") return "poll consult_get again, or consult_cancel to stop it";
   if (job.status === "completed") {
@@ -36955,10 +37321,10 @@ function assertNoForbiddenFlags(target, args) {
 }
 
 // src/server.mjs
-var SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from the other coding agent
-(Codex <-> Claude Code). Each consultation runs in a fresh child session of the other CLI: it can search and
-browse the web, it cannot edit files, run commands, or consult anyone else, and it never sees your session --
-only the brief you send.
+var SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from another coding agent:
+Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
+search and browse the web, it cannot edit files, run commands, load MCP tools, or consult anyone else, and it
+never sees your session -- only the brief you send.
 
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
@@ -36967,9 +37333,16 @@ Flow: consult_start(request) -> job_id; consult_get(job_id) until it is done; co
 Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per chain, and follow-ups should be
 spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
 check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
-var startDescription = `Start one consultation with the other agent. Returns a job_id immediately; the work runs in the background.
+var startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
 
-target: "codex" (ask Codex) or "claude-code" (ask Claude Code).
+target: "codex" (Codex), "claude-code" (Claude Code) or "antigravity" (Gemini). The everyday names work too:
+        gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. Consulting your own CLI is allowed but is a
+        fresh-context check rather than an independent opinion, and the result says so.
+targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
+        Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
+        A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
+        annotate a same-vendor consultation.
 mode:
   explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
             options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.
@@ -37011,15 +37384,21 @@ function createServer(manager = new JobManager()) {
     "consult_get",
     {
       title: "Get consultation status or result",
-      description: `Fetch the state of a consultation. Pass wait_ms to block until it finishes (capped at ${POLICY.maxWaitMs} ms, which stays under the request timeout MCP clients apply) instead of polling in a tight loop; a typical consultation takes one to five minutes, so expect to call this several times, and do something else in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, model_unavailable, invalid_output, cli_error, spawn_error) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis).`,
+      description: `Fetch the state of a consultation. Pass wait_ms to block until it finishes (capped at ${POLICY.maxWaitMs} ms, which stays under the request timeout MCP clients apply) instead of polling in a tight loop; a typical consultation takes one to five minutes, so expect to call this several times, and do something else in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, model_unavailable, invalid_output, cli_error, spawn_error) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; wait_ms then waits for every consultant in it.`,
       inputSchema: {
-        job_id: external_exports.string().min(1),
+        job_id: external_exports.string().min(1).optional(),
+        group_id: external_exports.string().min(1).optional(),
         wait_ms: external_exports.number().int().min(0).max(POLICY.maxWaitMs).optional()
       }
     },
-    async ({ job_id, wait_ms }) => {
-      const view = await manager.wait(job_id, wait_ms ?? 0);
-      if (!view) return fail({ error: "unknown_job", message: `no consultation with job_id "${job_id}"` });
+    async ({ job_id, group_id, wait_ms }) => {
+      if (Boolean(job_id) === Boolean(group_id)) {
+        return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
+      }
+      const view = group_id ? await manager.waitGroup(group_id, wait_ms ?? 0) : await manager.wait(job_id, wait_ms ?? 0);
+      if (!view) {
+        return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
+      }
       return ok(view);
     }
   );
@@ -37027,12 +37406,20 @@ function createServer(manager = new JobManager()) {
     "consult_cancel",
     {
       title: "Cancel a running consultation",
-      description: "Stop a running consultation and kill the consultant process and everything it spawned.",
-      inputSchema: { job_id: external_exports.string().min(1) }
+      description: "Stop a running consultation and kill the consultant process and everything it spawned. Pass group_id instead of job_id to stop every consultant in a fan-out.",
+      inputSchema: {
+        job_id: external_exports.string().min(1).optional(),
+        group_id: external_exports.string().min(1).optional()
+      }
     },
-    async ({ job_id }) => {
-      const view = manager.cancel(job_id);
-      if (!view) return fail({ error: "unknown_job", message: `no consultation with job_id "${job_id}"` });
+    async ({ job_id, group_id }) => {
+      if (Boolean(job_id) === Boolean(group_id)) {
+        return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
+      }
+      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
+      if (!view) {
+        return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
+      }
       return ok(view);
     }
   );

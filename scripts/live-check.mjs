@@ -3,8 +3,8 @@
 // back. Not part of `npm test` (it spends real quota); run it to verify an
 // installation, or to reproduce a failure classification.
 //
-//   node scripts/live-check.mjs --target claude-code --mode review
-//   PEER_CONSULT_CLAUDE_MODEL=claude-sonnet-5 node scripts/live-check.mjs --target claude-code
+//   node scripts/live-check.mjs --target antigravity --mode review
+//   PEER_CONSULT_AGY_MODEL=gemini-3.1-pro-high node scripts/live-check.mjs --target antigravity
 
 import { JobManager } from '../src/jobs.mjs';
 import { limitsSummary } from '../src/policy.mjs';
@@ -15,7 +15,7 @@ const arg = (name, dflt) => {
   return i === -1 ? dflt : argv[i + 1];
 };
 
-const target = arg('target', 'claude-code');
+const target = arg('target', 'antigravity');
 const mode = arg('mode', 'review');
 
 const REQUESTS = {
