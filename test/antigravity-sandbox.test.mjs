@@ -31,7 +31,7 @@ test('the synthesised home loads no MCP servers and denies every write path', ()
     fs.readFileSync(path.join(sandbox.root, '.gemini', 'antigravity-cli', 'settings.json'), 'utf8'),
   );
   assert.deepEqual(settings.permissions.allow, ['read_url(*)']);
-  for (const rule of ['write_file(*)', 'command(*)', 'mcp(*)', 'execute_url(*)', 'unsandboxed(*)']) {
+  for (const rule of ['write_file(*)', 'read_file(*)', 'command(*)', 'mcp(*)', 'execute_url(*)', 'unsandboxed(*)']) {
     assert.ok(settings.permissions.deny.includes(rule), `${rule} must be denied`);
   }
 

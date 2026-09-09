@@ -20,10 +20,12 @@ import path from 'node:path';
 // Verified against agy 1.1.28: precedence is Deny > Ask > Allow, and headless
 // mode auto-denies anything that would need a prompt. read_url must be allowed
 // explicitly or the consultant can search but never open a page; search_web
-// needs no rule.
+// needs no rule. Every consultant receives its brief on stdin, so file-system
+// reads are neither needed nor wanted.
 export const SANDBOX_ALLOW = Object.freeze(['read_url(*)']);
 export const SANDBOX_DENY = Object.freeze([
   'write_file(*)',
+  'read_file(*)',
   'command(*)',
   'mcp(*)',
   'execute_url(*)',
