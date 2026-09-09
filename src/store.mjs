@@ -1,4 +1,7 @@
-// On-disk history. Everything written here has already been through redact().
+// On-disk history. Everything written here has already been through redact():
+// the request text on the way in (jobs.mjs stores job.question redacted), the
+// consultant's answer on the way out (parse-result.mjs), and every failure
+// message and detail (jobs.mjs #fail).
 
 import fs from 'node:fs';
 import path from 'node:path';

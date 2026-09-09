@@ -412,6 +412,24 @@ test('each consultant runs with its own vendor credentials and none of the other
   }
 });
 
+// store.mjs claims everything it writes has been through redact(); the
+// question was the one field that had not.
+test('a credential pasted into the question never reaches the history file', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const secret = 'ghp_abcdefghijklmnopqrstuvwxyz0123';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ question: `Can we keep using ${secret} in CI?` }));
+  const view = await finish(mgr, started.job_id);
+
+  assert.ok(!view.question.includes(secret), 'the recorded question must not carry the token');
+  assert.match(view.question, /REDACTED/);
+  const record = JSON.parse(
+    fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8'),
+  );
+  assert.ok(!record.question.includes(secret), 'the history file must not carry the token');
+  assert.match(record.question, /REDACTED/);
+});
+
 // The sandbox has always computed credentials: 'missing'; nothing consumed it,
 // so an operator whose token is absent -- or under a different
 // PEER_CONSULT_AGY_CRED_HOME -- got whatever generic auth error agy emits,

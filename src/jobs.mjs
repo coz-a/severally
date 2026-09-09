@@ -150,7 +150,11 @@ export class JobManager {
         round,
         target,
         mode: req.mode,
-        question: req.question,
+        // Redacted here, at the one point the request text becomes state:
+        // job.question is what reaches the history file on disk and every
+        // view. The brief the consultant receives is redacted too
+        // (renderBrief), so this is the same text it was actually sent.
+        question: redact(req.question),
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: 'queued',
@@ -177,7 +181,7 @@ export class JobManager {
       group_id: groupId,
       created_at: new Date().toISOString(),
       mode: req.mode,
-      question: req.question,
+      question: members[0].question, // already redacted, and byte-identical across the group
       job_ids: members.map((m) => m.job_id),
     };
     this.groups.set(groupId, group);
@@ -219,7 +223,7 @@ export class JobManager {
     }
     return {
       ...common,
-      question: req.question,
+      question: group.question, // the redacted text every member was actually sent
       jobs: members.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, model: m.model })),
       poll_with: `consult_get({ group_id: "${groupId}", wait_ms: 60000 })`,
       note: 'Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement.',
