@@ -10,20 +10,60 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const skillsDir = path.join(root, 'plugins', 'peer-consult', 'skills');
 
+// `en`/`jp` are the everyday name a user would actually type when asking for
+// this peer by alias ("ask GPT", "gptと相談して") -- English keeps the
+// acronym capitalised, casual Japanese usually doesn't.
 const PEERS = {
-  codex: { label: 'Codex CLI', short: 'Codex', reach: 'the question is about implementation detail, tricky code, or a decision where a different training lineage helps' },
-  'claude-code': { label: 'Claude Code CLI', short: 'Claude Code', reach: 'you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact' },
-  antigravity: { label: 'Antigravity CLI (Gemini)', short: 'Antigravity', reach: 'you want a third reading, or the question needs current web material' },
+  codex: {
+    label: 'Codex CLI',
+    short: 'Codex',
+    reach: 'the question is about implementation detail, tricky code, or a decision where a different training lineage helps',
+    en: 'GPT',
+    jp: 'gpt',
+    jpVerb: 'と相談して',
+  },
+  'claude-code': {
+    label: 'Claude Code CLI',
+    short: 'Claude Code',
+    reach: 'you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact',
+    en: 'Claude',
+    jp: 'Claude',
+    jpVerb: 'に聞いて',
+  },
+  antigravity: {
+    label: 'Antigravity CLI (Gemini)',
+    short: 'Antigravity',
+    reach: 'you want a third reading, or the question needs current web material',
+    en: 'Gemini',
+    jp: 'Gemini',
+    jpVerb: 'と相談して',
+  },
 };
 
 const HOSTS = [
-  { dir: 'claude', self: 'claude-code', triggers: ['"ask GPT"', '"ask Gemini"', '"gptと相談して"', '"Geminiと相談して"', '"Codexに聞いて"'] },
-  { dir: 'codex', self: 'codex', triggers: ['"ask Claude"', '"ask Gemini"', '"Claudeに聞いて"', '"Geminiと相談して"', '"Claudeにレビューしてもらって"'] },
-  { dir: 'antigravity', self: 'antigravity', triggers: ['"ask GPT"', '"ask Claude"', '"gptと相談して"', '"Claudeに聞いて"', '"Codexにレビューしてもらって"'] },
+  { dir: 'claude', self: 'claude-code' },
+  { dir: 'codex', self: 'codex' },
+  { dir: 'antigravity', self: 'antigravity' },
 ];
 
-export function generateSkills() {
+// All four everyday-alias shapes for one peer: "ask X", "get X to review
+// this", the natural Japanese "XにVERBして" form, and "Xにレビューしてもらって".
+function triggersFor(peerId) {
+  const p = PEERS[peerId];
+  return [
+    `"ask ${p.en}"`,
+    `"get ${p.en} to review this"`,
+    `"${p.jp}${p.jpVerb}"`,
+    `"${p.jp}にレビューしてもらって"`,
+  ];
+}
+
+// Pure: reads the template and returns the rendered SKILL.md text for each
+// host, keyed by host directory. Writes nothing, so it is safe to call from
+// a test without mutating the working tree.
+export function renderSkills() {
   const tmpl = fs.readFileSync(path.join(skillsDir, '_template', 'SKILL.md.tmpl'), 'utf8');
+  const rendered = {};
   for (const host of HOSTS) {
     const peers = Object.keys(PEERS).filter((id) => id !== host.self);
     const table = [
@@ -33,15 +73,24 @@ export function generateSkills() {
     ].join('\n');
     const text = tmpl
       .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))
-      .replaceAll('{{TRIGGERS}}', host.triggers.join(', '))
-      .replaceAll('{{SELF_LABEL}}', PEERS[host.self].short)
+      .replaceAll('{{TRIGGERS}}', peers.flatMap(triggersFor).join(', '))
       .replaceAll('{{PEER_TABLE}}', table)
       .replaceAll('{{DEFAULT_TARGET}}', peers[0])
       .replaceAll('{{SELF_TARGET}}', host.self);
+    rendered[host.dir] = text;
+  }
+  return rendered;
+}
+
+// Thin writer: renders and writes each host's SKILL.md. Stays silent --
+// logging belongs to the CLI entry point below, not to code that may be
+// imported (e.g. by a test).
+export function generateSkills() {
+  const rendered = renderSkills();
+  for (const host of HOSTS) {
     const out = path.join(skillsDir, host.dir, 'peer-consult');
     fs.mkdirSync(out, { recursive: true });
-    fs.writeFileSync(path.join(out, 'SKILL.md'), text);
-    console.log(`skill -> ${path.relative(root, path.join(out, 'SKILL.md'))}`);
+    fs.writeFileSync(path.join(out, 'SKILL.md'), rendered[host.dir]);
   }
 }
 
@@ -67,5 +116,8 @@ export async function bundle() {
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
   generateSkills();
+  for (const host of HOSTS) {
+    console.log(`skill -> ${path.relative(root, path.join(skillsDir, host.dir, 'peer-consult', 'SKILL.md'))}`);
+  }
   if (!process.argv.includes('--skills-only')) await bundle();
 }

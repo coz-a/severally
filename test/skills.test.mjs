@@ -39,10 +39,9 @@ test('the trigger phrases cover the vendor aliases in both languages', () => {
 });
 
 test('the generated skills are in sync with the template', async () => {
-  const before = Object.fromEntries(Object.keys(HOSTS).map((h) => [h, read(h)]));
-  const { generateSkills } = await import('../scripts/build.mjs');
-  generateSkills();
+  const { renderSkills } = await import('../scripts/build.mjs');
+  const rendered = renderSkills();
   for (const host of Object.keys(HOSTS)) {
-    assert.equal(read(host), before[host], `${host} SKILL.md is stale: run node scripts/build.mjs`);
+    assert.equal(rendered[host], read(host), `${host} SKILL.md is stale: run node scripts/build.mjs --skills-only`);
   }
 });

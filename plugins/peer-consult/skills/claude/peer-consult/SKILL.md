@@ -1,6 +1,6 @@
 ---
 name: peer-consult
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly ("ask GPT", "ask Gemini", "gptと相談して", "Geminiと相談して", "Codexに聞いて", "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
