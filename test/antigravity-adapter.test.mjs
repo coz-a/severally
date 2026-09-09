@@ -15,7 +15,9 @@ test('the invocation pins the model, the schema and print-mode JSON', () => {
   assert.ok(inv.args.includes('--json-schema'));
   assert.equal(inv.args[inv.args.indexOf('--json-schema') + 1], '/tmp/schema.json');
   assert.ok(inv.args.includes('--disable-slash-commands'));
-  assert.equal(inv.args[inv.args.indexOf('--model') + 1], 'gemini-3.8-flash-high');
+  // The slug itself is policy, not a fact about the adapter: assert that the
+  // configured model reaches --model, not that it happens to be the default.
+  assert.equal(inv.args[inv.args.indexOf('--model') + 1], POLICY.targets.antigravity.model);
   assert.ok(/^--print-timeout$/.test(inv.args[inv.args.indexOf('--print-timeout')]));
   assert.match(inv.args[inv.args.indexOf('--print-timeout') + 1], /^\d+s$/);
   // agy takes the brief on stdin; the brief must never be an argv value.

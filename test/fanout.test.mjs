@@ -6,11 +6,12 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
 // The retention cap is frozen when policy.mjs first loads, and a query-string
 // re-import of jobs.mjs reuses that same policy module -- so a cap the eviction
-// test below can actually reach has to be set before the first import.
-process.env.PEER_CONSULT_MAX_JOBS_RETAINED = '20';
-const home = sandboxEnv();
-const { JobManager } = await import('../src/jobs.mjs');
+// test below can actually reach has to be in place before the first import.
+// It goes through sandboxEnv's overrides because sandboxEnv clears the whole
+// PEER_CONSULT_ namespace first (see the comment there).
 const RETAINED = 20;
+const home = sandboxEnv({ PEER_CONSULT_MAX_JOBS_RETAINED: String(RETAINED) });
+const { JobManager } = await import('../src/jobs.mjs');
 
 const finishGroup = async (mgr, groupId) => {
   const g = mgr.groups.get(groupId);
