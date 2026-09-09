@@ -282,9 +282,10 @@ test('concurrency is capped server-side', async () => {
   const mgr = new M();
   const a = mgr.start(reviewRequest());
   const b = mgr.start(reviewRequest());
+  const c = mgr.start(reviewRequest());
   assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'concurrency_limit');
   mgr.shutdown();
-  await Promise.all([finish(mgr, a.job_id), finish(mgr, b.job_id)]);
+  await Promise.all([finish(mgr, a.job_id), finish(mgr, b.job_id), finish(mgr, c.job_id)]);
   process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
 });
 

@@ -23,6 +23,7 @@ const id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
 export class JobManager {
   constructor() {
     this.jobs = new Map();
+    this.groups = new Map();
     this.order = [];
     store.ensureDirs();
   }
@@ -35,6 +36,7 @@ export class JobManager {
     return {
       job_id: job.job_id,
       chain_id: job.chain_id,
+      group_id: job.group_id,
       round: job.round,
       target: job.target,
       caller: job.caller,
@@ -95,12 +97,6 @@ export class JobManager {
         'recursion_blocked',
       );
     }
-    if (this.running.length >= POLICY.maxConcurrent) {
-      throw new RequestError(
-        `${POLICY.maxConcurrent} consultations are already running; wait for one to finish (consult_get) or cancel it`,
-        'concurrency_limit',
-      );
-    }
 
     // Resolve the chain before validating, so follow-up rules can be applied.
     const followupTo = typeof rawRequest?.followup_to === 'string' && rawRequest.followup_to.trim()
@@ -134,53 +130,99 @@ export class JobManager {
       );
     }
 
-    const chainId = parent ? parent.chain_id : id('chain');
-    const jobId = id('job');
-    const priorRounds = this.#chainHistory(chainId);
+    // Admit or refuse the whole fan-out: a half-started group would leave the
+    // lead comparing answers to a question only some consultants were asked.
+    if (this.running.length + req.targets.length > POLICY.maxConcurrent) {
+      throw new RequestError(
+        `this would run ${this.running.length + req.targets.length} consultations at once; the cap is ${POLICY.maxConcurrent}. Wait for one to finish (consult_get) or cancel it`,
+        'concurrency_limit',
+      );
+    }
 
-    const job = {
-      job_id: jobId,
-      chain_id: chainId,
-      round,
-      target: req.target,
-      caller: req.caller ?? detectCaller(),
-      mode: req.mode,
-      question: req.question,
-      followup_to: followupTo,
-      status: 'queued',
-      model: POLICY.targets[req.target].model,
-      created_at: new Date().toISOString(),
-      started_at: null,
-      finished_at: null,
-      duration_ms: null,
-      result: null,
-      quality: null,
-      usage: null,
-      failure: null,
-      cancelRequested: false,
-      _cancelFns: [],
-      _request: req,
-    };
-    this.jobs.set(jobId, job);
-    this.order.push(jobId);
+    const groupId = id('group');
+    // One brief for the whole group: a fan-out is only comparable if every
+    // consultant answered the same question, in the same words.
+    const briefs = new Map();
+    const members = req.targets.map((target) => {
+      const chainId = parent ? parent.chain_id : id('chain');
+      const jobId = id('job');
+      const job = {
+        job_id: jobId,
+        chain_id: chainId,
+        group_id: groupId,
+        round,
+        target,
+        mode: req.mode,
+        question: req.question,
+        caller: req.caller ?? detectCaller(),
+        followup_to: followupTo,
+        status: 'queued',
+        model: POLICY.targets[target].model,
+        created_at: new Date().toISOString(),
+        started_at: null,
+        finished_at: null,
+        duration_ms: null,
+        result: null,
+        quality: null,
+        usage: null,
+        failure: null,
+        cancelRequested: false,
+        _cancelFns: [],
+        _request: req,
+      };
+      this.jobs.set(jobId, job);
+      this.order.push(jobId);
+      return job;
+    });
     this.#evict();
 
-    job.promise = this.#execute(job, req, { round, priorRounds }).catch((err) => {
-      this.#fail(job, 'cli_error', err?.message ?? String(err));
-    });
+    const group = {
+      group_id: groupId,
+      created_at: new Date().toISOString(),
+      mode: req.mode,
+      question: req.question,
+      job_ids: members.map((m) => m.job_id),
+    };
+    this.groups.set(groupId, group);
+    try { store.persistGroup(group); } catch { /* history is best effort */ }
 
-    return {
-      job_id: jobId,
-      chain_id: chainId,
+    for (const job of members) {
+      const chain = { round, priorRounds: this.#chainHistory(job.chain_id) };
+      const key = JSON.stringify(chain.priorRounds.map((p) => p.round));
+      if (!briefs.has(key)) briefs.set(key, renderBrief(req, chain));
+      const brief = briefs.get(key);
+      job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
+        this.#fail(job, 'cli_error', err?.message ?? String(err));
+      });
+    }
+
+    const common = {
+      group_id: groupId,
       round,
       rounds_remaining: POLICY.maxRounds - round,
-      target: req.target,
       mode: req.mode,
-      model: job.model,
       status: 'running',
-      accepted_at: job.created_at,
+      accepted_at: group.created_at,
       limits: limitsSummary(),
-      poll_with: `consult_get({ job_id: "${jobId}", wait_ms: 60000 })`,
+    };
+
+    if (!req.fanout) {
+      const job = members[0];
+      return {
+        ...common,
+        job_id: job.job_id,
+        chain_id: job.chain_id,
+        target: job.target,
+        model: job.model,
+        poll_with: `consult_get({ job_id: "${job.job_id}", wait_ms: 60000 })`,
+      };
+    }
+    return {
+      ...common,
+      question: req.question,
+      jobs: members.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, model: m.model })),
+      poll_with: `consult_get({ group_id: "${groupId}", wait_ms: 60000 })`,
+      note: 'Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement.',
     };
   }
 
@@ -209,10 +251,12 @@ export class JobManager {
     }
   }
 
-  async #execute(job, req, chain) {
+  async #execute(job, req, chain, brief) {
     const adapter = ADAPTERS[req.target];
     const workdir = store.makeWorkdir(job.job_id);
-    const text = renderBrief(req, chain);
+    // start() renders the brief once per chain and hands it in, so every member
+    // of a fan-out is sent byte-identical text.
+    const text = brief ?? renderBrief(req, chain);
     const schemaPath = store.writeJobArtifact(job.job_id, 'response-schema.json', JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
 
@@ -338,6 +382,53 @@ export class JobManager {
     return { ...this.view(jobId), status: 'cancelling', cancel_effect: 'consultant process group signalled' };
   }
 
+  groupView(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    const members = group.job_ids.map((jid) => this.view(jid)).filter(Boolean);
+    const live = members.some((m) => m.status === 'running' || m.status === 'queued');
+    return {
+      group_id: groupId,
+      status: live ? 'running' : 'done',
+      mode: group.mode,
+      question: group.question,
+      members,
+      comparison: comparison(members),
+      cancellable: live,
+      next_step: live
+        ? 'poll consult_get again with this group_id, or consult_cancel it'
+        : 'list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision',
+      limits: limitsSummary(),
+    };
+  }
+
+  async waitGroup(groupId, waitMs) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
+    if (budget > 0) {
+      const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
+      await Promise.race([
+        Promise.all(promises),
+        new Promise((r) => setTimeout(r, budget).unref?.()),
+      ]);
+    }
+    return this.groupView(groupId);
+  }
+
+  cancelGroup(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    // Report each member as its own cancel() saw it: the child exits
+    // asynchronously, so a signalled member reads as "cancelling" until reaped.
+    const members = group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean);
+    return {
+      ...this.groupView(groupId),
+      members,
+      cancel_effect: 'every consultant process group in this fan-out was signalled',
+    };
+  }
+
   shutdown() {
     for (const job of this.running) {
       job.cancelRequested = true;
@@ -371,6 +462,29 @@ function sameVendorCaveat(caller, target) {
   if (!caller || !POLICY.targets[caller] || !POLICY.targets[target]) return null;
   if (POLICY.targets[caller].vendor !== POLICY.targets[target].vendor) return null;
   return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}): this is a fresh-context check, not an independent opinion — prefer the other two consultants for genuine independence`;
+}
+
+// A mechanical side-by-side. The server deliberately does not decide whether
+// the consultants agree: inventing agreement that is not there is exactly the
+// failure a second opinion is supposed to prevent.
+function comparison(members) {
+  return {
+    by_target: members.map((m) => ({
+      target: m.target,
+      status: m.status,
+      failure_kind: m.failure?.kind ?? null,
+      confidence: m.result?.confidence ?? null,
+      evidence_basis: m.result?.evidence_basis ?? null,
+      summary: m.result?.summary ?? null,
+      finding_points: (m.result?.findings ?? []).map((f) => f.point),
+      alternative_options: (m.result?.alternatives ?? []).map((a) => a.option),
+      unknowns: (m.result?.unknowns ?? []).map((u) => u.item),
+      remaining_disagreements: m.result?.remaining_disagreements ?? [],
+    })),
+    note:
+      'This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. ' +
+      'Compare the grounds behind each point yourself, and spend a follow-up only where a divergence would change your decision.',
+  };
 }
 
 function nextStep(job) {

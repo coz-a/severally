@@ -62,6 +62,15 @@ export function persistRound(record) {
   );
 }
 
+// A fan-out is recorded as its own record so a later reader can tell which
+// answers were asked the same question at the same time; each member job still
+// writes its own round file under its own chain.
+export function persistGroup(group) {
+  const dir = path.join(POLICY.home, 'history', 'groups');
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 0o600 });
+}
+
 export function cleanupJobDir(jobId) {
   try { fs.rmSync(jobDir(jobId), { recursive: true, force: true }); } catch { /* best effort */ }
 }

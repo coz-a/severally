@@ -90,7 +90,7 @@ export const POLICY = Object.freeze({
   killGraceMs: num('PEER_CONSULT_KILL_GRACE_MS', 5_000, 500, 60_000),
   // 1 initial round + 2 follow-ups.
   maxRounds: num('PEER_CONSULT_MAX_ROUNDS', 3, 1, 5),
-  maxConcurrent: num('PEER_CONSULT_MAX_CONCURRENT', 2, 1, 4),
+  maxConcurrent: num('PEER_CONSULT_MAX_CONCURRENT', 3, 1, 4),
   maxJobsRetained: num('PEER_CONSULT_MAX_JOBS_RETAINED', 200, 20, 2000),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as

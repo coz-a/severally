@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Stand-in for `claude -p` used by the test suite.
 import fs from 'node:fs';
+import path from 'node:path';
 
 const args = process.argv.slice(2);
 if (process.env.STUB_ARGV_OUT) fs.writeFileSync(process.env.STUB_ARGV_OUT, JSON.stringify(args));
@@ -26,6 +27,11 @@ const structured = {
 
 function run() {
   if (process.env.STUB_BRIEF_OUT) fs.writeFileSync(process.env.STUB_BRIEF_OUT, stdin);
+  // STUB_BRIEF_OUT is a single shared path: in a fan-out several children would
+  // overwrite each other's brief, so also drop one file per target.
+  if (process.env.STUB_BRIEF_DIR) {
+    fs.writeFileSync(path.join(process.env.STUB_BRIEF_DIR, `${process.env.PEER_CONSULT_TARGET ?? 'unknown'}.txt`), stdin);
+  }
   const behavior = process.env.STUB_BEHAVIOR ?? 'ok';
   if (behavior === 'usage_limit') {
     process.stdout.write(`${JSON.stringify({

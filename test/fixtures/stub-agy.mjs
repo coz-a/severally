@@ -3,6 +3,7 @@
 // matches agy 1.1.28: status / response / structured_output / usage /
 // denied_actions, with status ERROR + error for failures.
 import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const args = process.argv.slice(2);
@@ -35,6 +36,11 @@ const envelope = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
 
 function run() {
   if (process.env.STUB_BRIEF_OUT) fs.writeFileSync(process.env.STUB_BRIEF_OUT, stdin);
+  // STUB_BRIEF_OUT is a single shared path: in a fan-out several children would
+  // overwrite each other's brief, so also drop one file per target.
+  if (process.env.STUB_BRIEF_DIR) {
+    fs.writeFileSync(path.join(process.env.STUB_BRIEF_DIR, `${process.env.PEER_CONSULT_TARGET ?? 'unknown'}.txt`), stdin);
+  }
   const behavior = process.env.STUB_BEHAVIOR ?? 'ok';
   const usage = { input_tokens: 5722, output_tokens: 240, thinking_tokens: 23, cache_read_tokens: 8130, total_tokens: 5962 };
 

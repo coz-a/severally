@@ -2,6 +2,7 @@
 // Stand-in for `codex exec` used by the test suite. Behaviour is picked with
 // STUB_BEHAVIOR so every branch of the adapter can be exercised offline.
 import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const args = process.argv.slice(2);
@@ -34,6 +35,11 @@ function answer(overrides = {}) {
 
 function run() {
   if (process.env.STUB_BRIEF_OUT) fs.writeFileSync(process.env.STUB_BRIEF_OUT, stdin);
+  // STUB_BRIEF_OUT is a single shared path: in a fan-out several children would
+  // overwrite each other's brief, so also drop one file per target.
+  if (process.env.STUB_BRIEF_DIR) {
+    fs.writeFileSync(path.join(process.env.STUB_BRIEF_DIR, `${process.env.PEER_CONSULT_TARGET ?? 'unknown'}.txt`), stdin);
+  }
   const behavior = process.env.STUB_BEHAVIOR ?? 'ok';
   const oIdx = args.indexOf('-o');
   const lastMessagePath = oIdx !== -1 ? args[oIdx + 1] : null;

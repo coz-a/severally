@@ -73,15 +73,24 @@ export function createServer(manager = new JobManager()) {
         'times, and do something else in between. A completed job carries the structured ' +
         'answer; a failed one carries failure.kind (timeout, auth, usage_limit, model_unavailable, invalid_output, ' +
         'cli_error, spawn_error) — that is "no advice was obtained", which is different from advice that arrived ' +
-        'with thin evidence (see quality.evidence_basis).',
+        'with thin evidence (see quality.evidence_basis). ' +
+        'Pass group_id instead of job_id to fetch a fan-out; wait_ms then waits for every consultant in it.',
       inputSchema: {
-        job_id: z.string().min(1),
+        job_id: z.string().min(1).optional(),
+        group_id: z.string().min(1).optional(),
         wait_ms: z.number().int().min(0).max(POLICY.maxWaitMs).optional(),
       },
     },
-    async ({ job_id, wait_ms }) => {
-      const view = await manager.wait(job_id, wait_ms ?? 0);
-      if (!view) return fail({ error: 'unknown_job', message: `no consultation with job_id "${job_id}"` });
+    async ({ job_id, group_id, wait_ms }) => {
+      if (Boolean(job_id) === Boolean(group_id)) {
+        return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
+      }
+      const view = group_id
+        ? await manager.waitGroup(group_id, wait_ms ?? 0)
+        : await manager.wait(job_id, wait_ms ?? 0);
+      if (!view) {
+        return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
+      }
       return ok(view);
     },
   );
@@ -90,12 +99,22 @@ export function createServer(manager = new JobManager()) {
     'consult_cancel',
     {
       title: 'Cancel a running consultation',
-      description: 'Stop a running consultation and kill the consultant process and everything it spawned.',
-      inputSchema: { job_id: z.string().min(1) },
+      description:
+        'Stop a running consultation and kill the consultant process and everything it spawned. ' +
+        'Pass group_id instead of job_id to stop every consultant in a fan-out.',
+      inputSchema: {
+        job_id: z.string().min(1).optional(),
+        group_id: z.string().min(1).optional(),
+      },
     },
-    async ({ job_id }) => {
-      const view = manager.cancel(job_id);
-      if (!view) return fail({ error: 'unknown_job', message: `no consultation with job_id "${job_id}"` });
+    async ({ job_id, group_id }) => {
+      if (Boolean(job_id) === Boolean(group_id)) {
+        return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
+      }
+      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
+      if (!view) {
+        return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
+      }
       return ok(view);
     },
   );

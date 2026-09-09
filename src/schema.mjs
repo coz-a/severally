@@ -37,7 +37,15 @@ const normalizeTargetLike = (val) => {
 
 export const requestSchema = z
   .object({
-    target: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)),
+    // Exactly one of `target` (one consultant) or `targets` (ask several the
+    // same question) is required; parseRequest below enforces the exclusivity,
+    // because zod cannot phrase that refusal usefully.
+    target: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)).optional(),
+    targets: z
+      .array(z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)))
+      .min(1)
+      .max(TARGETS.length)
+      .optional(),
     // Identifies the host CLI making this request, if it names itself. Purely
     // an annotation input for the same-vendor caveat below: it must never
     // gate permissions, limits, rounds, or which CLI gets launched.
@@ -83,7 +91,34 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
   const req = parsed.data;
-  req.target = resolveTarget(req.target);
+  const hasSingle = req.target !== undefined && req.target !== null;
+  const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
+  if (hasSingle && hasMany) {
+    throw new RequestError('pass either target (one consultant) or targets (several), not both', 'invalid_request');
+  }
+  if (!hasSingle && !hasMany) {
+    throw new RequestError(
+      `name the consultant: target: "codex" | "claude-code" | "antigravity" (aliases: ${TARGET_INPUTS.join(', ')}), or targets: [...] to ask several the same question`,
+      'target_required',
+    );
+  }
+  const resolved = (hasSingle ? [req.target] : req.targets).map((t) => resolveTarget(t));
+  const unique = [...new Set(resolved)];
+  if (unique.length !== resolved.length) {
+    throw new RequestError(
+      'the same consultant is named twice; asking one agent the same question twice does not add independence',
+      'duplicate_targets',
+    );
+  }
+  if (isFollowup && unique.length > 1) {
+    throw new RequestError(
+      'a follow-up continues the exchange with one consultant; name exactly one target',
+      'followup_fanout_not_allowed',
+    );
+  }
+  req.targets = unique;
+  req.target = unique[0]; // single-target consumers (brief, history, adapters) keep working
+  req.fanout = unique.length > 1;
   req.caller = resolveTarget(req.caller ?? '') ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? '').trim();
