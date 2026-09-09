@@ -53,6 +53,23 @@ test('claude-code consultation: usage recorded, thin evidence flagged', async ()
   assert.equal(view.result.remaining_disagreements.length, 1, 'disagreement must survive, not be smoothed away');
 });
 
+test('a same-vendor consultation is delivered with an independence caveat', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: 'gpt', caller: 'codex' }));
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'completed');
+  assert.match(view.quality.caveat, /same vendor|independen/i);
+  assert.equal(view.caller, 'codex');
+});
+
+test('a cross-vendor consultation carries no independence caveat', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const view = await finish(mgr, mgr.start(reviewRequest({ caller: 'claude-code' })).job_id);
+  assert.equal(/same vendor/i.test(view.quality.caveat ?? ''), false);
+});
+
 test('the consultant is launched with the restriction flags and none that widen permissions', async () => {
   const argvOut = path.join(os.tmpdir(), `pc-argv-${Date.now()}.json`);
   process.env.STUB_BEHAVIOR = 'ok';

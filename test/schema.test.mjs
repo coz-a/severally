@@ -83,3 +83,16 @@ test('an unknown target is rejected and the accepted names are listed', () => {
     (err) => err.code === 'invalid_request' && /gemini/.test(err.message),
   );
 });
+
+test('caller is optional and normalised like target', () => {
+  assert.equal(parseRequest(reviewRequest({ caller: 'Claude Code' })).caller, 'claude-code');
+  assert.equal(parseRequest(reviewRequest()).caller, null);
+});
+
+test('detectCaller reads the host CLI from the environment', async () => {
+  const { detectCaller } = await import('../src/policy.mjs');
+  assert.equal(detectCaller({ CLAUDECODE: '1' }), 'claude-code');
+  assert.equal(detectCaller({ CODEX_HOME: '/home/x/.codex' }), 'codex');
+  assert.equal(detectCaller({ AGY_BROWSER_WS_URL: 'ws://localhost:1' }), 'antigravity');
+  assert.equal(detectCaller({}), null);
+});

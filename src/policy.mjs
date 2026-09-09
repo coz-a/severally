@@ -46,6 +46,15 @@ export function resolveTarget(raw) {
   return TARGET_ALIASES[key] ?? null;
 }
 
+// Which CLI is hosting this server. Used only to annotate a consultation that
+// goes to the caller's own vendor; it never affects permissions or limits.
+export function detectCaller(env = process.env) {
+  if (env.CLAUDECODE === '1' || env.CLAUDE_CODE_ENTRYPOINT) return 'claude-code';
+  if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return 'codex';
+  if (Object.keys(env).some((k) => k.startsWith('AGY_') || k.startsWith('ANTIGRAVITY_'))) return 'antigravity';
+  return null;
+}
+
 export const MODES = ['explore', 'review', 'debate'];
 
 export const POLICY = Object.freeze({

@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { POLICY, limitsSummary, timeoutMs } from './policy.mjs';
+import { POLICY, limitsSummary, timeoutMs, detectCaller } from './policy.mjs';
 import { parseRequest, RequestError } from './schema.mjs';
 import { renderBrief, renderGuardrails } from './brief.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
@@ -37,6 +37,7 @@ export class JobManager {
       chain_id: job.chain_id,
       round: job.round,
       target: job.target,
+      caller: job.caller,
       mode: job.mode,
       status: job.status,
       model: job.model,
@@ -142,6 +143,7 @@ export class JobManager {
       chain_id: chainId,
       round,
       target: req.target,
+      caller: req.caller ?? detectCaller(),
       mode: req.mode,
       question: req.question,
       followup_to: followupTo,
@@ -275,11 +277,12 @@ export class JobManager {
       }
 
       job.result = normalized.result;
+      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target)].filter(Boolean);
       job.quality = {
         ...normalized.quality,
         evidence_basis: normalized.result.evidence_basis,
         advice_usable: true,
-        caveat: adviceCaveat(normalized),
+        caveat: notes.length ? notes.join('; ') : null,
       };
       job.usage = adapter.usageRecord(interpreted.usageRaw);
       job.status = 'completed';
@@ -358,6 +361,16 @@ function adviceCaveat(normalized) {
     notes.push('no sources were cited; the findings rest on the consultant\'s own reasoning over the brief');
   }
   return notes.length ? notes.join('; ') : null;
+}
+
+// A lead may legitimately name its own CLI as the consultant: a fresh child
+// session with no shared context is still a useful clean-context re-read.
+// But it is not an independent opinion -- the answer comes from the same
+// vendor's model family -- so flag it rather than let it pass as one.
+function sameVendorCaveat(caller, target) {
+  if (!caller || !POLICY.targets[caller] || !POLICY.targets[target]) return null;
+  if (POLICY.targets[caller].vendor !== POLICY.targets[target].vendor) return null;
+  return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}): this is a fresh-context check, not an independent opinion — prefer the other two consultants for genuine independence`;
 }
 
 function nextStep(job) {

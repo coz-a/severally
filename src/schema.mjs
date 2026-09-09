@@ -28,15 +28,20 @@ export const contextSchema = z
   })
   .strict();
 
+// Shared by `target` and `caller`: both accept the same vendor spellings
+// (case, spaces/underscores vs. dashes) at the tool boundary.
+const normalizeTargetLike = (val) => {
+  if (typeof val !== 'string') return val;
+  return val.trim().toLowerCase().replace(/[\s_]+/g, '-');
+};
+
 export const requestSchema = z
   .object({
-    target: z.preprocess(
-      (val) => {
-        if (typeof val !== 'string') return val;
-        return val.trim().toLowerCase().replace(/[\s_]+/g, '-');
-      },
-      z.enum(TARGET_INPUTS),
-    ),
+    target: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)),
+    // Identifies the host CLI making this request, if it names itself. Purely
+    // an annotation input for the same-vendor caveat below: it must never
+    // gate permissions, limits, rounds, or which CLI gets launched.
+    caller: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)).nullish(),
     mode: z.enum(MODES),
     question: trimmed(L.questionMax, 'question'),
     objective: trimmed(L.objectiveMax, 'objective'),
@@ -79,6 +84,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
   }
   const req = parsed.data;
   req.target = resolveTarget(req.target);
+  req.caller = resolveTarget(req.caller ?? '') ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? '').trim();
   req.context.proposal = proposal.length ? proposal : null;
