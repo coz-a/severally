@@ -1,0 +1,31 @@
+{
+  "name": "peer-consult-mcp",
+  "version": "1.0.0",
+  "description": "MCP server that lets Codex and Claude Code ask each other for independent opinions, reviews and structured debate via dedicated, sandboxed child sessions.",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "bin": {
+    "peer-consult-mcp": "bin/peer-consult-mcp.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "scripts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "live-check": "node scripts/live-check.mjs",
+    "install-all": "node scripts/install.mjs",
+    "live-mcp-check": "node scripts/live-mcp-check.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^4.0.0"
+  }
+}
