@@ -6,8 +6,8 @@ description: Use when a decision deserves a second, independent mind - an archit
 # Consulting a peer agent
 
 You have two peers, each reached through the `peer-consult` MCP server as a fresh child session. They can
-search and browse the web. They cannot edit files, run commands, see your session, or consult anyone else.
-They know only what you put in the brief.
+search and browse the web. They cannot edit files, reach the network outside search/browse, load MCP tools,
+see your session, or consult anyone else. They know only what you put in the brief.
 
 ## Pick the consultant
 
@@ -80,6 +80,43 @@ consult_start({ request: {
 Then `consult_get({ job_id, wait_ms: 60000 })` until `status` is no longer `running`. Keep working on something
 independent while it runs; do not sit in a tight polling loop. `consult_cancel({ job_id })` stops it and kills
 the consultant process.
+
+## Asking two or three at once
+
+Replace `target` with `targets: [...]` when the user names more than one peer, or when the decision is heavy
+enough that you want two genuinely independent readings of it:
+
+```
+consult_start({ request: {
+  targets: ["claude-code", "antigravity"],
+  mode: "review",
+  ...
+}})
+```
+
+Every consultant receives the **byte-identical brief** — that is the whole point, because answers to slightly
+different questions are not comparable — and the server returns one `group_id` covering all of them. Poll
+`consult_get({ group_id, wait_ms: 60000 })` to get every answer in one payload, and
+`consult_cancel({ group_id })` to stop the whole fan-out. The payload carries `members` (each consultant's own
+full result) plus `comparison.by_target`, a mechanical side-by-side of summary, confidence, evidence basis,
+finding points, alternatives, unknowns and remaining disagreements.
+
+A fan-out costs a round and real quota per consultant, and it consumes that many concurrency slots, so two is
+usually enough. `targets` is refused on a follow-up: a follow-up continues the exchange with **one** consultant
+(`followup_to` set to that member's `job_id`).
+
+**Matching summaries are not agreement.** The server deliberately refuses to judge whether the consultants
+agree, because inventing agreement that is not there is exactly the failure a second opinion exists to prevent.
+Two agents can reach the same wording from different grounds, or from none. So:
+
+1. **List the divergences.** Read `comparison.by_target` and write down every point where they actually differ —
+   including one naming an unknown or a risk the other never mentions.
+2. **Check the grounds behind each divergence** against the code or the docs, not against whichever answer
+   sounds more confident.
+3. **Spend a follow-up only on a divergence that would change your decision**, and send it only to the
+   consultant whose reading it belongs to.
+
+Report a divergence you could not settle as a divergence. "Both agreed" is a claim you have to earn.
 
 ## Reading the answer
 

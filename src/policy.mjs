@@ -141,7 +141,11 @@ export function limitsSummary() {
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
+    // Stated so it is true of all three consultants. Codex is sandboxed
+    // read-only rather than execution-free: `-s read-only` blocks writes and
+    // network but not the shell itself, so do not advertise "no execution".
     consultant_permissions:
-      'web search/browse allowed; file edits, shell execution, MCP tools, and further consultations denied',
+      'web search/browse allowed; file edits, network access, MCP tools and further consultations denied; ' +
+      'the Codex consultant may still run read-only shell commands',
   };
 }

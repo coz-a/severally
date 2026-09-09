@@ -38,6 +38,23 @@ test('the trigger phrases cover the vendor aliases in both languages', () => {
   }
 });
 
+// Fan-out is the branch's headline feature and it lives entirely in the tool
+// arguments, so a skill that never mentions it makes the feature unreachable
+// for the agent that is supposed to use it.
+test('every skill teaches the fan-out: targets, group_id, and that agreement is not free', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /\btargets\b/, `${host} skill must document targets: [...]`);
+    assert.match(text, /\bgroup_id\b/, `${host} skill must document polling by group_id`);
+    assert.match(text, /consult_get\(\{ group_id/, `${host} skill must show how to poll a fan-out`);
+    assert.match(text, /consult_cancel\(\{ group_id/, `${host} skill must show how to cancel a fan-out`);
+    assert.match(text, /comparison\.by_target/, `${host} skill must point at the side-by-side`);
+    assert.match(text, /identical brief/i, `${host} skill must say every consultant gets the same brief`);
+    assert.match(text, /not agreement|not evidence of agreement/i,
+      `${host} skill must warn that matching summaries are not agreement`);
+  }
+});
+
 test('the generated skills are in sync with the template', async () => {
   const { renderSkills } = await import('../scripts/build.mjs');
   const rendered = renderSkills();

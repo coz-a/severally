@@ -71,11 +71,22 @@ export function renderSkills() {
       '|---|---|---|',
       ...peers.map((id) => `| \`${id}\` | ${PEERS[id].label} | ${PEERS[id].reach} |`),
     ].join('\n');
+    // `-s read-only` blocks Codex's writes and network but not its shell, so
+    // "they cannot run commands" would be false about Codex. Only the two
+    // hosts that actually have Codex as a peer need to hear it.
+    const executionCaveat = peers.includes('codex')
+      ? '\n\nOne caveat on "no commands": the Codex consultant is sandboxed read-only rather than execution-free,'
+        + '\nso it can still run read-only shell commands. Its writes and its network access are blocked.'
+      : '';
     const text = tmpl
+      .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
       .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))
       .replaceAll('{{TRIGGERS}}', peers.flatMap(triggersFor).join(', '))
       .replaceAll('{{PEER_TABLE}}', table)
       .replaceAll('{{DEFAULT_TARGET}}', peers[0])
+      // The other peer, used by the fan-out example so each host's skill shows
+      // a `targets` array of two consultants that are not itself.
+      .replaceAll('{{SECOND_TARGET}}', peers[1])
       .replaceAll('{{SELF_TARGET}}', host.self);
     rendered[host.dir] = text;
   }
