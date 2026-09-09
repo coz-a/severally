@@ -1,0 +1,20 @@
+{
+  "name": "peer-consult-local",
+  "interface": {
+    "displayName": "peer-consult (local)"
+  },
+  "plugins": [
+    {
+      "name": "peer-consult",
+      "source": {
+        "source": "local",
+        "path": "./plugins/peer-consult"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

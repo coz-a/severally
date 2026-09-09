@@ -11,8 +11,9 @@
   "files": [
     "bin",
     "src",
-    "skills",
+    "plugins",
     "scripts",
+    ".agents",
     "README.md"
   ],
   "engines": {
@@ -22,10 +23,14 @@
     "test": "node --test test/*.test.mjs",
     "live-check": "node scripts/live-check.mjs",
     "install-all": "node scripts/install.mjs",
-    "live-mcp-check": "node scripts/live-mcp-check.mjs"
+    "live-mcp-check": "node scripts/live-mcp-check.mjs",
+    "build": "node scripts/build.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

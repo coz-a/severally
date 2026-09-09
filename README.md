@@ -1,6 +1,7 @@
 # peer-consult
 
 Codex と Claude Code が、互いに**独立した見解・レビュー・追加議論**を求めあうための MCP サーバと Skill。
+両クライアントのプラグインとしてパッケージ済み（公開マーケットプレイス不要）。
 
 相談は毎回**専用の子セッション**として起動する（既存セッションには接続しない）。相談相手には
 **Web 検索・閲覧のみ**を許可し、ファイル変更・コマンド実行・さらなる相談は実行環境レベルで禁止する。
@@ -14,19 +15,29 @@ Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude 
 
 ## 1. 構成
 
+配布単位は `plugins/peer-consult/` の**プラグイン 1 つ**。Claude Code と Codex の両方のプラグイン形式を
+同じディレクトリに同居させてある。
+
 | 場所 | 内容 |
 |---|---|
-| `bin/`, `src/` | MCP サーバ本体（Node ESM、stdio） |
-| `skills/claude-code/peer-consult/` | Claude Code 用 Skill（→ Codex に相談する） |
-| `skills/codex/peer-consult/` | Codex 用 Skill（→ Claude Code に相談する） |
-| `scripts/install.mjs` | グローバルインストール＋両クライアント登録＋Skill 配置 |
-| `scripts/live-check.mjs` | 実 CLI を使った疎通・動作確認 |
+| `plugins/peer-consult/.claude-plugin/plugin.json` | Claude Code 用マニフェスト（`skills: ["./skills/claude"]`） |
+| `plugins/peer-consult/.mcp.json` | Claude Code 用 MCP 定義（`${CLAUDE_PLUGIN_ROOT}/dist/...`） |
+| `plugins/peer-consult/.codex-plugin/plugin.json` | Codex 用マニフェスト（skills と mcpServers を内包） |
+| `plugins/peer-consult/skills/claude/peer-consult/` | Claude Code 用 Skill（→ Codex に相談する） |
+| `plugins/peer-consult/skills/codex/peer-consult/` | Codex 用 Skill（→ Claude Code に相談する） |
+| `plugins/peer-consult/dist/peer-consult-mcp.mjs` | 依存ゼロにバンドルした MCP サーバ（`npm run build` で生成、コミット済み） |
+| `.agents/plugins/marketplace.json` | Codex 用のリポジトリローカル marketplace（公開レジストリではない） |
+| `bin/`, `src/` | MCP サーバのソース（Node ESM、stdio） |
+| `scripts/install.mjs` | インストール（プラグイン方式 / 手動方式） |
+| `scripts/build.mjs` | esbuild でプラグイン内 `dist/` を生成 |
+| `scripts/live-check.mjs`, `scripts/live-mcp-check.mjs` | 実 CLI・実 MCP での動作確認 |
 | `test/` | オフライン検証（スタブ CLI による全分岐テスト） |
 
 インストール先:
 
-- MCP: `npm install -g` → `peer-consult-mcp`、`~/.claude.json`（user scope）と `~/.codex/config.toml` に登録
-- Skill: `~/.claude/skills/peer-consult/`、`~/.codex/skills/peer-consult/`
+- Claude Code: `~/.claude/skills/peer-consult/`（skills-dir プラグインとして自動ロード。marketplace 不要）
+- Codex: `~/.codex/plugins/cache/peer-consult-local/peer-consult/<version>/`（ローカル marketplace 経由）
+- MCP バイナリ: `npm install -g` → `peer-consult-mcp`（**Codex 側は必須**。理由は §2.2）
 - 実行時データ: `~/.peer-consult/`（履歴 `history/`、設定バックアップ `backups/`、権限 0700）
 
 ## 2. インストール
@@ -34,21 +45,55 @@ Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude 
 ```bash
 npm install                 # 依存の取得
 npm test                    # オフライン検証（実 API 呼び出しなし）
+npm run build               # プラグイン内 dist/ を再生成（コミット済みなので通常は不要）
 node scripts/install.mjs    # --dry-run で実行計画のみ表示できる
 ```
-
-インストーラは既存設定を保全する。MCP 登録は各クライアントの `mcp add` に委ねて設定ファイルを直接書き換えず、
-`~/.claude.json`・`~/.codex/config.toml`・既存 Skill ディレクトリを `~/.peer-consult/backups/<timestamp>/` に退避してから作業する。
-既に登録済みの場合は何もしない（`--force` で再登録）。
 
 確認:
 
 ```bash
-claude mcp get peer-consult     # Status: ✔ Connected
-codex  mcp get peer-consult
+claude plugin details peer-consult   # Skills (1) / MCP servers (1)
+codex  plugin list                   # peer-consult@peer-consult-local  installed, enabled
 ```
 
-**クライアントは再起動が必要**（起動済みセッションは MCP を読み直さない）。
+**クライアントは再起動が必要**（起動済みセッションはプラグインを読み直さない）。
+プラグインを更新したら `npm run build && node scripts/install.mjs` を再実行する。
+
+### 2.1 2 つの方式
+
+| | プラグイン方式（既定） | 手動方式（`--manual`） |
+|---|---|---|
+| Claude Code | `~/.claude/skills/peer-consult/` にプラグインを配置（`peer-consult@skills-dir`） | `claude mcp add --scope user` ＋ Skill を単体コピー |
+| Codex | リポジトリ内 marketplace から `codex plugin add` | `codex mcp add` ＋ Skill を単体コピー |
+| MCP ツール名 | `mcp__plugin_peer-consult_peer-consult__*` | `mcp__peer-consult__*` |
+
+インストーラは既存設定を保全する。クライアント設定は各 CLI（`plugin add` / `mcp add`）経由でのみ変更し、
+`~/.claude.json`・`~/.codex/config.toml`・既存 Skill ディレクトリを `~/.peer-consult/backups/<timestamp>/`
+（パス由来のユニークな名前）に退避してから作業する。方式を切り替えると、もう一方の方式で入った重複登録は
+バックアップのうえ削除される。
+
+公開マーケットプレイスへの登録は不要。Claude Code は marketplace なしで動き、Codex 用の
+`.agents/plugins/marketplace.json` はこのリポジトリ内のローカルファイル。
+
+### 2.2 なぜ Codex 側だけグローバルインストールが要るのか
+
+Claude Code のプラグインは `${CLAUDE_PLUGIN_ROOT}` が `args` の中で展開されるので、同梱した
+`dist/peer-consult-mcp.mjs` を直接起動でき、完全に自己完結する。
+
+Codex 0.153.4 では**プラグイン自身のファイルを指す方法が実測で存在しなかった**。検証した結果:
+
+| 書き方 | 結果 |
+|---|---|
+| `command: "bash", args: ["-c", ...]` | 起動する（プラグインの MCP 定義自体は機能している） |
+| `command: "node", args: ["${PLUGIN_ROOT}/dist/..."]` | 起動するが `${PLUGIN_ROOT}` が**未展開のまま**渡る |
+| `command: "./dist/peer-consult-mcp.mjs"`（`cwd` あり／なし） | 起動しない |
+| `command: "node", args: ["./dist/..."], cwd: "${PLUGIN_ROOT}"` | 起動しない（`cwd` の変数も展開されない） |
+| `command: "peer-consult-mcp"`（PATH 上の実行ファイル名） | **起動する** |
+
+プラグインの MCP サーバに渡る環境変数に `PLUGIN_ROOT` は無く、既定の `cwd` はプラグイン root ではなく
+セッションの作業ディレクトリだった。したがって Codex 側は「PATH 上のコマンド名」で参照するしかなく、
+`npm install -g`（インストーラが実行する）が前提になる。Codex 側が `${PLUGIN_ROOT}` を展開するようになれば
+マニフェストの 1 行を戻すだけで自己完結にできる。
 
 ## 3. 使い方
 
@@ -221,6 +266,10 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | 再帰防止（Codex） | peer-consult 登録済みの状態で、通常起動は MCP プロセスを 1 個起動、`--ignore-user-config` 付きは 0 個 |
 | 再帰防止（Claude Code） | 子セッションのツール一覧に `peer`/`consult` を含む名前なし |
 | 既存設定の保全 | `~/.codex/config.toml` の既存 MCP 2 件・trust 設定 19 件が維持され、バックアップを作成 |
+| プラグイン（Claude Code） | `--plugin-dir` で読み込み、`mcp__plugin_peer-consult_peer-consult__*` の 4 ツールと Skill 1 件が出現。`claude plugin details` で Skills (1) / MCP servers (1)、常時コスト ~172 tok |
+| プラグイン（Codex） | ローカル marketplace から `plugin add` → `installed, enabled`。MCP サーバが実際に起動することを、サーバ自身が作る `~/.peer-consult/` 相当のディレクトリで確認 |
+| Skill の混線なし | Claude 側マニフェストは `skills/claude` のみを読み、`skills/codex` は読まない（`plugin details` の Skills (1)） |
+| プラグイン経由の実相談 | インストール済みプラグインの `mcp__plugin_peer-consult_peer-consult__*` をエージェントに呼ばせ、実相談が `completed`／指摘 4 件で返ることを確認 |
 
 Codex を**実行側**とする実相談（Codex が Claude Code に相談する往復）は、Codex アカウントが
 2026-09-16 までクォータ上限のため未実施。Codex 側は「MCP 登録済み・サーバ接続可能・子セッション起動と
@@ -268,10 +317,22 @@ Codex を**実行側**とする実相談（Codex が Claude Code に相談する
 
 ## 9. アンインストール
 
+プラグイン方式:
+
+```bash
+rm -rf ~/.claude/skills/peer-consult                       # Claude Code
+codex plugin remove peer-consult --marketplace peer-consult-local
+codex plugin marketplace remove peer-consult-local
+npm uninstall -g peer-consult-mcp
+```
+
+手動方式:
+
 ```bash
 claude mcp remove peer-consult -s user
 codex  mcp remove peer-consult
 rm -rf ~/.claude/skills/peer-consult ~/.codex/skills/peer-consult
 npm uninstall -g peer-consult-mcp
-# 履歴とバックアップ: ~/.peer-consult/
 ```
+
+どちらも履歴とバックアップは `~/.peer-consult/` に残る（不要なら削除する）。

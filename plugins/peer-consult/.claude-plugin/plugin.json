@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "peer-consult",
+  "version": "1.0.0",
+  "description": "Ask Codex for an independent opinion, review or structured debate, in a sandboxed child session that can search the web but cannot edit files or run commands.",
+  "author": {
+    "name": "coz.a",
+    "url": "https://github.com/coz-a"
+  },
+  "homepage": "https://github.com/coz-a/peer-consult-plugin",
+  "repository": "https://github.com/coz-a/peer-consult-plugin",
+  "license": "MIT",
+  "keywords": ["mcp", "second-opinion", "code-review", "codex", "consultation"],
+  "skills": ["./skills/claude"]
+}
