@@ -1,6 +1,6 @@
 ---
 name: peer-consult
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Claude Code or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly ("ask Claude", "ask Gemini", "Claudeに聞いて", "Geminiと相談して", "Claudeにレビューしてもらって", "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Claude Code through the peer-consult MCP server. Also use when the user asks for it directly ("ask GPT", "ask Claude", "gptと相談して", "Claudeに聞いて", "Codexにレビューしてもらって", "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
@@ -13,18 +13,18 @@ They know only what you put in the brief.
 
 | target | Consultant | Reach for it when |
 |---|---|---|
+| `codex` | Codex CLI | the question is about implementation detail, tricky code, or a decision where a different training lineage helps |
 | `claude-code` | Claude Code CLI | you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact |
-| `antigravity` | Antigravity CLI (Gemini) | you want a third reading, or the question needs current web material |
 
 `target` also accepts the everyday names: `gpt` / `chatgpt` / `openai` -> Codex, `claude` / `anthropic` ->
 Claude Code, `gemini` / `agy` / `google` -> Antigravity. When the user names one, use that one. When they just
-ask for a second opinion, default to `claude-code`.
+ask for a second opinion, default to `codex`.
 
-You may also pass `target: "codex"` to consult your own CLI in a fresh session. Do that only when
+You may also pass `target: "antigravity"` to consult your own CLI in a fresh session. Do that only when
 what you need is a clean-context re-read of the same material — the answer comes from the same model family,
 so it is not an independent opinion, and the server marks the result accordingly. Prefer the other two.
 
-Pass `caller: "codex"` in every request so the server can annotate that case.
+Pass `caller: "antigravity"` in every request so the server can annotate that case.
 
 ## When this is worth it
 
@@ -66,7 +66,7 @@ Do the organising work yourself; a vague brief gets a vague answer.
 
 ```
 consult_start({ request: {
-  target: "claude-code",
+  target: "codex",
   mode: "review",
   question: "...",
   objective: "...",

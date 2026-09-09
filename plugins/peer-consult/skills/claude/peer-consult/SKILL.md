@@ -1,13 +1,30 @@
 ---
 name: peer-consult
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex through the peer-consult MCP server. Also use when the user asks for it directly ("ask Codex", "get Codex to review this", "Codexに聞いて", "Codexにレビューしてもらって", "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly ("ask GPT", "ask Gemini", "gptと相談して", "Geminiと相談して", "Codexに聞いて", "second opinion", "セカンドオピニオン").
 ---
 
-# Consulting Codex
+# Consulting a peer agent
 
-You have a peer: a fresh Codex session, reached through the `peer-consult` MCP server. It can search and
-browse the web. It cannot edit files, run commands, see your session, or consult anyone else. It knows only
-what you put in the brief.
+You have two peers, each reached through the `peer-consult` MCP server as a fresh child session. They can
+search and browse the web. They cannot edit files, run commands, see your session, or consult anyone else.
+They know only what you put in the brief.
+
+## Pick the consultant
+
+| target | Consultant | Reach for it when |
+|---|---|---|
+| `codex` | Codex CLI | the question is about implementation detail, tricky code, or a decision where a different training lineage helps |
+| `antigravity` | Antigravity CLI (Gemini) | you want a third reading, or the question needs current web material |
+
+`target` also accepts the everyday names: `gpt` / `chatgpt` / `openai` -> Codex, `claude` / `anthropic` ->
+Claude Code, `gemini` / `agy` / `google` -> Antigravity. When the user names one, use that one. When they just
+ask for a second opinion, default to `codex`.
+
+You may also pass `target: "claude-code"` to consult your own CLI in a fresh session. Do that only when
+what you need is a clean-context re-read of the same material — the answer comes from the same model family,
+so it is not an independent opinion, and the server marks the result accordingly. Prefer the other two.
+
+Pass `caller: "claude-code"` in every request so the server can annotate that case.
 
 ## When this is worth it
 
@@ -73,7 +90,7 @@ Check `status` first, and treat these as different things:
 
 - **`failed`** — no advice was obtained. `failure.kind` says whether it was `timeout`, `auth`, `usage_limit`,
   `model_unavailable`, `invalid_output`, `cli_error` or `spawn_error`. Say so plainly and decide on your own;
-  do not present a failure as "Codex had no concerns".
+  do not present a failure as "the consultant had no concerns".
 - **`completed` with thin evidence** — advice arrived, but `quality.evidence_basis` is `thin`/`insufficient`,
   or `quality.caveat` flags findings that came without grounds. Weigh it accordingly.
 - **`completed` with grounds** — the useful case.
