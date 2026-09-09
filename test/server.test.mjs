@@ -93,6 +93,48 @@ test('cancel over MCP reports the effect; unknown ids are handled', async () => 
   await close();
 });
 
+test('a fan-out is started, fetched and compared through group_id over MCP', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  const started = payload(await client.callTool({
+    name: 'consult_start',
+    arguments: { request: reviewRequest({ target: undefined, targets: ['codex', 'gemini'] }) },
+  }));
+  assert.ok(started.group_id);
+  assert.equal(started.job_id, undefined, 'a fan-out has no single job_id to poll');
+  assert.deepEqual(started.jobs.map((j) => j.target), ['codex', 'antigravity']);
+  assert.match(started.poll_with, /group_id/);
+
+  const view = payload(await client.callTool({
+    name: 'consult_get',
+    arguments: { group_id: started.group_id, wait_ms: 20000 },
+  }));
+  assert.equal(view.status, 'done');
+  assert.equal(view.members_available, 2);
+  assert.deepEqual(view.comparison.by_target.map((t) => t.target), ['codex', 'antigravity']);
+  assert.match(view.comparison.note, /does not judge/);
+  await close();
+});
+
+test('consult_get and consult_cancel take exactly one of job_id or group_id', async () => {
+  const { client, close } = await connect();
+  for (const name of ['consult_get', 'consult_cancel']) {
+    const both = await client.callTool({ name, arguments: { job_id: 'job_x', group_id: 'group_x' } });
+    assert.equal(both.isError, true, `${name} must refuse both ids`);
+    assert.equal(payload(both).error, 'invalid_request');
+
+    const neither = await client.callTool({ name, arguments: {} });
+    assert.equal(neither.isError, true, `${name} must refuse neither id`);
+    assert.equal(payload(neither).error, 'invalid_request');
+
+    const unknown = await client.callTool({ name, arguments: { group_id: 'group_missing' } });
+    assert.equal(unknown.isError, true);
+    assert.equal(payload(unknown).error, 'unknown_job');
+    assert.match(payload(unknown).message, /group_id "group_missing"/);
+  }
+  await close();
+});
+
 test('wait_ms is capped below the request timeout MCP clients apply', async () => {
   const { POLICY } = await import('../src/policy.mjs');
   assert.ok(POLICY.maxWaitMs < 60_000, 'a wait longer than the client timeout would fail the whole tool call');

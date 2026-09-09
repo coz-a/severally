@@ -140,9 +140,6 @@ export class JobManager {
     }
 
     const groupId = id('group');
-    // One brief for the whole group: a fan-out is only comparable if every
-    // consultant answered the same question, in the same words.
-    const briefs = new Map();
     const members = req.targets.map((target) => {
       const chainId = parent ? parent.chain_id : id('chain');
       const jobId = id('job');
@@ -186,11 +183,14 @@ export class JobManager {
     this.groups.set(groupId, group);
     try { store.persistGroup(group); } catch { /* history is best effort */ }
 
+    // One brief, rendered once for the whole group: a fan-out is only comparable
+    // if every consultant answered the same question in the same words. Every
+    // member shares one chain history by construction -- a fan-out is never a
+    // follow-up (parseRequest refuses that), so each member's fresh chain is
+    // empty, and a follow-up is always a group of one on the parent's chain.
+    const chain = { round, priorRounds: this.#chainHistory(members[0].chain_id) };
+    const brief = renderBrief(req, chain);
     for (const job of members) {
-      const chain = { round, priorRounds: this.#chainHistory(job.chain_id) };
-      const key = JSON.stringify(chain.priorRounds.map((p) => p.round));
-      if (!briefs.has(key)) briefs.set(key, renderBrief(req, chain));
-      const brief = briefs.get(key);
       job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
         this.#fail(job, 'cli_error', err?.message ?? String(err));
       });
@@ -248,7 +248,19 @@ export class JobManager {
         break;
       }
       this.jobs.delete(oldest);
+      if (j) this.#dropGroupIfEmpty(j.group_id);
     }
+  }
+
+  // A group is only a lens onto its member jobs. Once history has evicted the
+  // last member there is nothing left to compare, so drop the group rather than
+  // keep answering as a complete fan-out with no answers in it (and keep the
+  // Map, which holds the question text, from growing without bound).
+  #dropGroupIfEmpty(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return;
+    if (group.job_ids.some((jid) => this.jobs.has(jid))) return;
+    this.groups.delete(groupId);
   }
 
   async #execute(job, req, chain, brief) {
@@ -382,24 +394,42 @@ export class JobManager {
     return { ...this.view(jobId), status: 'cancelling', cancel_effect: 'consultant process group signalled' };
   }
 
-  groupView(groupId) {
-    const group = this.groups.get(groupId);
-    if (!group) return null;
-    const members = group.job_ids.map((jid) => this.view(jid)).filter(Boolean);
-    const live = members.some((m) => m.status === 'running' || m.status === 'queued');
+  // Every field here is derived from the one `members` array it is handed, so a
+  // group view can never report one status in `members` and another in
+  // `comparison` or `status` for the same job.
+  #shapeGroup(group, members) {
+    const cancelling = members.some((m) => m.status === 'cancelling');
+    const live = cancelling || members.some((m) => m.status === 'running' || m.status === 'queued');
+    const missing = group.job_ids.length - members.length;
     return {
-      group_id: groupId,
-      status: live ? 'running' : 'done',
+      group_id: group.group_id,
+      status: cancelling ? 'cancelling' : (live ? 'running' : 'done'),
       mode: group.mode,
       question: group.question,
+      members_expected: group.job_ids.length,
+      members_available: members.length,
+      // History is capped, so an older member can already be gone. Say so:
+      // a fan-out that quietly reports fewer answers than it asked for is
+      // worse than one that admits the comparison is partial.
+      incomplete_note: missing > 0
+        ? `${missing} of ${group.job_ids.length} member consultation(s) have aged out of this session's history; the comparison below is partial`
+        : null,
       members,
       comparison: comparison(members),
       cancellable: live,
-      next_step: live
-        ? 'poll consult_get again with this group_id, or consult_cancel it'
-        : 'list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision',
+      next_step: cancelling
+        ? 'poll consult_get with this group_id until every member reads cancelled'
+        : live
+          ? 'poll consult_get again with this group_id, or consult_cancel it'
+          : 'list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision',
       limits: limitsSummary(),
     };
+  }
+
+  groupView(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) return null;
+    return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid)).filter(Boolean));
   }
 
   async waitGroup(groupId, waitMs) {
@@ -419,13 +449,25 @@ export class JobManager {
   cancelGroup(groupId) {
     const group = this.groups.get(groupId);
     if (!group) return null;
-    // Report each member as its own cancel() saw it: the child exits
-    // asynchronously, so a signalled member reads as "cancelling" until reaped.
+    // Count what is actually about to be signalled before signalling it:
+    // cancel() short-circuits on a member that has already finished, so a
+    // blanket "everyone was signalled" would be a false report on a done group.
+    const signalled = group.job_ids.filter((jid) => {
+      const j = this.jobs.get(jid);
+      return j && (j.status === 'running' || j.status === 'queued');
+    }).length;
+    // Shape the view from the cancel() results, not from a fresh read: the
+    // children exit asynchronously, so a signalled member reads as
+    // "cancelling" until it is reaped, and the whole payload must say so.
     const members = group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean);
+    const total = group.job_ids.length;
     return {
-      ...this.groupView(groupId),
-      members,
-      cancel_effect: 'every consultant process group in this fan-out was signalled',
+      ...this.#shapeGroup(group, members),
+      cancel_effect: signalled === 0
+        ? 'nothing to signal: every consultant in this fan-out had already finished'
+        : signalled === total
+          ? 'every consultant process group in this fan-out was signalled'
+          : `${signalled} of ${total} consultant process groups in this fan-out were signalled; the rest had already finished`,
     };
   }
 

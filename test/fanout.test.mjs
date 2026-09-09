@@ -4,8 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
+// The retention cap is frozen when policy.mjs first loads, and a query-string
+// re-import of jobs.mjs reuses that same policy module -- so a cap the eviction
+// test below can actually reach has to be set before the first import.
+process.env.PEER_CONSULT_MAX_JOBS_RETAINED = '20';
 const home = sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
+const RETAINED = 20;
 
 const finishGroup = async (mgr, groupId) => {
   const g = mgr.groups.get(groupId);
@@ -107,8 +112,56 @@ test('cancelling a group stops every member', async () => {
   const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
   const cancelled = mgr.cancelGroup(started.group_id);
   assert.equal(cancelled.members.every((m) => m.status === 'cancelling' || m.status === 'cancelled'), true);
+  assert.equal(cancelled.status, 'cancelling');
+  assert.match(cancelled.cancel_effect, /every consultant process group/);
+  assert.deepEqual(
+    cancelled.comparison.by_target.map((t) => t.status),
+    cancelled.members.map((m) => m.status),
+    'one payload must not report two different statuses for the same job',
+  );
   await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
   const after = mgr.groupView(started.group_id);
   assert.equal(after.members.every((m) => m.status === 'cancelled'), true);
   process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+});
+
+test('cancelling a group that already finished does not claim to have signalled anything', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, started.group_id);
+
+  const cancelled = mgr.cancelGroup(started.group_id);
+  assert.match(cancelled.cancel_effect, /nothing to signal/);
+  assert.equal(cancelled.status, 'done');
+  assert.deepEqual(
+    cancelled.members.map((m) => m.cancel_effect),
+    ['job was already completed', 'job was already completed'],
+  );
+});
+
+test('a group stops claiming answers once its members age out of history', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const group = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await Promise.all(group.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
+
+  // Push the group's members out of the retention window, one job at a time.
+  const fill = async (n) => {
+    for (let i = 0; i < n; i += 1) {
+      const s = mgr.start(reviewRequest());
+      await mgr.jobs.get(s.job_id).promise;
+    }
+  };
+
+  await fill(RETAINED - 1); // one job past the cap: the group's first member is evicted
+  const partial = mgr.groupView(group.group_id);
+  assert.equal(partial.members_expected, 2);
+  assert.equal(partial.members_available, 1);
+  assert.equal(partial.comparison.by_target.length, 1);
+  assert.match(partial.incomplete_note, /aged out|partial/);
+
+  await fill(1); // the last member goes too, and the group goes with it
+  assert.equal(mgr.groups.has(group.group_id), false);
+  assert.equal(mgr.groupView(group.group_id), null);
 });
