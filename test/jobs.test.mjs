@@ -487,11 +487,9 @@ test('a missing Antigravity credential fails the job as auth, before the child s
   process.env.STUB_BEHAVIOR = 'ok';
   const emptyCredHome = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-nocred-'));
   const prevCredHome = process.env.PEER_CONSULT_AGY_CRED_HOME;
-  const prevApiKey = process.env.GOOGLE_API_KEY;
   const envOut = path.join(home, 'nocred-env.json');
   process.env.PEER_CONSULT_AGY_CRED_HOME = emptyCredHome;
   process.env.STUB_ENV_OUT = envOut;
-  delete process.env.GOOGLE_API_KEY;
   try {
     const mgr = new JobManager();
     const view = await finish(mgr, mgr.start(antigravityRequest()).job_id);
@@ -507,6 +505,15 @@ test('a missing Antigravity credential fails the job as auth, before the child s
     assert.match(view.failure.message, /GOOGLE_API_KEY/, 'the API-key alternative must be named');
     assert.equal(fs.existsSync(envOut), false, 'the consultant must not have been spawned at all');
 
+    // An ADC path that names no file is not a credential: counting it would
+    // put back the generic "not logged in" this check exists to replace.
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(emptyCredHome, 'not-a-real-adc.json');
+    const stale = await finish(mgr, mgr.start(antigravityRequest()).job_id);
+    assert.equal(stale.status, 'failed', 'a path to nothing must not count as a credential');
+    assert.equal(stale.failure.kind, 'auth');
+    assert.equal(fs.existsSync(envOut), false, 'still nothing spawned');
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
     // Same missing token file, but an API key is set: this operator was able
     // to consult before the check existed and must still be able to.
     process.env.GOOGLE_API_KEY = 'goog-api-key-only';
@@ -514,10 +521,18 @@ test('a missing Antigravity credential fails the job as auth, before the child s
     assert.equal(withKey.status, 'completed', 'an API-key-only operator must not be refused');
     const seen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
     assert.equal(seen.GOOGLE_API_KEY, 'goog-api-key-only', 'the key must reach the consultant');
+    delete process.env.GOOGLE_API_KEY;
+
+    // And an ADC file that does exist counts, the same way the token does.
+    const adcPath = path.join(emptyCredHome, 'adc.json');
+    fs.writeFileSync(adcPath, '{}');
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = adcPath;
+    const withAdc = await finish(mgr, mgr.start(antigravityRequest()).job_id);
+    assert.equal(withAdc.status, 'completed', 'an existing ADC file must not be refused');
   } finally {
     delete process.env.STUB_ENV_OUT;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
     process.env.PEER_CONSULT_AGY_CRED_HOME = prevCredHome;
-    if (prevApiKey === undefined) delete process.env.GOOGLE_API_KEY;
-    else process.env.GOOGLE_API_KEY = prevApiKey;
   }
 });

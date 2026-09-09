@@ -7185,12 +7185,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs3, exportName) {
+    function addFormats(ajv, list, fs4, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs3[f]);
+        ajv.addFormat(f, fs4[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -35941,6 +35941,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
 
 // src/jobs.mjs
 import crypto from "node:crypto";
+import fs3 from "node:fs";
 
 // src/result-schema.mjs
 var s = (desc) => ({ type: "string", description: desc });
@@ -36898,7 +36899,13 @@ function usageRecord3(payload) {
 
 // src/jobs.mjs
 var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports };
-var API_KEY_CREDENTIAL_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"];
+var API_KEY_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY"];
+var CREDENTIAL_FILE_VARS = ["GOOGLE_APPLICATION_CREDENTIALS"];
+var ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
+function hasApiCredential(env) {
+  if (API_KEY_VARS.some((name) => env[name])) return true;
+  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs3.existsSync(env[name]));
+}
 var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 var JobManager = class {
   constructor() {
@@ -37126,11 +37133,11 @@ var JobManager = class {
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
       const env = childEnv(req.target, sandbox?.env ?? {});
-      if (sandbox && sandbox.credentials === "missing" && !API_KEY_CREDENTIAL_VARS.some((name) => env[name])) {
+      if (sandbox && sandbox.credentials === "missing" && !hasApiCredential(env)) {
         return this.#fail(
           job,
           "auth",
-          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${API_KEY_CREDENTIAL_VARS.join(" / ")} is set. Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
+          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(" / ")} names a usable credential. Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
         );
       }
       const invocation = adapter.buildInvocation({

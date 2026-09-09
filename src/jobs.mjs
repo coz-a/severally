@@ -2,6 +2,7 @@
 // classification, history, cancellation.
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { POLICY, limitsSummary, timeoutMs, detectCaller } from './policy.mjs';
 import { parseRequest, RequestError } from './schema.mjs';
@@ -22,7 +23,22 @@ const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity };
 // API key / ADC file are alternatives, not both required, so the presence of
 // either has to satisfy the credential check below. These are the names
 // run.mjs deliberately keeps for the antigravity child.
-const API_KEY_CREDENTIAL_VARS = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS'];
+//
+// The two shapes are checked differently on purpose. GEMINI_API_KEY and
+// GOOGLE_API_KEY carry an opaque string, and a key cannot be validated without
+// spending a request, so any non-empty value is taken at face value (an empty
+// one is refused). GOOGLE_APPLICATION_CREDENTIALS names a *file*, which can be
+// checked: a path to nothing is exactly as unauthenticated as no path at all,
+// and counting it would put back the generic "not logged in" this check exists
+// to replace.
+const API_KEY_VARS = ['GEMINI_API_KEY', 'GOOGLE_API_KEY'];
+const CREDENTIAL_FILE_VARS = ['GOOGLE_APPLICATION_CREDENTIALS'];
+const ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
+
+function hasApiCredential(env) {
+  if (API_KEY_VARS.some((name) => env[name])) return true;
+  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs.existsSync(env[name]));
+}
 
 const id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
 
@@ -299,15 +315,20 @@ export class JobManager {
       // mechanism is present, which is a genuinely unauthenticated child. Only
       // the token path has been verified against the live CLI; the API-key
       // path is passed through, not proven.
-      if (sandbox && sandbox.credentials === 'missing'
-        && !API_KEY_CREDENTIAL_VARS.some((name) => env[name])) {
+      //
+      // Read from `env`, not process.env: what matters is what the child will
+      // actually receive. No test can currently tell the two apart, because
+      // childEnv keeps GEMINI_*/GOOGLE_* for the only target that has a
+      // sandbox -- so do not "simplify" this to process.env.
+      if (sandbox && sandbox.credentials === 'missing' && !hasApiCredential(env)) {
         return this.#fail(
           job,
           'auth',
           `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at `
-          + `${sandbox.credentialsSource}, and none of ${API_KEY_CREDENTIAL_VARS.join(' / ')} is set. `
-          + 'Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the '
-          + 'token, or set one of those variables to authenticate with an API key instead.',
+          + `${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(' / ')} names a `
+          + 'usable credential. Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home '
+          + 'directory that holds the token, or set one of those variables to authenticate with an API key '
+          + 'instead.',
         );
       }
 

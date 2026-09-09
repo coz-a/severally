@@ -53,6 +53,14 @@ export function sandboxEnv(overrides = {}) {
   for (const key of Object.keys(process.env)) {
     if (key.startsWith('AGY_') || key.startsWith('ANTIGRAVITY_')) delete process.env[key];
   }
+  // A test's credential state must come from the test, not from the host: the
+  // credential check in jobs.mjs treats any of these as an alternative to the
+  // linked OAuth token, so a developer with one exported would turn the
+  // "unauthenticated child is refused" test green by accident. Measured before
+  // this: GOOGLE_APPLICATION_CREDENTIALS=<any path> -> 1 failure.
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
   return home;
 }
 
