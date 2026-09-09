@@ -91,6 +91,13 @@ test('the consultant is launched with the restriction flags and none that widen 
   assert.equal(codexArgs[codexArgs.indexOf('-s') + 1], 'read-only');
   assert.ok(codexArgs.includes('tools.web_search=true'));
   assert.ok(codexArgs.includes('hooks.enabled=false'));
+  assert.ok(codexArgs.includes('shell_environment_policy.inherit="none"'));
+  // inherit="none" strips the recursion marker from anything Codex launches
+  // from its shell, so it has to be put back explicitly.
+  assert.ok(
+    codexArgs.includes('shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}'),
+    'the recursion marker must reach the consultant\'s own shell',
+  );
   for (const flag of ['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--add-dir']) {
     assert.ok(!codexArgs.includes(flag), `codex must never be launched with ${flag}`);
   }

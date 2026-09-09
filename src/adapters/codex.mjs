@@ -8,7 +8,16 @@
 //   -s read-only          verified: writes blocked, network from the shell
 //                         blocked, so the consultant cannot edit or execute.
 //   hooks.enabled=false   no hook inheritance.
-//   shell_environment_policy.inherit="none"  child shell gets no parent env.
+//   shell_environment_policy.inherit="none"  child shell gets no parent env,
+//                         so `.set` has to put the recursion marker back: with
+//                         inherit="none" alone, anything Codex launches from
+//                         its shell would not see PEER_CONSULT_ACTIVE=1 and
+//                         would not be refused by the guard in server.mjs.
+//                         Verified offline against codex 0.153.4:
+//                           codex sandbox -c 'shell_environment_policy.inherit="none"' \
+//                             -c 'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}' -- env
+//                         prints PEER_CONSULT_ACTIVE=1 and nothing else
+//                         inherited (without `.set`, the marker is absent).
 //   --ephemeral           the brief is not persisted into the user's session store.
 //   tools.web_search=true search/browse stays available (server-side tool).
 
@@ -35,6 +44,7 @@ export function buildInvocation({ workdir, schemaPath }) {
     '-c', 'tools.web_search=true',
     '-c', 'hooks.enabled=false',
     '-c', 'shell_environment_policy.inherit="none"',
+    '-c', 'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}',
     '--ignore-user-config',
     '--ignore-rules',
     '--skip-git-repo-check',
