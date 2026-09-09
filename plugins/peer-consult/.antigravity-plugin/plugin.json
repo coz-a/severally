@@ -1,0 +1,19 @@
+{
+  "name": "peer-consult",
+  "version": "1.1.0",
+  "description": "Ask Codex or Claude Code for an independent opinion, review or structured debate, in a sandboxed child session that can search the web but cannot edit files or run commands.",
+  "author": { "name": "coz.a", "url": "https://github.com/coz-a" },
+  "homepage": "https://github.com/coz-a/peer-consult-plugin",
+  "repository": "https://github.com/coz-a/peer-consult-plugin",
+  "license": "MIT",
+  "keywords": ["mcp", "second-opinion", "code-review", "consultation"],
+  "skills": "./skills/antigravity/",
+  "mcpServers": {
+    "peer-consult": { "type": "stdio", "command": "peer-consult-mcp" }
+  },
+  "interface": {
+    "displayName": "Peer Consult",
+    "shortDescription": "Ask Codex or Claude Code for an independent opinion",
+    "longDescription": "Runs a fresh, sandboxed Codex or Claude Code session as a peer consultant: it may search and browse the web, but cannot edit files, run commands, or start consultations of its own."
+  }
+}

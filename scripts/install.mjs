@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// Installs peer-consult into both clients.
+// Installs peer-consult into all three clients: Claude Code, Codex, Antigravity.
 //
 // Two modes:
-//   plugin (default) - installs plugins/peer-consult as a plugin in each client:
-//                      Claude Code picks it up from ~/.claude/skills/peer-consult
-//                      (skills-dir plugin, no marketplace); Codex installs it
-//                      from the repo-local marketplace in .agents/plugins.
-//   --manual         - the older path: register the MCP server with each
-//                      client's `mcp add` and copy the two skills by hand.
+//   plugin (default) - installs plugins/peer-consult as a plugin in each client
+//                      that supports one: Claude Code picks it up from
+//                      ~/.claude/skills/peer-consult (skills-dir plugin, no
+//                      marketplace); Codex installs it from the repo-local
+//                      marketplace in .agents/plugins. Antigravity has no
+//                      plugin-mode path yet -- use --manual for it.
+//   --manual         - register the MCP server with each client's `mcp add`
+//                      (or, for Antigravity, `agy mcp add`) and copy each
+//                      client's skill by hand.
 //
 // Either way the global npm install happens: Codex can only launch a plugin MCP
 // server by bare executable name from PATH (verified: contained "./" paths and
@@ -173,52 +176,78 @@ if (mode === 'plugin') {
   }
 } else {
   // ------------------------------------------------------------- manual mode
-  step('Registering with Claude Code (user scope)');
-  if (!which('claude')) {
-    log('   claude CLI not found on PATH — skipped');
-  } else {
-    backup(path.join(home, '.claude.json'));
-    const existing = tryRun('claude', ['mcp', 'get', 'peer-consult'], { real: true });
-    if (existing.ok && !force) {
-      log('   already registered; leaving it as it is (use --force to re-register)');
-    } else {
-      if (existing.ok) tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'peer-consult']);
-      const r = tryRun('claude', ['mcp', 'add', '--scope', 'user', 'peer-consult', '--', serverBin]);
-      log(r.ok ? '   registered' : `   failed: ${r.out}`);
-      if (!r.ok) process.exitCode = 1;
-    }
-  }
-
-  step('Registering with Codex');
-  if (!which('codex')) {
-    log('   codex CLI not found on PATH — skipped');
-  } else {
-    backup(path.join(codexHome, 'config.toml'));
-    const existing = tryRun('codex', ['mcp', 'get', 'peer-consult'], { real: true });
-    if (existing.ok && !force) {
-      log('   already registered; leaving it as it is (use --force to re-register)');
-    } else {
-      if (existing.ok) tryRun('codex', ['mcp', 'remove', 'peer-consult']);
-      const r = tryRun('codex', ['mcp', 'add', 'peer-consult', '--', serverBin]);
-      log(r.ok ? '   registered' : `   failed: ${r.out}`);
-      if (!r.ok) process.exitCode = 1;
-    }
-  }
-
-  step('Installing the skills');
-  const skillTargets = [
-    { from: path.join(PLUGIN, 'skills', 'claude', 'peer-consult'), to: path.join(claudeSkillsDir, 'peer-consult'), label: 'Claude Code (consults Codex)' },
-    { from: path.join(PLUGIN, 'skills', 'codex', 'peer-consult'), to: path.join(codexHome, 'skills', 'peer-consult'), label: 'Codex (consults Claude Code)' },
+  // -------------------------------------------------------------- clients
+  const CLIENTS = [
+    {
+      bin: 'claude',
+      label: 'Claude Code',
+      backup: [path.join(home, '.claude.json')],
+      // `claude mcp get` exits non-zero when the server is not registered.
+      isRegistered: () => tryRun('claude', ['mcp', 'get', 'peer-consult'], { real: true }).ok,
+      remove: () => tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'peer-consult']),
+      add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'peer-consult', '--', bin]),
+      skillFrom: path.join(PLUGIN, 'skills', 'claude', 'peer-consult'),
+      skillTo: path.join(claudeSkillsDir, 'peer-consult'),
+    },
+    {
+      bin: 'codex',
+      label: 'Codex',
+      backup: [path.join(codexHome, 'config.toml')],
+      isRegistered: () => tryRun('codex', ['mcp', 'get', 'peer-consult'], { real: true }).ok,
+      remove: () => tryRun('codex', ['mcp', 'remove', 'peer-consult']),
+      add: (bin) => tryRun('codex', ['mcp', 'add', 'peer-consult', '--', bin]),
+      skillFrom: path.join(PLUGIN, 'skills', 'codex', 'peer-consult'),
+      skillTo: path.join(codexHome, 'skills', 'peer-consult'),
+    },
+    {
+      bin: 'agy',
+      label: 'Antigravity',
+      backup: [
+        path.join(home, '.gemini', 'config', 'mcp_config.json'),
+        path.join(home, '.gemini', 'antigravity-cli', 'settings.json'),
+      ],
+      // agy has no `mcp get`; list and look for the name.
+      isRegistered: () => {
+        const r = tryRun('agy', ['mcp', 'list'], { real: true });
+        return r.ok && /peer-consult/.test(r.out);
+      },
+      remove: () => tryRun('agy', ['mcp', 'remove', 'peer-consult']),
+      add: (bin) => tryRun('agy', ['mcp', 'add', 'peer-consult', bin]),
+      skillFrom: path.join(PLUGIN, 'skills', 'antigravity', 'peer-consult'),
+      skillTo: path.join(home, '.gemini', 'config', 'skills', 'peer-consult'),
+    },
   ];
-  for (const { from, to, label } of skillTargets) {
-    const parent = path.dirname(to);
+
+  for (const client of CLIENTS) {
+    step(`Registering with ${client.label}`);
+    if (!which(client.bin)) {
+      log(`   ${client.bin} CLI not found on PATH — skipped`);
+      client.skip = true;
+      continue;
+    }
+    for (const f of client.backup) backup(f);
+    if (client.isRegistered() && !force) {
+      log('   already registered; leaving it as it is (use --force to re-register)');
+      continue;
+    }
+    if (client.isRegistered()) client.remove();
+    const r = client.add(serverBin);
+    log(r.ok ? '   registered' : `   failed: ${r.out}`);
+    if (!r.ok) process.exitCode = 1;
+  }
+
+  // -------------------------------------------------------------- skills
+  step('Installing the skills');
+  for (const client of CLIENTS) {
+    if (client.skip) { log(`   ${client.label}: client not installed — skipped`); continue; }
+    const parent = path.dirname(client.skillTo);
     if (!fs.existsSync(parent) && !dryRun) fs.mkdirSync(parent, { recursive: true });
-    const saved = backupTree(to);
-    if (saved) log(`   backed up the existing ${label} skill to ${saved}`);
-    if (dryRun) { log(`   [dry-run] copy ${from} -> ${to}`); continue; }
-    fs.rmSync(to, { recursive: true, force: true });
-    fs.cpSync(from, to, { recursive: true });
-    log(`   ${label}: ${to}`);
+    const saved = backupTree(client.skillTo);
+    if (saved) log(`   backed up the existing ${client.label} skill to ${saved}`);
+    if (dryRun) { log(`   [dry-run] copy ${client.skillFrom} -> ${client.skillTo}`); continue; }
+    fs.rmSync(client.skillTo, { recursive: true, force: true });
+    fs.cpSync(client.skillFrom, client.skillTo, { recursive: true });
+    log(`   ${client.label}: ${client.skillTo}`);
   }
 }
 
@@ -237,8 +266,9 @@ mcp__plugin_peer-consult_peer-consult__consult_start / _get / _cancel / _list.
 Re-run this after "npm run build" to push an updated plugin to both clients.` : `
 Verify with:
   claude mcp get peer-consult
-  codex mcp get peer-consult
-  node ${path.join(root, 'scripts', 'live-check.mjs')} --target claude-code
+  codex  mcp get peer-consult
+  agy    mcp list
+  node ${path.join(root, 'scripts', 'live-check.mjs')} --target antigravity
 
 In a new Claude Code session the tools appear as mcp__peer-consult__consult_start / _get / _cancel / _list.
 Restart any running client session to pick the server up.`);
