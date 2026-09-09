@@ -10,9 +10,11 @@ const DROP_EXACT = new Set([
 ]);
 const DROP_PREFIX = ['CLAUDE_CODE_', 'PEER_CONSULT_', 'MCP_'];
 
+// Each consultant sees only its own vendor's credentials.
 const TARGET_DROP_PREFIX = {
-  codex: ['ANTHROPIC_'],
-  'claude-code': ['OPENAI_', 'CODEX_'],
+  codex: ['ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_'],
+  'claude-code': ['OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_'],
+  antigravity: ['ANTHROPIC_', 'OPENAI_', 'CODEX_'],
 };
 
 /**

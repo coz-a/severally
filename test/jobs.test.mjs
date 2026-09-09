@@ -337,3 +337,30 @@ test('antigravity: an ERROR envelope becomes a classified failure, not advice', 
   assert.equal(view.result, null);
   process.env.STUB_BEHAVIOR = 'ok';
 });
+
+test('each consultant runs without the other vendors credentials', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-should-not-cross';
+  process.env.OPENAI_API_KEY = 'sk-oai-should-not-cross';
+  process.env.GEMINI_API_KEY = 'g-should-not-cross';
+  const envOut = path.join(home, 'vendor-env.json');
+  process.env.STUB_ENV_OUT = envOut;
+
+  const mgr = new JobManager();
+  await finish(mgr, mgr.start(antigravityRequest()).job_id);
+  const agyEnv = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+  assert.equal(agyEnv.ANTHROPIC_API_KEY, undefined);
+  assert.equal(agyEnv.OPENAI_API_KEY, undefined);
+  assert.equal(agyEnv.GEMINI_API_KEY, 'g-should-not-cross', 'its own vendor key must survive');
+
+  await finish(mgr, mgr.start(reviewRequest()).job_id);
+  const codexEnv = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+  assert.equal(codexEnv.GEMINI_API_KEY, undefined);
+  assert.equal(codexEnv.ANTHROPIC_API_KEY, undefined);
+  assert.equal(codexEnv.OPENAI_API_KEY, 'sk-oai-should-not-cross');
+
+  delete process.env.STUB_ENV_OUT;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+});
