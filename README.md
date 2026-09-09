@@ -1,7 +1,8 @@
 # peer-consult
 
 Codex、Claude Code、Antigravity (Gemini) が、互いに**独立した見解・レビュー・追加議論**を求めあうための
-MCP サーバと Skill。3 クライアントすべてのプラグインとしてパッケージ済み（公開マーケットプレイス不要）。
+MCP サーバと Skill。Claude Code と Codex にはプラグインとしてパッケージ済み、Antigravity はインストーラが
+直接登録する（いずれも公開マーケットプレイス不要。理由は §2）。
 
 相談は毎回**専用の子セッション**として起動する（既存セッションには接続しない）。相談相手には
 **Web 検索・閲覧のみ**を許可し、ファイル変更・コマンド実行・さらなる相談は実行環境レベルで禁止する。
@@ -18,15 +19,16 @@ Antigravity ──(skill: peer-consult)──> mcp: peer-consult ──> codex e
 
 ## 1. 構成
 
-配布単位は `plugins/peer-consult/` の**プラグイン 1 つ**。Claude Code と Codex の両方のプラグイン形式を
-同じディレクトリに同居させてある。
+配布単位は `plugins/peer-consult/` の**プラグイン 1 つ**。プラグイン形式を持つ 2 クライアント
+（Claude Code と Codex）のマニフェストを同じディレクトリに同居させ、Antigravity は
+**マニフェストを持たずインストーラが直接登録する**（`agy` にまだ検証済みのプラグインインストール経路がない。
+理由は下記）。
 
 | 場所 | 内容 |
 |---|---|
 | `plugins/peer-consult/.claude-plugin/plugin.json` | Claude Code 用マニフェスト（`skills: ["./skills/claude"]`） |
 | `plugins/peer-consult/.mcp.json` | Claude Code 用 MCP 定義（`${CLAUDE_PLUGIN_ROOT}/dist/...`） |
 | `plugins/peer-consult/.codex-plugin/plugin.json` | Codex 用マニフェスト（skills と mcpServers を内包） |
-| `plugins/peer-consult/.antigravity-plugin/plugin.json` | Antigravity 用マニフェスト（skills と mcpServers を内包） |
 | `plugins/peer-consult/skills/claude/peer-consult/` | Claude Code 用 Skill（→ 他の2者に相談する） |
 | `plugins/peer-consult/skills/codex/peer-consult/` | Codex 用 Skill（→ 他の2者に相談する） |
 | `plugins/peer-consult/skills/antigravity/peer-consult/` | Antigravity 用 Skill（→ 他の2者に相談する） |
@@ -38,11 +40,20 @@ Antigravity ──(skill: peer-consult)──> mcp: peer-consult ──> codex e
 | `scripts/live-check.mjs`, `scripts/live-mcp-check.mjs` | 実 CLI・実 MCP での動作確認 |
 | `test/` | オフライン検証（スタブ CLI による全分岐テスト） |
 
+**Antigravity にプラグイン形式のマニフェストを置いていない理由**（agy 1.1.28 実測）: `agy` は
+プラグイン root 直下の `plugin.json` しか見ず、`.antigravity-plugin/` は読まない
+（`agy plugin validate plugins/peer-consult` → `Error: missing plugin.json`）。root に置くと validate は
+通るが、`skills : 4 processed`（マニフェストの `"skills"` を無視して共有 `skills/` ツリー全体を走査するため、
+3 ホスト分の重複 skill と `_template` を読み込む）・`mcpServers : skipped (not found)` になり、実際には
+機能しない。他の 2 クライアントが必要とする skills レイアウトを崩してまで合わせる価値が現時点でないため、
+Antigravity は**両方式ともインストーラが直接登録する**（`agy mcp add` ＋ skill のコピー）。
+
 インストール先:
 
 - Claude Code: `~/.claude/skills/peer-consult/`（skills-dir プラグインとして自動ロード。marketplace 不要）
 - Codex: `~/.codex/plugins/cache/peer-consult-local/peer-consult/<version>/`（ローカル marketplace 経由）
-- Antigravity: `~/.gemini/config/skills/peer-consult/`（agy にはまだ検証済みのプラグインインストール経路がないため、直接配置する）
+- Antigravity: `~/.gemini/config/skills/peer-consult/`（プラグイン方式・手動方式のどちらでも、インストーラが
+  `agy mcp add` と skill のコピーで直接登録する）
 - MCP バイナリ: `npm install -g` → `peer-consult-mcp`（**Codex 側は必須**。理由は §2.2）
 - 実行時データ: `~/.peer-consult/`（履歴 `history/`、設定バックアップ `backups/`、権限 0700）
 
@@ -60,6 +71,7 @@ node scripts/install.mjs    # --dry-run で実行計画のみ表示できる
 ```bash
 claude plugin details peer-consult   # Skills (1) / MCP servers (1)
 codex  plugin list                   # peer-consult@peer-consult-local  installed, enabled
+agy    mcp list                      # peer-consult  stdio  enabled
 ```
 
 **クライアントは再起動が必要**（起動済みセッションはプラグインを読み直さない）。
@@ -71,6 +83,7 @@ codex  plugin list                   # peer-consult@peer-consult-local  installe
 |---|---|---|
 | Claude Code | `~/.claude/skills/peer-consult/` にプラグインを配置（`peer-consult@skills-dir`） | `claude mcp add --scope user` ＋ Skill を単体コピー |
 | Codex | リポジトリ内 marketplace から `codex plugin add` | `codex mcp add` ＋ Skill を単体コピー |
+| Antigravity | `agy mcp add` ＋ Skill を単体コピー（プラグイン経路がないため方式による差はない） | 同左 |
 | MCP ツール名 | `mcp__plugin_peer-consult_peer-consult__*` | `mcp__peer-consult__*` |
 
 インストーラは既存設定を保全する。クライアント設定は各 CLI（`plugin add` / `mcp add`）経由でのみ変更し、
@@ -220,12 +233,16 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | Web | `tools.web_search=true` | `WebSearch` / `WebFetch` | `search_web`（無条件で許可）／`read_url`（`permissions.allow` で明示許可しないと閲覧できない） |
 | 作業ディレクトリ | ジョブ専用の空ディレクトリ（`-C`）。AGENTS.md / CLAUDE.md を拾わない | 同左（`cwd`） | 同左（`cwd`）。ブリーフは argv でなく stdin から渡す |
 | セッション永続化 | `--ephemeral` | `--no-session-persistence` | agy に同等フラグはないため、ジョブ専用の合成 HOME（`<jobdir>/home`, mode 0700）に会話状態を書かせ、ジョブ終了時にそのツリーごと削除する |
-| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー。トークンが見つからない場合は未認証のまま起動し、認証エラーとして失敗する） |
-| 環境変数 | `CLAUDE_CODE_*` / `CLAUDECODE` / `MCP_*` / `PEER_CONSULT_*` と他社の認証情報を除去し、`PEER_CONSULT_ACTIVE=1` を付与 | 同左 | 同左 |
+| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー）。**トークンが見つからない場合は子プロセスを起動せず**、探索したパスを明記して `kind: auth` で失敗する |
+| 環境変数 | `CLAUDE_CODE_*` / `CLAUDECODE` / `MCP_*` / `PEER_CONSULT_*` と他社の認証情報を除去し、`PEER_CONSULT_ACTIVE=1` を付与。さらに `-c shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}` で子シェル側にも同じマーカーを渡す（`inherit="none"` が親環境ごと落とすため） | 同左（マーカーはプロセス環境のみ） | 同左に加えて `XDG_CONFIG_HOME` / `AGY_*` / `ANTIGRAVITY_*` も除去（設定ツリーを別の場所に向けうる変数を残さない）。`GEMINI_*` / `GOOGLE_*` は API キー・ADC 認証の経路なので残す |
 | 承認プロンプト | なし（read-only 固定） | `--permission-prompts none`（プロンプトが必要な操作は自動拒否） | なし（ヘッドレスモードはプロンプトが要る操作を自動拒否し、deny ルールが優先される） |
 
 再帰防止は三重: 子には MCP が存在しない／子環境の `PEER_CONSULT_ACTIVE=1` を見て `consult_start` を拒否する／
-ブリーフに「他のエージェントに相談・委譲しない」と明記する。サブエージェント経由の書き込み試行も、同じ
+ブリーフに「他のエージェントに相談・委譲しない」と明記する。Codex は `shell_environment_policy.inherit="none"`
+により子シェルが親環境を一切受け取らないので、マーカーが子シェルに届くよう
+`shell_environment_policy.set` で明示的に注入している（codex 0.153.4 で
+`codex sandbox -c 'shell_environment_policy.inherit="none"' -c 'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}' -- env`
+が `PEER_CONSULT_ACTIVE=1` のみを出すことを実測）。サブエージェント経由の書き込み試行も、同じ
 `permissions.deny` に阻まれることを実機（agy 1.1.28）で確認済み。
 
 認証情報は、送信するブリーフ・相談結果・ディスク上の履歴すべてに対して正規表現ベースのマスキング
@@ -238,8 +255,10 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 
 | 環境変数 | 既定 | 範囲 |
 |---|---|---|
+| `PEER_CONSULT_CODEX_BIN` | `codex` | – |
 | `PEER_CONSULT_CODEX_MODEL` | `gpt-6-astra` | – |
 | `PEER_CONSULT_CODEX_EFFORT` | `medium` | – |
+| `PEER_CONSULT_CLAUDE_BIN` | `claude` | – |
 | `PEER_CONSULT_CLAUDE_MODEL` | `claude-fable-5-1` | – |
 | `PEER_CONSULT_AGY_BIN` | `agy` | – |
 | `PEER_CONSULT_AGY_MODEL` | `gemini-3.8-flash-high`（reasoning effort込みのモデル名。`--effort` は渡さない） | – |
@@ -247,10 +266,13 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | `PEER_CONSULT_TIMEOUT_MS` | 600000 | 1000–1800000 |
 | `PEER_CONSULT_MAX_ROUNDS` | 3（初回1＋追加2） | 1–5 |
 | `PEER_CONSULT_MAX_CONCURRENT` | 3（fan-out は N 消費） | 1–4 |
+| `PEER_CONSULT_MAX_JOBS_RETAINED` | 200（メモリ上に保持するジョブ数。超えると古い方から破棄され、`job_id` / `group_id` で参照できなくなる） | 20–2000 |
 | `PEER_CONSULT_CLAUDE_MAX_BUDGET_USD` | 2 | 0.05–20 |
 | `PEER_CONSULT_MAX_WAIT_MS` | 45000 | 0–600000（60s 超は MCP クライアント側でタイムアウトする） |
 | `PEER_CONSULT_KILL_GRACE_MS` | 5000 | 500–60000（SIGTERM から SIGKILL までの猶予） |
 | `PEER_CONSULT_HOME` | `~/.peer-consult` | – |
+
+`*_BIN` は PATH 上のコマンド名か絶対パス。`npm test` はこれらをスタブ CLI に差し替えて実行する。
 
 入力は 1 リクエスト 120,000 文字、artifact は 10 件・各 20,000 文字まで。出力側も要約 8,000 文字、
 配列 30 件などで切り詰める。ジョブは自前のプロセスグループで起動し、キャンセル・タイムアウト・サーバ終了時は
@@ -273,7 +295,7 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 実 CLI に対する確認は `scripts/live-check.mjs`（単一相談）と `scripts/live-mcp-check.mjs`
 （インストール済み MCP サーバをクライアントとして駆動し、実相談 → 追加ラウンド → キャンセル → 履歴まで）で行う。
 
-### 実測結果（2026-09-09）
+### 実測結果（2026-09-09、Antigravity 分は 2026-09-10）
 
 | 項目 | 結果 |
 |---|---|
@@ -293,6 +315,9 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | プラグイン（Codex） | ローカル marketplace から `plugin add` → `installed, enabled`。MCP サーバが実際に起動することを、サーバ自身が作る `~/.peer-consult/` 相当のディレクトリで確認 |
 | Skill の混線なし | Claude 側マニフェストは `skills/claude` のみを読み、`skills/codex` は読まない（`plugin details` の Skills (1)） |
 | プラグイン経由の実相談 | インストール済みプラグインの `mcp__plugin_peer-consult_peer-consult__*` をエージェントに呼ばせ、実相談が `completed`／指摘 4 件で返ることを確認 |
+| 実相談（Antigravity 方向、`gemini-3.8-flash-high`・review）<br>2026-09-10 | 完了。105.1s、`evidence_basis: sufficient`、`references` 2 件（Google SRE Book / AWS Builders' Library）、`usage.denied_actions: null`、`findings_without_grounds: 0`。合成 HOME から `XDG_CONFIG_HOME` / `AGY_*` / `ANTIGRAVITY_*` も除去したあとで認証が通ることの確認を含む |
+| 編集制限（Antigravity、サブエージェント経由）<br>2026-09-10 | 子セッションにサブエージェント経由でファイル作成を指示 → `sub.txt` は作成されず、エンベロープが `write_file` の deny を報告。合成 HOME の `permissions.deny` がサブエージェント側にも適用されることを確認 |
+| プラグイン形式（Antigravity）<br>2026-09-10 | `agy plugin validate plugins/peer-consult` は `.antigravity-plugin/` を読まず `Error: missing plugin.json`。root に置くと validate は通るが `skills : 4 processed`（マニフェストの `"skills"` を無視）・`mcpServers : skipped (not found)`。ゆえにマニフェストは同梱せず、インストーラが直接登録する |
 
 Codex を**実行側**とする実相談（Codex が Claude Code に相談する往復）は、Codex アカウントが
 2026-09-16 までクォータ上限のため未実施。Codex 側は「MCP 登録済み・サーバ接続可能・子セッション起動と
@@ -332,6 +357,20 @@ Codex を**実行側**とする実相談（Codex が Claude Code に相談する
 - **Codex 子セッションは `$CODEX_HOME/skills` を読む可能性がある**（`--ignore-user-config` が
   `config.toml` の読み込みを止めることは実測したが、skills ディレクトリの扱いは CLI 側の仕様が公開されていない）。
   読み込まれても MCP が無いため再帰はできず、シェルも read-only・ネットワーク遮断のため影響は指示テキストに留まる。
+- **Antigravity 子セッションの隔離は `HOME` 1 本に依存する。** Codex（`--ignore-user-config`）や
+  Claude Code（`--restricted --strict-mcp-config`）と違い、agy には環境変数で無効化できない隔離フラグがない。
+  設定・MCP・skills・権限はすべて `~/.gemini` 由来なので、合成 HOME を別の設定ツリーに向けられれば
+  空の `mcp_config.json` と deny ルールをすり抜けたまま相談が成功しうる。対策として `XDG_CONFIG_HOME` /
+  `AGY_*` / `ANTIGRAVITY_*` を子環境から除去している。agy 1.1.28 での実測では `agy mcp list` は `HOME` にのみ
+  従い `XDG_CONFIG_HOME` を無視した（両方向で確認）。`AGY_*` については、バイナリ内の文字列に設定ディレクトリを
+  指す名前が見つからなかった＝**「見つからなかった」までしか言えない**（総当たりの証明ではない）。
+  `GEMINI_*` / `GOOGLE_*` は API キー・ADC 認証の経路なので意図的に残している。
+- **合成 HOME 内で更新されたトークンが実 `$HOME` に書き戻るかは未検証。** トークンは symlink で渡しているので
+  原理上は実ファイルが更新されるが、agy が in-place 更新するのか一時ファイル + rename（symlink を置き換える）
+  なのかは確認していない。後者ならリフレッシュはジョブ終了時に破棄される。
+- **agy にはプラグインインストール経路がない**（`agy plugin validate` は `.antigravity-plugin/` を読まず、
+  root に置いても `mcpServers` を無視する。§6 参照）。インストーラが `agy mcp add` と skill のコピーで
+  直接登録するため機能上の欠落はないが、他の 2 クライアントのようにマニフェスト 1 つで完結はしない。
 - Codex CLI は使用コストを報告しない（`usage.cost_usd` は `null`）。
 - ジョブはサーバプロセスのメモリ上で管理される。クライアント再起動で `job_id` は失効する
   （完了済みの内容は `~/.peer-consult/history/` に残る）。
@@ -346,6 +385,8 @@ Codex を**実行側**とする実相談（Codex が Claude Code に相談する
 rm -rf ~/.claude/skills/peer-consult                       # Claude Code
 codex plugin remove peer-consult --marketplace peer-consult-local
 codex plugin marketplace remove peer-consult-local
+agy   mcp remove peer-consult                              # Antigravity（直接登録のため方式共通）
+rm -rf ~/.gemini/config/skills/peer-consult
 npm uninstall -g peer-consult-mcp
 ```
 
@@ -354,7 +395,8 @@ npm uninstall -g peer-consult-mcp
 ```bash
 claude mcp remove peer-consult -s user
 codex  mcp remove peer-consult
-rm -rf ~/.claude/skills/peer-consult ~/.codex/skills/peer-consult
+agy    mcp remove peer-consult
+rm -rf ~/.claude/skills/peer-consult ~/.codex/skills/peer-consult ~/.gemini/config/skills/peer-consult
 npm uninstall -g peer-consult-mcp
 ```
 
