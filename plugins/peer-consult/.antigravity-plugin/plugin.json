@@ -7,7 +7,7 @@
   "repository": "https://github.com/coz-a/peer-consult-plugin",
   "license": "MIT",
   "keywords": ["mcp", "second-opinion", "code-review", "consultation"],
-  "skills": "./skills/antigravity/",
+  "skills": "./skills/antigravity",
   "mcpServers": {
     "peer-consult": { "type": "stdio", "command": "peer-consult-mcp" }
   },
