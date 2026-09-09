@@ -35689,7 +35689,7 @@ var str = (name, dflt) => {
   return raw === void 0 || raw === "" ? dflt : raw;
 };
 var TARGETS = ["codex", "claude-code", "antigravity"];
-var TARGET_ALIASES = Object.freeze({
+var TARGET_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
   codex: "codex",
   gpt: "codex",
   chatgpt: "codex",
@@ -35701,12 +35701,16 @@ var TARGET_ALIASES = Object.freeze({
   agy: "antigravity",
   gemini: "antigravity",
   google: "antigravity"
-});
+}));
 var TARGET_INPUTS = Object.freeze(Object.keys(TARGET_ALIASES));
+function normalizeTargetInput(raw) {
+  if (typeof raw !== "string") return raw;
+  return raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
 function resolveTarget(raw) {
-  if (typeof raw !== "string") return null;
-  const key = raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
-  return TARGET_ALIASES[key] ?? null;
+  const key = normalizeTargetInput(raw);
+  if (typeof key !== "string") return null;
+  return Object.hasOwn(TARGET_ALIASES, key) ? TARGET_ALIASES[key] : null;
 }
 function detectCaller(env = process.env) {
   if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
@@ -35737,9 +35741,10 @@ var POLICY = Object.freeze({
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: str("PEER_CONSULT_AGY_MODEL", "gemini-3.8-flash-high"),
       label: "Antigravity CLI",
-      vendor: "google",
-      // Where the real credentials live; the sandbox links the token from here.
-      credentialsHome: str("PEER_CONSULT_AGY_CRED_HOME", os.homedir())
+      vendor: "google"
+      // Where the real credentials live is credentialsHome() below, not a
+      // field here: the sandbox has to read it per job rather than have it
+      // frozen at import (see the note on timeoutMs()).
     })
   }),
   // Grace period between SIGTERM and SIGKILL of the child process group.
@@ -35779,6 +35784,9 @@ var POLICY = Object.freeze({
 function timeoutMs() {
   return num("PEER_CONSULT_TIMEOUT_MS", 6e5, 1e3, 18e5);
 }
+function credentialsHome() {
+  return str("PEER_CONSULT_AGY_CRED_HOME", os.homedir());
+}
 var artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
 function limitsSummary() {
   const models = {};
@@ -35790,7 +35798,10 @@ function limitsSummary() {
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    consultant_permissions: "web search/browse allowed; file edits, shell execution, MCP tools, and further consultations denied"
+    // Stated so it is true of all three consultants. Codex is sandboxed
+    // read-only rather than execution-free: `-s read-only` blocks writes and
+    // network but not the shell itself, so do not advertise "no execution".
+    consultant_permissions: "web search/browse allowed; file edits, network access, MCP tools and further consultations denied; the Codex consultant may still run read-only shell commands"
   };
 }
 
@@ -35810,10 +35821,7 @@ var contextSchema = external_exports.object({
   counterpoints: external_exports.array(trimmed(L.counterpointMax, "context.counterpoints[]")).max(L.counterpointsMax).default([]),
   artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).default([])
 }).strict();
-var normalizeTargetLike = (val) => {
-  if (typeof val !== "string") return val;
-  return val.trim().toLowerCase().replace(/[\s_]+/g, "-");
-};
+var normalizeTargetLike = normalizeTargetInput;
 var requestSchema = external_exports.object({
   // Exactly one of `target` (one consultant) or `targets` (ask several the
   // same question) is required; parseRequest below enforces the exclusivity,
@@ -35868,7 +35876,15 @@ function parseRequest(raw, { isFollowup = false } = {}) {
       "target_required"
     );
   }
-  const resolved = (hasSingle ? [req.target] : req.targets).map((t) => resolveTarget(t));
+  const named = hasSingle ? [req.target] : req.targets;
+  const resolved = named.map((t) => resolveTarget(t));
+  const unresolved = named.filter((_, i) => resolved[i] === null);
+  if (unresolved.length) {
+    throw new RequestError(
+      `cannot resolve consultant ${unresolved.map((t) => JSON.stringify(t)).join(", ")} to a known target; use one of: ${TARGET_INPUTS.join(", ")}`,
+      "unknown_target"
+    );
+  }
   const unique = [...new Set(resolved)];
   if (unique.length !== resolved.length) {
     throw new RequestError(
@@ -36335,14 +36351,18 @@ var DROP_PREFIX = ["CLAUDE_CODE_", "PEER_CONSULT_", "MCP_"];
 var TARGET_DROP_PREFIX = {
   codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
   "claude-code": ["OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
-  antigravity: ["ANTHROPIC_", "OPENAI_", "CODEX_"]
+  antigravity: ["ANTHROPIC_", "OPENAI_", "CODEX_", "AGY_", "ANTIGRAVITY_"]
+};
+var TARGET_DROP_EXACT = {
+  antigravity: ["XDG_CONFIG_HOME"]
 };
 function childEnv(target, extra = {}) {
   const dropPrefixes = [...DROP_PREFIX, ...TARGET_DROP_PREFIX[target] ?? []];
+  const dropExact = /* @__PURE__ */ new Set([...DROP_EXACT, ...TARGET_DROP_EXACT[target] ?? []]);
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === void 0) continue;
-    if (DROP_EXACT.has(k)) continue;
+    if (dropExact.has(k)) continue;
     if (dropPrefixes.some((p) => k.startsWith(p))) continue;
     env[k] = v;
   }
@@ -36550,6 +36570,8 @@ function buildInvocation({ workdir, schemaPath }) {
     "hooks.enabled=false",
     "-c",
     'shell_environment_policy.inherit="none"',
+    "-c",
+    'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}',
     "--ignore-user-config",
     "--ignore-rules",
     "--skip-git-repo-check",
@@ -36733,7 +36755,6 @@ __export(antigravity_exports, {
 
 // src/adapters/antigravity-sandbox.mjs
 import fs2 from "node:fs";
-import os2 from "node:os";
 import path4 from "node:path";
 var SANDBOX_ALLOW = Object.freeze(["read_url(*)"]);
 var SANDBOX_DENY = Object.freeze([
@@ -36745,10 +36766,6 @@ var SANDBOX_DENY = Object.freeze([
   "unsandboxed(*)"
 ]);
 var TOKEN_REL = path4.join(".gemini", "antigravity-cli", "antigravity-oauth-token");
-function credentialsHome() {
-  const raw = process.env.PEER_CONSULT_AGY_CRED_HOME;
-  return raw === void 0 || raw === "" ? os2.homedir() : raw;
-}
 function prepareSandbox({ workdir }) {
   const root = path4.join(path4.dirname(workdir), "home");
   const cliDir = path4.join(root, ".gemini", "antigravity-cli");
@@ -36779,6 +36796,10 @@ function prepareSandbox({ workdir }) {
   return {
     root,
     credentials,
+    // The exact path searched, so a caller that has to report `credentials:
+    // "missing"` can say where it looked instead of leaving the operator to
+    // guess which HOME peer-consult read.
+    credentialsSource: source,
     env: { HOME: root },
     cleanup() {
       try {
@@ -36794,6 +36815,15 @@ var FORBIDDEN_FLAGS3 = [
   "--dangerously-skip-permissions",
   "--add-dir",
   "--new-project",
+  // `--mode accept-edits` exists to widen the permission posture; `plan` is
+  // the only other value, and neither belongs in a consultation.
+  "--mode",
+  // A named agent brings its own tools and instructions, which is exactly the
+  // configuration the synthesised HOME is there to keep out.
+  "--agent",
+  // `--input-format stream-json` turns print mode into a multi-turn injection
+  // channel; the brief is one turn on stdin.
+  "--input-format",
   // Each consultation must be a fresh session; these would attach to an old one.
   "--continue",
   "-c",
@@ -36981,7 +37011,11 @@ var JobManager = class {
         round,
         target,
         mode: req.mode,
-        question: req.question,
+        // Redacted here, at the one point the request text becomes state:
+        // job.question is what reaches the history file on disk and every
+        // view. The brief the consultant receives is redacted too
+        // (renderBrief), so this is the same text it was actually sent.
+        question: redact(req.question),
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: "queued",
@@ -37007,7 +37041,8 @@ var JobManager = class {
       group_id: groupId,
       created_at: (/* @__PURE__ */ new Date()).toISOString(),
       mode: req.mode,
-      question: req.question,
+      question: members2[0].question,
+      // already redacted, and byte-identical across the group
       job_ids: members2.map((m) => m.job_id)
     };
     this.groups.set(groupId, group);
@@ -37044,7 +37079,8 @@ var JobManager = class {
     }
     return {
       ...common,
-      question: req.question,
+      question: group.question,
+      // the redacted text every member was actually sent
       jobs: members2.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, model: m.model })),
       poll_with: `consult_get({ group_id: "${groupId}", wait_ms: 60000 })`,
       note: "Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement."
@@ -37088,6 +37124,13 @@ var JobManager = class {
     const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
+      if (sandbox && sandbox.credentials === "missing") {
+        return this.#fail(
+          job,
+          "auth",
+          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}. Log in with that CLI, or point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the token.`
+        );
+      }
       const invocation = adapter.buildInvocation({
         workdir,
         schemaPath,
@@ -37205,6 +37248,7 @@ var JobManager = class {
     const cancelling = members2.some((m) => m.status === "cancelling");
     const live = cancelling || members2.some((m) => m.status === "running" || m.status === "queued");
     const missing = group.job_ids.length - members2.length;
+    const anyResult = members2.some((m) => m.result);
     return {
       group_id: group.group_id,
       status: cancelling ? "cancelling" : live ? "running" : "done",
@@ -37219,7 +37263,7 @@ var JobManager = class {
       members: members2,
       comparison: comparison(members2),
       cancellable: live,
-      next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : "list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision",
+      next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? "list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision" : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
       limits: limitsSummary()
     };
   }
@@ -37357,7 +37401,7 @@ passages into context.artifacts. Model, permissions, round count, timeout and si
 server and cannot be raised from a request.`;
 function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: "peer-consult", version: "1.0.0" },
+    { name: "peer-consult", version: "1.1.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
   const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
