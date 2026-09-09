@@ -273,6 +273,21 @@ export class JobManager {
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
 
     try {
+      // A sandbox that found no credential to link would otherwise reach the
+      // child, which reports whatever generic "not logged in" its vendor
+      // emits -- with no hint that peer-consult searched a specific HOME and
+      // came back empty. That is exactly the case an operator who has moved
+      // their credentials (or set PEER_CONSULT_AGY_CRED_HOME) needs named.
+      if (sandbox && sandbox.credentials === 'missing') {
+        return this.#fail(
+          job,
+          'auth',
+          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at `
+          + `${sandbox.credentialsSource}. Log in with that CLI, or point PEER_CONSULT_AGY_CRED_HOME at the `
+          + 'home directory that holds the token.',
+        );
+      }
+
       const invocation = adapter.buildInvocation({
         workdir,
         schemaPath,

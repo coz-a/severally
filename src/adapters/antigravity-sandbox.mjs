@@ -72,6 +72,10 @@ export function prepareSandbox({ workdir }) {
   return {
     root,
     credentials,
+    // The exact path searched, so a caller that has to report `credentials:
+    // "missing"` can say where it looked instead of leaving the operator to
+    // guess which HOME peer-consult read.
+    credentialsSource: source,
     env: { HOME: root },
     cleanup() {
       try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* best effort */ }

@@ -390,3 +390,34 @@ test('each consultant runs without the other vendors credentials', async () => {
   delete process.env.OPENAI_API_KEY;
   delete process.env.GEMINI_API_KEY;
 });
+
+// The sandbox has always computed credentials: 'missing'; nothing consumed it,
+// so an operator whose token is absent -- or under a different
+// PEER_CONSULT_AGY_CRED_HOME -- got whatever generic auth error agy emits,
+// with no hint that peer-consult had searched a specific path and found
+// nothing to link.
+test('a missing Antigravity credential fails the job as auth, before the child starts', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const emptyCredHome = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-nocred-'));
+  const prev = process.env.PEER_CONSULT_AGY_CRED_HOME;
+  const envOut = path.join(home, 'nocred-env.json');
+  process.env.PEER_CONSULT_AGY_CRED_HOME = emptyCredHome;
+  process.env.STUB_ENV_OUT = envOut;
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(antigravityRequest()).job_id);
+    assert.equal(view.status, 'failed');
+    assert.equal(view.failure.kind, 'auth');
+    assert.equal(view.failure.retriable, false);
+    assert.equal(view.result, null);
+    assert.ok(
+      view.failure.message.includes(emptyCredHome),
+      'the failure must name the path that was searched',
+    );
+    assert.match(view.failure.message, /antigravity-oauth-token/);
+    assert.equal(fs.existsSync(envOut), false, 'the consultant must not have been spawned at all');
+  } finally {
+    delete process.env.STUB_ENV_OUT;
+    process.env.PEER_CONSULT_AGY_CRED_HOME = prev;
+  }
+});
