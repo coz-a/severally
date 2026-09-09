@@ -426,10 +426,16 @@ test('the Antigravity consultant gets no config-redirecting variable', async () 
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'agy-narrow-env.json');
   process.env.STUB_ENV_OUT = envOut;
-  process.env.XDG_CONFIG_HOME = '/tmp/some-other-config';
-  process.env.AGY_CLI_HIDE_LOGO = '1';
-  process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR = '/tmp/some-other-data';
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = '/tmp/adc.json';
+  // Restore whatever the host had, rather than deleting: these are real
+  // variables a developer may well have set for their own agy or gcloud.
+  const staged = {
+    XDG_CONFIG_HOME: '/tmp/some-other-config',
+    AGY_CLI_HIDE_LOGO: '1',
+    ANTIGRAVITY_EXECUTABLE_DATA_DIR: '/tmp/some-other-data',
+    GOOGLE_APPLICATION_CREDENTIALS: '/tmp/adc.json',
+  };
+  const saved = Object.fromEntries(Object.keys(staged).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, staged);
   try {
     const mgr = new JobManager();
     const view = await finish(mgr, mgr.start(antigravityRequest()).job_id);
@@ -445,10 +451,10 @@ test('the Antigravity consultant gets no config-redirecting variable', async () 
     );
   } finally {
     delete process.env.STUB_ENV_OUT;
-    delete process.env.XDG_CONFIG_HOME;
-    delete process.env.AGY_CLI_HIDE_LOGO;
-    delete process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR;
-    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 
@@ -474,14 +480,18 @@ test('a credential pasted into the question never reaches the history file', asy
 // so an operator whose token is absent -- or under a different
 // PEER_CONSULT_AGY_CRED_HOME -- got whatever generic auth error agy emits,
 // with no hint that peer-consult had searched a specific path and found
-// nothing to link.
+// nothing to link. Both branches are pinned here, because the token file and
+// an API key / ADC file are alternatives: refusing on the absence of the token
+// alone would break the API-key operator whose variables run.mjs keeps.
 test('a missing Antigravity credential fails the job as auth, before the child starts', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const emptyCredHome = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-nocred-'));
-  const prev = process.env.PEER_CONSULT_AGY_CRED_HOME;
+  const prevCredHome = process.env.PEER_CONSULT_AGY_CRED_HOME;
+  const prevApiKey = process.env.GOOGLE_API_KEY;
   const envOut = path.join(home, 'nocred-env.json');
   process.env.PEER_CONSULT_AGY_CRED_HOME = emptyCredHome;
   process.env.STUB_ENV_OUT = envOut;
+  delete process.env.GOOGLE_API_KEY;
   try {
     const mgr = new JobManager();
     const view = await finish(mgr, mgr.start(antigravityRequest()).job_id);
@@ -494,9 +504,20 @@ test('a missing Antigravity credential fails the job as auth, before the child s
       'the failure must name the path that was searched',
     );
     assert.match(view.failure.message, /antigravity-oauth-token/);
+    assert.match(view.failure.message, /GOOGLE_API_KEY/, 'the API-key alternative must be named');
     assert.equal(fs.existsSync(envOut), false, 'the consultant must not have been spawned at all');
+
+    // Same missing token file, but an API key is set: this operator was able
+    // to consult before the check existed and must still be able to.
+    process.env.GOOGLE_API_KEY = 'goog-api-key-only';
+    const withKey = await finish(mgr, mgr.start(antigravityRequest()).job_id);
+    assert.equal(withKey.status, 'completed', 'an API-key-only operator must not be refused');
+    const seen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+    assert.equal(seen.GOOGLE_API_KEY, 'goog-api-key-only', 'the key must reach the consultant');
   } finally {
     delete process.env.STUB_ENV_OUT;
-    process.env.PEER_CONSULT_AGY_CRED_HOME = prev;
+    process.env.PEER_CONSULT_AGY_CRED_HOME = prevCredHome;
+    if (prevApiKey === undefined) delete process.env.GOOGLE_API_KEY;
+    else process.env.GOOGLE_API_KEY = prevApiKey;
   }
 });

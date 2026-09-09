@@ -75,7 +75,7 @@ export function renderSkills() {
     // "they cannot run commands" would be false about Codex. Only the two
     // hosts that actually have Codex as a peer need to hear it.
     const executionCaveat = peers.includes('codex')
-      ? '\n\nOne caveat on "no commands": the Codex consultant is sandboxed read-only rather than execution-free,'
+      ? '\n\nOne caveat on that list: the Codex consultant is sandboxed read-only rather than execution-free,'
         + '\nso it can still run read-only shell commands. Its writes and its network access are blocked.'
       : '';
     const text = tmpl

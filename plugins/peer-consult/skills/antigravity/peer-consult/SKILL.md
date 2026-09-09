@@ -9,7 +9,7 @@ You have two peers, each reached through the `peer-consult` MCP server as a fres
 search and browse the web. They cannot edit files, reach the network outside search/browse, load MCP tools,
 see your session, or consult anyone else. They know only what you put in the brief.
 
-One caveat on "no commands": the Codex consultant is sandboxed read-only rather than execution-free,
+One caveat on that list: the Codex consultant is sandboxed read-only rather than execution-free,
 so it can still run read-only shell commands. Its writes and its network access are blocked.
 
 ## Pick the consultant

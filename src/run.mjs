@@ -28,10 +28,14 @@ const DROP_PREFIX = ['CLAUDE_CODE_', 'PEER_CONSULT_', 'MCP_'];
 //     sandbox's .gemini, agy reports "No MCP servers configured". HOME alone
 //     decides. Dropped regardless: it costs nothing, and the whole isolation
 //     hangs on one variable.
-//   AGY_*  The binary carries only feature flags and telemetry event names
-//     under this prefix (AGY_CLI_HIDE_LOGO, AGY_CLI_DISABLE_LATEX,
-//     AGY_ONBOARDING_*, AGY_BUSINESS_PAYGO_TIER) plus AGY_ADC_AUTH; none
-//     names a config or data directory. Dropped as a class.
+//   AGY_*  Mostly feature flags and telemetry event names (AGY_CLI_HIDE_LOGO,
+//     AGY_CLI_DISABLE_LATEX, AGY_ONBOARDING_*, AGY_BUSINESS_PAYGO_TIER), none
+//     of which names a config or data directory -- but the prefix is not
+//     credential-free: AGY_ADC_AUTH reads as an auth-mode toggle for the same
+//     ADC path GOOGLE_APPLICATION_CREDENTIALS is kept for. Dropped as a class
+//     anyway, since the ADC credential itself travels under GOOGLE_*; an
+//     operator who turns out to need that toggle will see `kind: auth`, not a
+//     silently widened consultant.
 //   ANTIGRAVITY_*  Does include names that point at state --
 //     ANTIGRAVITY_EXECUTABLE_DATA_DIR, ANTIGRAVITY_PROJECT_ID,
 //     ANTIGRAVITY_SIDECAR_*. Dropped as a class.

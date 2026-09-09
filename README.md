@@ -233,7 +233,7 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | Web | `tools.web_search=true` | `WebSearch` / `WebFetch` | `search_web`（無条件で許可）／`read_url`（`permissions.allow` で明示許可しないと閲覧できない） |
 | 作業ディレクトリ | ジョブ専用の空ディレクトリ（`-C`）。AGENTS.md / CLAUDE.md を拾わない | 同左（`cwd`） | 同左（`cwd`）。ブリーフは argv でなく stdin から渡す |
 | セッション永続化 | `--ephemeral` | `--no-session-persistence` | agy に同等フラグはないため、ジョブ専用の合成 HOME（`<jobdir>/home`, mode 0700）に会話状態を書かせ、ジョブ終了時にそのツリーごと削除する |
-| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー）。**トークンが見つからない場合は子プロセスを起動せず**、探索したパスを明記して `kind: auth` で失敗する |
+| 資格情報 | 実行ユーザの Codex 認証情報を継承 | 実行ユーザの Claude 認証情報を継承 | 実 `$HOME`（既定。`PEER_CONSULT_AGY_CRED_HOME` で変更可）のトークンを合成 HOME に symlink（symlink 不可な FS ではコピー）。トークンと API キー（`GEMINI_API_KEY` / `GOOGLE_API_KEY` / `GOOGLE_APPLICATION_CREDENTIALS`）は**択一**で、**両方とも無い場合のみ子プロセスを起動せず**、探索したパスと API キー変数名を明記して `kind: auth` で失敗する（実 CLI で検証済みなのはトークン経路のみ） |
 | 環境変数 | `CLAUDE_CODE_*` / `CLAUDECODE` / `MCP_*` / `PEER_CONSULT_*` と他社の認証情報を除去し、`PEER_CONSULT_ACTIVE=1` を付与。さらに `-c shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}` で子シェル側にも同じマーカーを渡す（`inherit="none"` が親環境ごと落とすため） | 同左（マーカーはプロセス環境のみ） | 同左に加えて `XDG_CONFIG_HOME` / `AGY_*` / `ANTIGRAVITY_*` も除去（設定ツリーを別の場所に向けうる変数を残さない）。`GEMINI_*` / `GOOGLE_*` は API キー・ADC 認証の経路なので残す |
 | 承認プロンプト | なし（read-only 固定） | `--permission-prompts none`（プロンプトが必要な操作は自動拒否） | なし（ヘッドレスモードはプロンプトが要る操作を自動拒否し、deny ルールが優先される） |
 
@@ -315,7 +315,7 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 | プラグイン（Codex） | ローカル marketplace から `plugin add` → `installed, enabled`。MCP サーバが実際に起動することを、サーバ自身が作る `~/.peer-consult/` 相当のディレクトリで確認 |
 | Skill の混線なし | Claude 側マニフェストは `skills/claude` のみを読み、`skills/codex` は読まない（`plugin details` の Skills (1)） |
 | プラグイン経由の実相談 | インストール済みプラグインの `mcp__plugin_peer-consult_peer-consult__*` をエージェントに呼ばせ、実相談が `completed`／指摘 4 件で返ることを確認 |
-| 実相談（Antigravity 方向、`gemini-3.8-flash-high`・review）<br>2026-09-10 | 完了。105.1s、`evidence_basis: sufficient`、`references` 2 件（Google SRE Book / AWS Builders' Library）、`usage.denied_actions: null`、`findings_without_grounds: 0`。合成 HOME から `XDG_CONFIG_HOME` / `AGY_*` / `ANTIGRAVITY_*` も除去したあとで認証が通ることの確認を含む |
+| 実相談（Antigravity 方向、`gemini-3.8-flash-high`・review）<br>2026-09-10 | 完了。105.1s、`evidence_basis: sufficient`、`references` 2 件（Google SRE Book / AWS Builders' Library）、`usage.denied_actions: null`、`findings_without_grounds: 0`。子環境を絞ったあとの実行なので、**symlink したトークンで認証が通ること**の確認になる。ただしこの実行時のシェルには `XDG_CONFIG_HOME` / `AGY_*` / `ANTIGRAVITY_*` がそもそも設定されていなかったため、除去そのものは実相談では検証していない（除去はオフラインテストで確認） |
 | 編集制限（Antigravity、サブエージェント経由）<br>2026-09-10 | 子セッションにサブエージェント経由でファイル作成を指示 → `sub.txt` は作成されず、エンベロープが `write_file` の deny を報告。合成 HOME の `permissions.deny` がサブエージェント側にも適用されることを確認 |
 | プラグイン形式（Antigravity）<br>2026-09-10 | `agy plugin validate plugins/peer-consult` は `.antigravity-plugin/` を読まず `Error: missing plugin.json`。root に置くと validate は通るが `skills : 4 processed`（マニフェストの `"skills"` を無視）・`mcpServers : skipped (not found)`。ゆえにマニフェストは同梱せず、インストーラが直接登録する |
 

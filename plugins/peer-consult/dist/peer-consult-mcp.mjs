@@ -36898,6 +36898,7 @@ function usageRecord3(payload) {
 
 // src/jobs.mjs
 var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports };
+var API_KEY_CREDENTIAL_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"];
 var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 var JobManager = class {
   constructor() {
@@ -37124,11 +37125,12 @@ var JobManager = class {
     const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
-      if (sandbox && sandbox.credentials === "missing") {
+      const env = childEnv(req.target, sandbox?.env ?? {});
+      if (sandbox && sandbox.credentials === "missing" && !API_KEY_CREDENTIAL_VARS.some((name) => env[name])) {
         return this.#fail(
           job,
           "auth",
-          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}. Log in with that CLI, or point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the token.`
+          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${API_KEY_CREDENTIAL_VARS.join(" / ")} is set. Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
         );
       }
       const invocation = adapter.buildInvocation({
@@ -37146,7 +37148,7 @@ var JobManager = class {
         command: invocation.command,
         args: invocation.args,
         cwd: workdir,
-        env: childEnv(req.target, sandbox?.env ?? {}),
+        env,
         input: text,
         timeoutMs: budgetMs,
         onCancelSignal: (fn) => job._cancelFns.push(fn)

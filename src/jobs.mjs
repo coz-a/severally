@@ -18,6 +18,12 @@ import * as antigravity from './adapters/antigravity.mjs';
 
 const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity };
 
+// The second way a consultant can be authenticated. A linked token file and an
+// API key / ADC file are alternatives, not both required, so the presence of
+// either has to satisfy the credential check below. These are the names
+// run.mjs deliberately keeps for the antigravity child.
+const API_KEY_CREDENTIAL_VARS = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS'];
+
 const id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
 
 export class JobManager {
@@ -277,18 +283,31 @@ export class JobManager {
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
 
     try {
+      const env = childEnv(req.target, sandbox?.env ?? {});
+
       // A sandbox that found no credential to link would otherwise reach the
       // child, which reports whatever generic "not logged in" its vendor
       // emits -- with no hint that peer-consult searched a specific HOME and
       // came back empty. That is exactly the case an operator who has moved
       // their credentials (or set PEER_CONSULT_AGY_CRED_HOME) needs named.
-      if (sandbox && sandbox.credentials === 'missing') {
+      //
+      // But the linked token file and an API key / ADC file are *alternatives*:
+      // an operator who authenticates with GEMINI_API_KEY, GOOGLE_API_KEY or
+      // GOOGLE_APPLICATION_CREDENTIALS has no token file at all, and that path
+      // reached the CLI before this check existed -- run.mjs keeps those
+      // variables for exactly that reason. So refuse only when neither
+      // mechanism is present, which is a genuinely unauthenticated child. Only
+      // the token path has been verified against the live CLI; the API-key
+      // path is passed through, not proven.
+      if (sandbox && sandbox.credentials === 'missing'
+        && !API_KEY_CREDENTIAL_VARS.some((name) => env[name])) {
         return this.#fail(
           job,
           'auth',
           `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at `
-          + `${sandbox.credentialsSource}. Log in with that CLI, or point PEER_CONSULT_AGY_CRED_HOME at the `
-          + 'home directory that holds the token.',
+          + `${sandbox.credentialsSource}, and none of ${API_KEY_CREDENTIAL_VARS.join(' / ')} is set. `
+          + 'Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the '
+          + 'token, or set one of those variables to authenticate with an API key instead.',
         );
       }
 
@@ -310,7 +329,7 @@ export class JobManager {
         command: invocation.command,
         args: invocation.args,
         cwd: workdir,
-        env: childEnv(req.target, sandbox?.env ?? {}),
+        env,
         input: text,
         timeoutMs: budgetMs,
         onCancelSignal: (fn) => job._cancelFns.push(fn),
