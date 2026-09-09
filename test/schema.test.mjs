@@ -96,3 +96,25 @@ test('detectCaller reads the host CLI from the environment', async () => {
   assert.equal(detectCaller({ AGY_BROWSER_WS_URL: 'ws://localhost:1' }), 'antigravity');
   assert.equal(detectCaller({}), null);
 });
+
+// resolveTarget used to index a plain object literal, so an inherited key
+// resolved to a function: resolveTarget('constructor') returned
+// Object.prototype.constructor and the request went on to be launched as if
+// it named a consultant.
+test('an inherited Object.prototype key is not a target', async () => {
+  const { resolveTarget } = await import('../src/policy.mjs');
+  for (const key of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
+    assert.equal(resolveTarget(key), null, `${key} must not resolve to a target`);
+  }
+});
+
+// The zod preprocessor and resolveTarget() must apply the same normalisation:
+// if they drift, a target the schema accepted resolves to null and reaches
+// POLICY.targets[null].model as a TypeError instead of a validation message.
+test('the schema and resolveTarget share one normaliser', async () => {
+  const { resolveTarget, TARGET_INPUTS, normalizeTargetInput } = await import('../src/policy.mjs');
+  for (const input of TARGET_INPUTS) {
+    assert.notEqual(resolveTarget(input), null, `${input} must resolve`);
+    assert.equal(normalizeTargetInput(`  ${input.replace(/-/g, '_').toUpperCase()} `), input);
+  }
+});

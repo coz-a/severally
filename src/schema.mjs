@@ -3,7 +3,9 @@
 // mode-specific protocol rule is enforced here rather than in the prompt.
 
 import { z } from 'zod';
-import { POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds, resolveTarget } from './policy.mjs';
+import {
+  POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds, resolveTarget, normalizeTargetInput,
+} from './policy.mjs';
 
 const L = POLICY.input;
 const trimmed = (max, label) =>
@@ -29,11 +31,9 @@ export const contextSchema = z
   .strict();
 
 // Shared by `target` and `caller`: both accept the same vendor spellings
-// (case, spaces/underscores vs. dashes) at the tool boundary.
-const normalizeTargetLike = (val) => {
-  if (typeof val !== 'string') return val;
-  return val.trim().toLowerCase().replace(/[\s_]+/g, '-');
-};
+// (case, spaces/underscores vs. dashes) at the tool boundary. The rule itself
+// comes from policy.mjs, so it cannot drift away from resolveTarget().
+const normalizeTargetLike = normalizeTargetInput;
 
 export const requestSchema = z
   .object({
@@ -102,7 +102,19 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
       'target_required',
     );
   }
-  const resolved = (hasSingle ? [req.target] : req.targets).map((t) => resolveTarget(t));
+  const named = hasSingle ? [req.target] : req.targets;
+  const resolved = named.map((t) => resolveTarget(t));
+  // The schema and resolveTarget() share one normaliser, so this should be
+  // unreachable -- but if they ever do diverge, an unresolved target would
+  // otherwise reach POLICY.targets[null].model and surface as a TypeError
+  // dressed up as internal_error. Refuse it as the validation failure it is.
+  const unresolved = named.filter((_, i) => resolved[i] === null);
+  if (unresolved.length) {
+    throw new RequestError(
+      `cannot resolve consultant ${unresolved.map((t) => JSON.stringify(t)).join(', ')} to a known target; use one of: ${TARGET_INPUTS.join(', ')}`,
+      'unknown_target',
+    );
+  }
   const unique = [...new Set(resolved)];
   if (unique.length !== resolved.length) {
     throw new RequestError(

@@ -14,8 +14,8 @@
 // tree and deleted with it, which is what --ephemeral gives us on Codex.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { credentialsHome } from '../policy.mjs';
 
 // Verified against agy 1.1.28: precedence is Deny > Ask > Allow, and headless
 // mode auto-denies anything that would need a prompt. read_url must be allowed
@@ -33,11 +33,6 @@ export const SANDBOX_DENY = Object.freeze([
 ]);
 
 const TOKEN_REL = path.join('.gemini', 'antigravity-cli', 'antigravity-oauth-token');
-
-function credentialsHome() {
-  const raw = process.env.PEER_CONSULT_AGY_CRED_HOME;
-  return raw === undefined || raw === '' ? os.homedir() : raw;
-}
 
 /**
  * Build the synthesised HOME for one consultation.

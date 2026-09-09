@@ -23,7 +23,10 @@ export const TARGETS = ['codex', 'claude-code', 'antigravity'];
 // Input aliases. The canonical ids above are what the rest of the server uses;
 // these are accepted at the tool boundary only, so a lead can say "gpt" or
 // "gemini" and reach the right consultant.
-const TARGET_ALIASES = Object.freeze({
+// Object.create(null) so a request cannot reach Object.prototype through the
+// alias table: resolveTarget('constructor') must be an unknown target, not
+// Object.prototype.constructor.
+const TARGET_ALIASES = Object.freeze(Object.assign(Object.create(null), {
   codex: 'codex',
   gpt: 'codex',
   chatgpt: 'codex',
@@ -35,15 +38,27 @@ const TARGET_ALIASES = Object.freeze({
   agy: 'antigravity',
   gemini: 'antigravity',
   google: 'antigravity',
-});
+}));
 
 export const TARGET_INPUTS = Object.freeze(Object.keys(TARGET_ALIASES));
 
+/**
+ * The one spelling-normaliser for a target-like input: case, spaces and
+ * underscores are folded away. Exported because schema.mjs needs the identical
+ * rule in its zod preprocessor -- two copies of it would drift, and a drift
+ * makes resolveTarget() return null for a value the schema has already
+ * accepted.
+ */
+export function normalizeTargetInput(raw) {
+  if (typeof raw !== 'string') return raw;
+  return raw.trim().toLowerCase().replace(/[\s_]+/g, '-');
+}
+
 /** Canonical id for any accepted spelling of a target, or null. */
 export function resolveTarget(raw) {
-  if (typeof raw !== 'string') return null;
-  const key = raw.trim().toLowerCase().replace(/[\s_]+/g, '-');
-  return TARGET_ALIASES[key] ?? null;
+  const key = normalizeTargetInput(raw);
+  if (typeof key !== 'string') return null;
+  return Object.hasOwn(TARGET_ALIASES, key) ? TARGET_ALIASES[key] : null;
 }
 
 // Which CLI is hosting this server. Used only to annotate a consultation that
@@ -81,8 +96,9 @@ export const POLICY = Object.freeze({
       model: str('PEER_CONSULT_AGY_MODEL', 'gemini-3.8-flash-high'),
       label: 'Antigravity CLI',
       vendor: 'google',
-      // Where the real credentials live; the sandbox links the token from here.
-      credentialsHome: str('PEER_CONSULT_AGY_CRED_HOME', os.homedir()),
+      // Where the real credentials live is credentialsHome() below, not a
+      // field here: the sandbox has to read it per job rather than have it
+      // frozen at import (see the note on timeoutMs()).
     }),
   }),
 
@@ -127,6 +143,16 @@ export const POLICY = Object.freeze({
 // into the module) so an operator restart is not needed to retune it.
 export function timeoutMs() {
   return num('PEER_CONSULT_TIMEOUT_MS', 600_000, 1_000, 1_800_000);
+}
+
+/**
+ * Where the Antigravity consultant's real credentials live; the per-job
+ * sandbox links its token out of this tree. Read at call time for the same
+ * reason as timeoutMs(), and defined here so policy.mjs stays the single
+ * place an operator knob is spelled out.
+ */
+export function credentialsHome() {
+  return str('PEER_CONSULT_AGY_CRED_HOME', os.homedir());
 }
 
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];

@@ -43,7 +43,7 @@ server and cannot be raised from a request.`;
 
 export function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: 'peer-consult', version: '1.0.0' },
+    { name: 'peer-consult', version: '1.1.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
 
