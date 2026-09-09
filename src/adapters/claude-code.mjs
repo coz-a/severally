@@ -65,18 +65,18 @@ export function interpret({ stdout, stderr, code }) {
   if (!payload) {
     const msg = (stderr || '').trim() || (stdout || '').trim().slice(0, 2000) ||
       `claude exited with code ${code} and produced no JSON result`;
-    return { ok: false, failureKind: code === 0 ? 'invalid_output' : classifyMessage(msg), message: msg, payload: null };
+    return { ok: false, failureKind: code === 0 ? 'invalid_output' : classifyMessage(msg), message: msg, payload: null, usageRaw: null };
   }
   if (payload.is_error) {
     const msg = typeof payload.result === 'string' ? payload.result : JSON.stringify(payload).slice(0, 2000);
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, payload };
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, payload, usageRaw: payload };
   }
   const structured = payload.structured_output ?? payload.structuredOutput ?? null;
   const text = structured ?? (typeof payload.result === 'string' ? payload.result : null);
   if (!text) {
-    return { ok: false, failureKind: 'invalid_output', message: 'result payload contained no answer', payload };
+    return { ok: false, failureKind: 'invalid_output', message: 'result payload contained no answer', payload, usageRaw: payload };
   }
-  return { ok: true, text, payload, denials: payload.permission_denials ?? [] };
+  return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
 
 export function usageRecord(payload) {

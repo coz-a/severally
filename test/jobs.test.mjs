@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { sandboxEnv, reviewRequest, exploreRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, waitFor } from './helpers.mjs';
 
 const home = sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
@@ -295,4 +295,45 @@ test('the launch guard refuses permission-widening flags outright', async () => 
   assert.throws(() => assertNoForbiddenFlags('codex', ['exec', '--dangerously-bypass-approvals-and-sandbox']), /permission-widening/);
   assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--dangerously-skip-permissions']), /permission-widening/);
   assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/']), /permission-widening/);
+});
+
+test('antigravity consultation: alias target, structured answer, usage recorded', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(antigravityRequest());
+  assert.equal(started.target, 'antigravity', 'the alias "gemini" must be normalised');
+  assert.equal(started.model, POLICY.targets.antigravity.model);
+
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'completed');
+  assert.match(view.result.summary, /Stub antigravity summary/);
+  assert.equal(view.usage.input_tokens, 5722);
+  assert.equal(view.usage.thinking_tokens, 23);
+  assert.equal(view.usage.cost_usd, null);
+});
+
+test('antigravity: the synthesised home is handed over as HOME and removed afterwards', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const envOut = path.join(home, 'agy-env.json');
+  process.env.STUB_ENV_OUT = envOut;
+  const mgr = new JobManager();
+  const started = mgr.start(antigravityRequest());
+  await finish(mgr, started.job_id);
+  delete process.env.STUB_ENV_OUT;
+
+  const childEnvSeen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+  assert.notEqual(childEnvSeen.HOME, os.homedir(), 'the consultant must not run with the real HOME');
+  assert.match(childEnvSeen.HOME, /jobs\/.*\/home$/);
+  assert.equal(fs.existsSync(childEnvSeen.HOME), false, 'the sandbox must be gone once the job finished');
+});
+
+test('antigravity: an ERROR envelope becomes a classified failure, not advice', async () => {
+  process.env.STUB_BEHAVIOR = 'usage_limit';
+  const mgr = new JobManager();
+  const started = mgr.start(antigravityRequest());
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'usage_limit');
+  assert.equal(view.result, null);
+  process.env.STUB_BEHAVIOR = 'ok';
 });

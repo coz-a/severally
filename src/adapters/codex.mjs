@@ -90,7 +90,7 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
     const msg = errorEvents
       .map((e) => e.message ?? e.error?.message ?? JSON.stringify(e))
       .join(' | ');
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usage, events: events.length };
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events.length };
   }
   if (!text) {
     const msg = (stderr || '').trim() || `codex exited with code ${code} and produced no final message`;
@@ -98,11 +98,11 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
       ok: false,
       failureKind: code === 0 ? 'invalid_output' : classifyMessage(msg),
       message: msg,
-      usage,
+      usageRaw: usage,
       events: events.length,
     };
   }
-  return { ok: true, text, usage, events: events.length };
+  return { ok: true, text, usageRaw: usage, events: events.length };
 }
 
 export function usageRecord(raw) {

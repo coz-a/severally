@@ -14,8 +14,9 @@ import { childEnv, runChild } from './run.mjs';
 import * as store from './store.mjs';
 import * as codex from './adapters/codex.mjs';
 import * as claudeCode from './adapters/claude-code.mjs';
+import * as antigravity from './adapters/antigravity.mjs';
 
-const ADAPTERS = { codex, 'claude-code': claudeCode };
+const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity };
 
 const id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
 
@@ -209,82 +210,84 @@ export class JobManager {
   async #execute(job, req, chain) {
     const adapter = ADAPTERS[req.target];
     const workdir = store.makeWorkdir(job.job_id);
-    const brief = renderBrief(req, chain);
+    const text = renderBrief(req, chain);
     const schemaPath = store.writeJobArtifact(job.job_id, 'response-schema.json', JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
+    const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
 
-    const invocation = req.target === 'codex'
-      ? adapter.buildInvocation({ workdir, schemaPath })
-      : adapter.buildInvocation({ workdir, guardrails: renderGuardrails() });
-
-    assertNoForbiddenFlags(req.target, invocation.args);
-
-    const budgetMs = timeoutMs();
-    job.status = 'running';
-    job.started_at = new Date().toISOString();
-    const t0 = Date.now();
-
-    const { handle, done } = runChild({
-      command: invocation.command,
-      args: invocation.args,
-      cwd: workdir,
-      env: childEnv(req.target),
-      input: brief,
-      timeoutMs: budgetMs,
-      onCancelSignal: (fn) => job._cancelFns.push(fn),
-    });
-    job._handle = handle;
-    if (job.cancelRequested) handle.stop();
-
-    const run = await done;
-    job.duration_ms = Date.now() - t0;
-    job.finished_at = new Date().toISOString();
-
-    if (run.spawnError) {
-      return this.#fail(job, 'spawn_error', `could not start ${invocation.command}: ${run.spawnError}`);
-    }
-    if (job.cancelRequested || run.cancelled) {
-      return this.#fail(job, 'cancelled', 'consultation cancelled by the lead');
-    }
-    if (run.timedOut) {
-      return this.#fail(job, 'timeout', `consultant exceeded the ${budgetMs} ms budget and was stopped`);
-    }
-
-    const lastMessageText = invocation.lastMessagePath ? store.readIfExists(invocation.lastMessagePath) : '';
-    const interpreted = adapter.interpret({ ...run, lastMessageText });
-
-    if (!interpreted.ok) {
-      job.usage = req.target === 'codex'
-        ? adapter.usageRecord(interpreted.usage)
-        : adapter.usageRecord(interpreted.payload);
-      return this.#fail(job, interpreted.failureKind, interpreted.message);
-    }
-
-    let normalized;
     try {
-      normalized = normalizeResult(interpreted.text);
-    } catch (err) {
-      if (err instanceof OutputError) {
-        job.usage = req.target === 'codex'
-          ? adapter.usageRecord(interpreted.usage)
-          : adapter.usageRecord(interpreted.payload);
-        return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
-      }
-      throw err;
-    }
+      const invocation = adapter.buildInvocation({
+        workdir,
+        schemaPath,
+        guardrails: renderGuardrails(),
+        sandbox,
+      });
 
-    job.result = normalized.result;
-    job.quality = {
-      ...normalized.quality,
-      evidence_basis: normalized.result.evidence_basis,
-      advice_usable: true,
-      caveat: adviceCaveat(normalized),
-    };
-    job.usage = req.target === 'codex'
-      ? adapter.usageRecord(interpreted.usage)
-      : adapter.usageRecord(interpreted.payload);
-    job.status = 'completed';
-    this.#finish(job);
-    return job;
+      assertNoForbiddenFlags(req.target, invocation.args);
+
+      const budgetMs = timeoutMs();
+      job.status = 'running';
+      job.started_at = new Date().toISOString();
+      const t0 = Date.now();
+
+      const { handle, done } = runChild({
+        command: invocation.command,
+        args: invocation.args,
+        cwd: workdir,
+        env: childEnv(req.target, sandbox?.env ?? {}),
+        input: text,
+        timeoutMs: budgetMs,
+        onCancelSignal: (fn) => job._cancelFns.push(fn),
+      });
+      job._handle = handle;
+      if (job.cancelRequested) handle.stop();
+
+      const run = await done;
+      job.duration_ms = Date.now() - t0;
+      job.finished_at = new Date().toISOString();
+
+      if (run.spawnError) {
+        return this.#fail(job, 'spawn_error', `could not start ${invocation.command}: ${run.spawnError}`);
+      }
+      if (job.cancelRequested || run.cancelled) {
+        return this.#fail(job, 'cancelled', 'consultation cancelled by the lead');
+      }
+      if (run.timedOut) {
+        return this.#fail(job, 'timeout', `consultant exceeded the ${budgetMs} ms budget and was stopped`);
+      }
+
+      const lastMessageText = invocation.lastMessagePath ? store.readIfExists(invocation.lastMessagePath) : '';
+      const interpreted = adapter.interpret({ ...run, lastMessageText });
+
+      if (!interpreted.ok) {
+        job.usage = adapter.usageRecord(interpreted.usageRaw);
+        return this.#fail(job, interpreted.failureKind, interpreted.message);
+      }
+
+      let normalized;
+      try {
+        normalized = normalizeResult(interpreted.text);
+      } catch (err) {
+        if (err instanceof OutputError) {
+          job.usage = adapter.usageRecord(interpreted.usageRaw);
+          return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
+        }
+        throw err;
+      }
+
+      job.result = normalized.result;
+      job.quality = {
+        ...normalized.quality,
+        evidence_basis: normalized.result.evidence_basis,
+        advice_usable: true,
+        caveat: adviceCaveat(normalized),
+      };
+      job.usage = adapter.usageRecord(interpreted.usageRaw);
+      job.status = 'completed';
+      this.#finish(job);
+      return job;
+    } finally {
+      sandbox?.cleanup();
+    }
   }
 
   #fail(job, kind, message, detail) {

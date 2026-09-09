@@ -11,6 +11,7 @@ export function sandboxEnv(overrides = {}) {
     PEER_CONSULT_HOME: home,
     PEER_CONSULT_CODEX_BIN: path.join(here, 'fixtures', 'stub-codex.mjs'),
     PEER_CONSULT_CLAUDE_BIN: path.join(here, 'fixtures', 'stub-claude.mjs'),
+    PEER_CONSULT_AGY_BIN: path.join(here, 'fixtures', 'stub-agy.mjs'),
     PEER_CONSULT_TIMEOUT_MS: '20000',
     PEER_CONSULT_KILL_GRACE_MS: '500',
     ...overrides,
@@ -52,6 +53,18 @@ export const debateRequest = (over = {}) => ({
     facts: ['Order writes are 200/s peak.'],
     proposal: 'Write-through, because losing an order on a crash is unacceptable.',
     counterpoints: ['Write-behind with a durable log gives the same guarantee at lower latency.'],
+  },
+  ...over,
+});
+
+export const antigravityRequest = (over = {}) => ({
+  target: 'gemini',
+  mode: 'review',
+  question: 'Is the cache invalidation strategy safe under concurrent writes?',
+  objective: 'Avoid serving stale orders after a write.',
+  context: {
+    facts: ['Two app servers write to the same key without coordination.'],
+    proposal: 'Invalidate on write and let the next read repopulate, because writes are rare.',
   },
   ...over,
 });
