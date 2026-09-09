@@ -26,8 +26,21 @@ test('the invocation pins the model, the schema and print-mode JSON', () => {
 });
 
 test('every flag that would widen the consultant is refused', () => {
-  for (const flag of ['--dangerously-skip-permissions', '--add-dir', '--continue', '-c', '--conversation', '--prompt-interactive', '-i', '--new-project']) {
+  const flags = [
+    '--dangerously-skip-permissions', '--add-dir', '--continue', '-c', '--conversation',
+    '--prompt-interactive', '-i', '--new-project',
+    // Documented by `agy --help` at 1.1.28: --mode accept-edits widens the
+    // permission posture, --agent brings another agent's tools and
+    // instructions, --input-format stream-json makes print mode multi-turn.
+    '--mode', '--agent', '--input-format',
+  ];
+  for (const flag of flags) {
     assert.ok(adapter.FORBIDDEN_FLAGS.includes(flag), `${flag} must be forbidden`);
+  }
+  // The invocation the adapter actually builds must survive the guard.
+  const inv = adapter.buildInvocation({ workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
+  for (const flag of flags) {
+    assert.equal(inv.args.includes(flag), false, `the adapter must not itself pass ${flag}`);
   }
 });
 

@@ -141,6 +141,43 @@ test('cancelling a group that already finished does not claim to have signalled 
   );
 });
 
+// "Nothing live" used to mean "compare the divergences", which is nonsense --
+// and dangerous -- when there is nothing to compare.
+test('a fan-out in which every member failed says no advice was obtained', async () => {
+  process.env.STUB_BEHAVIOR = 'usage_limit';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  const view = await finishGroup(mgr, started.group_id);
+  process.env.STUB_BEHAVIOR = 'ok';
+
+  assert.equal(view.status, 'done');
+  assert.equal(view.members.every((m) => m.status === 'failed'), true);
+  assert.deepEqual(view.members.map((m) => m.failure.kind), ['usage_limit', 'usage_limit']);
+  assert.match(view.next_step, /no advice was obtained/);
+  assert.doesNotMatch(view.next_step, /diverge/);
+  assert.equal(view.comparison.by_target.every((t) => t.summary === null), true);
+});
+
+test('a fan-out where only one member answered is still told to compare', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, started.group_id);
+  // STUB_BEHAVIOR is process-wide, so the mixed outcome -- one consultant
+  // answered, the other failed -- has to be staged on the finished group.
+  const failed = mgr.jobs.get(started.jobs[1].job_id);
+  failed.status = 'failed';
+  failed.result = null;
+  failed.quality = null;
+  failed.failure = {
+    kind: 'usage_limit', message: 'quota', detail: null, retriable: false, delivered_advice: false,
+  };
+
+  const view = mgr.groupView(started.group_id);
+  assert.equal(view.status, 'done');
+  assert.match(view.next_step, /diverge/, 'one real answer is still worth comparing against the failure');
+});
+
 test('a group stops claiming answers once its members age out of history', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();

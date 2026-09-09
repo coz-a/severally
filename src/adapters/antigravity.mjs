@@ -18,10 +18,22 @@ import { classifyMessage } from '../failures.mjs';
 
 export { prepareSandbox } from './antigravity-sandbox.mjs';
 
+// Checked against `agy --help` at 1.1.28. These are inert in print mode as the
+// adapter builds it today; the list exists so a future edit that reaches for
+// one of them is refused rather than quietly widening the consultant.
 export const FORBIDDEN_FLAGS = [
   '--dangerously-skip-permissions',
   '--add-dir',
   '--new-project',
+  // `--mode accept-edits` exists to widen the permission posture; `plan` is
+  // the only other value, and neither belongs in a consultation.
+  '--mode',
+  // A named agent brings its own tools and instructions, which is exactly the
+  // configuration the synthesised HOME is there to keep out.
+  '--agent',
+  // `--input-format stream-json` turns print mode into a multi-turn injection
+  // channel; the brief is one turn on stdin.
+  '--input-format',
   // Each consultation must be a fresh session; these would attach to an old one.
   '--continue',
   '-c',

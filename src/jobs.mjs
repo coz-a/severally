@@ -416,6 +416,12 @@ export class JobManager {
     const cancelling = members.some((m) => m.status === 'cancelling');
     const live = cancelling || members.some((m) => m.status === 'running' || m.status === 'queued');
     const missing = group.job_ids.length - members.length;
+    // "Nothing live" is not the same as "there is something to compare": a
+    // group whose every member failed or was cancelled lands here too, and
+    // telling the lead to compare divergences between zero answers invites
+    // exactly the "the consultants had no concerns" summary that a failure
+    // must never be turned into.
+    const anyResult = members.some((m) => m.result);
     return {
       group_id: group.group_id,
       status: cancelling ? 'cancelling' : (live ? 'running' : 'done'),
@@ -436,7 +442,9 @@ export class JobManager {
         ? 'poll consult_get with this group_id until every member reads cancelled'
         : live
           ? 'poll consult_get again with this group_id, or consult_cancel it'
-          : 'list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision',
+          : anyResult
+            ? 'list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision'
+            : 'no advice was obtained: no member of this fan-out produced a result (see each member\'s failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement',
       limits: limitsSummary(),
     };
   }
