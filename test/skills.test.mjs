@@ -139,3 +139,14 @@ test('every skill says the reachable consultants are the ones the tool lists', (
     assert.match(text, /actually reach|available list/i, `${host} skill must point at the runtime list`);
   }
 });
+
+// The failure this warns about is expensive and silent until the very end:
+// a heavy ask that burns the whole budget and returns nothing.
+test('every skill warns that scope, not length, is what times a consultation out', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /one\s+decidable question/i, `${host} skill must say what to ask for`);
+    assert.match(text, /\bprogress\b/, `${host} skill must point at the running progress`);
+    assert.match(text, /consult_cancel/, `${host} skill must offer cutting it short`);
+  }
+});

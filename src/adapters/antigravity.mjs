@@ -94,19 +94,19 @@ function finalEnvelope(stdout) {
 }
 
 /**
- * What the consultation had done when it was stopped. Only useful on a
- * timeout: it separates "was working steadily and needed longer" from "was
- * stuck on one tool call", which is the difference between raising the budget
- * and narrowing the brief.
+ * What this consultation has done so far -- read while it runs, and again when
+ * it is killed. It separates "working steadily, needs longer" from "stuck on
+ * one tool call", which is the difference between raising the budget and
+ * narrowing the brief; and it lets the lead cut a heavy consultation short
+ * instead of waiting out the whole budget for nothing.
  */
-export function progressSummary({ stdout }) {
+export function progress({ stdout }) {
   const steps = events(stdout).filter((e) => e.event === 'step_update' && e.step_update);
   if (!steps.length) return null;
   const last = steps[steps.length - 1].step_update;
   const seen = new Set(steps.map((s) => s.step_update.step_index)).size;
   const what = last.tool_name ? `tool ${last.tool_name}` : (last.step_type ?? 'a step');
-  return `no answer was produced; it was still working when the budget ran out: `
-    + `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
+  return `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
 }
 
 export function interpret({ stdout, stderr, code }) {

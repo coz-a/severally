@@ -118,11 +118,11 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
 }
 
 /**
- * What the consultation had done when it was stopped. Codex already runs with
- * `exec --json`, so its event stream is there for the reading -- no flag change
- * and no parser change, only a use for events we were otherwise discarding.
+ * What this consultation has done so far. Codex already runs with `exec --json`,
+ * so its event stream is there for the reading -- no flag change and no parser
+ * change, only a use for events we were otherwise discarding.
  */
-export function progressSummary({ stdout }) {
+export function progress({ stdout }) {
   const items = [];
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -135,8 +135,7 @@ export function progressSummary({ stdout }) {
   if (!items.length) return null;
   const last = items[items.length - 1];
   const kind = last.item?.type ?? last.type;
-  return `no answer was produced; it was still working when the budget ran out: `
-    + `${items.length} item event(s), last was ${kind}`;
+  return `${items.length} item event(s), last was ${kind}`;
 }
 
 export function usageRecord(raw) {

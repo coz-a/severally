@@ -582,3 +582,29 @@ test('a timeout reports how far the consultant got', async () => {
   process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
 });
+
+// "running" for twenty minutes is not a status a lead can act on. The point of
+// reading the stream while it runs is that a heavy consultation can be cut
+// short instead of waited out.
+test('a running consultation reports what it is doing', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  process.env.PEER_CONSULT_TIMEOUT_MS = '5000';
+  const { JobManager: M } = await import(`../src/jobs.mjs?live=${Date.now()}`);
+  const mgr = new M();
+  const started = mgr.start(reviewRequest());
+
+  const seen = await waitFor(() => {
+    const v = mgr.view(started.job_id);
+    return v.status === 'running' && v.progress ? v : null;
+  }, { timeoutMs: 4000, intervalMs: 25 });
+
+  assert.match(seen.progress, /item event\(s\)/, 'the trail, while it is still being made');
+  assert.match(seen.progress, /web_search/);
+
+  mgr.cancel(started.job_id);
+  await finish(mgr, started.job_id);
+  assert.equal(mgr.view(started.job_id).progress, null, 'and nothing to report once it is over');
+
+  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.STUB_BEHAVIOR = 'ok';
+});

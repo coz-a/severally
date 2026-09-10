@@ -27,6 +27,18 @@ Not every machine has both peers installed. `consult_start`'s description lists 
 actually reach, and naming a missing one comes back as `target_unavailable` with the available list — take that
 as final rather than retrying, and tell the user which peer is missing.
 
+## Keep it answerable
+
+A consultation is minutes of someone else's compute, with a hard budget: when it runs out the session is
+killed and you get **nothing**, having waited. What runs out the clock is scope, not brief length. Ask one
+decidable question. Do not send "research everything about X", a survey of a whole area, or three questions
+at once — split those, and ask the one whose answer changes what you do next.
+
+While it runs, `consult_get` reports `progress` (the consultant's own step trail, for the consultants that
+stream it). If that shows it grinding on without converging, `consult_cancel` and ask something narrower
+rather than waiting out the budget. A timeout carries the same trail in `failure.detail`, which tells you
+whether to retry with a longer budget or with a smaller question.
+
 ## Naming a model
 
 A consultant runs on the model its operator configured. If — and only if — the user names one, append it to

@@ -119,20 +119,20 @@ test('an ERROR result event is still classified, not treated as advice', () => {
 });
 
 // The point of streaming: a consultation killed at its budget leaves a trail.
-test('progressSummary says how far a killed consultation got', () => {
+test('progress says how far a consultation has got', () => {
   const stream = [
     JSON.stringify({ event: 'step_update', step_update: { step_index: 1, step_type: 'agent_response', state: 'DONE' } }),
     JSON.stringify({ event: 'step_update', step_update: { step_index: 2, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' } }),
     '{"event":"step_update","step_upda',  // a line cut off mid-write, as a kill does
   ].join('\n');
 
-  const summary = adapter.progressSummary({ stdout: stream });
+  const summary = adapter.progress({ stdout: stream });
   assert.match(summary, /2 step\(s\)/);
   assert.match(summary, /search_web/);
-  assert.match(summary, /no answer was produced/);
+  assert.match(summary, /ACTIVE/);
 });
 
-test('progressSummary is null when there is nothing to report', () => {
-  assert.equal(adapter.progressSummary({ stdout: '' }), null);
-  assert.equal(adapter.progressSummary({ stdout: 'not json at all\n' }), null);
+test('progress is null when there is nothing to report', () => {
+  assert.equal(adapter.progress({ stdout: '' }), null);
+  assert.equal(adapter.progress({ stdout: 'not json at all\n' }), null);
 });

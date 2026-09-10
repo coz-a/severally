@@ -84,9 +84,12 @@ export function childEnv(target, extra = {}) {
 }
 
 export class ProcHandle {
-  constructor(child) {
+  constructor(child, readStdout = () => '') {
     this.child = child;
     this.killed = false;
+    // What the child has written so far. A consultation runs for minutes, and
+    // without this the only honest answer to "how is it going" is "running".
+    this.stdoutSoFar = readStdout;
   }
 
   /** Kill the child and every descendant it spawned. */
@@ -112,10 +115,10 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
     detached: true, // own process group => descendants die with it
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const handle = new ProcHandle(child);
   const cap = POLICY.output.rawCaptureMax;
 
   let stdout = '';
+  const handle = new ProcHandle(child, () => stdout);
   let stderr = '';
   let truncated = false;
   let timedOut = false;

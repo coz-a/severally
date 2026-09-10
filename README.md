@@ -141,6 +141,9 @@ consult_start({ request })  -> 単一 target: { job_id, chain_id, round, model, 
 consult_get({ job_id, wait_ms? }) -> 状態／結果（wait_ms で完了まで待てる。上限 45s ＝ MCP クライアント側の
                              リクエストタイムアウト 60s を下回るようにしてある。相談は 1〜5 分かかるので
                              通常は数回ポーリングする）
+                             実行中は `progress` に相談相手の進行状況（`8 item event(s), last was web_search` など。
+                             イベントを流す Codex / Antigravity のみ）。重い相談だと分かった時点で
+                             `consult_cancel` して問いを絞り直せる
 consult_get({ group_id, wait_ms? }) -> fan-out の状態／結果を1回でまとめて取得。`members`（各 target の状態・結果）、
                              `comparison.by_target`（機械的な横並び。サーバは一致しているかどうかを判定しない）、
                              履歴が刈られて一部メンバーが失われた場合の `members_expected` / `members_available` /
@@ -312,6 +315,11 @@ node scripts/init-config.mjs --force   # 既存を置き換える
 | `default_model` | その相談相手が既定で使うモデル |
 | `allowed_models` | リクエストが**指名してよい**モデル。`default_model` は常に許可されるので、追加分だけ書く |
 | `timeout_ms` | この相談相手だけの制限時間（ms）。未指定なら共通値。上限 30 分 |
+
+時間切れ対策は3段構えになっている: ブリーフの guardrails が相談相手に「間に合わないと判断したら、その時点の
+答えを `evidence_basis: thin` で返し、確認できなかったことを `unknowns` / `next_checks` に書け」と指示する
+（全損を薄い回答に変える）。実行中は `consult_get` の `progress` で進行が見えるので、待ち切る前に打ち切れる。
+時間切れになった場合は `failure.detail` に最後の痕跡が残り、「予算不足」か「ブリーフが重すぎた」かを切り分けられる。
 
 **優先順位は env > 設定ファイル > 自動検出 > 既定値**（knob 単位）。`PEER_CONSULT_TARGETS=codex,claude-code`
 のように env で有効な相手を列挙した場合は、それが唯一の集合になる（設定ファイルの `enabled` より優先）。

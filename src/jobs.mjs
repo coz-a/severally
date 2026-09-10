@@ -86,6 +86,12 @@ export class JobManager {
     if (!job) return null;
     const rec = this.#record(job);
     rec.cancellable = job.status === 'running' || job.status === 'queued';
+    // While it runs, say what it is doing. "running" for twenty minutes tells
+    // the lead nothing; a consultation visibly grinding through tool calls is
+    // one it can cancel now rather than wait out.
+    rec.progress = job.status === 'running' && job._handle
+      ? (ADAPTERS[job.target]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null)
+      : null;
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -376,12 +382,12 @@ export class JobManager {
         // working or wedged. Adapters that stream their progress can say how
         // far it got, which is what decides between "narrow the brief" and
         // "this one just needs a longer budget".
-        const progress = adapter.progressSummary?.(run) ?? null;
+        const trail = adapter.progress?.(run) ?? null;
         return this.#fail(
           job,
           'timeout',
           `consultant exceeded the ${budgetMs} ms budget and was stopped`,
-          progress,
+          trail ? `no answer was produced; it was still working when the budget ran out: ${trail}` : null,
         );
       }
 

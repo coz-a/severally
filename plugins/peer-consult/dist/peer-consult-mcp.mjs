@@ -36347,6 +36347,13 @@ var GUARDRAILS = [
   "- Never include credentials, API keys, tokens, or environment variable values in your answer.",
   "- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.",
   "",
+  "This session is time-boxed and is killed when the budget runs out, which produces no answer at all -- the",
+  "lead is left with nothing, having waited. You cannot see the clock, so budget your effort instead: prefer a",
+  "few well-chosen checks over exhaustive coverage, and stop gathering while you still have something to say.",
+  "When you have enough to be useful, answer. A thin answer delivered beats a thorough one that never arrives:",
+  'set `evidence_basis` to "thin", put what you could not verify under `unknowns`, and put the checks you would',
+  "have run under `next_checks`. That is a legitimate outcome, not a failure.",
+  "",
   "Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not."
 ];
 function renderGuardrails() {
@@ -36625,9 +36632,10 @@ function childEnv(target, extra = {}) {
   return { ...env, ...extra };
 }
 var ProcHandle = class {
-  constructor(child) {
+  constructor(child, readStdout = () => "") {
     this.child = child;
     this.killed = false;
+    this.stdoutSoFar = readStdout;
   }
   /** Kill the child and every descendant it spawned. */
   stop(signal = "SIGTERM") {
@@ -36659,9 +36667,9 @@ function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs
     // own process group => descendants die with it
     stdio: ["pipe", "pipe", "pipe"]
   });
-  const handle = new ProcHandle(child);
   const cap = POLICY.output.rawCaptureMax;
   let stdout = "";
+  const handle = new ProcHandle(child, () => stdout);
   let stderr = "";
   let truncated = false;
   let timedOut = false;
@@ -36796,7 +36804,7 @@ __export(codex_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS,
   buildInvocation: () => buildInvocation,
   interpret: () => interpret,
-  progressSummary: () => progressSummary,
+  progress: () => progress,
   usageRecord: () => usageRecord
 });
 import path3 from "node:path";
@@ -36891,7 +36899,7 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
   }
   return { ok: true, text, usageRaw: usage, events: events2.length };
 }
-function progressSummary({ stdout }) {
+function progress({ stdout }) {
   const items = [];
   for (const line of (stdout || "").split("\n")) {
     const t = line.trim();
@@ -36905,7 +36913,7 @@ function progressSummary({ stdout }) {
   if (!items.length) return null;
   const last = items[items.length - 1];
   const kind = last.item?.type ?? last.type;
-  return `no answer was produced; it was still working when the budget ran out: ${items.length} item event(s), last was ${kind}`;
+  return `${items.length} item event(s), last was ${kind}`;
 }
 function usageRecord(raw) {
   const u = raw ?? {};
@@ -37022,7 +37030,7 @@ __export(antigravity_exports, {
   buildInvocation: () => buildInvocation3,
   interpret: () => interpret3,
   prepareSandbox: () => prepareSandbox,
-  progressSummary: () => progressSummary2,
+  progress: () => progress2,
   usageRecord: () => usageRecord3
 });
 
@@ -37143,13 +37151,13 @@ function finalEnvelope(stdout) {
   }
   return null;
 }
-function progressSummary2({ stdout }) {
+function progress2({ stdout }) {
   const steps = events(stdout).filter((e) => e.event === "step_update" && e.step_update);
   if (!steps.length) return null;
   const last = steps[steps.length - 1].step_update;
   const seen = new Set(steps.map((s2) => s2.step_update.step_index)).size;
   const what = last.tool_name ? `tool ${last.tool_name}` : last.step_type ?? "a step";
-  return `no answer was produced; it was still working when the budget ran out: ${seen} step(s), last was ${what} (${last.state ?? "state unknown"})`;
+  return `${seen} step(s), last was ${what} (${last.state ?? "state unknown"})`;
 }
 function interpret3({ stdout, stderr, code }) {
   const payload = finalEnvelope(stdout);
@@ -37239,6 +37247,7 @@ var JobManager = class {
     if (!job) return null;
     const rec = this.#record(job);
     rec.cancellable = job.status === "running" || job.status === "queued";
+    rec.progress = job.status === "running" && job._handle ? ADAPTERS[job.target]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null : null;
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -37466,12 +37475,12 @@ var JobManager = class {
         return this.#fail(job, "cancelled", "consultation cancelled by the lead");
       }
       if (run.timedOut) {
-        const progress = adapter.progressSummary?.(run) ?? null;
+        const trail = adapter.progress?.(run) ?? null;
         return this.#fail(
           job,
           "timeout",
           `consultant exceeded the ${budgetMs} ms budget and was stopped`,
-          progress
+          trail ? `no answer was produced; it was still working when the budget ran out: ${trail}` : null
         );
       }
       const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";

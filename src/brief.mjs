@@ -38,6 +38,13 @@ const GUARDRAILS = [
   '- Never include credentials, API keys, tokens, or environment variable values in your answer.',
   '- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.',
   '',
+  'This session is time-boxed and is killed when the budget runs out, which produces no answer at all -- the',
+  'lead is left with nothing, having waited. You cannot see the clock, so budget your effort instead: prefer a',
+  'few well-chosen checks over exhaustive coverage, and stop gathering while you still have something to say.',
+  'When you have enough to be useful, answer. A thin answer delivered beats a thorough one that never arrives:',
+  'set `evidence_basis` to "thin", put what you could not verify under `unknowns`, and put the checks you would',
+  'have run under `next_checks`. That is a legitimate outcome, not a failure.',
+  '',
   'Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not.',
 ];
 
