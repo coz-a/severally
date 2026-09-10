@@ -17,30 +17,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TARGETS, POLICY, isInstalled } from '../src/policy.mjs';
 
-const HEADER = 'peer-consult config. Precedence: environment variable > this file > autodetection.'
-  + ' Read once at server start -- restart the client after editing. All keys are optional; README §4.5.';
-
-// Examples live in one block at the bottom rather than beside every target:
-// the loader ignores "//" keys, and repeating them per target is what made an
-// otherwise empty file unreadable.
-const EXAMPLES = {
-  'exclude a consultant whose CLI is installed (e.g. a rate-limited account)':
-    { codex: { enabled: false, note: 'rate-limited until 15:00' } },
-  'let a request name a model, on top of the always-allowed default':
-    { 'claude-code': { models: ['claude-opus-5', 'claude-sonnet-5'] } },
-  'point at a CLI that is not on PATH, or pin a different default model':
-    { antigravity: { bin: '/opt/agy/bin/agy', model: 'gemini-3.1-pro-high' } },
-};
-
 /**
- * The config template for the machine this runs on. Each target starts empty,
- * so the file shows at a glance that nothing is being overridden; what was
- * detected is reported on the terminal, not written into the file.
+ * The config template for the machine this runs on: the structure, and nothing
+ * else. Guidance belongs on the terminal and in the README -- mixing prose keys
+ * into the file makes the handful of real settings hard to pick out.
  */
 export function renderConfig() {
   const targets = {};
   for (const id of TARGETS) targets[id] = {};
-  return { '//': HEADER, targets, '//examples': EXAMPLES };
+  return { targets };
 }
 
 /** Where the server would look for this file, given the same environment. */
@@ -80,7 +65,10 @@ function main() {
       ? `   ${id.padEnd(12)} ${t.cli} found, default model ${t.model}`
       : `   ${id.padEnd(12)} ${t.cli} not found -- excluded automatically, no config needed`);
   }
-  console.log('   edit the file to override any of that; restart the client afterwards');
+  console.log('');
+  console.log('per target: enabled (true/false)  note (why it is off)  bin (path)  model (id)  models (list)');
+  console.log('   e.g.  "codex": { "enabled": false, "note": "rate-limited until 15:00" }');
+  console.log('   more: config.example.json, README §4.5. Restart the client after editing.');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

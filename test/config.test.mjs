@@ -165,7 +165,8 @@ test('the generated template is valid config the server can read back', async ()
     assert.equal(policy.POLICY.targets[id].available, policy.isInstalled(policy.POLICY.targets[id].cli),
       `${id} availability must still come from detection`);
   }
-  // The examples are documentation, so they must not be mistaken for config.
-  assert.ok(rendered['//examples'], 'the template should show what the keys look like');
+  // The file carries configuration and nothing else: no prose keys mixed in
+  // with the settings, which is what made the earlier template hard to read.
+  assert.deepEqual(Object.keys(rendered), ['targets']);
   assert.equal(Object.keys(rendered.targets).length, policy.TARGETS.length);
 });
