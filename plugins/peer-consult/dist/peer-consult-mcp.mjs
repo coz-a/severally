@@ -7185,12 +7185,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list2, fs4, exportName) {
+    function addFormats(ajv, list2, fs5, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list2)
-        ajv.addFormat(f, fs4[f]);
+        ajv.addFormat(f, fs5[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -35675,8 +35675,36 @@ var StdioServerTransport = class {
 };
 
 // src/policy.mjs
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+var CONFIG_PATH = process.env.PEER_CONSULT_CONFIG || path.join(process.env.PEER_CONSULT_HOME || path.join(os.homedir(), ".peer-consult"), "config.json");
+var configError = null;
+var CONFIG = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  } catch (err) {
+    if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
+    return {};
+  }
+})();
+function configProblem() {
+  return configError;
+}
+var cfgTarget = (id2) => CONFIG.targets && typeof CONFIG.targets === "object" ? CONFIG.targets[id2] ?? {} : {};
+function isInstalled(command) {
+  if (typeof command !== "string" || command === "") return false;
+  if (command.includes("/")) return fs.existsSync(command);
+  for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, command), fs.constants.X_OK);
+      return true;
+    } catch {
+    }
+  }
+  return false;
+}
 var num = (name, dflt, min, max) => {
   const raw = process.env[name];
   if (raw === void 0 || raw === "") return dflt;
@@ -35748,36 +35776,60 @@ var list = (name) => {
   if (raw === void 0 || raw === "") return [];
   return raw.split(",").map((s2) => s2.trim()).filter(Boolean);
 };
-var allowedFor = (dflt, envName) => Object.freeze([.../* @__PURE__ */ new Set([dflt, ...list(envName)])]);
-var CODEX_MODEL = str("PEER_CONSULT_CODEX_MODEL", "gpt-6-astra");
-var CLAUDE_MODEL = str("PEER_CONSULT_CLAUDE_MODEL", "claude-fable-5-1");
-var AGY_MODEL = str("PEER_CONSULT_AGY_MODEL", "gemini-3.8-flash-high");
+var knob = (id2, envName, key, dflt) => {
+  const fromEnv = process.env[envName];
+  if (fromEnv !== void 0 && fromEnv !== "") return fromEnv;
+  const fromCfg = cfgTarget(id2)[key];
+  return typeof fromCfg === "string" && fromCfg !== "" ? fromCfg : dflt;
+};
+var allowedFor = (id2, dflt, envName) => {
+  const fromEnv = list(envName);
+  const fromCfg = Array.isArray(cfgTarget(id2).models) ? cfgTarget(id2).models.filter((m) => typeof m === "string") : [];
+  const extra = fromEnv.length ? fromEnv : fromCfg;
+  return Object.freeze([.../* @__PURE__ */ new Set([dflt, ...extra])]);
+};
+var ENABLED_ENV = list("PEER_CONSULT_TARGETS").map((t) => t.trim().toLowerCase()).filter(Boolean);
+var isEnabled = (id2, cli) => {
+  if (ENABLED_ENV.length) return ENABLED_ENV.includes(id2);
+  const flag = cfgTarget(id2).enabled;
+  if (typeof flag === "boolean") return flag;
+  return isInstalled(cli);
+};
+var CODEX_BIN = knob("codex", "PEER_CONSULT_CODEX_BIN", "bin", "codex");
+var CLAUDE_BIN = knob("claude-code", "PEER_CONSULT_CLAUDE_BIN", "bin", "claude");
+var AGY_BIN = knob("antigravity", "PEER_CONSULT_AGY_BIN", "bin", "agy");
+var CODEX_MODEL = knob("codex", "PEER_CONSULT_CODEX_MODEL", "model", "gpt-6-astra");
+var CLAUDE_MODEL = knob("claude-code", "PEER_CONSULT_CLAUDE_MODEL", "model", "claude-fable-5-1");
+var AGY_MODEL = knob("antigravity", "PEER_CONSULT_AGY_MODEL", "model", "gemini-3.8-flash-high");
 var POLICY = Object.freeze({
   home: str("PEER_CONSULT_HOME", path.join(os.homedir(), ".peer-consult")),
   targets: Object.freeze({
     codex: Object.freeze({
-      cli: str("PEER_CONSULT_CODEX_BIN", "codex"),
+      cli: CODEX_BIN,
+      available: isEnabled("codex", CODEX_BIN),
       model: CODEX_MODEL,
-      models: allowedFor(CODEX_MODEL, "PEER_CONSULT_CODEX_MODELS"),
+      models: allowedFor("codex", CODEX_MODEL, "PEER_CONSULT_CODEX_MODELS"),
       modelsEnv: "PEER_CONSULT_CODEX_MODELS",
       reasoningEffort: str("PEER_CONSULT_CODEX_EFFORT", "medium"),
       label: "Codex CLI",
       vendor: "openai"
     }),
     "claude-code": Object.freeze({
-      cli: str("PEER_CONSULT_CLAUDE_BIN", "claude"),
+      cli: CLAUDE_BIN,
+      available: isEnabled("claude-code", CLAUDE_BIN),
       model: CLAUDE_MODEL,
-      models: allowedFor(CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_MODELS"),
+      models: allowedFor("claude-code", CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_MODELS"),
       modelsEnv: "PEER_CONSULT_CLAUDE_MODELS",
       label: "Claude Code CLI",
       vendor: "anthropic",
       maxBudgetUsd: num("PEER_CONSULT_CLAUDE_MAX_BUDGET_USD", 2, 0.05, 20)
     }),
     antigravity: Object.freeze({
-      cli: str("PEER_CONSULT_AGY_BIN", "agy"),
+      cli: AGY_BIN,
+      available: isEnabled("antigravity", AGY_BIN),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
-      models: allowedFor(AGY_MODEL, "PEER_CONSULT_AGY_MODELS"),
+      models: allowedFor("antigravity", AGY_MODEL, "PEER_CONSULT_AGY_MODELS"),
       modelsEnv: "PEER_CONSULT_AGY_MODELS",
       label: "Antigravity CLI",
       vendor: "google"
@@ -35827,10 +35879,14 @@ function credentialsHome() {
   return str("PEER_CONSULT_AGY_CRED_HOME", os.homedir());
 }
 var artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
+function availableTargets() {
+  return TARGETS.filter((t) => POLICY.targets[t].available);
+}
 function limitsSummary() {
   const models = {};
-  for (const t of TARGETS) models[t] = POLICY.targets[t].model;
+  for (const t of availableTargets()) models[t] = POLICY.targets[t].model;
   return {
+    available_targets: availableTargets(),
     models,
     timeout_ms: timeoutMs(),
     max_rounds_per_chain: POLICY.maxRounds,
@@ -35945,6 +36001,14 @@ function parseRequest(raw, { isFollowup = false } = {}) {
       "unknown_target"
     );
   }
+  const usable = availableTargets();
+  const missing = [...new Set(resolved.filter((t) => !usable.includes(t)))];
+  if (missing.length) {
+    throw new RequestError(
+      `consultant ${missing.map((t) => JSON.stringify(t)).join(", ")} is not available on this machine; ` + (usable.length ? `available: ${usable.join(", ")}` : "no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS"),
+      "target_unavailable"
+    );
+  }
   const unique = [...new Set(resolved)];
   if (unique.length !== resolved.length) {
     throw new RequestError(
@@ -36031,7 +36095,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
 
 // src/jobs.mjs
 import crypto from "node:crypto";
-import fs3 from "node:fs";
+import fs4 from "node:fs";
 
 // src/result-schema.mjs
 var s = (desc) => ({ type: "string", description: desc });
@@ -36556,14 +36620,14 @@ function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs
 }
 
 // src/store.mjs
-import fs from "node:fs";
+import fs2 from "node:fs";
 import path2 from "node:path";
 function ensureDirs() {
   const home = POLICY.home;
-  fs.mkdirSync(path2.join(home, "history"), { recursive: true, mode: 448 });
-  fs.mkdirSync(path2.join(home, "jobs"), { recursive: true, mode: 448 });
+  fs2.mkdirSync(path2.join(home, "history"), { recursive: true, mode: 448 });
+  fs2.mkdirSync(path2.join(home, "jobs"), { recursive: true, mode: 448 });
   try {
-    fs.chmodSync(home, 448);
+    fs2.chmodSync(home, 448);
   } catch {
   }
   return home;
@@ -36573,32 +36637,32 @@ function jobDir(jobId) {
 }
 function makeWorkdir(jobId) {
   const dir = path2.join(jobDir(jobId), "work");
-  fs.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs2.mkdirSync(dir, { recursive: true, mode: 448 });
   return dir;
 }
 function writeJobArtifact(jobId, name, content) {
   const dir = jobDir(jobId);
-  fs.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs2.mkdirSync(dir, { recursive: true, mode: 448 });
   const p = path2.join(dir, name);
-  fs.writeFileSync(p, content, { mode: 384 });
+  fs2.writeFileSync(p, content, { mode: 384 });
   return p;
 }
 function readIfExists(p) {
   try {
-    return fs.readFileSync(p, "utf8");
+    return fs2.readFileSync(p, "utf8");
   } catch {
     return "";
   }
 }
 function persistRound(record2) {
   const dir = path2.join(POLICY.home, "history", record2.chain_id);
-  fs.mkdirSync(dir, { recursive: true, mode: 448 });
-  fs.writeFileSync(
+  fs2.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs2.writeFileSync(
     path2.join(dir, `round-${String(record2.round).padStart(2, "0")}.json`),
     JSON.stringify(record2, null, 2),
     { mode: 384 }
   );
-  fs.appendFileSync(
+  fs2.appendFileSync(
     path2.join(POLICY.home, "history", "index.jsonl"),
     `${JSON.stringify({
       job_id: record2.job_id,
@@ -36618,12 +36682,12 @@ function persistRound(record2) {
 }
 function persistGroup(group) {
   const dir = path2.join(POLICY.home, "history", "groups");
-  fs.mkdirSync(dir, { recursive: true, mode: 448 });
-  fs.writeFileSync(path2.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
+  fs2.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs2.writeFileSync(path2.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
 }
 function cleanupJobDir(jobId) {
   try {
-    fs.rmSync(jobDir(jobId), { recursive: true, force: true });
+    fs2.rmSync(jobDir(jobId), { recursive: true, force: true });
   } catch {
   }
 }
@@ -36847,7 +36911,7 @@ __export(antigravity_exports, {
 });
 
 // src/adapters/antigravity-sandbox.mjs
-import fs2 from "node:fs";
+import fs3 from "node:fs";
 import path4 from "node:path";
 var SANDBOX_ALLOW = Object.freeze(["read_url(*)"]);
 var SANDBOX_DENY = Object.freeze([
@@ -36863,11 +36927,11 @@ function prepareSandbox({ workdir }) {
   const root = path4.join(path4.dirname(workdir), "home");
   const cliDir = path4.join(root, ".gemini", "antigravity-cli");
   const cfgDir = path4.join(root, ".gemini", "config");
-  fs2.mkdirSync(cliDir, { recursive: true, mode: 448 });
-  fs2.mkdirSync(cfgDir, { recursive: true, mode: 448 });
-  fs2.chmodSync(root, 448);
-  fs2.writeFileSync(path4.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
-  fs2.writeFileSync(
+  fs3.mkdirSync(cliDir, { recursive: true, mode: 448 });
+  fs3.mkdirSync(cfgDir, { recursive: true, mode: 448 });
+  fs3.chmodSync(root, 448);
+  fs3.writeFileSync(path4.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
+  fs3.writeFileSync(
     path4.join(cliDir, "settings.json"),
     `${JSON.stringify({ permissions: { allow: [...SANDBOX_ALLOW], deny: [...SANDBOX_DENY] } }, null, 2)}
 `,
@@ -36876,13 +36940,13 @@ function prepareSandbox({ workdir }) {
   const source = path4.join(credentialsHome(), TOKEN_REL);
   const link = path4.join(cliDir, "antigravity-oauth-token");
   let credentials = "missing";
-  if (fs2.existsSync(source)) {
+  if (fs3.existsSync(source)) {
     try {
-      fs2.symlinkSync(source, link);
+      fs3.symlinkSync(source, link);
       credentials = "symlink";
     } catch {
-      fs2.copyFileSync(source, link);
-      fs2.chmodSync(link, 384);
+      fs3.copyFileSync(source, link);
+      fs3.chmodSync(link, 384);
       credentials = "copy";
     }
   }
@@ -36896,7 +36960,7 @@ function prepareSandbox({ workdir }) {
     env: { HOME: root },
     cleanup() {
       try {
-        fs2.rmSync(root, { recursive: true, force: true });
+        fs3.rmSync(root, { recursive: true, force: true });
       } catch {
       }
     }
@@ -36997,7 +37061,7 @@ var CREDENTIAL_FILE_VARS = ["GOOGLE_APPLICATION_CREDENTIALS"];
 var ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
 function hasApiCredential(env) {
   if (API_KEY_VARS.some((name) => env[name])) return true;
-  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs3.existsSync(env[name]));
+  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs4.existsSync(env[name]));
 }
 var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 var JobManager = class {
@@ -37484,15 +37548,17 @@ spent only on the specific points where you and the consultant actually diverge.
 check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
 var startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
 
-target: "codex" (Codex), "claude-code" (Claude Code) or "antigravity" (Gemini). The everyday names work too:
-        gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. Consulting your own CLI is allowed but is a
-        fresh-context check rather than an independent opinion, and the result says so.
+target: which consultant to ask. This machine can reach: ${availableTargets().join(", ") || "(none -- no consultant CLI is installed)"}.
+        The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. A consultant that
+        is not in that list is refused up front, so do not retry it -- say which ones are available instead.
+        Consulting your own CLI is allowed but is a fresh-context check rather than an independent opinion,
+        and the result says so.
 targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
         A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
         consultant is allowed to run is set by the operator, and this server currently allows:
-${TARGETS.map((t) => `          ${t}: ${POLICY.targets[t].models.join(", ")}`).join("\n")}
+${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].models.join(", ")}`).join("\n")}
         Only pass a model when the user asked for one; a name outside the list is refused before the
         consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
@@ -37589,6 +37655,14 @@ function createServer(manager = new JobManager()) {
   return { server, manager };
 }
 async function main() {
+  const problem = configProblem();
+  if (problem) process.stderr.write(`peer-consult: ignoring unreadable config -- ${problem}
+`);
+  if (availableTargets().length === 0) {
+    process.stderr.write(
+      "peer-consult: no consultant CLI found on PATH (codex / claude / agy); every consultation will be refused\n"
+    );
+  }
   if (process.env.PEER_CONSULT_ACTIVE === "1") {
     process.stderr.write(
       "peer-consult: refusing to start inside a peer-consult consultant session (recursion barrier)\n"

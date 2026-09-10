@@ -2,8 +2,51 @@
 // every knob is read from the process environment of the MCP server itself
 // (i.e. the operator's client config), never from tool arguments.
 
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+// One file, read once at start, so an operator configures a machine in a
+// single place instead of editing each client's MCP registration. Precedence
+// is env > this file > autodetection > built-in default: the env vars stay the
+// per-client escape hatch, and a machine that simply lacks a CLI needs no
+// configuration at all.
+const CONFIG_PATH = process.env.PEER_CONSULT_CONFIG
+  || path.join(process.env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult'), 'config.json');
+
+let configError = null;
+const CONFIG = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  } catch (err) {
+    // A missing file is the normal case. A malformed one is not: silently
+    // ignoring it would run the machine on defaults the operator thinks they
+    // overrode, so it is surfaced on stderr when the server starts.
+    if (err.code !== 'ENOENT') configError = `${CONFIG_PATH}: ${err.message}`;
+    return {};
+  }
+})();
+
+/** The config file's parse error, if it had one. Reported at startup. */
+export function configProblem() {
+  return configError;
+}
+
+const cfgTarget = (id) => (CONFIG.targets && typeof CONFIG.targets === 'object' ? CONFIG.targets[id] ?? {} : {});
+
+/** Is this command runnable here? Absolute/relative paths are checked as given. */
+function isInstalled(command) {
+  if (typeof command !== 'string' || command === '') return false;
+  if (command.includes('/')) return fs.existsSync(command);
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, command), fs.constants.X_OK);
+      return true;
+    } catch { /* not here */ }
+  }
+  return false;
+}
 
 const num = (name, dflt, min, max) => {
   const raw = process.env[name];
@@ -122,39 +165,73 @@ const list = (name) => {
   if (raw === undefined || raw === '') return [];
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 };
-const allowedFor = (dflt, envName) => Object.freeze([...new Set([dflt, ...list(envName)])]);
 
-const CODEX_MODEL = str('PEER_CONSULT_CODEX_MODEL', 'gpt-6-astra');
-const CLAUDE_MODEL = str('PEER_CONSULT_CLAUDE_MODEL', 'claude-fable-5-1');
-const AGY_MODEL = str('PEER_CONSULT_AGY_MODEL', 'gemini-3.8-flash-high');
+// env > config file > built-in default, for one target-scoped knob.
+const knob = (id, envName, key, dflt) => {
+  const fromEnv = process.env[envName];
+  if (fromEnv !== undefined && fromEnv !== '') return fromEnv;
+  const fromCfg = cfgTarget(id)[key];
+  return typeof fromCfg === 'string' && fromCfg !== '' ? fromCfg : dflt;
+};
+
+// The models a request may name. The default is always allowed, so an operator
+// who configures nothing still has a working -- and unchoosable -- default.
+const allowedFor = (id, dflt, envName) => {
+  const fromEnv = list(envName);
+  const fromCfg = Array.isArray(cfgTarget(id).models) ? cfgTarget(id).models.filter((m) => typeof m === 'string') : [];
+  const extra = fromEnv.length ? fromEnv : fromCfg;
+  return Object.freeze([...new Set([dflt, ...extra])]);
+};
+
+// Enabled targets, in precedence order: PEER_CONSULT_TARGETS names the whole
+// set explicitly; otherwise a per-target `enabled` in the config file decides;
+// otherwise the machine does -- a CLI that is not installed is not offered.
+const ENABLED_ENV = list('PEER_CONSULT_TARGETS').map((t) => t.trim().toLowerCase()).filter(Boolean);
+const isEnabled = (id, cli) => {
+  if (ENABLED_ENV.length) return ENABLED_ENV.includes(id);
+  const flag = cfgTarget(id).enabled;
+  if (typeof flag === 'boolean') return flag;
+  return isInstalled(cli);
+};
+
+const CODEX_BIN = knob('codex', 'PEER_CONSULT_CODEX_BIN', 'bin', 'codex');
+const CLAUDE_BIN = knob('claude-code', 'PEER_CONSULT_CLAUDE_BIN', 'bin', 'claude');
+const AGY_BIN = knob('antigravity', 'PEER_CONSULT_AGY_BIN', 'bin', 'agy');
+
+const CODEX_MODEL = knob('codex', 'PEER_CONSULT_CODEX_MODEL', 'model', 'gpt-6-astra');
+const CLAUDE_MODEL = knob('claude-code', 'PEER_CONSULT_CLAUDE_MODEL', 'model', 'claude-fable-5-1');
+const AGY_MODEL = knob('antigravity', 'PEER_CONSULT_AGY_MODEL', 'model', 'gemini-3.8-flash-high');
 
 export const POLICY = Object.freeze({
   home: str('PEER_CONSULT_HOME', path.join(os.homedir(), '.peer-consult')),
 
   targets: Object.freeze({
     codex: Object.freeze({
-      cli: str('PEER_CONSULT_CODEX_BIN', 'codex'),
+      cli: CODEX_BIN,
+      available: isEnabled('codex', CODEX_BIN),
       model: CODEX_MODEL,
-      models: allowedFor(CODEX_MODEL, 'PEER_CONSULT_CODEX_MODELS'),
+      models: allowedFor('codex', CODEX_MODEL, 'PEER_CONSULT_CODEX_MODELS'),
       modelsEnv: 'PEER_CONSULT_CODEX_MODELS',
       reasoningEffort: str('PEER_CONSULT_CODEX_EFFORT', 'medium'),
       label: 'Codex CLI',
       vendor: 'openai',
     }),
     'claude-code': Object.freeze({
-      cli: str('PEER_CONSULT_CLAUDE_BIN', 'claude'),
+      cli: CLAUDE_BIN,
+      available: isEnabled('claude-code', CLAUDE_BIN),
       model: CLAUDE_MODEL,
-      models: allowedFor(CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_MODELS'),
+      models: allowedFor('claude-code', CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_MODELS'),
       modelsEnv: 'PEER_CONSULT_CLAUDE_MODELS',
       label: 'Claude Code CLI',
       vendor: 'anthropic',
       maxBudgetUsd: num('PEER_CONSULT_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
     }),
     antigravity: Object.freeze({
-      cli: str('PEER_CONSULT_AGY_BIN', 'agy'),
+      cli: AGY_BIN,
+      available: isEnabled('antigravity', AGY_BIN),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
-      models: allowedFor(AGY_MODEL, 'PEER_CONSULT_AGY_MODELS'),
+      models: allowedFor('antigravity', AGY_MODEL, 'PEER_CONSULT_AGY_MODELS'),
       modelsEnv: 'PEER_CONSULT_AGY_MODELS',
       label: 'Antigravity CLI',
       vendor: 'google',
@@ -219,10 +296,16 @@ export function credentialsHome() {
 
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];
 
+/** The consultants this machine can actually reach, in canonical order. */
+export function availableTargets() {
+  return TARGETS.filter((t) => POLICY.targets[t].available);
+}
+
 export function limitsSummary() {
   const models = {};
-  for (const t of TARGETS) models[t] = POLICY.targets[t].model;
+  for (const t of availableTargets()) models[t] = POLICY.targets[t].model;
   return {
+    available_targets: availableTargets(),
     models,
     timeout_ms: timeoutMs(),
     max_rounds_per_chain: POLICY.maxRounds,

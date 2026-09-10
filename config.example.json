@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to ~/.peer-consult/config.json (or point PEER_CONSULT_CONFIG at it). Every key is optional: with no file at all, a consultant is offered when its CLI is on PATH.",
+  "targets": {
+    "codex": {
+      "enabled": false
+    },
+    "claude-code": {
+      "models": ["claude-opus-5", "claude-sonnet-5"]
+    },
+    "antigravity": {
+      "bin": "/opt/agy/bin/agy"
+    }
+  }
+}

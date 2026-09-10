@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { POLICY, TARGETS, limitsSummary } from './policy.mjs';
+import { POLICY, availableTargets, configProblem, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
 
@@ -20,15 +20,17 @@ check the grounds behind a point before you adopt it, and record what you adopte
 
 const startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
 
-target: "codex" (Codex), "claude-code" (Claude Code) or "antigravity" (Gemini). The everyday names work too:
-        gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. Consulting your own CLI is allowed but is a
-        fresh-context check rather than an independent opinion, and the result says so.
+target: which consultant to ask. This machine can reach: ${availableTargets().join(', ') || '(none -- no consultant CLI is installed)'}.
+        The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. A consultant that
+        is not in that list is refused up front, so do not retry it -- say which ones are available instead.
+        Consulting your own CLI is allowed but is a fresh-context check rather than an independent opinion,
+        and the result says so.
 targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
         A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
         consultant is allowed to run is set by the operator, and this server currently allows:
-${TARGETS.map((t) => `          ${t}: ${POLICY.targets[t].models.join(', ')}`).join('\n')}
+${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].models.join(', ')}`).join('\n')}
         Only pass a model when the user asked for one; a name outside the list is refused before the
         consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
@@ -145,6 +147,15 @@ export function createServer(manager = new JobManager()) {
 }
 
 export async function main() {
+  // A malformed config file would otherwise run the machine on defaults the
+  // operator believes they overrode.
+  const problem = configProblem();
+  if (problem) process.stderr.write(`peer-consult: ignoring unreadable config -- ${problem}\n`);
+  if (availableTargets().length === 0) {
+    process.stderr.write(
+      'peer-consult: no consultant CLI found on PATH (codex / claude / agy); every consultation will be refused\n',
+    );
+  }
   if (process.env.PEER_CONSULT_ACTIVE === '1') {
     process.stderr.write(
       'peer-consult: refusing to start inside a peer-consult consultant session (recursion barrier)\n',

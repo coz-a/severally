@@ -36,6 +36,7 @@ Antigravity ──(skill: peer-consult)──> mcp: peer-consult ──> codex e
 | `.agents/plugins/marketplace.json` | Codex 用のリポジトリローカル marketplace（公開レジストリではない） |
 | `bin/`, `src/` | MCP サーバのソース（Node ESM、stdio） |
 | `scripts/install.mjs` | インストール（プラグイン方式 / 手動方式） |
+| `config.example.json` | 環境ごとの設定の雛形（`~/.peer-consult/config.json` に置く。§4.5） |
 | `scripts/build.mjs` | esbuild でプラグイン内 `dist/` を生成 |
 | `scripts/live-check.mjs`, `scripts/live-mcp-check.mjs` | 実 CLI・実 MCP での動作確認 |
 | `test/` | オフライン検証（スタブ CLI による全分岐テスト） |
@@ -253,6 +254,39 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 
 認証情報は、送信するブリーフ・相談結果・ディスク上の履歴すべてに対して正規表現ベースのマスキング
 （API キー、GitHub / Slack トークン、AWS キー、JWT、`Bearer`、PEM、`*_TOKEN=` 形式）を通す。
+
+## 4.5 環境ごとの設定（1 ファイル）
+
+codex が無い環境、agy が無い環境がある。**既定では設定不要**で、サーバは起動時に各 CLI が PATH に
+あるかを見て、無い相手を候補から外す。使えない相手を指名した相談は、ジョブを作る前に
+`target_unavailable`（使える相手を列挙）として拒否される。`consult_start` の説明文と
+`limits.available_targets` にも、その環境で実際に使える相手だけが載る。
+
+明示的に制御したい場合は `~/.peer-consult/config.json`（`PEER_CONSULT_CONFIG` で変更可）を 1 つ置く。
+クライアントごとの MCP 登録に env を書き分ける必要はない。雛形はリポジトリの `config.example.json`。
+
+```json
+{
+  "targets": {
+    "codex":       { "enabled": false },
+    "claude-code": { "models": ["claude-opus-5", "claude-sonnet-5"] },
+    "antigravity": { "bin": "/opt/agy/bin/agy" }
+  }
+}
+```
+
+| キー | 意味 |
+|---|---|
+| `enabled` | 省略時は自動検出（CLI が PATH にあるか）。`false` にすると入っていても使わない |
+| `bin` | 実行ファイル名またはパス |
+| `model` | 既定モデル |
+| `models` | リクエストで指定を許すモデル（既定モデルは常に許可） |
+
+**優先順位は env > 設定ファイル > 自動検出 > 既定値**（knob 単位）。`PEER_CONSULT_TARGETS=codex,claude-code`
+のように env で有効な相手を列挙した場合は、それが唯一の集合になる（設定ファイルの `enabled` より優先）。
+
+設定ファイルは**サーバ起動時に 1 度だけ**読む。あとから CLI を入れた場合や設定を変えた場合はクライアントの
+再起動が必要。壊れた JSON は黙って無視せず、起動時に stderr へ理由を出したうえで既定値で動く。
 
 ## 5. サーバ側の上限（リクエストからは変更不可）
 

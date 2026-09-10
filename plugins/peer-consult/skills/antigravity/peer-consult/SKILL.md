@@ -23,6 +23,10 @@ so it can still run read-only shell commands. Its writes and its network access 
 Claude Code, `gemini` / `agy` / `google` -> Antigravity. When the user names one, use that one. When they just
 ask for a second opinion, default to `codex`.
 
+Not every machine has both peers installed. `consult_start`'s description lists the consultants this one can
+actually reach, and naming a missing one comes back as `target_unavailable` with the available list — take that
+as final rather than retrying, and tell the user which peer is missing.
+
 ## Naming a model
 
 A consultant runs on the model its operator configured. If — and only if — the user names one, append it to

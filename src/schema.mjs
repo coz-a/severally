@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import {
   POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds,
-  resolveTarget, resolveModel, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
+  resolveTarget, resolveModel, availableTargets, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
 } from './policy.mjs';
 
 const L = POLICY.input;
@@ -141,6 +141,21 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
       'unknown_target',
     );
   }
+  // A consultant whose CLI is not installed here (or that the operator turned
+  // off) is refused now, naming what this machine does have -- rather than
+  // costing a slot and coming back as spawn_error minutes later.
+  const usable = availableTargets();
+  const missing = [...new Set(resolved.filter((t) => !usable.includes(t)))];
+  if (missing.length) {
+    throw new RequestError(
+      `consultant ${missing.map((t) => JSON.stringify(t)).join(', ')} is not available on this machine; `
+      + (usable.length
+        ? `available: ${usable.join(', ')}`
+        : 'no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS'),
+      'target_unavailable',
+    );
+  }
+
   const unique = [...new Set(resolved)];
   if (unique.length !== resolved.length) {
     throw new RequestError(

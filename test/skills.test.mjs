@@ -129,3 +129,13 @@ test('every skill explains the model suffix and that it is user-driven', () => {
     assert.match(text, /usage_limit/, `${host} skill must rule out swapping models after a limit failure`);
   }
 });
+
+// A machine may lack a peer's CLI entirely. The skill has to tell the agent
+// where the real list is, or it will keep offering a consultant that is not there.
+test('every skill says the reachable consultants are the ones the tool lists', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /target_unavailable/, `${host} skill must name the refusal it will get`);
+    assert.match(text, /actually reach|available list/i, `${host} skill must point at the runtime list`);
+  }
+});
