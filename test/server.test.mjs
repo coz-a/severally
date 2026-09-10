@@ -21,7 +21,7 @@ test('exposes the three protocol tools, the lead\'s record, and a history listin
   const { client, close } = await connect();
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['consult_cancel', 'consult_get', 'consult_list', 'consult_record', 'consult_start']);
+  assert.deepEqual(names, ['consult_cancel', 'consult_export', 'consult_get', 'consult_list', 'consult_record', 'consult_start']);
   const record = tools.find((t) => t.name === 'consult_record');
   assert.deepEqual(
     record.inputSchema.properties.entries.items.properties.verdict.enum,
@@ -187,5 +187,31 @@ test('an id the consultant never produced is refused, with the ids that exist', 
   const err = payload(res);
   assert.equal(err.error, 'unknown_entry_id');
   assert.match(err.message, /f1, u1, c1/);
+  await close();
+});
+
+test('a finished consultation can be exported as a record to commit', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
+  const view = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } }));
+  await client.callTool({
+    name: 'consult_record',
+    arguments: { job_id: started.job_id, entries: [{ id: 'f1', verdict: 'not_applicable', effect: 'That path is already capped upstream.' }] },
+  });
+
+  const exported = payload(await client.callTool({ name: 'consult_export', arguments: { chain_id: view.chain_id } }));
+  assert.equal(exported.rounds, 1);
+  assert.match(exported.markdown, /# Consultation record/);
+  assert.match(exported.markdown, /not_applicable/);
+  assert.match(exported.markdown, /That path is already capped upstream\./);
+  await close();
+});
+
+test('exporting a consultation that is not in the history is refused', async () => {
+  const { client, close } = await connect();
+  const res = await client.callTool({ name: 'consult_export', arguments: { chain_id: 'chain_missing' } });
+  assert.equal(res.isError, true);
+  assert.equal(payload(res).error, 'unknown_chain');
   await close();
 });

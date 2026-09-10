@@ -176,3 +176,10 @@ test('every skill closes a consultation by recording what checking showed', () =
     assert.match(text, /f1/, `${host} skill must say where the ids come from`);
   }
 });
+
+test('every skill offers the export for a decision that belongs in the repository', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /consult_export/, `${host} skill must mention how to keep the record in the repo`);
+  }
+});

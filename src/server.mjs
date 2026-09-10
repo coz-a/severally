@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { POLICY, VERDICTS, availableTargets, configProblem, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
+import { exportChain, ExportError } from './export.mjs';
 
 const SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from another coding agent:
 Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
@@ -164,6 +165,32 @@ export function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
         }
+        return fail({ error: 'internal_error', message: String(err?.message ?? err) });
+      }
+    },
+  );
+
+  server.registerTool(
+    'consult_export',
+    {
+      title: 'Export a consultation as a record to commit',
+      description:
+        'Render one consultation (chain_id) or one fan-out (group_id) as Markdown: the brief as it was sent, '
+        + 'each consultant\'s answer as it came back, and the verdicts recorded against each point -- with the '
+        + 'ones nobody checked marked as unchecked. Nothing is summarised across consultants and nothing is '
+        + 'scored. The text is returned, not written: put it wherever the decision belongs in the repository '
+        + '(a decision record next to the code it is about), which is the only place a teammate will find it. '
+        + 'Reads the on-disk history, so a consultation from an earlier session can still be exported.',
+      inputSchema: {
+        chain_id: z.string().min(1).optional(),
+        group_id: z.string().min(1).optional(),
+      },
+    },
+    async ({ chain_id, group_id }) => {
+      try {
+        return ok(exportChain({ chain_id, group_id }));
+      } catch (err) {
+        if (err instanceof ExportError) return fail({ error: err.code, message: err.message });
         return fail({ error: 'internal_error', message: String(err?.message ?? err) });
       }
     },

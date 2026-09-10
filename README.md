@@ -119,8 +119,8 @@ npm run init-config            # ~/.peer-consult/config.json を生成（既存�
 - 相談相手が失敗した（`usage_limit` / `auth` / `timeout` …）ことと、答えたが根拠が薄いことは別物として
   返る。前者を「問題なしと言った」と読まない
 - 履歴は `~/.peer-consult/history/` に残る。1 ラウンドにつき、送ったブリーフ・相手の回答・指摘ごとに
-  主担当が書いた検証結果（`consult_record`）が 1 ファイルに揃う。送信するブリーフと結果には資格情報の
-  マスキングが掛かる
+  主担当が書いた検証結果（`consult_record`）が 1 ファイルに揃い、`consult_export` で Markdown にして
+  リポジトリに残せる。送信するブリーフと結果には資格情報のマスキングが掛かる
 
 ## アンインストール
 

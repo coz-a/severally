@@ -239,4 +239,17 @@ different: the second is a decision you made, the first is a gap. Record the one
 them; `consult_get`'s `next_step` names the points still without a verdict, and recording the same id again
 replaces it.
 
+When the decision is one the team will have to live with — an interface, a migration, a security or
+concurrency call — ask for the record and put it in the repository:
+
+```
+consult_export({ chain_id: "..." })   // or group_id for a fan-out
+```
+
+It comes back as Markdown: the brief as it was sent, each consultant's answer as it came back, and your
+verdicts under the points they belong to, with the unchecked ones marked unchecked. Write it where the
+decision lives (next to the code it is about, or wherever this repo keeps decision records) — the tool
+returns the text and never writes a file itself. Do this only when the record is worth keeping; a routine
+consultation does not need a file in the repo.
+
 The decision, the verification and the change stay yours.

@@ -3262,8 +3262,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path5) {
-      let input2 = path5;
+    function removeDotSegments(path6) {
+      let input2 = path6;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3672,8 +3672,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path5 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
+        const path6 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7185,12 +7185,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list2, fs5, exportName) {
+    function addFormats(ajv, list2, fs6, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list2)
-        ajv.addFormat(f, fs5[f]);
+        ajv.addFormat(f, fs6[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7942,10 +7942,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path5) {
-  if (!path5)
+function getElementAtPath(obj2, path6) {
+  if (!path6)
     return obj2;
-  return path5.reduce((acc, key) => acc?.[key], obj2);
+  return path6.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -8357,11 +8357,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path5, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path5);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -8794,16 +8794,16 @@ function flattenError(error61, mapper = (issue2) => issue2.message) {
 }
 function formatError(error61, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error62, path5 = []) => {
+  const processError = (error62, path6 = []) => {
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path5, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
       } else {
-        const fullpath = [...path5, ...issue2.path];
+        const fullpath = [...path6, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -8842,17 +8842,17 @@ function formatError(error61, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error61, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error62, path5 = []) => {
+  const processError = (error62, path6 = []) => {
     var _a3;
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path5, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path5, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
       } else {
-        const fullpath = [...path5, ...issue2.path];
+        const fullpath = [...path6, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -8891,8 +8891,8 @@ function treeifyError(error61, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path5 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path5) {
+  const path6 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path6) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -25402,13 +25402,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path5 = ref.slice(1).split("/").filter(Boolean);
-  if (path5.length === 0) {
+  const path6 = ref.slice(1).split("/").filter(Boolean);
+  if (path6.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path5[0] === defsKey) {
-    const key = path5[1] === void 0 ? void 0 : decodeJSONPointerSegment(path5[1]);
+  if (path6[0] === defsKey) {
+    const key = path6[1] === void 0 ? void 0 : decodeJSONPointerSegment(path6[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -26438,8 +26438,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -26554,11 +26554,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -30109,11 +30109,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path5) {
-  if (path5.length === 0) {
+function getDotPath(path6) {
+  if (path6.length === 0) {
     return "object root";
   }
-  return path5.reduce((acc, seg, index) => {
+  return path6.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -36395,11 +36395,11 @@ function renderArtifacts(artifacts) {
   return artifacts.map((a) => {
     const head = [`### ${a.name} (${a.kind}${a.language ? `, ${a.language}` : ""})`];
     if (a.source) head.push(`source: ${a.source}`);
-    const fence = a.excerpt.includes("```") ? "~~~" : "```";
+    const fence2 = a.excerpt.includes("```") ? "~~~" : "```";
     return `${head.join("\n")}
-${fence}${a.language ?? ""}
+${fence2}${a.language ?? ""}
 ${a.excerpt}
-${fence}`;
+${fence2}`;
   }).join("\n\n");
 }
 function renderBrief(req, chain = { round: 1, priorRounds: [] }) {
@@ -36491,9 +36491,9 @@ function extractJson(text2) {
   if (!trimmed2) return null;
   const candidates = [];
   if (trimmed2.startsWith("{")) candidates.push(trimmed2);
-  const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
+  const fence2 = /```(?:json)?\s*([\s\S]*?)```/gi;
   let m;
-  while ((m = fence.exec(trimmed2)) !== null) candidates.push(m[1].trim());
+  while ((m = fence2.exec(trimmed2)) !== null) candidates.push(m[1].trim());
   const start = trimmed2.indexOf("{");
   if (start !== -1) {
     let depth = 0;
@@ -37824,6 +37824,217 @@ function assertNoForbiddenFlags(target, args) {
   return true;
 }
 
+// src/export.mjs
+import fs5 from "node:fs";
+import path5 from "node:path";
+var ExportError = class extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = "ExportError";
+    this.code = code;
+  }
+};
+var historyDir = () => path5.join(POLICY.home, "history");
+function readJson(p) {
+  try {
+    return JSON.parse(fs5.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function roundsOf(chainId) {
+  const dir = path5.join(historyDir(), chainId);
+  let names = [];
+  try {
+    names = fs5.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names.filter((n) => /^round-\d+\.json$/.test(n)).sort().map((n) => readJson(path5.join(dir, n))).filter(Boolean);
+}
+function chainsOfGroup(groupId) {
+  const group = readJson(path5.join(historyDir(), "groups", `${groupId}.json`));
+  if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.peer-consult/history`, "unknown_group");
+  const byJob = /* @__PURE__ */ new Map();
+  try {
+    for (const line of fs5.readFileSync(path5.join(historyDir(), "index.jsonl"), "utf8").split("\n")) {
+      if (!line.trim()) continue;
+      const row = JSON.parse(line);
+      byJob.set(row.job_id, row.chain_id);
+    }
+  } catch {
+  }
+  const chains = [];
+  for (const jobId of group.job_ids ?? []) {
+    const chainId = byJob.get(jobId);
+    if (chainId && !chains.includes(chainId)) chains.push(chainId);
+  }
+  if (chains.length === 0) {
+    throw new ExportError(`fan-out "${groupId}" has no consultation recorded in the history index`, "unknown_group");
+  }
+  return chains;
+}
+var bullets2 = (items, render) => (items ?? []).map(render);
+function fence(text2, language) {
+  const marker = String(text2).includes("```") ? "~~~" : "```";
+  return [`${marker}${language ?? ""}`, text2, marker];
+}
+function briefSection(brief) {
+  if (!brief) return ["*(the brief was not recorded for this round)*", ""];
+  const out = [];
+  const block = (title, body) => {
+    if (!body || Array.isArray(body) && body.length === 0) return;
+    out.push(`**${title}**`, "");
+    out.push(...Array.isArray(body) ? body : [body]);
+    out.push("");
+  };
+  block("Objective", brief.objective);
+  block("Success criteria", bullets2(brief.success_criteria, (c) => `- ${c}`));
+  block("Constraints", bullets2(brief.constraints, (c) => `- ${c}`));
+  block("Facts as given", bullets2(brief.facts, (f) => `- ${f}`));
+  block("Proposal", brief.proposal);
+  block("Opposing claims", bullets2(brief.counterpoints, (c) => `- ${c}`));
+  for (const a of brief.artifacts ?? []) {
+    out.push(`**Material: ${a.name}** (${[a.kind, a.language, a.source].filter(Boolean).join(", ")})`, "");
+    out.push(...fence(a.excerpt, a.language));
+    out.push("");
+  }
+  return out;
+}
+function verdictLine(record2, id2) {
+  const entry = (record2?.entries ?? []).find((e) => e.id === id2);
+  if (!entry) return "  - checked: no verdict recorded";
+  const tail = [entry.effect, entry.note ? `(${entry.note})` : null].filter(Boolean).join(" ");
+  return `  - checked: ${entry.verdict}${tail ? ` -- ${tail}` : ""}`;
+}
+function answerSection(round) {
+  const r = round.result;
+  if (!r) {
+    const f = round.failure;
+    return [
+      `No advice was obtained: **${f?.kind ?? "unknown"}**${f?.message ? ` -- ${f.message}` : ""}.`,
+      "This round produced no opinion at all, and must not be read as the consultant having no concerns.",
+      ""
+    ];
+  }
+  const out = [];
+  const record2 = round.record;
+  out.push("**Summary**", "", r.summary, "");
+  if (r.findings.length) {
+    out.push("**Findings**", "");
+    for (const f of r.findings) {
+      out.push(`- **${f.id}** [${f.severity ?? "unrated"}] ${f.point}`);
+      if (f.grounds) out.push(`  - grounds: ${f.grounds}`);
+      if (f.impact) out.push(`  - impact: ${f.impact}`);
+      out.push(verdictLine(record2, f.id));
+    }
+    out.push("");
+  }
+  if (r.alternatives.length) {
+    out.push("**Alternatives**", "");
+    for (const a of r.alternatives) {
+      out.push(`- ${a.option}`);
+      if (a.tradeoffs) out.push(`  - trade-offs: ${a.tradeoffs}`);
+      if (a.when_preferred) out.push(`  - preferred when: ${a.when_preferred}`);
+    }
+    out.push("");
+  }
+  if (r.unknowns.length) {
+    out.push("**Unknowns**", "");
+    for (const u of r.unknowns) {
+      out.push(`- **${u.id}** ${u.item}`);
+      if (u.why_it_matters) out.push(`  - matters because: ${u.why_it_matters}`);
+      if (u.how_to_obtain) out.push(`  - obtain by: ${u.how_to_obtain}`);
+      out.push(verdictLine(record2, u.id));
+    }
+    out.push("");
+  }
+  if (r.decision_changers.length) {
+    out.push("**Would change this judgement**", "");
+    for (const d of r.decision_changers) out.push(`- ${d.condition} -> ${d.changes_to}`);
+    out.push("");
+  }
+  if (r.next_checks.length) {
+    out.push("**Checks proposed**", "");
+    for (const c of r.next_checks) {
+      out.push(`- **${c.id}** ${c.check}`);
+      if (c.method) out.push(`  - method: ${c.method}`);
+      if (c.expected_signal) out.push(`  - expected signal: ${c.expected_signal}`);
+      out.push(verdictLine(record2, c.id));
+    }
+    out.push("");
+  }
+  if (r.remaining_disagreements.length) {
+    out.push("**Still disagreed**", "");
+    for (const d of r.remaining_disagreements) {
+      out.push(`- ${d.topic}: ${d.your_position ?? ""}${d.why_unresolved ? ` (${d.why_unresolved})` : ""}`);
+    }
+    out.push("");
+  }
+  if (r.references.length) {
+    out.push("**Sources the consultant opened**", "");
+    for (const ref of r.references) {
+      out.push(`- ${[ref.title, ref.url, ref.relevance].filter(Boolean).join(" -- ")}`);
+    }
+    out.push("");
+  }
+  return out;
+}
+function roundSection(round, previousBrief) {
+  const secs = round.duration_ms == null ? null : (round.duration_ms / 1e3).toFixed(1);
+  const head = [
+    `## Round ${round.round} -- ${round.target}${round.model ? ` (${round.model})` : ""}, mode ${round.mode}`,
+    "",
+    `- asked: ${round.created_at}${secs ? `, took ${secs}s` : ""}`,
+    `- status: ${round.status}`
+  ];
+  if (round.result) {
+    head.push(`- stance as declared: ${round.result.stance ?? "not declared"}`);
+    head.push(`- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`);
+  }
+  head.push("");
+  head.push("### Question", "", round.question, "");
+  head.push("### Brief as sent", "");
+  const same = previousBrief && JSON.stringify(previousBrief) === JSON.stringify(round.brief);
+  head.push(...same ? ["*Identical to the brief above.*", ""] : briefSection(round.brief));
+  head.push("### Answer", "");
+  head.push(...answerSection(round));
+  return head;
+}
+function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
+  if (Boolean(chainId) === Boolean(groupId)) {
+    throw new ExportError("pass exactly one of chain_id or group_id", "export_target_required");
+  }
+  const chainIds = groupId ? chainsOfGroup(groupId) : [chainId];
+  const perChain = chainIds.map((id2) => ({ chain_id: id2, rounds: roundsOf(id2) }));
+  const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
+  if (total === 0) {
+    throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.peer-consult/history`, "unknown_chain");
+  }
+  const first = perChain.find((c) => c.rounds.length)?.rounds[0];
+  const lines = [
+    `# Consultation record: ${first.question}`,
+    "",
+    `- exported: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+    `- ${groupId ? `fan-out \`${groupId}\`, ${chainIds.length} consultant(s)` : `consultation \`${chainId}\``}`,
+    "",
+    "Written from `~/.peer-consult/history`. Each round below is one consultation: the brief exactly as it was",
+    "sent, the answer exactly as it came back, and under each point what the lead found when they checked it.",
+    "Nothing here is summarised across consultants and nothing is scored -- where two answers point different",
+    "ways, both are printed and the difference is left standing.",
+    ""
+  ];
+  let previousBrief = null;
+  for (const chain of perChain) {
+    for (const round of chain.rounds) {
+      lines.push(...roundSection(round, previousBrief));
+      if (round.brief) previousBrief = round.brief;
+    }
+  }
+  return { markdown: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
+`, rounds: total, chain_ids: chainIds };
+}
+
 // src/server.mjs
 var SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from another coding agent:
 Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
@@ -37956,6 +38167,25 @@ function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
         }
+        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+      }
+    }
+  );
+  server.registerTool(
+    "consult_export",
+    {
+      title: "Export a consultation as a record to commit",
+      description: "Render one consultation (chain_id) or one fan-out (group_id) as Markdown: the brief as it was sent, each consultant's answer as it came back, and the verdicts recorded against each point -- with the ones nobody checked marked as unchecked. Nothing is summarised across consultants and nothing is scored. The text is returned, not written: put it wherever the decision belongs in the repository (a decision record next to the code it is about), which is the only place a teammate will find it. Reads the on-disk history, so a consultation from an earlier session can still be exported.",
+      inputSchema: {
+        chain_id: external_exports.string().min(1).optional(),
+        group_id: external_exports.string().min(1).optional()
+      }
+    },
+    async ({ chain_id, group_id }) => {
+      try {
+        return ok(exportChain({ chain_id, group_id }));
+      } catch (err) {
+        if (err instanceof ExportError) return fail({ error: err.code, message: err.message });
         return fail({ error: "internal_error", message: String(err?.message ?? err) });
       }
     }
