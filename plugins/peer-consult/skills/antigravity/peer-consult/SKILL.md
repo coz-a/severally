@@ -99,6 +99,9 @@ Do the organising work yourself; a vague brief gets a vague answer.
    `context.facts` and paste the relevant passages — the function, the failing test output, the schema, the
    diff — into `context.artifacts`. Excerpts, not whole files; the request has a character budget.
 4. **Include the constraints that make cheap advice useless**: the stack, the traffic, what you cannot change.
+5. **Separate imposed constraints from your own assumptions.** A constraint is read as fixed and will not be
+   challenged; if "we cannot change the schema" is your call rather than a given, put it under `facts` as a
+   decision with its reason, or leave it out and let the consultant test it. Only what you wrote can be doubted.
 
 ## Running it
 
