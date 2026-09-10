@@ -33,6 +33,12 @@ test('targets fans out to one job per consultant and returns a group', async () 
   assert.deepEqual(view.comparison.by_target.map((t) => t.target), ['codex', 'antigravity']);
   assert.match(view.comparison.note, /not evidence of agreement|does not judge/i);
   assert.match(view.next_step, /diverge/i);
+  // Consultants that share a finding can still land on opposite bottom lines,
+  // and that is the divergence a lead is most likely to miss. The stance is
+  // the consultant's own declaration, placed beside the others unjudged.
+  for (const t of view.comparison.by_target) assert.equal(t.stance, 'proceed');
+  assert.match(view.comparison.note, /stance/i);
+  assert.match(view.comparison.note, /consultant's own|declared by the consultant/i);
 });
 
 test('every consultant in a group receives the identical brief', async () => {

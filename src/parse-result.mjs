@@ -26,6 +26,7 @@ function clampText(v, max) {
 
 const LEVELS = ['high', 'medium', 'low'];
 const BASIS = ['sufficient', 'thin', 'insufficient'];
+const STANCES = ['proceed', 'do_not_proceed', 'alternative', 'undetermined'];
 
 function level(v, fallback = null) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
@@ -35,6 +36,11 @@ function level(v, fallback = null) {
 function basis(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
   return BASIS.includes(t) ? t : null;
+}
+
+function stance(v) {
+  const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  return STANCES.includes(t) ? t : null;
 }
 
 /** Extract a JSON object from raw model text (fenced block, or first balanced object). */
@@ -110,6 +116,7 @@ export function normalizeResult(raw) {
     summary,
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
+    stance: stance(src.stance),
     findings: mapList(src.findings, {
       point: 'text', grounds: 'text', impact: 'text', severity: 'level', confidence: 'level',
     }, { requiredField: 'point' }),

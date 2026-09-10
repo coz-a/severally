@@ -6,7 +6,7 @@ sandboxEnv();
 const { normalizeResult, extractJson, OutputError } = await import('../src/parse-result.mjs');
 
 const full = {
-  summary: 'S', confidence: 'medium', evidence_basis: 'sufficient',
+  summary: 'S', confidence: 'medium', evidence_basis: 'sufficient', stance: 'proceed',
   findings: [{ point: 'p', grounds: 'g', impact: 'i', severity: 'low', confidence: 'high' }],
   alternatives: [{ option: 'o', tradeoffs: 't', when_preferred: 'w' }],
   unknowns: [{ item: 'u', why_it_matters: 'w', how_to_obtain: 'h' }],
@@ -47,4 +47,16 @@ test('unknown enum values become null rather than being coerced', () => {
   const { result } = normalizeResult({ ...full, confidence: 'very sure', evidence_basis: 'great' });
   assert.equal(result.confidence, null);
   assert.equal(result.evidence_basis, null);
+});
+
+// The stance is the consultant's own one-word bottom line. It exists so a
+// fan-out can show "same finding, opposite conclusions" without anyone
+// interpreting the summaries -- so it must survive normalisation verbatim,
+// and an invented value must not be coerced into a real one.
+test('the stance is kept as declared, and an unknown one becomes null and counts as missing', () => {
+  assert.equal(normalizeResult(full).result.stance, 'proceed');
+  assert.equal(normalizeResult({ ...full, stance: 'Do_Not_Proceed' }).result.stance, 'do_not_proceed');
+  const { result, quality } = normalizeResult({ ...full, stance: 'strongly agree' });
+  assert.equal(result.stance, null);
+  assert.ok(quality.missing_sections.includes('stance'));
 });

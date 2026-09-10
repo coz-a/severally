@@ -150,3 +150,18 @@ test('every skill warns that scope, not length, is what times a consultation out
     assert.match(text, /consult_cancel/, `${host} skill must offer cutting it short`);
   }
 });
+
+// Six live runs (three hosts x with/without these instructions) never missed a
+// finding, but three of them erased the disagreement between two consultants
+// whose findings overlapped and whose bottom lines were opposite, and two
+// discarded the same-vendor consultant's findings outright because the caveat
+// said to prefer the others. The skill has to name both traps.
+test('every skill points at the stance column and forbids discarding a same-vendor answer unread', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /`stance`/, `${host} skill must point at the stance column`);
+    assert.match(text, /same finding|share a finding|shared finding/i, `${host} skill must warn about shared findings with opposite stances`);
+    assert.doesNotMatch(text, /for nothing/, `${host} skill must not call a same-vendor slot worthless`);
+    assert.match(text, /not a reason to (skip|discard|dismiss)/i, `${host} skill must say the caveat is not a reason to discard`);
+  }
+});

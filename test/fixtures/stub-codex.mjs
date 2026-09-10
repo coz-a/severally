@@ -22,6 +22,7 @@ function answer(overrides = {}) {
     summary: 'Stub consultant summary of the proposal.',
     confidence: 'medium',
     evidence_basis: 'sufficient',
+    stance: 'proceed',
     findings: [{ point: 'Retry storm risk', grounds: 'The excerpt retries without a cap.', impact: 'Cascading load', severity: 'high', confidence: 'medium' }],
     alternatives: [{ option: 'Token bucket', tradeoffs: 'More state', when_preferred: 'When bursts are common' }],
     unknowns: [{ item: 'Current QPS', why_it_matters: 'Sets the cap', how_to_obtain: 'Check the dashboard' }],

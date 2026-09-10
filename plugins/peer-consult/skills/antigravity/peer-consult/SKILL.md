@@ -55,9 +55,12 @@ them is refused rather than guessed, so a rejection tells you what to say instea
 choice; overriding it on your own judgement — including after a `usage_limit` failure — substitutes a different
 mind for the one the user asked for.
 
-You may also pass `target: "antigravity"` to consult your own CLI in a fresh session. Do that only when
-what you need is a clean-context re-read of the same material — the answer comes from the same model family,
-so it is not an independent opinion, and the server marks the result accordingly. Prefer the other two.
+You may also pass `target: "antigravity"` to consult your own CLI in a fresh session. A fresh session of
+your own lineage removes what this session has accumulated — history, sunk cost, drift toward your own framing
+— but keeps what the lineage shares: training-data blind spots, the same reflexes toward the brief's wording.
+So it is a clean-context re-read, not an independent opinion, and the server marks the result accordingly.
+Reach for the other two when the risk is your model's blind spot; reach for this when the risk is your
+session's drift.
 
 Pass `caller: "antigravity"` in every request so the server can annotate that case.
 
@@ -132,16 +135,21 @@ consult_start({ request: {
 When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, 「両方に相談して」, "ask everyone", "ask
 both" — that is exactly the two peers above, `codex` and `claude-code`, and never yourself.
 Consulting your own CLI is a fresh-context re-read rather than a third opinion, so adding it to a fan-out
-spends a concurrency slot and real quota for nothing. Send **one** `targets` call with both peers and poll the
-single `group_id`; two separate consultations would give each peer a slightly different brief and leave you
-nothing comparable.
+spends a concurrency slot and real quota on a third slot without a third lineage. Send **one** `targets` call
+with both peers and poll the single `group_id`; two separate consultations would give each peer a slightly
+different brief and leave you nothing comparable.
+
+If a same-vendor answer is in the payload anyway, read it like any other. Its `quality.caveat` lowers the
+weight of its *agreement* with you; it is not a reason to discard its findings — those still stand or fall on
+their grounds.
 
 Every consultant receives the **byte-identical brief** — that is the whole point, because answers to slightly
 different questions are not comparable — and the server returns one `group_id` covering all of them. Poll
 `consult_get({ group_id, wait_ms: 60000 })` to get every answer in one payload, and
 `consult_cancel({ group_id })` to stop the whole fan-out. The payload carries `members` (each consultant's own
-full result) plus `comparison.by_target`, a mechanical side-by-side of summary, confidence, evidence basis,
-finding points, alternatives, unknowns and remaining disagreements.
+full result) plus `comparison.by_target`, a mechanical side-by-side of stance, summary, confidence, evidence
+basis, finding points, alternatives, unknowns and remaining disagreements. `stance` is each consultant's own
+one-word bottom line (`proceed` / `do_not_proceed` / `alternative` / `undetermined`), relayed as declared.
 
 A fan-out costs a round and real quota per consultant, and it consumes that many concurrency slots, so two is
 usually enough. `targets` is refused on a follow-up: a follow-up continues the exchange with **one** consultant
@@ -151,18 +159,22 @@ usually enough. `targets` is refused on a follow-up: a follow-up continues the e
 agree, because inventing agreement that is not there is exactly the failure a second opinion exists to prevent.
 Two agents can reach the same wording from different grounds, or from none. So:
 
-1. **List the divergences.** Read `comparison.by_target` and write down every point where they actually differ —
+1. **Read the `stance` column first.** Consultants that share a finding can still land on opposite bottom
+   lines — "this needs sizing, then go" and "this needs sizing, so stop" cite the same fact — and a shared
+   finding with opposite stances is the divergence that matters most, and the easiest to write up as
+   agreement.
+2. **List the divergences.** Read `comparison.by_target` and write down every point where they actually differ —
    including one naming an unknown or a risk the other never mentions.
-2. **Check the grounds behind each divergence** against the code or the docs, not against whichever answer
+3. **Check the grounds behind each divergence** against the code or the docs, not against whichever answer
    sounds more confident.
-3. **Spend a follow-up only on a divergence that would change your decision**, and send it only to the
+4. **Spend a follow-up only on a divergence that would change your decision**, and send it only to the
    consultant whose reading it belongs to.
 
 Report a divergence you could not settle as a divergence. "Both agreed" is a claim you have to earn.
 
 ## Reading the answer
 
-The result is structured: `summary`, `findings` (each with its grounds and impact), `alternatives`,
+The result is structured: `summary`, `stance`, `findings` (each with its grounds and impact), `alternatives`,
 `unknowns`, `decision_changers`, `next_checks`, `remaining_disagreements`, `references`.
 
 Check `status` first, and treat these as different things:

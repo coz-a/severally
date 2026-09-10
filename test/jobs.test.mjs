@@ -64,6 +64,14 @@ test('a same-vendor consultation is delivered with an independence caveat', asyn
   assert.equal(view.status, 'completed');
   assert.match(view.quality.caveat, /same vendor|independen/i);
   assert.equal(view.caller, 'codex');
+  // In a live check, "prefer the other two" was read as "discard this one":
+  // leads put the same-vendor consultant's findings under Rejected without
+  // checking their grounds. The caveat has to say what a re-read removes and
+  // what it keeps, and must not read as a verdict on the answer's content.
+  assert.match(view.quality.caveat, /session|history/i);
+  assert.match(view.quality.caveat, /lineage|blind spots/i);
+  assert.match(view.quality.caveat, /grounds/i);
+  assert.doesNotMatch(view.quality.caveat, /prefer the other/i);
 });
 
 test('a cross-vendor consultation carries no independence caveat', async () => {

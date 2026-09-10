@@ -20,6 +20,10 @@ export const CONSULT_RESULT_SCHEMA = obj(
   {
     summary: s('2-6 sentence summary of your overall view, written for a peer who will act on it.'),
     confidence: enumOf(['high', 'medium', 'low'], 'Your confidence in this overall view.'),
+    stance: enumOf(
+      ['proceed', 'do_not_proceed', 'alternative', 'undetermined'],
+      'Your bottom line on the decision the brief puts to you, in one word, so it can be placed beside other consultants\' without anyone interpreting the summaries: "proceed" (the direction as stated holds), "do_not_proceed" (it does not, as stated), "alternative" (a different direction is better -- name it under alternatives), "undetermined" (the material does not let you say).',
+    ),
     evidence_basis: enumOf(
       ['sufficient', 'thin', 'insufficient'],
       'Honest self-assessment of whether the material you were given (plus anything you looked up) is enough to support this advice. Use "thin"/"insufficient" rather than guessing.',

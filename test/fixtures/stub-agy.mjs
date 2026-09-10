@@ -21,6 +21,7 @@ function answer(overrides = {}) {
     summary: 'Stub antigravity summary of the proposal.',
     confidence: 'medium',
     evidence_basis: 'sufficient',
+    stance: 'proceed',
     findings: [{ point: 'Unbounded retry', grounds: 'The excerpt has no cap.', impact: 'Load amplification', severity: 'high', confidence: 'medium' }],
     alternatives: [{ option: 'Circuit breaker', tradeoffs: 'More moving parts', when_preferred: 'When the dependency flaps' }],
     unknowns: [{ item: 'Peak QPS', why_it_matters: 'Sets the cap', how_to_obtain: 'Check the dashboard' }],

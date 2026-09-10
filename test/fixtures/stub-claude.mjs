@@ -16,6 +16,7 @@ const structured = {
   summary: 'Stub Claude Code consultant view.',
   confidence: 'high',
   evidence_basis: 'thin',
+  stance: 'do_not_proceed',
   findings: [{ point: 'Unbounded queue', grounds: '', impact: 'OOM under load', severity: 'high', confidence: 'high' }],
   alternatives: [],
   unknowns: [],
