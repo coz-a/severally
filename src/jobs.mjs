@@ -182,7 +182,7 @@ export class JobManager {
         status: 'queued',
         // The model the request asked for, already checked against the
         // operator's allowlist; falls back to the target's default.
-        model: req.models?.[target] ?? POLICY.targets[target].model,
+        model: req.modelFor?.[target] ?? POLICY.targets[target].model,
         created_at: new Date().toISOString(),
         started_at: null,
         finished_at: null,

@@ -71,7 +71,7 @@ test('a CLI that is not installed makes its consultant unavailable with no confi
 test('the environment overrides the config file, target by target', async () => {
   const config = writeConfig({
     targets: {
-      codex: { enabled: false, model: 'from-config', models: ['from-config', 'also-config'] },
+      codex: { enabled: false, default_model: 'from-config', allowed_models: ['from-config', 'also-config'] },
     },
   });
   const policy = await loadPolicy({
@@ -85,19 +85,19 @@ test('the environment overrides the config file, target by target', async () => 
   assert.equal(policy.POLICY.targets.codex.model, 'from-env', 'env model wins over the config file');
   // PEER_CONSULT_CODEX_MODEL (the default) came from the env; the config's
   // `models` list is a different knob and still contributes the extras.
-  assert.deepEqual(policy.POLICY.targets.codex.models, ['from-env', 'from-config', 'also-config']);
+  assert.deepEqual(policy.POLICY.targets.codex.allowedModels, ['from-env', 'from-config', 'also-config']);
 });
 
 test('the config file supplies the bin and the model allowlist when no env does', async () => {
   const config = writeConfig({
     targets: {
-      'claude-code': { bin: '/usr/local/bin/claude-x', models: ['claude-opus-5'] },
+      'claude-code': { bin: '/usr/local/bin/claude-x', allowed_models: ['claude-opus-5'] },
     },
   });
   const policy = await loadPolicy({ PEER_CONSULT_CONFIG: config }, 'fromfile', ['PEER_CONSULT_CLAUDE_BIN']);
 
   assert.equal(policy.POLICY.targets['claude-code'].cli, '/usr/local/bin/claude-x');
-  assert.deepEqual(policy.POLICY.targets['claude-code'].models, ['claude-fable-5-1', 'claude-opus-5']);
+  assert.deepEqual(policy.POLICY.targets['claude-code'].allowedModels, ['claude-fable-5-1', 'claude-opus-5']);
   assert.equal(policy.POLICY.targets['claude-code'].available, false, 'that bin does not exist here');
 });
 

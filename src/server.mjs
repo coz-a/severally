@@ -30,7 +30,7 @@ targets: ask up to 3 consultants the same question at once (mutually exclusive w
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
         A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
         consultant is allowed to run is set by the operator, and this server currently allows:
-${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].models.join(', ')}`).join('\n')}
+${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].allowedModels.join(', ')}`).join('\n')}
         Only pass a model when the user asked for one; a name outside the list is refused before the
         consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can

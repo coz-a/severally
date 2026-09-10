@@ -143,7 +143,7 @@ export function resolveTarget(raw) {
  * @returns {{model: string} | {ambiguous: string[]} | null} null = no match.
  */
 export function resolveModel(target, wanted) {
-  const allowed = POLICY.targets[target]?.models ?? [];
+  const allowed = POLICY.targets[target]?.allowedModels ?? [];
   if (typeof wanted !== 'string' || wanted === '') return null;
   if (allowed.includes(wanted)) return { model: wanted };
   const key = wanted.trim().toLowerCase().replace(/[\s_]+/g, '-');
@@ -168,7 +168,7 @@ export const MODES = ['explore', 'review', 'debate'];
 
 // A request may name a model, but only one the operator has listed. The
 // default is always allowed; anything else has to be added to the target's
-// PEER_CONSULT_*_MODELS list, so a runaway caller cannot reach a model the
+// PEER_CONSULT_*_ALLOWED_MODELS list, so a runaway caller cannot reach a model the
 // operator never sanctioned -- and a typo is refused before a CLI is launched.
 const list = (name) => {
   const raw = process.env[name];
@@ -184,11 +184,15 @@ const knob = (id, envName, key, dflt) => {
   return typeof fromCfg === 'string' && fromCfg !== '' ? fromCfg : dflt;
 };
 
-// The models a request may name. The default is always allowed, so an operator
-// who configures nothing still has a working -- and unchoosable -- default.
+// The models a request may name (config: allowed_models). The default is always
+// allowed, so an operator who configures nothing still has a working -- and
+// unchoosable -- default. Named apart from `model`/`default_model` on purpose:
+// one letter between "the model it runs" and "the models it may be asked for"
+// is a difference a reader will miss.
 const allowedFor = (id, dflt, envName) => {
   const fromEnv = list(envName);
-  const fromCfg = Array.isArray(cfgTarget(id).models) ? cfgTarget(id).models.filter((m) => typeof m === 'string') : [];
+  const cfgAllowed = cfgTarget(id).allowed_models;
+  const fromCfg = Array.isArray(cfgAllowed) ? cfgAllowed.filter((m) => typeof m === 'string') : [];
   const extra = fromEnv.length ? fromEnv : fromCfg;
   return Object.freeze([...new Set([dflt, ...extra])]);
 };
@@ -216,9 +220,9 @@ const CODEX_BIN = knob('codex', 'PEER_CONSULT_CODEX_BIN', 'bin', 'codex');
 const CLAUDE_BIN = knob('claude-code', 'PEER_CONSULT_CLAUDE_BIN', 'bin', 'claude');
 const AGY_BIN = knob('antigravity', 'PEER_CONSULT_AGY_BIN', 'bin', 'agy');
 
-const CODEX_MODEL = knob('codex', 'PEER_CONSULT_CODEX_MODEL', 'model', 'gpt-6-astra');
-const CLAUDE_MODEL = knob('claude-code', 'PEER_CONSULT_CLAUDE_MODEL', 'model', 'claude-fable-5-1');
-const AGY_MODEL = knob('antigravity', 'PEER_CONSULT_AGY_MODEL', 'model', 'gemini-3.8-flash-high');
+const CODEX_MODEL = knob('codex', 'PEER_CONSULT_CODEX_MODEL', 'default_model', 'gpt-6-astra');
+const CLAUDE_MODEL = knob('claude-code', 'PEER_CONSULT_CLAUDE_MODEL', 'default_model', 'claude-fable-5-1');
+const AGY_MODEL = knob('antigravity', 'PEER_CONSULT_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
 
 export const POLICY = Object.freeze({
   home: str('PEER_CONSULT_HOME', path.join(os.homedir(), '.peer-consult')),
@@ -229,8 +233,8 @@ export const POLICY = Object.freeze({
       available: isEnabled('codex', CODEX_BIN),
       note: disabledNote('codex'),
       model: CODEX_MODEL,
-      models: allowedFor('codex', CODEX_MODEL, 'PEER_CONSULT_CODEX_MODELS'),
-      modelsEnv: 'PEER_CONSULT_CODEX_MODELS',
+      allowedModels: allowedFor('codex', CODEX_MODEL, 'PEER_CONSULT_CODEX_ALLOWED_MODELS'),
+      allowedModelsEnv: 'PEER_CONSULT_CODEX_ALLOWED_MODELS',
       reasoningEffort: str('PEER_CONSULT_CODEX_EFFORT', 'medium'),
       label: 'Codex CLI',
       vendor: 'openai',
@@ -240,8 +244,8 @@ export const POLICY = Object.freeze({
       available: isEnabled('claude-code', CLAUDE_BIN),
       note: disabledNote('claude-code'),
       model: CLAUDE_MODEL,
-      models: allowedFor('claude-code', CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_MODELS'),
-      modelsEnv: 'PEER_CONSULT_CLAUDE_MODELS',
+      allowedModels: allowedFor('claude-code', CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_ALLOWED_MODELS'),
+      allowedModelsEnv: 'PEER_CONSULT_CLAUDE_ALLOWED_MODELS',
       label: 'Claude Code CLI',
       vendor: 'anthropic',
       maxBudgetUsd: num('PEER_CONSULT_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
@@ -252,8 +256,8 @@ export const POLICY = Object.freeze({
       note: disabledNote('antigravity'),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
-      models: allowedFor('antigravity', AGY_MODEL, 'PEER_CONSULT_AGY_MODELS'),
-      modelsEnv: 'PEER_CONSULT_AGY_MODELS',
+      allowedModels: allowedFor('antigravity', AGY_MODEL, 'PEER_CONSULT_AGY_ALLOWED_MODELS'),
+      allowedModelsEnv: 'PEER_CONSULT_AGY_ALLOWED_MODELS',
       label: 'Antigravity CLI',
       vendor: 'google',
       // Where the real credentials live is credentialsHome() below, not a

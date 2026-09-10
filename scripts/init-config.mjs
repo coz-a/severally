@@ -34,11 +34,11 @@ export function renderConfig() {
     '  // Read once at server start -- restart the client after editing.',
     '  //',
     '  // Per target, all optional:',
-    '  //   enabled   false to exclude a consultant whose CLI is installed -- e.g. a rate-limited account',
-    '  //   note      why it is off; returned to whoever asks for that consultant',
-    '  //   bin       a CLI that is not on PATH, or a specific build',
-    '  //   model     this consultant\'s default model',
-    '  //   models    models a request may name, on top of the always-allowed default',
+    '  //   enabled          false to exclude a consultant whose CLI is installed -- e.g. a rate-limited account',
+    '  //   note             why it is off; returned to whoever asks for that consultant',
+    '  //   bin              a CLI that is not on PATH, or a specific build',
+    '  //   default_model    the model this consultant runs unless a request names another',
+    '  //   allowed_models   the models a request MAY name; the default above is always allowed',
     '  "targets": {',
   ];
   TARGETS.forEach((id, i) => {
@@ -97,7 +97,7 @@ function main() {
       : `   ${id.padEnd(12)} ${t.cli} not found -- excluded automatically, no config needed`);
   }
   console.log('');
-  console.log('per target: enabled (true/false)  note (why it is off)  bin (path)  model (id)  models (list)');
+  console.log('per target: enabled  note  bin  default_model  allowed_models');
   console.log('   e.g.  "codex": { "enabled": false, "note": "rate-limited until 15:00" }');
   console.log('   more: config.example.json, README §4.5. Restart the client after editing.');
   console.log('   comments and trailing commas are fine; name it config.jsonc if your editor prefers that');

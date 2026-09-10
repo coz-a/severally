@@ -169,7 +169,7 @@ consult_list({ limit? })    -> 直近の相談一覧
 | `followup_to` | – | 初回 `null`、追加相談は先行ジョブの `job_id` |
 
 **モデルの指定**（`<target>:<model>`）は、ユーザーが名指ししたときだけ使う。指定できるのは運用者が
-`PEER_CONSULT_<TARGET>_MODELS` で許可したモデルだけで、既定モデルは常に許可される。書き方は緩く、
+`PEER_CONSULT_<TARGET>_ALLOWED_MODELS` で許可したモデルだけで、既定モデルは常に許可される。書き方は緩く、
 大小文字・空白を無視したうえで許可リストに**一意に**部分一致すればよい（`claude:opus` → `claude-opus-5`）。
 許可外は起動前に `model_not_allowed`、2つに該当する場合は候補を挙げて `model_ambiguous` として拒否し、
 黙って一方を選ぶことはしない。現在許可されているモデルは `consult_start` のツール説明文に列挙される。
@@ -278,8 +278,9 @@ node scripts/init-config.mjs --force   # 既存を置き換える
 ```jsonc
 {
   // peer-consult configuration. Comments and trailing commas are allowed.
-  //   enabled   false to exclude a consultant whose CLI is installed
-  //   note      why it is off; returned to whoever asks for that consultant
+  //   enabled          false to exclude a consultant whose CLI is installed
+  //   default_model    the model it runs unless a request names another
+  //   allowed_models   the models a request MAY name
   //   ...
   "targets": {
     // codex found, default model gpt-6-astra
@@ -307,8 +308,8 @@ node scripts/init-config.mjs --force   # 既存を置き換える
 | `enabled` | 省略時は自動検出（CLI が PATH にあるか）。**CLI は入っているがレート制限などで使いたくない場合は `false`** |
 | `note` | 使えない理由。相談を拒否するときに呼び出し側へそのまま返る（例: `"rate-limited until 15:00"`）|
 | `bin` | 実行ファイル名またはパス |
-| `model` | 既定モデル |
-| `models` | リクエストで指定を許すモデル（既定モデルは常に許可） |
+| `default_model` | その相談相手が既定で使うモデル |
+| `allowed_models` | リクエストが**指名してよい**モデル。`default_model` は常に許可されるので、追加分だけ書く |
 
 **優先順位は env > 設定ファイル > 自動検出 > 既定値**（knob 単位）。`PEER_CONSULT_TARGETS=codex,claude-code`
 のように env で有効な相手を列挙した場合は、それが唯一の集合になる（設定ファイルの `enabled` より優先）。
@@ -325,14 +326,14 @@ node scripts/init-config.mjs --force   # 既存を置き換える
 |---|---|---|
 | `PEER_CONSULT_CODEX_BIN` | `codex` | – |
 | `PEER_CONSULT_CODEX_MODEL` | `gpt-6-astra` | – |
-| `PEER_CONSULT_CODEX_MODELS` | –（既定モデルのみ） | リクエストで指定を許すモデルをカンマ区切りで追加 |
+| `PEER_CONSULT_CODEX_ALLOWED_MODELS` | –（既定モデルのみ） | リクエストで指定を許すモデルをカンマ区切りで追加 |
 | `PEER_CONSULT_CODEX_EFFORT` | `medium` | – |
 | `PEER_CONSULT_CLAUDE_BIN` | `claude` | – |
 | `PEER_CONSULT_CLAUDE_MODEL` | `claude-fable-5-1` | – |
-| `PEER_CONSULT_CLAUDE_MODELS` | –（既定モデルのみ） | 同上（例: `claude-opus-5,claude-sonnet-5`）|
+| `PEER_CONSULT_CLAUDE_ALLOWED_MODELS` | –（既定モデルのみ） | 同上（例: `claude-opus-5,claude-sonnet-5`）|
 | `PEER_CONSULT_AGY_BIN` | `agy` | – |
 | `PEER_CONSULT_AGY_MODEL` | `gemini-3.8-flash-high`（reasoning effort込みのモデル名。`--effort` は渡さない） | – |
-| `PEER_CONSULT_AGY_MODELS` | –（既定モデルのみ） | 同上 |
+| `PEER_CONSULT_AGY_ALLOWED_MODELS` | –（既定モデルのみ） | 同上 |
 | `PEER_CONSULT_AGY_CRED_HOME` | 実行ユーザの `$HOME`（合成 HOME に symlink するトークンの取得元） | – |
 | `PEER_CONSULT_TIMEOUT_MS` | 600000 | 1000–1800000 |
 | `PEER_CONSULT_MAX_ROUNDS` | 3（初回1＋追加2） | 1–5 |

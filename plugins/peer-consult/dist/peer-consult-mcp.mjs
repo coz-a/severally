@@ -35817,7 +35817,7 @@ function resolveTarget(raw) {
   return Object.hasOwn(TARGET_ALIASES, key) ? TARGET_ALIASES[key] : null;
 }
 function resolveModel(target, wanted) {
-  const allowed = POLICY.targets[target]?.models ?? [];
+  const allowed = POLICY.targets[target]?.allowedModels ?? [];
   if (typeof wanted !== "string" || wanted === "") return null;
   if (allowed.includes(wanted)) return { model: wanted };
   const key = wanted.trim().toLowerCase().replace(/[\s_]+/g, "-");
@@ -35848,7 +35848,8 @@ var knob = (id2, envName, key, dflt) => {
 };
 var allowedFor = (id2, dflt, envName) => {
   const fromEnv = list(envName);
-  const fromCfg = Array.isArray(cfgTarget(id2).models) ? cfgTarget(id2).models.filter((m) => typeof m === "string") : [];
+  const cfgAllowed = cfgTarget(id2).allowed_models;
+  const fromCfg = Array.isArray(cfgAllowed) ? cfgAllowed.filter((m) => typeof m === "string") : [];
   const extra = fromEnv.length ? fromEnv : fromCfg;
   return Object.freeze([.../* @__PURE__ */ new Set([dflt, ...extra])]);
 };
@@ -35866,9 +35867,9 @@ var isEnabled = (id2, cli) => {
 var CODEX_BIN = knob("codex", "PEER_CONSULT_CODEX_BIN", "bin", "codex");
 var CLAUDE_BIN = knob("claude-code", "PEER_CONSULT_CLAUDE_BIN", "bin", "claude");
 var AGY_BIN = knob("antigravity", "PEER_CONSULT_AGY_BIN", "bin", "agy");
-var CODEX_MODEL = knob("codex", "PEER_CONSULT_CODEX_MODEL", "model", "gpt-6-astra");
-var CLAUDE_MODEL = knob("claude-code", "PEER_CONSULT_CLAUDE_MODEL", "model", "claude-fable-5-1");
-var AGY_MODEL = knob("antigravity", "PEER_CONSULT_AGY_MODEL", "model", "gemini-3.8-flash-high");
+var CODEX_MODEL = knob("codex", "PEER_CONSULT_CODEX_MODEL", "default_model", "gpt-6-astra");
+var CLAUDE_MODEL = knob("claude-code", "PEER_CONSULT_CLAUDE_MODEL", "default_model", "claude-fable-5-1");
+var AGY_MODEL = knob("antigravity", "PEER_CONSULT_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
 var POLICY = Object.freeze({
   home: str("PEER_CONSULT_HOME", path.join(os.homedir(), ".peer-consult")),
   targets: Object.freeze({
@@ -35877,8 +35878,8 @@ var POLICY = Object.freeze({
       available: isEnabled("codex", CODEX_BIN),
       note: disabledNote("codex"),
       model: CODEX_MODEL,
-      models: allowedFor("codex", CODEX_MODEL, "PEER_CONSULT_CODEX_MODELS"),
-      modelsEnv: "PEER_CONSULT_CODEX_MODELS",
+      allowedModels: allowedFor("codex", CODEX_MODEL, "PEER_CONSULT_CODEX_ALLOWED_MODELS"),
+      allowedModelsEnv: "PEER_CONSULT_CODEX_ALLOWED_MODELS",
       reasoningEffort: str("PEER_CONSULT_CODEX_EFFORT", "medium"),
       label: "Codex CLI",
       vendor: "openai"
@@ -35888,8 +35889,8 @@ var POLICY = Object.freeze({
       available: isEnabled("claude-code", CLAUDE_BIN),
       note: disabledNote("claude-code"),
       model: CLAUDE_MODEL,
-      models: allowedFor("claude-code", CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_MODELS"),
-      modelsEnv: "PEER_CONSULT_CLAUDE_MODELS",
+      allowedModels: allowedFor("claude-code", CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_ALLOWED_MODELS"),
+      allowedModelsEnv: "PEER_CONSULT_CLAUDE_ALLOWED_MODELS",
       label: "Claude Code CLI",
       vendor: "anthropic",
       maxBudgetUsd: num("PEER_CONSULT_CLAUDE_MAX_BUDGET_USD", 2, 0.05, 20)
@@ -35900,8 +35901,8 @@ var POLICY = Object.freeze({
       note: disabledNote("antigravity"),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
-      models: allowedFor("antigravity", AGY_MODEL, "PEER_CONSULT_AGY_MODELS"),
-      modelsEnv: "PEER_CONSULT_AGY_MODELS",
+      allowedModels: allowedFor("antigravity", AGY_MODEL, "PEER_CONSULT_AGY_ALLOWED_MODELS"),
+      allowedModelsEnv: "PEER_CONSULT_AGY_ALLOWED_MODELS",
       label: "Antigravity CLI",
       vendor: "google"
       // Where the real credentials live is credentialsHome() below, not a
@@ -36117,7 +36118,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
     const match = resolveModel(target, wanted);
     if (match === null) {
       throw new RequestError(
-        `consultant "${target}" is not configured to run model ${JSON.stringify(wanted)}; allowed: ${t.models.join(", ")}. The operator adds more by setting ${t.modelsEnv}`,
+        `consultant "${target}" is not configured to run model ${JSON.stringify(wanted)}; allowed: ${t.allowedModels.join(", ")}. The operator adds more by setting ${t.allowedModelsEnv}`,
         "model_not_allowed"
       );
     }
@@ -36129,7 +36130,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
     }
     models[target] = match.model;
   });
-  req.models = models;
+  req.modelFor = models;
   req.targets = unique;
   req.target = unique[0];
   req.fanout = unique.length > 1;
@@ -37264,7 +37265,7 @@ var JobManager = class {
         status: "queued",
         // The model the request asked for, already checked against the
         // operator's allowlist; falls back to the target's default.
-        model: req.models?.[target] ?? POLICY.targets[target].model,
+        model: req.modelFor?.[target] ?? POLICY.targets[target].model,
         created_at: (/* @__PURE__ */ new Date()).toISOString(),
         started_at: null,
         finished_at: null,
@@ -37636,7 +37637,7 @@ targets: ask up to 3 consultants the same question at once (mutually exclusive w
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
         A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
         consultant is allowed to run is set by the operator, and this server currently allows:
-${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].models.join(", ")}`).join("\n")}
+${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].allowedModels.join(", ")}`).join("\n")}
         Only pass a model when the user asked for one; a name outside the list is refused before the
         consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can

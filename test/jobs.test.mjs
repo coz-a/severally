@@ -8,7 +8,7 @@ import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, waitFor 
 // A second codex model, so the model-suffix test has something besides the
 // default to name. POLICY freezes at first import, so this has to be set here
 // rather than inside the test.
-const home = sandboxEnv({ PEER_CONSULT_CODEX_MODELS: 'gpt-6-astra-mini' });
+const home = sandboxEnv({ PEER_CONSULT_CODEX_ALLOWED_MODELS: 'gpt-6-astra-mini' });
 const { JobManager } = await import('../src/jobs.mjs');
 const { POLICY } = await import('../src/policy.mjs');
 

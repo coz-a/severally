@@ -193,7 +193,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
     if (match === null) {
       throw new RequestError(
         `consultant "${target}" is not configured to run model ${JSON.stringify(wanted)}; `
-        + `allowed: ${t.models.join(', ')}. The operator adds more by setting ${t.modelsEnv}`,
+        + `allowed: ${t.allowedModels.join(', ')}. The operator adds more by setting ${t.allowedModelsEnv}`,
         'model_not_allowed',
       );
     }
@@ -206,7 +206,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
     }
     models[target] = match.model;
   });
-  req.models = models;
+  req.modelFor = models;
   req.targets = unique;
   req.target = unique[0]; // single-target consumers (brief, history, adapters) keep working
   req.fanout = unique.length > 1;
