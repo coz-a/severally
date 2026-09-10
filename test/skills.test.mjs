@@ -183,3 +183,18 @@ test('every skill offers the export for a decision that belongs in the repositor
     assert.match(text, /consult_export/, `${host} skill must mention how to keep the record in the repo`);
   }
 });
+
+test('every skill has the lead commit to a prediction before the consultant runs', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /prediction/, `${host} skill must show how to record a prediction`);
+    assert.match(text, /reflection/, `${host} skill must show how to record what the answer added`);
+  }
+});
+
+test('every skill offers the explore-then-review pair for a heavy decision', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /explore` first|explore first/i, `${host} skill must describe the pair`);
+  }
+});

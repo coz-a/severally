@@ -106,3 +106,27 @@ test('a fan-out prints the shared brief once and says so, instead of repeating i
   // is never read as a continuation of the first.
   assert.equal((markdown.match(/^## Round 1/gm) ?? []).length, 2);
 });
+
+test('the exported record carries what the lead expected and what the answer added', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({
+    prediction: { expected: 'proceed', worry: 'Only the retry cap really matters here.' },
+  }));
+  const view = await finish(mgr, started.job_id);
+  mgr.record({
+    job_id: view.job_id,
+    entries: [{ id: 'f1', verdict: 'confirmed' }],
+    reflection: { delta: 'The cap was expected; the cascading-load framing was not.', related_item_ids: ['f1'] },
+  });
+
+  const { markdown } = exportChain({ chain_id: view.chain_id });
+  assert.match(markdown, /Only the retry cap really matters here\./);
+  assert.match(markdown, /The cap was expected; the cascading-load framing was not\./);
+  // The prediction has to read as something written beforehand, or the record
+  // invites exactly the "I knew that all along" rewrite it exists to prevent.
+  assert.ok(
+    markdown.indexOf('Only the retry cap really matters here.') < markdown.indexOf('Stub consultant summary'),
+    'the prediction is printed before the answer it preceded',
+  );
+});

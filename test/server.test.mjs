@@ -215,3 +215,30 @@ test('exporting a consultation that is not in the history is refused', async () 
   assert.equal(payload(res).error, 'unknown_chain');
   await close();
 });
+
+test('a prediction goes in with the request and a reflection comes back with the record', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  const started = payload(await client.callTool({
+    name: 'consult_start',
+    arguments: { request: reviewRequest({ prediction: { expected: 'proceed', worry: 'The cap is the only real risk.' } }) },
+  }));
+  await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
+
+  const out = payload(await client.callTool({
+    name: 'consult_record',
+    arguments: { job_id: started.job_id, reflection: { delta: 'Expected the cap; the vacuum cost was new.', related_item_ids: ['f1'] } },
+  }));
+  assert.equal(out.prediction.expected, 'proceed');
+  assert.equal(out.reflection.delta, 'Expected the cap; the vacuum cost was new.');
+  await close();
+});
+
+test('the record tool offers no way to write a prediction after the fact', async () => {
+  const { client, close } = await connect();
+  const { tools } = await client.listTools();
+  const record = tools.find((t) => t.name === 'consult_record');
+  assert.equal(record.inputSchema.properties.prediction, undefined);
+  assert.ok(record.inputSchema.properties.reflection, 'but a reflection can be written afterwards');
+  await close();
+});

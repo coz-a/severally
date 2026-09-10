@@ -196,8 +196,25 @@ function roundSection(round, previousBrief) {
   head.push('### Brief as sent', '');
   const same = previousBrief && JSON.stringify(previousBrief) === JSON.stringify(round.brief);
   head.push(...(same ? ['*Identical to the brief above.*', ''] : briefSection(round.brief)));
+  // Printed between the brief and the answer, in the order it happened: what
+  // the lead expected before reading a word of the reply.
+  if (round.prediction) {
+    head.push('### What the lead expected, before the answer', '');
+    head.push(`- expected bottom line: ${round.prediction.expected}`);
+    head.push(`- biggest worry: ${round.prediction.worry}`);
+    head.push(`- written: ${round.prediction.recorded_at}`);
+    head.push('');
+  }
   head.push('### Answer', '');
   head.push(...answerSection(round));
+  if (round.reflection) {
+    head.push('### What the answer added', '');
+    head.push(round.reflection.delta);
+    if (round.reflection.related_item_ids?.length) {
+      head.push('', `Related points: ${round.reflection.related_item_ids.join(', ')}`);
+    }
+    head.push('');
+  }
   return head;
 }
 

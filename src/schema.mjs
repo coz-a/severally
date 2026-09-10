@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import {
-  POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds,
+  POLICY, TARGETS, TARGET_INPUTS, MODES, STANCES, artifactKinds,
   resolveTarget, resolveModel, availableTargets, unavailableReason, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
 } from './policy.mjs';
 
@@ -81,6 +81,18 @@ export const requestSchema = z
     success_criteria: z.array(trimmed(L.constraintMax, 'success_criteria[]')).max(L.constraintsMax).default([]),
     constraints: z.array(trimmed(L.constraintMax, 'constraints[]')).max(L.constraintsMax).default([]),
     context: contextSchema.default({ facts: [], counterpoints: [], artifacts: [] }),
+    // Written by the lead before the consultant is launched, kept on this
+    // machine, and deliberately outside `context`: everything in `context` is
+    // rendered into the brief, and this must never be. It is here rather than
+    // in a later call so that it cannot be written after the answer is read,
+    // which is the only thing that makes it a prediction.
+    prediction: z
+      .object({
+        expected: z.enum(STANCES).describe('the bottom line you expect to come back'),
+        worry: trimmed(2000, 'prediction.worry').describe('the one thing you are most worried about, in a sentence'),
+      })
+      .strict()
+      .nullish(),
     followup_to: z.string().trim().max(80).nullish(),
   })
   .strict();

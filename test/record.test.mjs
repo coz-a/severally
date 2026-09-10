@@ -181,3 +181,88 @@ test('once every point carries a verdict, the consultation stops asking to be cl
   ] });
   assert.doesNotMatch(mgr.view(view.job_id).next_step, /consult_record/);
 });
+
+const prediction = { expected: 'do_not_proceed', worry: 'The write amplification will sink the primary.' };
+
+test('a prediction written when the consultation starts is stored with the round', async () => {
+  const { view } = await completed({ prediction });
+  const stored = roundFile(view).prediction;
+  assert.equal(stored.expected, 'do_not_proceed');
+  assert.equal(stored.worry, 'The write amplification will sink the primary.');
+  assert.ok(stored.recorded_at, 'the record says when the prediction was written');
+  assert.ok(new Date(stored.recorded_at) <= new Date(roundFile(view).finished_at),
+    'a prediction is only a prediction if it predates the answer');
+});
+
+test('the prediction is never sent to the consultant', async () => {
+  const briefDir = fs.mkdtempSync(path.join(home, 'briefs-pred-'));
+  process.env.STUB_BRIEF_DIR = briefDir;
+  await completed({ prediction });
+  const withPrediction = fs.readFileSync(path.join(briefDir, 'codex.txt'), 'utf8');
+  await completed();
+  const without = fs.readFileSync(path.join(briefDir, 'codex.txt'), 'utf8');
+  delete process.env.STUB_BRIEF_DIR;
+
+  assert.doesNotMatch(withPrediction, /write amplification/i, 'the consultant must not see what the lead expects');
+  assert.doesNotMatch(withPrediction, /prediction/i);
+  // The four stance words are in the response schema either way, so the only
+  // assertion that means anything is that the brief did not change at all.
+  assert.equal(withPrediction, without, 'a prediction must not alter one byte of what is sent');
+});
+
+test('a consultation without a prediction is still a consultation', async () => {
+  const { view } = await completed();
+  assert.equal(roundFile(view).prediction, null);
+});
+
+test('a prediction cannot be written once the answer is in', async () => {
+  const { mgr, view } = await completed({ prediction });
+  assert.throws(
+    () => mgr.record({ job_id: view.job_id, prediction: { expected: 'proceed', worry: 'changed my mind' } }),
+    (err) => err.code === 'unknown_field',
+  );
+  assert.equal(roundFile(view).prediction.expected, 'do_not_proceed', 'the stored prediction is untouched');
+});
+
+test('what the answer added is recorded in the lead\'s own words, not as a hit or a miss', async () => {
+  const { mgr, view } = await completed({ prediction });
+  const out = mgr.record({
+    job_id: view.job_id,
+    reflection: { delta: 'The retry cap was expected; the autovacuum angle was not.', related_item_ids: ['f1', 'c1'] },
+  });
+  assert.equal(out.reflection.delta, 'The retry cap was expected; the autovacuum angle was not.');
+  assert.deepEqual(out.reflection.related_item_ids, ['f1', 'c1']);
+  const stored = roundFile(view).reflection;
+  assert.equal(stored.delta, 'The retry cap was expected; the autovacuum angle was not.');
+  assert.ok(stored.recorded_at);
+});
+
+test('a reflection can only point at points the consultant actually made', async () => {
+  const { mgr, view } = await completed({ prediction });
+  assert.throws(
+    () => mgr.record({ job_id: view.job_id, reflection: { delta: 'x', related_item_ids: ['f4'] } }),
+    (err) => err.code === 'unknown_entry_id',
+  );
+});
+
+test('there is nothing to reflect on when no advice arrived', async () => {
+  process.env.STUB_BEHAVIOR = 'usage_limit';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ prediction }));
+  await finish(mgr, started.job_id);
+  assert.throws(
+    () => mgr.record({ job_id: started.job_id, reflection: { delta: 'nothing came back' } }),
+    (err) => err.code === 'no_result',
+  );
+});
+
+test('consult_list says whether the prediction and the reflection are there', async () => {
+  const { mgr, view } = await completed({ prediction });
+  const before = mgr.list().find((j) => j.job_id === view.job_id);
+  assert.equal(before.predicted, true);
+  assert.equal(before.reflected, false);
+
+  mgr.record({ job_id: view.job_id, reflection: { delta: 'Nothing new; the cap was already my worry.' } });
+  const after = mgr.list().find((j) => j.job_id === view.job_id);
+  assert.equal(after.reflected, true);
+});

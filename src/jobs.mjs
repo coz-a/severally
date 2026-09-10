@@ -67,6 +67,8 @@ export class JobManager {
       model: job.model,
       question: job.question,
       brief: job.brief,
+      prediction: job.prediction ?? null,
+      reflection: job.reflection ?? null,
       record: job.record ?? null,
       created_at: job.created_at,
       started_at: job.started_at,
@@ -95,6 +97,8 @@ export class JobManager {
       ? (ADAPTERS[job.target]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null)
       : null;
     rec.record = job.record ? recordSummary(job) : null;
+    rec.prediction = job.prediction ?? null;
+    rec.reflection = job.reflection ?? null;
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -119,6 +123,8 @@ export class JobManager {
           summary: j.result ? j.result.summary.slice(0, 200) : null,
           recorded: Boolean(j.record),
           verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
+          predicted: Boolean(j.prediction),
+          reflected: Boolean(j.reflection),
         };
       });
   }
@@ -189,6 +195,13 @@ export class JobManager {
         // (renderBrief), so this is the same text it was actually sent.
         question: redact(req.question),
         brief: briefRecord(req),
+        // Written before the consultant is launched and never sent to it. The
+        // timestamp is the server's, so the record shows the prediction
+        // predates the answer rather than asking anyone to take that on trust.
+        prediction: req.prediction
+          ? { expected: req.prediction.expected, worry: redact(req.prediction.worry), recorded_at: new Date().toISOString() }
+          : null,
+        reflection: null,
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: 'queued',
@@ -466,7 +479,22 @@ export class JobManager {
   // consultant did not produce and a word outside VERDICTS, then stores what
   // was written. It never decides that a finding was adopted, and it never
   // fills in a verdict the lead did not write.
-  record({ job_id: jobId, entries }) {
+  record(input = {}) {
+    const allowed = ['job_id', 'entries', 'reflection'];
+    const unknown = Object.keys(input).filter((k) => !allowed.includes(k));
+    if (unknown.length) {
+      throw new RequestError(
+        `${unknown.map((k) => `"${k}"`).join(', ')} cannot be written here; this call takes ${allowed.join(', ')}`
+        + (unknown.includes('prediction')
+          ? '. A prediction is written when the consultation starts (consult_start\'s `prediction`) and cannot be added or changed afterwards -- that is what makes it a prediction'
+          : ''),
+        'unknown_field',
+      );
+    }
+    const { job_id: jobId, entries, reflection } = input;
+    if (entries === undefined && reflection === undefined) {
+      throw new RequestError('pass entries (verdicts on specific points), reflection (what the answer added), or both', 'nothing_to_record');
+    }
     const job = this.jobs.get(jobId);
     if (!job) {
       throw new RequestError(
@@ -480,7 +508,7 @@ export class JobManager {
         'no_result',
       );
     }
-    if (!Array.isArray(entries) || entries.length === 0) {
+    if (entries !== undefined && (!Array.isArray(entries) || entries.length === 0)) {
       throw new RequestError('entries must be a non-empty array of { id, verdict, effect?, note? }', 'entries_required');
     }
 
@@ -488,7 +516,7 @@ export class JobManager {
     const now = new Date().toISOString();
     const merged = new Map((job.record?.entries ?? []).map((e) => [e.id, e]));
 
-    for (const entry of entries) {
+    for (const entry of entries ?? []) {
       const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
       if (!ids.includes(id)) {
         throw new RequestError(
@@ -512,10 +540,34 @@ export class JobManager {
       });
     }
 
-    job.record = {
-      updated_at: now,
-      entries: ids.filter((id) => merged.has(id)).map((id) => merged.get(id)),
-    };
+    // What the answer added over what the lead already expected, in the lead's
+    // own words. Deliberately free text with no hit/miss label: a point the
+    // lead predicted can still arrive with the evidence that settles it, and a
+    // surprise can still be wrong, so a match/miss verdict would rate the
+    // consultation on the wrong axis.
+    if (reflection !== undefined) {
+      const delta = text(reflection?.delta);
+      if (!delta) {
+        throw new RequestError('reflection.delta must say what the answer added, or that it added nothing', 'delta_required');
+      }
+      const related = Array.isArray(reflection?.related_item_ids) ? reflection.related_item_ids : [];
+      for (const id of related) {
+        if (!ids.includes(id)) {
+          throw new RequestError(
+            `"${id}" is not a point in this answer; relate the reflection to one of: ${ids.join(', ')}`,
+            'unknown_entry_id',
+          );
+        }
+      }
+      job.reflection = { delta, related_item_ids: related, recorded_at: now };
+    }
+
+    if (entries !== undefined) {
+      job.record = {
+        updated_at: now,
+        entries: ids.filter((id) => merged.has(id)).map((id) => merged.get(id)),
+      };
+    }
     // An update to a round that already happened, so the index line stays as it
     // was: the history has one line per consultation, not one per edit.
     try { store.persistRound(this.#record(job), { appendIndex: false }); } catch { /* history is best effort */ }
@@ -524,7 +576,9 @@ export class JobManager {
       job_id: job.job_id,
       chain_id: job.chain_id,
       round: job.round,
-      record: recordSummary(job),
+      record: job.record ? recordSummary(job) : null,
+      prediction: job.prediction ?? null,
+      reflection: job.reflection ?? null,
     };
   }
 

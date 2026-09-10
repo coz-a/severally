@@ -3,7 +3,7 @@
 // is a success with evidence_basis="thin"/"insufficient" -- that is a different
 // outcome from a run that never produced a usable answer.
 
-import { POLICY } from './policy.mjs';
+import { POLICY, STANCES } from './policy.mjs';
 import { RESULT_KEYS } from './result-schema.mjs';
 import { redact } from './redact.mjs';
 
@@ -26,7 +26,6 @@ function clampText(v, max) {
 
 const LEVELS = ['high', 'medium', 'low'];
 const BASIS = ['sufficient', 'thin', 'insufficient'];
-const STANCES = ['proceed', 'do_not_proceed', 'alternative', 'undetermined'];
 
 function level(v, fallback = null) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';

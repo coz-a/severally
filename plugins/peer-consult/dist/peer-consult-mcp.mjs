@@ -35836,6 +35836,7 @@ function detectCaller(env = process.env) {
 }
 var MODES = ["explore", "review", "debate"];
 var VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
+var STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
 var list = (name) => {
   const raw = process.env[name];
   if (raw === void 0 || raw === "") return [];
@@ -36052,6 +36053,15 @@ var requestSchema = external_exports.object({
   success_criteria: external_exports.array(trimmed(L.constraintMax, "success_criteria[]")).max(L.constraintsMax).default([]),
   constraints: external_exports.array(trimmed(L.constraintMax, "constraints[]")).max(L.constraintsMax).default([]),
   context: contextSchema.default({ facts: [], counterpoints: [], artifacts: [] }),
+  // Written by the lead before the consultant is launched, kept on this
+  // machine, and deliberately outside `context`: everything in `context` is
+  // rendered into the brief, and this must never be. It is here rather than
+  // in a later call so that it cannot be written after the answer is read,
+  // which is the only thing that makes it a prediction.
+  prediction: external_exports.object({
+    expected: external_exports.enum(STANCES).describe("the bottom line you expect to come back"),
+    worry: trimmed(2e3, "prediction.worry").describe("the one thing you are most worried about, in a sentence")
+  }).strict().nullish(),
   followup_to: external_exports.string().trim().max(80).nullish()
 }).strict();
 function charCount(req) {
@@ -36472,7 +36482,6 @@ function clampText(v, max) {
 }
 var LEVELS = ["high", "medium", "low"];
 var BASIS = ["sufficient", "thin", "insufficient"];
-var STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
 function level(v, fallback = null) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
   return LEVELS.includes(t) ? t : fallback;
@@ -37258,6 +37267,8 @@ var JobManager = class {
       model: job.model,
       question: job.question,
       brief: job.brief,
+      prediction: job.prediction ?? null,
+      reflection: job.reflection ?? null,
       record: job.record ?? null,
       created_at: job.created_at,
       started_at: job.started_at,
@@ -37280,6 +37291,8 @@ var JobManager = class {
     rec.cancellable = job.status === "running" || job.status === "queued";
     rec.progress = job.status === "running" && job._handle ? ADAPTERS[job.target]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null : null;
     rec.record = job.record ? recordSummary(job) : null;
+    rec.prediction = job.prediction ?? null;
+    rec.reflection = job.reflection ?? null;
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -37299,7 +37312,9 @@ var JobManager = class {
         duration_ms: j.duration_ms,
         summary: j.result ? j.result.summary.slice(0, 200) : null,
         recorded: Boolean(j.record),
-        verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null
+        verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
+        predicted: Boolean(j.prediction),
+        reflected: Boolean(j.reflection)
       };
     });
   }
@@ -37359,6 +37374,11 @@ var JobManager = class {
         // (renderBrief), so this is the same text it was actually sent.
         question: redact(req.question),
         brief: briefRecord(req),
+        // Written before the consultant is launched and never sent to it. The
+        // timestamp is the server's, so the record shows the prediction
+        // predates the answer rather than asking anyone to take that on trust.
+        prediction: req.prediction ? { expected: req.prediction.expected, worry: redact(req.prediction.worry), recorded_at: (/* @__PURE__ */ new Date()).toISOString() } : null,
+        reflection: null,
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: "queued",
@@ -37577,7 +37597,19 @@ var JobManager = class {
   // consultant did not produce and a word outside VERDICTS, then stores what
   // was written. It never decides that a finding was adopted, and it never
   // fills in a verdict the lead did not write.
-  record({ job_id: jobId, entries }) {
+  record(input2 = {}) {
+    const allowed = ["job_id", "entries", "reflection"];
+    const unknown2 = Object.keys(input2).filter((k) => !allowed.includes(k));
+    if (unknown2.length) {
+      throw new RequestError(
+        `${unknown2.map((k) => `"${k}"`).join(", ")} cannot be written here; this call takes ${allowed.join(", ")}` + (unknown2.includes("prediction") ? ". A prediction is written when the consultation starts (consult_start's `prediction`) and cannot be added or changed afterwards -- that is what makes it a prediction" : ""),
+        "unknown_field"
+      );
+    }
+    const { job_id: jobId, entries, reflection } = input2;
+    if (entries === void 0 && reflection === void 0) {
+      throw new RequestError("pass entries (verdicts on specific points), reflection (what the answer added), or both", "nothing_to_record");
+    }
     const job = this.jobs.get(jobId);
     if (!job) {
       throw new RequestError(
@@ -37591,13 +37623,13 @@ var JobManager = class {
         "no_result"
       );
     }
-    if (!Array.isArray(entries) || entries.length === 0) {
+    if (entries !== void 0 && (!Array.isArray(entries) || entries.length === 0)) {
       throw new RequestError("entries must be a non-empty array of { id, verdict, effect?, note? }", "entries_required");
     }
     const ids = recordableIds(job.result);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const merged = new Map((job.record?.entries ?? []).map((e) => [e.id, e]));
-    for (const entry of entries) {
+    for (const entry of entries ?? []) {
       const id2 = typeof entry?.id === "string" ? entry.id.trim() : "";
       if (!ids.includes(id2)) {
         throw new RequestError(
@@ -37620,10 +37652,28 @@ var JobManager = class {
         recorded_at: now
       });
     }
-    job.record = {
-      updated_at: now,
-      entries: ids.filter((id2) => merged.has(id2)).map((id2) => merged.get(id2))
-    };
+    if (reflection !== void 0) {
+      const delta = text(reflection?.delta);
+      if (!delta) {
+        throw new RequestError("reflection.delta must say what the answer added, or that it added nothing", "delta_required");
+      }
+      const related = Array.isArray(reflection?.related_item_ids) ? reflection.related_item_ids : [];
+      for (const id2 of related) {
+        if (!ids.includes(id2)) {
+          throw new RequestError(
+            `"${id2}" is not a point in this answer; relate the reflection to one of: ${ids.join(", ")}`,
+            "unknown_entry_id"
+          );
+        }
+      }
+      job.reflection = { delta, related_item_ids: related, recorded_at: now };
+    }
+    if (entries !== void 0) {
+      job.record = {
+        updated_at: now,
+        entries: ids.filter((id2) => merged.has(id2)).map((id2) => merged.get(id2))
+      };
+    }
     try {
       persistRound(this.#record(job), { appendIndex: false });
     } catch {
@@ -37632,7 +37682,9 @@ var JobManager = class {
       job_id: job.job_id,
       chain_id: job.chain_id,
       round: job.round,
-      record: recordSummary(job)
+      record: job.record ? recordSummary(job) : null,
+      prediction: job.prediction ?? null,
+      reflection: job.reflection ?? null
     };
   }
   async wait(jobId, waitMs) {
@@ -37997,8 +38049,23 @@ function roundSection(round, previousBrief) {
   head.push("### Brief as sent", "");
   const same = previousBrief && JSON.stringify(previousBrief) === JSON.stringify(round.brief);
   head.push(...same ? ["*Identical to the brief above.*", ""] : briefSection(round.brief));
+  if (round.prediction) {
+    head.push("### What the lead expected, before the answer", "");
+    head.push(`- expected bottom line: ${round.prediction.expected}`);
+    head.push(`- biggest worry: ${round.prediction.worry}`);
+    head.push(`- written: ${round.prediction.recorded_at}`);
+    head.push("");
+  }
   head.push("### Answer", "");
   head.push(...answerSection(round));
+  if (round.reflection) {
+    head.push("### What the answer added", "");
+    head.push(round.reflection.delta);
+    if (round.reflection.related_item_ids?.length) {
+      head.push("", `Related points: ${round.reflection.related_item_ids.join(", ")}`);
+    }
+    head.push("");
+  }
   return head;
 }
 function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
@@ -38076,7 +38143,12 @@ mode:
 
 The consultant starts in an empty working directory and is not told where your repository is: put every fact
 it needs into context.facts and paste the relevant passages into context.artifacts. Model, permissions, round
-count, timeout and size caps are fixed by this server and cannot be raised from a request.`;
+count, timeout and size caps are fixed by this server and cannot be raised from a request.
+
+prediction: optional -- { expected, worry }: the bottom line you expect back and, in one sentence, what you are
+        most worried about. Stored with the consultation and NEVER sent to the consultant. It can only be
+        written here, before the consultant runs, so that afterwards you cannot rewrite what you thought
+        beforehand; consult_record takes the other half (reflection) once you have read the answer.`;
 function createServer(manager = new JobManager()) {
   const server = new McpServer(
     { name: "peer-consult", version: "1.1.0" },
@@ -38149,7 +38221,7 @@ function createServer(manager = new JobManager()) {
     "consult_record",
     {
       title: "Record what checking a point showed",
-      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.peer-consult/history, which is what makes the decision readable a month from now.',
+      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.peer-consult/history, which is what makes the decision readable a month from now. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
       inputSchema: {
         job_id: external_exports.string().min(1),
         entries: external_exports.array(external_exports.object({
@@ -38157,12 +38229,20 @@ function createServer(manager = new JobManager()) {
           verdict: external_exports.enum(VERDICTS),
           effect: external_exports.string().max(4e3).optional().describe("what it changed about your decision, or why it is still unverified"),
           note: external_exports.string().max(4e3).optional().describe("what you checked and what you found")
-        })).min(1).max(100)
+        })).min(1).max(100).optional(),
+        reflection: external_exports.object({
+          delta: external_exports.string().min(1).max(4e3).describe('what the answer added over what you already expected -- including "nothing new", which is a real outcome'),
+          related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("the points this is about: f1, u1, c1 ...")
+        }).optional().describe("written after you have read the answer. There is deliberately no hit/miss label: a point you predicted can still arrive with the evidence that settles it, and a surprise can still be wrong.")
       }
     },
-    async ({ job_id, entries }) => {
+    async ({ job_id, entries, reflection }) => {
       try {
-        return ok(manager.record({ job_id, entries }));
+        return ok(manager.record({
+          job_id,
+          ...entries === void 0 ? {} : { entries },
+          ...reflection === void 0 ? {} : { reflection }
+        }));
       } catch (err) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });

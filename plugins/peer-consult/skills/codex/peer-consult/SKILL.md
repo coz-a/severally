@@ -85,6 +85,13 @@ questions where an independent answer could change what you do.
 `explore` is anchoring-sensitive: the server rejects a first-round `explore` that carries a proposal. That is
 the point — if you want your plan critiqued, that is `review`.
 
+**For a decision heavy enough to be worth two consultations**, ask `explore` first on the facts alone, then
+`review` with the proposal, and read what the first raised that the second never did. Measured on this
+project: repeat runs of the identical brief did not move the bottom line, while withholding the proposal
+once did, and the withheld run was the only one to question what the decision was even about. A review
+answer is organised around the proposal it was handed. Two consultations, so spend it on the decisions that
+earn it.
+
 ## Before you call it
 
 Do the organising work yourself; a vague brief gets a vague answer.
@@ -100,6 +107,13 @@ Do the organising work yourself; a vague brief gets a vague answer.
 5. **Separate imposed constraints from your own assumptions.** A constraint is read as fixed and will not be
    challenged; if "we cannot change the schema" is your call rather than a given, put it under `facts` as a
    decision with its reason, or leave it out and let the consultant test it. Only what you wrote can be doubted.
+
+**Write down what you expect, before you send it.** Pass `prediction: { expected, worry }` in the request:
+the bottom line you expect (`proceed` / `do_not_proceed` / `alternative` / `undetermined`) and, in one
+sentence, the thing you are most worried about. It is stored with the consultation and **never sent to the
+consultant** — it exists so that afterwards you cannot quietly rewrite what you thought beforehand. It can
+only be written here, before the consultant runs; there is no way to add one later. Skip it when you have no
+expectation to commit to, rather than inventing one.
 
 **Start small.** For a first consultation: one consultant, `mode: "review"`, the proposal in a paragraph, the
 few facts it rests on, and one diff or code excerpt. That is enough to get an answer in the shape described
@@ -230,6 +244,21 @@ consult_record({ job_id: "...", entries: [
   { id: "c1", verdict: "unverified", effect: "load test deferred to Thursday's window" }
 ]})
 ```
+
+If you sent a prediction, add what the answer actually added, in the same call:
+
+```
+consult_record({ job_id: "...", reflection: {
+  delta: "expected the retry cap; the autovacuum cost was new to me",
+  related_item_ids: ["f2"]
+}})
+```
+
+There is deliberately **no hit/miss label**, and you should not invent one in your report either. A point you
+predicted can still arrive with the evidence that finally settles it, and a surprise can still turn out to be
+wrong — so "it matched what I expected" is not the same as "the consultation was worthless", and "it
+surprised me" is not the same as "I had a blind spot". Write what changed in your understanding, or write
+that nothing did, which is a real result.
 
 The ids are the ones in the answer: findings `f1`, `f2` …, unknowns `u1` …, next_checks `c1` … . The verdict
 is **what checking showed, not whether you agreed**: `confirmed` (it holds here), `not_applicable` (true in

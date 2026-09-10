@@ -173,6 +173,11 @@ export const MODES = ['explore', 'review', 'debate'];
 // counts the words; it never derives one from anything else the lead wrote.
 export const VERDICTS = ['unverified', 'confirmed', 'not_applicable', 'unverifiable'];
 
+// The consultant's own one-word bottom line. Also what the lead may predict
+// before asking -- the same vocabulary, so a prediction and an answer can be
+// read side by side without anyone translating between two scales.
+export const STANCES = ['proceed', 'do_not_proceed', 'alternative', 'undetermined'];
+
 // A request may name a model, but only one the operator has listed. The
 // default is always allowed; anything else has to be added to the target's
 // PEER_CONSULT_*_ALLOWED_MODELS list, so a runaway caller cannot reach a model the

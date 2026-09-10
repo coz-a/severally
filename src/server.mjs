@@ -47,7 +47,12 @@ mode:
 
 The consultant starts in an empty working directory and is not told where your repository is: put every fact
 it needs into context.facts and paste the relevant passages into context.artifacts. Model, permissions, round
-count, timeout and size caps are fixed by this server and cannot be raised from a request.`;
+count, timeout and size caps are fixed by this server and cannot be raised from a request.
+
+prediction: optional -- { expected, worry }: the bottom line you expect back and, in one sentence, what you are
+        most worried about. Stored with the consultation and NEVER sent to the consultant. It can only be
+        written here, before the consultant runs, so that afterwards you cannot rewrite what you thought
+        beforehand; consult_record takes the other half (reflection) once you have read the answer.`;
 
 export function createServer(manager = new JobManager()) {
   const server = new McpServer(
@@ -147,7 +152,10 @@ export function createServer(manager = new JobManager()) {
         + 'it changed about your decision; note is the evidence you used. Recording the same id again replaces '
         + 'that entry. This server stores what you write and counts the verdicts; it never infers one, and never '
         + 'decides a consultation was worth it. The entry is saved beside the answer and the brief in '
-        + '~/.peer-consult/history, which is what makes the decision readable a month from now.',
+        + '~/.peer-consult/history, which is what makes the decision readable a month from now. '
+        + 'Pass `reflection` to record what the answer added over what you already expected, when the '
+        + 'consultation was started with a `prediction`. A prediction itself cannot be written here: it goes '
+        + 'in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
       inputSchema: {
         job_id: z.string().min(1),
         entries: z.array(z.object({
@@ -155,12 +163,20 @@ export function createServer(manager = new JobManager()) {
           verdict: z.enum(VERDICTS),
           effect: z.string().max(4000).optional().describe('what it changed about your decision, or why it is still unverified'),
           note: z.string().max(4000).optional().describe('what you checked and what you found'),
-        })).min(1).max(100),
+        })).min(1).max(100).optional(),
+        reflection: z.object({
+          delta: z.string().min(1).max(4000).describe('what the answer added over what you already expected -- including "nothing new", which is a real outcome'),
+          related_item_ids: z.array(z.string().min(1)).max(50).optional().describe('the points this is about: f1, u1, c1 ...'),
+        }).optional().describe('written after you have read the answer. There is deliberately no hit/miss label: a point you predicted can still arrive with the evidence that settles it, and a surprise can still be wrong.'),
       },
     },
-    async ({ job_id, entries }) => {
+    async ({ job_id, entries, reflection }) => {
       try {
-        return ok(manager.record({ job_id, entries }));
+        return ok(manager.record({
+          job_id,
+          ...(entries === undefined ? {} : { entries }),
+          ...(reflection === undefined ? {} : { reflection }),
+        }));
       } catch (err) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
