@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import {
   POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds,
-  resolveTarget, resolveModel, availableTargets, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
+  resolveTarget, resolveModel, availableTargets, unavailableReason, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
 } from './policy.mjs';
 
 const L = POLICY.input;
@@ -148,7 +148,8 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
   const missing = [...new Set(resolved.filter((t) => !usable.includes(t)))];
   if (missing.length) {
     throw new RequestError(
-      `consultant ${missing.map((t) => JSON.stringify(t)).join(', ')} is not available on this machine; `
+      `consultant ${missing.map((t) => `${JSON.stringify(t)} (${unavailableReason(t)})`).join(', ')} `
+      + 'is not available on this machine; '
       + (usable.length
         ? `available: ${usable.join(', ')}`
         : 'no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS'),

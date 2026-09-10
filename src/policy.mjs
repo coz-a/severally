@@ -34,8 +34,12 @@ export function configProblem() {
 
 const cfgTarget = (id) => (CONFIG.targets && typeof CONFIG.targets === 'object' ? CONFIG.targets[id] ?? {} : {});
 
-/** Is this command runnable here? Absolute/relative paths are checked as given. */
-function isInstalled(command) {
+/**
+ * Is this command runnable here? Absolute/relative paths are checked as given.
+ * Exported so the config generator can report what a machine has without
+ * going through POLICY, which already reflects any config file it found.
+ */
+export function isInstalled(command) {
   if (typeof command !== 'string' || command === '') return false;
   if (command.includes('/')) return fs.existsSync(command);
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
@@ -187,6 +191,14 @@ const allowedFor = (id, dflt, envName) => {
 // set explicitly; otherwise a per-target `enabled` in the config file decides;
 // otherwise the machine does -- a CLI that is not installed is not offered.
 const ENABLED_ENV = list('PEER_CONSULT_TARGETS').map((t) => t.trim().toLowerCase()).filter(Boolean);
+// Why a consultant is off, in the operator's words: "quota exhausted until
+// 15:00" is more use to a lead than a bare refusal, and it is the reason a CLI
+// that IS installed gets excluded.
+const disabledNote = (id) => {
+  const n = cfgTarget(id).note;
+  return typeof n === 'string' && n.trim() !== '' ? n.trim() : null;
+};
+
 const isEnabled = (id, cli) => {
   if (ENABLED_ENV.length) return ENABLED_ENV.includes(id);
   const flag = cfgTarget(id).enabled;
@@ -209,6 +221,7 @@ export const POLICY = Object.freeze({
     codex: Object.freeze({
       cli: CODEX_BIN,
       available: isEnabled('codex', CODEX_BIN),
+      note: disabledNote('codex'),
       model: CODEX_MODEL,
       models: allowedFor('codex', CODEX_MODEL, 'PEER_CONSULT_CODEX_MODELS'),
       modelsEnv: 'PEER_CONSULT_CODEX_MODELS',
@@ -219,6 +232,7 @@ export const POLICY = Object.freeze({
     'claude-code': Object.freeze({
       cli: CLAUDE_BIN,
       available: isEnabled('claude-code', CLAUDE_BIN),
+      note: disabledNote('claude-code'),
       model: CLAUDE_MODEL,
       models: allowedFor('claude-code', CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_MODELS'),
       modelsEnv: 'PEER_CONSULT_CLAUDE_MODELS',
@@ -229,6 +243,7 @@ export const POLICY = Object.freeze({
     antigravity: Object.freeze({
       cli: AGY_BIN,
       available: isEnabled('antigravity', AGY_BIN),
+      note: disabledNote('antigravity'),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
       models: allowedFor('antigravity', AGY_MODEL, 'PEER_CONSULT_AGY_MODELS'),
@@ -295,6 +310,18 @@ export function credentialsHome() {
 }
 
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];
+
+/**
+ * Why this consultant cannot be reached, or null when it can. The operator's
+ * own note wins: "installed but rate-limited" is a case only they can state.
+ */
+export function unavailableReason(id) {
+  const t = POLICY.targets[id];
+  if (!t || t.available) return null;
+  if (t.note) return t.note;
+  if (!isInstalled(t.cli)) return `${t.cli} is not installed here`;
+  return 'turned off in the operator configuration';
+}
 
 /** The consultants this machine can actually reach, in canonical order. */
 export function availableTargets() {

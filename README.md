@@ -36,7 +36,8 @@ Antigravity ──(skill: peer-consult)──> mcp: peer-consult ──> codex e
 | `.agents/plugins/marketplace.json` | Codex 用のリポジトリローカル marketplace（公開レジストリではない） |
 | `bin/`, `src/` | MCP サーバのソース（Node ESM、stdio） |
 | `scripts/install.mjs` | インストール（プラグイン方式 / 手動方式） |
-| `config.example.json` | 環境ごとの設定の雛形（`~/.peer-consult/config.json` に置く。§4.5） |
+| `config.example.json` | 環境ごとの設定の静的な例（§4.5） |
+| `scripts/init-config.mjs` | その環境を検出して設定の雛形を生成（`npm run init-config`） |
 | `scripts/build.mjs` | esbuild でプラグイン内 `dist/` を生成 |
 | `scripts/live-check.mjs`, `scripts/live-mcp-check.mjs` | 実 CLI・実 MCP での動作確認 |
 | `test/` | オフライン検証（スタブ CLI による全分岐テスト） |
@@ -263,7 +264,17 @@ codex が無い環境、agy が無い環境がある。**既定では設定不�
 `limits.available_targets` にも、その環境で実際に使える相手だけが載る。
 
 明示的に制御したい場合は `~/.peer-consult/config.json`（`PEER_CONSULT_CONFIG` で変更可）を 1 つ置く。
-クライアントごとの MCP 登録に env を書き分ける必要はない。雛形はリポジトリの `config.example.json`。
+クライアントごとの MCP 登録に env を書き分ける必要はない。雛形はその環境向けに生成できる:
+
+```bash
+npm run init-config            # ~/.peer-consult/config.json を生成（既存は上書きしない）
+node scripts/init-config.mjs --print   # 書かずに標準出力へ
+node scripts/init-config.mjs --force   # 既存を置き換える
+```
+
+生成される雛形は、その環境で**何が検出されたか**と各キーの既定値を書き込む。編集候補は `_example`
+ブロックに入っていて、`_` で始まるキーはサーバが無視するので、使いたいキーだけを 1 段上に移せばよい。
+静的な例だけ見たい場合はリポジトリの `config.example.json`。
 
 ```json
 {
@@ -277,7 +288,8 @@ codex が無い環境、agy が無い環境がある。**既定では設定不�
 
 | キー | 意味 |
 |---|---|
-| `enabled` | 省略時は自動検出（CLI が PATH にあるか）。`false` にすると入っていても使わない |
+| `enabled` | 省略時は自動検出（CLI が PATH にあるか）。**CLI は入っているがレート制限などで使いたくない場合は `false`** |
+| `note` | 使えない理由。相談を拒否するときに呼び出し側へそのまま返る（例: `"rate-limited until 15:00"`）|
 | `bin` | 実行ファイル名またはパス |
 | `model` | 既定モデル |
 | `models` | リクエストで指定を許すモデル（既定モデルは常に許可） |

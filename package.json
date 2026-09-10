@@ -24,7 +24,8 @@
     "live-check": "node scripts/live-check.mjs",
     "install-all": "node scripts/install.mjs",
     "live-mcp-check": "node scripts/live-mcp-check.mjs",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "init-config": "node scripts/init-config.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

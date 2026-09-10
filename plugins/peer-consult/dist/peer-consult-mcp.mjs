@@ -35789,6 +35789,10 @@ var allowedFor = (id2, dflt, envName) => {
   return Object.freeze([.../* @__PURE__ */ new Set([dflt, ...extra])]);
 };
 var ENABLED_ENV = list("PEER_CONSULT_TARGETS").map((t) => t.trim().toLowerCase()).filter(Boolean);
+var disabledNote = (id2) => {
+  const n = cfgTarget(id2).note;
+  return typeof n === "string" && n.trim() !== "" ? n.trim() : null;
+};
 var isEnabled = (id2, cli) => {
   if (ENABLED_ENV.length) return ENABLED_ENV.includes(id2);
   const flag = cfgTarget(id2).enabled;
@@ -35807,6 +35811,7 @@ var POLICY = Object.freeze({
     codex: Object.freeze({
       cli: CODEX_BIN,
       available: isEnabled("codex", CODEX_BIN),
+      note: disabledNote("codex"),
       model: CODEX_MODEL,
       models: allowedFor("codex", CODEX_MODEL, "PEER_CONSULT_CODEX_MODELS"),
       modelsEnv: "PEER_CONSULT_CODEX_MODELS",
@@ -35817,6 +35822,7 @@ var POLICY = Object.freeze({
     "claude-code": Object.freeze({
       cli: CLAUDE_BIN,
       available: isEnabled("claude-code", CLAUDE_BIN),
+      note: disabledNote("claude-code"),
       model: CLAUDE_MODEL,
       models: allowedFor("claude-code", CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_MODELS"),
       modelsEnv: "PEER_CONSULT_CLAUDE_MODELS",
@@ -35827,6 +35833,7 @@ var POLICY = Object.freeze({
     antigravity: Object.freeze({
       cli: AGY_BIN,
       available: isEnabled("antigravity", AGY_BIN),
+      note: disabledNote("antigravity"),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
       models: allowedFor("antigravity", AGY_MODEL, "PEER_CONSULT_AGY_MODELS"),
@@ -35879,6 +35886,13 @@ function credentialsHome() {
   return str("PEER_CONSULT_AGY_CRED_HOME", os.homedir());
 }
 var artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
+function unavailableReason(id2) {
+  const t = POLICY.targets[id2];
+  if (!t || t.available) return null;
+  if (t.note) return t.note;
+  if (!isInstalled(t.cli)) return `${t.cli} is not installed here`;
+  return "turned off in the operator configuration";
+}
 function availableTargets() {
   return TARGETS.filter((t) => POLICY.targets[t].available);
 }
@@ -36005,7 +36019,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
   const missing = [...new Set(resolved.filter((t) => !usable.includes(t)))];
   if (missing.length) {
     throw new RequestError(
-      `consultant ${missing.map((t) => JSON.stringify(t)).join(", ")} is not available on this machine; ` + (usable.length ? `available: ${usable.join(", ")}` : "no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS"),
+      `consultant ${missing.map((t) => `${JSON.stringify(t)} (${unavailableReason(t)})`).join(", ")} is not available on this machine; ` + (usable.length ? `available: ${usable.join(", ")}` : "no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS"),
       "target_unavailable"
     );
   }

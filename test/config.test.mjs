@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,6 +27,29 @@ async function loadPolicy(env, tag, unset = []) {
   sandboxEnv(env);
   for (const name of unset) delete process.env[name];
   return import(`../src/policy.mjs?cfg=${tag}-${Date.now()}-${Math.random()}`);
+}
+
+/**
+ * Parse a request in a child process, so the config under test is the one the
+ * module registry sees. In-process, schema.mjs imports the bare "./policy.mjs"
+ * specifier and would reuse whichever config the first test happened to load.
+ */
+function refusalInChild(configFile, request) {
+  const schemaUrl = new URL('../src/schema.mjs', import.meta.url).href;
+  const source = `
+    const { parseRequest } = await import(${JSON.stringify(schemaUrl)});
+    try {
+      parseRequest(${JSON.stringify(request)});
+      console.log(JSON.stringify({ threw: false }));
+    } catch (err) {
+      console.log(JSON.stringify({ threw: true, code: err.code, message: err.message }));
+    }
+  `;
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', source], {
+    env: { ...process.env, PEER_CONSULT_CONFIG: configFile },
+    encoding: 'utf8',
+  });
+  return JSON.parse(out.trim().split('\n').pop());
 }
 
 test('a target the config file disables is not offered, even though its CLI exists', async () => {
@@ -90,17 +114,55 @@ test('a missing config file is the normal case, not a problem', async () => {
   assert.equal(policy.configProblem(), null);
 });
 
-test('consulting an unavailable target is refused before a job exists', async () => {
+test('consulting an unavailable target is refused before a job exists', () => {
   const config = writeConfig({ targets: { antigravity: { enabled: false } } });
-  sandboxEnv({ PEER_CONSULT_CONFIG: config });
-  const { parseRequest, RequestError } = await import(`../src/schema.mjs?cfg=refuse-${Date.now()}`);
+  const result = refusalInChild(config, reviewRequest({ target: 'gemini' }));
 
-  try {
-    parseRequest(reviewRequest({ target: 'gemini' }));
-    assert.fail('expected the consultation to be refused');
-  } catch (err) {
-    assert.ok(err instanceof RequestError);
-    assert.equal(err.code, 'target_unavailable');
-    assert.match(err.message, /available: codex, claude-code/);
+  assert.equal(result.threw, true, 'the request must not be accepted');
+  assert.equal(result.code, 'target_unavailable');
+  assert.match(result.message, /available: codex, claude-code/);
+});
+
+test('an installed CLI can still be excluded, with the reason carried to the caller', async () => {
+  const config = writeConfig({
+    targets: { codex: { enabled: false, note: 'rate-limited until 15:00' } },
+  });
+  sandboxEnv({ PEER_CONSULT_CONFIG: config });
+  const policy = await import(`../src/policy.mjs?cfg=note-${Date.now()}`);
+
+  // The stub codex binary exists, so this exclusion is the operator's, not the machine's.
+  assert.equal(policy.isInstalled(policy.POLICY.targets.codex.cli), true);
+  assert.equal(policy.POLICY.targets.codex.available, false);
+  assert.equal(policy.unavailableReason('codex'), 'rate-limited until 15:00');
+
+  const result = refusalInChild(config, reviewRequest({ target: 'codex' }));
+  assert.equal(result.threw, true);
+  assert.equal(result.code, 'target_unavailable');
+  assert.match(result.message, /rate-limited until 15:00/, 'the operator note reaches the caller');
+});
+
+test('an excluded consultant with no note still says why', async () => {
+  const config = writeConfig({ targets: { codex: { enabled: false } } });
+  sandboxEnv({ PEER_CONSULT_CONFIG: config });
+  const policy = await import(`../src/policy.mjs?cfg=nonote-${Date.now()}`);
+  assert.match(policy.unavailableReason('codex'), /operator configuration/);
+});
+
+test('the generated template is valid config the server can read back', async () => {
+  const { renderConfig } = await import('../scripts/init-config.mjs');
+  const rendered = renderConfig();
+
+  // Round-trips as JSON, and the loader tolerates every note key it carries.
+  const file = writeConfig(rendered);
+  sandboxEnv({ PEER_CONSULT_CONFIG: file });
+  const policy = await import(`../src/policy.mjs?cfg=template-${Date.now()}`);
+  assert.equal(policy.configProblem(), null, 'the template must not be a config the server rejects');
+
+  // The suggestions live in _example blocks, so a freshly generated file
+  // changes nothing until the operator moves a key up.
+  for (const id of policy.TARGETS) {
+    assert.ok(rendered.targets[id]._detected, `${id} must report what was detected`);
+    assert.equal(policy.POLICY.targets[id].available, policy.isInstalled(policy.POLICY.targets[id].cli),
+      `${id} availability must still come from detection`);
   }
 });
