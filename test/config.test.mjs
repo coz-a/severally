@@ -171,3 +171,14 @@ test('the generated template is valid config the server can read back', async ()
   assert.deepEqual(Object.keys(parsed), ['targets']);
   for (const id of policy.TARGETS) assert.deepEqual(parsed.targets[id], {});
 });
+
+// "~/.local/bin/claudex" is what an operator writes; nothing expands it for
+// them, so without this the consultant silently disappears from the list.
+test('a ~ in a bin path is expanded, from the config file and from the env', async () => {
+  const config = writeConfig({ targets: { 'claude-code': { bin: '~/bin/claudex' } } });
+  const fromFile = await loadPolicy({ PEER_CONSULT_CONFIG: config }, 'tilde', ['PEER_CONSULT_CLAUDE_BIN']);
+  assert.equal(fromFile.POLICY.targets['claude-code'].cli, path.join(os.homedir(), 'bin/claudex'));
+
+  const fromEnv = await loadPolicy({ PEER_CONSULT_AGY_BIN: '~/bin/agyx' }, 'tilde-env');
+  assert.equal(fromEnv.POLICY.targets.antigravity.cli, path.join(os.homedir(), 'bin/agyx'));
+});

@@ -36,7 +36,7 @@ export function renderConfig() {
     '  // Per target, all optional:',
     '  //   enabled          false to exclude a consultant whose CLI is installed -- e.g. a rate-limited account',
     '  //   note             why it is off; returned to whoever asks for that consultant',
-    '  //   bin              a CLI that is not on PATH, or a specific build',
+    '  //   bin              a CLI that is not on PATH, a specific build, or a wrapper script (~/ is expanded)',
     '  //   default_model    the model this consultant runs unless a request names another',
     '  //   allowed_models   the models a request MAY name; the default above is always allowed',
     '  "targets": {',

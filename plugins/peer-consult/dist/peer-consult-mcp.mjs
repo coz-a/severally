@@ -35840,6 +35840,11 @@ var list = (name) => {
   if (raw === void 0 || raw === "") return [];
   return raw.split(",").map((s2) => s2.trim()).filter(Boolean);
 };
+function expandHome(value) {
+  if (typeof value !== "string") return value;
+  if (value === "~") return os.homedir();
+  return value.startsWith("~/") ? path.join(os.homedir(), value.slice(2)) : value;
+}
 var knob = (id2, envName, key, dflt) => {
   const fromEnv = process.env[envName];
   if (fromEnv !== void 0 && fromEnv !== "") return fromEnv;
@@ -35864,9 +35869,9 @@ var isEnabled = (id2, cli) => {
   if (typeof flag === "boolean") return flag;
   return isInstalled(cli);
 };
-var CODEX_BIN = knob("codex", "PEER_CONSULT_CODEX_BIN", "bin", "codex");
-var CLAUDE_BIN = knob("claude-code", "PEER_CONSULT_CLAUDE_BIN", "bin", "claude");
-var AGY_BIN = knob("antigravity", "PEER_CONSULT_AGY_BIN", "bin", "agy");
+var CODEX_BIN = expandHome(knob("codex", "PEER_CONSULT_CODEX_BIN", "bin", "codex"));
+var CLAUDE_BIN = expandHome(knob("claude-code", "PEER_CONSULT_CLAUDE_BIN", "bin", "claude"));
+var AGY_BIN = expandHome(knob("antigravity", "PEER_CONSULT_AGY_BIN", "bin", "agy"));
 var CODEX_MODEL = knob("codex", "PEER_CONSULT_CODEX_MODEL", "default_model", "gpt-6-astra");
 var CLAUDE_MODEL = knob("claude-code", "PEER_CONSULT_CLAUDE_MODEL", "default_model", "claude-fable-5-1");
 var AGY_MODEL = knob("antigravity", "PEER_CONSULT_AGY_MODEL", "default_model", "gemini-3.8-flash-high");

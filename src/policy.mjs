@@ -176,6 +176,17 @@ const list = (name) => {
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 };
 
+/**
+ * A leading ~ is a shell courtesy, not a path: nothing expands it here, so
+ * "~/.local/bin/claudex" would simply not exist and the consultant would drop
+ * out of the available list without saying why. Expand it where a path is read.
+ */
+function expandHome(value) {
+  if (typeof value !== 'string') return value;
+  if (value === '~') return os.homedir();
+  return value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value;
+}
+
 // env > config file > built-in default, for one target-scoped knob.
 const knob = (id, envName, key, dflt) => {
   const fromEnv = process.env[envName];
@@ -216,9 +227,9 @@ const isEnabled = (id, cli) => {
   return isInstalled(cli);
 };
 
-const CODEX_BIN = knob('codex', 'PEER_CONSULT_CODEX_BIN', 'bin', 'codex');
-const CLAUDE_BIN = knob('claude-code', 'PEER_CONSULT_CLAUDE_BIN', 'bin', 'claude');
-const AGY_BIN = knob('antigravity', 'PEER_CONSULT_AGY_BIN', 'bin', 'agy');
+const CODEX_BIN = expandHome(knob('codex', 'PEER_CONSULT_CODEX_BIN', 'bin', 'codex'));
+const CLAUDE_BIN = expandHome(knob('claude-code', 'PEER_CONSULT_CLAUDE_BIN', 'bin', 'claude'));
+const AGY_BIN = expandHome(knob('antigravity', 'PEER_CONSULT_AGY_BIN', 'bin', 'agy'));
 
 const CODEX_MODEL = knob('codex', 'PEER_CONSULT_CODEX_MODEL', 'default_model', 'gpt-6-astra');
 const CLAUDE_MODEL = knob('claude-code', 'PEER_CONSULT_CLAUDE_MODEL', 'default_model', 'claude-fable-5-1');
