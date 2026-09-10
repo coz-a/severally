@@ -209,3 +209,31 @@ test('a group stops claiming answers once its members age out of history', async
   assert.equal(mgr.groups.has(group.group_id), false);
   assert.equal(mgr.groupView(group.group_id), null);
 });
+
+test('the side-by-side shows what would change each judgement, and how heavy the findings are', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['gpt', 'gemini'] }));
+  const view = await finishGroup(mgr, started.group_id);
+
+  const codex = view.comparison.by_target.find((t) => t.target === 'codex');
+  assert.deepEqual(codex.decision_changers, [{ condition: 'QPS below 5', changes_to: 'No cap needed' }]);
+  assert.deepEqual(codex.severity_counts, { high: 1 });
+
+  // Two consultants can name the same condition and still be worth reading
+  // side by side; the server places them, it does not match them up.
+  const agy = view.comparison.by_target.find((t) => t.target === 'antigravity');
+  assert.deepEqual(agy.decision_changers, [{ condition: 'QPS below 5', changes_to: 'No cap needed' }]);
+  assert.deepEqual(agy.severity_counts, { high: 1 });
+});
+
+test('a consultant that never answered contributes no weight to the side-by-side', async () => {
+  process.env.STUB_BEHAVIOR = 'usage_limit';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['gpt', 'gemini'] }));
+  const view = await finishGroup(mgr, started.group_id);
+  for (const t of view.comparison.by_target) {
+    assert.deepEqual(t.decision_changers, []);
+    assert.deepEqual(t.severity_counts, {});
+  }
+});

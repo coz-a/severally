@@ -159,8 +159,10 @@ different questions are not comparable — and the server returns one `group_id`
 `consult_get({ group_id, wait_ms: 60000 })` to get every answer in one payload, and
 `consult_cancel({ group_id })` to stop the whole fan-out. The payload carries `members` (each consultant's own
 full result) plus `comparison.by_target`, a mechanical side-by-side of stance, summary, confidence, evidence
-basis, finding points, alternatives, unknowns and remaining disagreements. `stance` is each consultant's own
-one-word bottom line (`proceed` / `do_not_proceed` / `alternative` / `undetermined`), relayed as declared.
+basis, finding points, how many findings each consultant rated high/medium/low (`severity_counts`), what each
+said would change its judgement (`decision_changers`), alternatives, unknowns and remaining disagreements.
+`stance` is each consultant's own one-word bottom line (`proceed` / `do_not_proceed` / `alternative` /
+`undetermined`), relayed as declared.
 
 A fan-out costs a round and real quota per consultant, and it consumes that many concurrency slots, so two is
 usually enough. `targets` is refused on a follow-up: a follow-up continues the exchange with **one** consultant
@@ -178,7 +180,10 @@ Two agents can reach the same wording from different grounds, or from none. So:
    including one naming an unknown or a risk the other never mentions.
 3. **Check the grounds behind each divergence** against the code or the docs, not against whichever answer
    sounds more confident.
-4. **Spend a follow-up only on a divergence that would change your decision**, and send it only to the
+4. **Read `decision_changers` before spending a follow-up.** A consultant that already named the condition
+   under which it would change its mind has told you what evidence to go get; that is usually cheaper than
+   another round, and it is the one column that says what your next check is for.
+5. **Spend a follow-up only on a divergence that would change your decision**, and send it only to the
    consultant whose reading it belongs to.
 
 Report a divergence you could not settle as a divergence. "Both agreed" is a claim you have to earn.

@@ -118,7 +118,7 @@ export class JobManager {
           duration_ms: j.duration_ms,
           summary: j.result ? j.result.summary.slice(0, 200) : null,
           recorded: Boolean(j.record),
-          verdicts: j.record ? tally(j.record.entries) : null,
+          verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
         };
       });
   }
@@ -653,9 +653,11 @@ function recordableIds(result) {
   ].filter(Boolean);
 }
 
-function tally(entries) {
+// How many of each word, in the order they first appear. The only arithmetic
+// this server does on anyone's judgement.
+function tally(values) {
   const out = {};
-  for (const e of entries) out[e.verdict] = (out[e.verdict] ?? 0) + 1;
+  for (const v of values) out[v] = (out[v] ?? 0) + 1;
   return out;
 }
 
@@ -667,7 +669,7 @@ function recordSummary(job) {
   const written = new Set(job.record.entries.map((e) => e.id));
   return {
     ...job.record,
-    verdicts: tally(job.record.entries),
+    verdicts: tally(job.record.entries.map((e) => e.verdict)),
     coverage: { recordable: ids.length, recorded: written.size },
     unrecorded: ids.filter((id) => !written.has(id)),
   };
@@ -729,6 +731,14 @@ function comparison(members) {
       evidence_basis: m.result?.evidence_basis ?? null,
       summary: m.result?.summary ?? null,
       finding_points: (m.result?.findings ?? []).map((f) => f.point),
+      // How heavy this consultant said its own findings were, and what it said
+      // would change its mind. Both were already in the per-member result and
+      // both were being lost in the one view built for reading two answers
+      // against each other -- the place where "they broadly agree" gets written.
+      // Counted and relayed, never compared: two consultants naming the same
+      // condition is for the lead to notice, not for the server to assert.
+      severity_counts: tally((m.result?.findings ?? []).map((f) => f.severity ?? 'unrated')),
+      decision_changers: m.result?.decision_changers ?? [],
       alternative_options: (m.result?.alternatives ?? []).map((a) => a.option),
       unknowns: (m.result?.unknowns ?? []).map((u) => u.item),
       remaining_disagreements: m.result?.remaining_disagreements ?? [],
