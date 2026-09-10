@@ -17,15 +17,34 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TARGETS, POLICY, isInstalled } from '../src/policy.mjs';
 
+// Documentation as a flat list of strings, kept apart from the settings by its
+// shape as much as its position: an example written as a nested object looks
+// exactly like a live setting, which is what made the earlier template hard to
+// read. The server reads only `targets`.
+const NOTES = [
+  'Everything in this "//" block is documentation. The server reads only "targets".',
+  'Precedence, per key: environment variable > this file > autodetection > built-in default.',
+  'Read once at server start -- restart the client after editing.',
+  '',
+  'Keys, per target (all optional; string values need quotes):',
+  '  enabled   false to exclude a consultant whose CLI is installed -- e.g. a rate-limited account',
+  '  note      why it is off; returned to whoever asks for that consultant',
+  '  bin       a CLI that is not on PATH, or a specific build',
+  '  model     this consultant\'s default model',
+  '  models    models a request may name, on top of the always-allowed default',
+  '',
+  'Example -- codex off, with the reason:',
+  '  "codex": { "enabled": false, "note": "rate-limited until 15:00" }',
+];
+
 /**
- * The config template for the machine this runs on: the structure, and nothing
- * else. Guidance belongs on the terminal and in the README -- mixing prose keys
- * into the file makes the handful of real settings hard to pick out.
+ * The config template for the machine this runs on: the settings first, then
+ * one block of notes.
  */
 export function renderConfig() {
   const targets = {};
   for (const id of TARGETS) targets[id] = {};
-  return { targets };
+  return { targets, '//': NOTES };
 }
 
 /** Where the server would look for this file, given the same environment. */

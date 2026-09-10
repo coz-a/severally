@@ -272,21 +272,18 @@ node scripts/init-config.mjs --print   # 書かずに標準出力へ
 node scripts/init-config.mjs --force   # 既存を置き換える
 ```
 
-生成される雛形は構造だけで、説明は一切入らない（JSON にコメント構文が無いため、注記を混ぜると設定本体が
-埋もれる）:
+JSON にコメント構文は無いので、説明は末尾の `"//"` に**文字列の配列**として入れてある。設定は
+`targets`（オブジェクト）、説明は文字列 — 形が違うので混ざらない。サーバが読むのは `targets` だけ:
 
 ```json
 {
-  "targets": {
-    "codex": {},
-    "claude-code": {},
-    "antigravity": {}
-  }
+  "targets": { "codex": {}, "claude-code": {}, "antigravity": {} },
+  "//": ["Everything in this \"//\" block is documentation. The server reads only \"targets\".", "..."]
 }
 ```
 
-何が検出されたか・どのキーが書けるか・書き方の例は、生成コマンドの標準出力と `config.example.json`、
-そしてこの節の表に出る。
+`"//"` にはキー一覧と「レート制限の相手を止める」例が入っている。どの CLI が検出されたかは
+生成コマンドの標準出力に出る（起動のたびに再検出される事実なので、ファイルには焼かない）。
 
 ```json
 {

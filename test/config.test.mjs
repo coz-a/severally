@@ -165,8 +165,10 @@ test('the generated template is valid config the server can read back', async ()
     assert.equal(policy.POLICY.targets[id].available, policy.isInstalled(policy.POLICY.targets[id].cli),
       `${id} availability must still come from detection`);
   }
-  // The file carries configuration and nothing else: no prose keys mixed in
-  // with the settings, which is what made the earlier template hard to read.
-  assert.deepEqual(Object.keys(rendered), ['targets']);
+  // Settings first, then one block of notes -- and the notes are strings, so
+  // they cannot be mistaken for a live setting the way a nested example object
+  // could. The loader reads only `targets`, so the block is inert.
+  assert.deepEqual(Object.keys(rendered), ['targets', '//']);
+  assert.ok(rendered['//'].every((line) => typeof line === 'string'));
   assert.equal(Object.keys(rendered.targets).length, policy.TARGETS.length);
 });
