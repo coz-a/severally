@@ -4624,7 +4624,7 @@ var require_core = __commonJS({
       errorsText(errors = this.errors, { separator = ", ", dataVar = "data" } = {}) {
         if (!errors || errors.length === 0)
           return "No errors";
-        return errors.map((e) => `${dataVar}${e.instancePath} ${e.message}`).reduce((text, msg) => text + separator + msg);
+        return errors.map((e) => `${dataVar}${e.instancePath} ${e.message}`).reduce((text2, msg) => text2 + separator + msg);
       }
       $dataMetaSchema(metaSchema, keywordsJsonPointers) {
         const rules = this.RULES.all;
@@ -16280,8 +16280,8 @@ function ko_default() {
 }
 
 // node_modules/zod/v4/locales/lt.js
-var capitalizeFirstCharacter = (text) => {
-  return text.charAt(0).toUpperCase() + text.slice(1);
+var capitalizeFirstCharacter = (text2) => {
+  return text2.charAt(0).toUpperCase() + text2.slice(1);
 };
 function getUnitTypeFromNumber(number4) {
   const abs = Math.abs(number4);
@@ -35680,7 +35680,7 @@ import os from "node:os";
 import path from "node:path";
 
 // src/jsonc.mjs
-function stripJsonc(text) {
+function stripJsonc(text2) {
   const out = [];
   let inString = false;
   let i = 0;
@@ -35692,9 +35692,9 @@ function stripJsonc(text) {
       return;
     }
   };
-  while (i < text.length) {
-    const c = text[i];
-    const next = text[i + 1];
+  while (i < text2.length) {
+    const c = text2[i];
+    const next = text2[i + 1];
     if (inString) {
       out.push(c);
       if (c === "\\") {
@@ -35713,7 +35713,7 @@ function stripJsonc(text) {
       continue;
     }
     if (c === "/" && next === "/") {
-      while (i < text.length && text[i] !== "\n") {
+      while (i < text2.length && text2[i] !== "\n") {
         out.push(" ");
         i++;
       }
@@ -35722,8 +35722,8 @@ function stripJsonc(text) {
     if (c === "/" && next === "*") {
       out.push(" ", " ");
       i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
-        out.push(text[i] === "\n" ? "\n" : " ");
+      while (i < text2.length && !(text2[i] === "*" && text2[i + 1] === "/")) {
+        out.push(text2[i] === "\n" ? "\n" : " ");
         i++;
       }
       out.push(" ", " ");
@@ -35736,8 +35736,8 @@ function stripJsonc(text) {
   }
   return out.join("");
 }
-function parseJsonc(text) {
-  return JSON.parse(stripJsonc(text));
+function parseJsonc(text2) {
+  return JSON.parse(stripJsonc(text2));
 }
 
 // src/policy.mjs
@@ -35835,6 +35835,7 @@ function detectCaller(env = process.env) {
   return null;
 }
 var MODES = ["explore", "review", "debate"];
+var VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
 var list = (name) => {
   const raw = process.env[name];
   if (raw === void 0 || raw === "") return [];
@@ -36363,6 +36364,23 @@ var GUARDRAILS = [
 function renderGuardrails() {
   return GUARDRAILS.join("\n");
 }
+function briefRecord(req) {
+  return redact({
+    objective: req.objective ?? null,
+    success_criteria: req.success_criteria ?? [],
+    constraints: req.constraints ?? [],
+    facts: req.context?.facts ?? [],
+    proposal: req.context?.proposal ?? null,
+    counterpoints: req.context?.counterpoints ?? [],
+    artifacts: (req.context?.artifacts ?? []).map((a) => ({
+      name: a.name,
+      kind: a.kind,
+      language: a.language ?? null,
+      source: a.source ?? null,
+      excerpt: a.excerpt
+    }))
+  });
+}
 function section(title, body) {
   if (!body) return null;
   return `## ${title}
@@ -36467,9 +36485,9 @@ function stance(v) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
   return STANCES.includes(t) ? t : null;
 }
-function extractJson(text) {
-  if (typeof text !== "string") return null;
-  const trimmed2 = text.trim();
+function extractJson(text2) {
+  if (typeof text2 !== "string") return null;
+  const trimmed2 = text2.trim();
   if (!trimmed2) return null;
   const candidates = [];
   if (trimmed2.startsWith("{")) candidates.push(trimmed2);
@@ -36515,12 +36533,12 @@ function extractJson(text) {
   }
   return null;
 }
-function mapList(raw, fields, { requiredField }) {
+function mapList(raw, fields, { requiredField, idPrefix = null }) {
   if (!Array.isArray(raw)) return [];
   const out = [];
   for (const entry of raw.slice(0, O.listMax)) {
     if (!entry || typeof entry !== "object") continue;
-    const item = {};
+    const item = idPrefix ? { id: `${idPrefix}${out.length + 1}` } : {};
     for (const [key, kind] of Object.entries(fields)) {
       item[key] = kind === "level" ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
@@ -36550,7 +36568,7 @@ function normalizeResult(raw) {
       impact: "text",
       severity: "level",
       confidence: "level"
-    }, { requiredField: "point" }),
+    }, { requiredField: "point", idPrefix: "f" }),
     alternatives: mapList(src.alternatives, {
       option: "text",
       tradeoffs: "text",
@@ -36560,7 +36578,7 @@ function normalizeResult(raw) {
       item: "text",
       why_it_matters: "text",
       how_to_obtain: "text"
-    }, { requiredField: "item" }),
+    }, { requiredField: "item", idPrefix: "u" }),
     decision_changers: mapList(src.decision_changers, {
       condition: "text",
       changes_to: "text"
@@ -36569,7 +36587,7 @@ function normalizeResult(raw) {
       check: "text",
       method: "text",
       expected_signal: "text"
-    }, { requiredField: "check" }),
+    }, { requiredField: "check", idPrefix: "c" }),
     remaining_disagreements: mapList(src.remaining_disagreements, {
       topic: "text",
       your_position: "text",
@@ -36598,9 +36616,9 @@ var RULES = [
   [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
   [/\b(unrecognized_model|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|404)\b/i, "model_unavailable"]
 ];
-function classifyMessage(text, fallback = "cli_error") {
-  if (!text) return fallback;
-  for (const [re, kind] of RULES) if (re.test(text)) return kind;
+function classifyMessage(text2, fallback = "cli_error") {
+  if (!text2) return fallback;
+  for (const [re, kind] of RULES) if (re.test(text2)) return kind;
   return fallback;
 }
 function isRetriable(kind) {
@@ -36685,20 +36703,20 @@ function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs
   let timedOut = false;
   let cancelled = false;
   const append = (which, chunk) => {
-    const text = chunk.toString("utf8");
+    const text2 = chunk.toString("utf8");
     if (which === "out") {
       if (stdout.length >= cap) {
         truncated = true;
         return;
       }
-      stdout += text.slice(0, cap - stdout.length);
+      stdout += text2.slice(0, cap - stdout.length);
       if (stdout.length >= cap) truncated = true;
     } else {
       if (stderr.length >= cap) {
         truncated = true;
         return;
       }
-      stderr += text.slice(0, cap - stderr.length);
+      stderr += text2.slice(0, cap - stderr.length);
       if (stderr.length >= cap) truncated = true;
     }
   };
@@ -36770,7 +36788,7 @@ function readIfExists(p) {
     return "";
   }
 }
-function persistRound(record2) {
+function persistRound(record2, { appendIndex = true } = {}) {
   const dir = path2.join(POLICY.home, "history", record2.chain_id);
   fs2.mkdirSync(dir, { recursive: true, mode: 448 });
   fs2.writeFileSync(
@@ -36778,6 +36796,7 @@ function persistRound(record2) {
     JSON.stringify(record2, null, 2),
     { mode: 384 }
   );
+  if (!appendIndex) return;
   fs2.appendFileSync(
     path2.join(POLICY.home, "history", "index.jsonl"),
     `${JSON.stringify({
@@ -36884,20 +36903,20 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
   const errorEvents = events2.filter((e) => e.type === "error" || e.type === "turn.failed");
   const usage = {};
   for (const e of events2) walkUsage(e, usage);
-  let text = (lastMessageText || "").trim();
-  if (!text) {
-    for (let i = events2.length - 1; i >= 0 && !text; i--) {
+  let text2 = (lastMessageText || "").trim();
+  if (!text2) {
+    for (let i = events2.length - 1; i >= 0 && !text2; i--) {
       const e = events2[i];
       const item = e.item ?? e;
       const candidate = item && item.type && String(item.type).includes("agent_message") && (item.text ?? item.message) || e.type === "item.completed" && item && (item.text ?? item.message) || null;
-      if (typeof candidate === "string" && candidate.trim()) text = candidate.trim();
+      if (typeof candidate === "string" && candidate.trim()) text2 = candidate.trim();
     }
   }
   if (errorEvents.length) {
     const msg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events2.length };
   }
-  if (!text) {
+  if (!text2) {
     const msg = (stderr || "").trim() || `codex exited with code ${code} and produced no final message`;
     return {
       ok: false,
@@ -36907,7 +36926,7 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       events: events2.length
     };
   }
-  return { ok: true, text, usageRaw: usage, events: events2.length };
+  return { ok: true, text: text2, usageRaw: usage, events: events2.length };
 }
 function progress({ stdout }) {
   const items = [];
@@ -37012,11 +37031,11 @@ function interpret2({ stdout, stderr, code }) {
     return { ok: false, failureKind: classifyMessage(msg), message: msg, payload, usageRaw: payload };
   }
   const structured = payload.structured_output ?? payload.structuredOutput ?? null;
-  const text = structured ?? (typeof payload.result === "string" ? payload.result : null);
-  if (!text) {
+  const text2 = structured ?? (typeof payload.result === "string" ? payload.result : null);
+  if (!text2) {
     return { ok: false, failureKind: "invalid_output", message: "result payload contained no answer", payload, usageRaw: payload };
   }
-  return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
+  return { ok: true, text: text2, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
 function usageRecord2(payload) {
   if (!payload) return null;
@@ -37180,11 +37199,11 @@ function interpret3({ stdout, stderr, code }) {
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: payload };
   }
   const structured = payload.structured_output ?? null;
-  const text = structured ?? (typeof payload.response === "string" && payload.response.trim() ? payload.response : null);
-  if (!text) {
+  const text2 = structured ?? (typeof payload.response === "string" && payload.response.trim() ? payload.response : null);
+  if (!text2) {
     return { ok: false, failureKind: "invalid_output", message: "envelope contained no answer", usageRaw: payload };
   }
-  return { ok: true, text, usageRaw: payload, denials: payload.denied_actions ?? [] };
+  return { ok: true, text: text2, usageRaw: payload, denials: payload.denied_actions ?? [] };
 }
 function usageRecord3(payload) {
   if (!payload) return null;
@@ -37238,6 +37257,8 @@ var JobManager = class {
       status: job.status,
       model: job.model,
       question: job.question,
+      brief: job.brief,
+      record: job.record ?? null,
       created_at: job.created_at,
       started_at: job.started_at,
       finished_at: job.finished_at,
@@ -37258,6 +37279,7 @@ var JobManager = class {
     const rec = this.#record(job);
     rec.cancellable = job.status === "running" || job.status === "queued";
     rec.progress = job.status === "running" && job._handle ? ADAPTERS[job.target]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null : null;
+    rec.record = job.record ? recordSummary(job) : null;
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -37275,7 +37297,9 @@ var JobManager = class {
         failure_kind: j.failure?.kind ?? null,
         created_at: j.created_at,
         duration_ms: j.duration_ms,
-        summary: j.result ? j.result.summary.slice(0, 200) : null
+        summary: j.result ? j.result.summary.slice(0, 200) : null,
+        recorded: Boolean(j.record),
+        verdicts: j.record ? tally(j.record.entries) : null
       };
     });
   }
@@ -37334,6 +37358,7 @@ var JobManager = class {
         // view. The brief the consultant receives is redacted too
         // (renderBrief), so this is the same text it was actually sent.
         question: redact(req.question),
+        brief: briefRecord(req),
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: "queued",
@@ -37440,7 +37465,7 @@ var JobManager = class {
   async #execute(job, req, chain, brief) {
     const adapter = ADAPTERS[req.target];
     const workdir = makeWorkdir(job.job_id);
-    const text = brief ?? renderBrief(req, chain);
+    const text2 = brief ?? renderBrief(req, chain);
     const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
@@ -37469,7 +37494,7 @@ var JobManager = class {
         args: invocation.args,
         cwd: workdir,
         env,
-        input: text,
+        input: text2,
         timeoutMs: budgetMs,
         onCancelSignal: (fn) => job._cancelFns.push(fn)
       });
@@ -37546,6 +37571,69 @@ var JobManager = class {
     cleanupJobDir(job.job_id);
     job._handle = void 0;
     job._cancelFns = [];
+  }
+  // The lead's own column: what they checked, what it turned out to be, and
+  // what it changed. Nothing here is inferred -- the server refuses an id the
+  // consultant did not produce and a word outside VERDICTS, then stores what
+  // was written. It never decides that a finding was adopted, and it never
+  // fills in a verdict the lead did not write.
+  record({ job_id: jobId, entries }) {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      throw new RequestError(
+        `no consultation with job_id "${jobId}" in this session (job ids are lost when the client restarts; the round file under ~/.peer-consult/history keeps the answer)`,
+        "unknown_job"
+      );
+    }
+    if (!job.result) {
+      throw new RequestError(
+        `consultation "${jobId}" is ${job.status} and produced no advice, so there is nothing to record a verdict against`,
+        "no_result"
+      );
+    }
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw new RequestError("entries must be a non-empty array of { id, verdict, effect?, note? }", "entries_required");
+    }
+    const ids = recordableIds(job.result);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const merged = new Map((job.record?.entries ?? []).map((e) => [e.id, e]));
+    for (const entry of entries) {
+      const id2 = typeof entry?.id === "string" ? entry.id.trim() : "";
+      if (!ids.includes(id2)) {
+        throw new RequestError(
+          `"${id2}" is not a point in this answer; record against one of: ${ids.join(", ")}`,
+          "unknown_entry_id"
+        );
+      }
+      const verdict = typeof entry?.verdict === "string" ? entry.verdict.trim() : "";
+      if (!VERDICTS.includes(verdict)) {
+        throw new RequestError(
+          `verdict for "${id2}" must be one of: ${VERDICTS.join(", ")} -- these describe what checking the point showed, not whether you adopted it`,
+          "invalid_verdict"
+        );
+      }
+      merged.set(id2, {
+        id: id2,
+        verdict,
+        effect: text(entry?.effect),
+        note: text(entry?.note),
+        recorded_at: now
+      });
+    }
+    job.record = {
+      updated_at: now,
+      entries: ids.filter((id2) => merged.has(id2)).map((id2) => merged.get(id2))
+    };
+    try {
+      persistRound(this.#record(job), { appendIndex: false });
+    } catch {
+    }
+    return {
+      job_id: job.job_id,
+      chain_id: job.chain_id,
+      round: job.round,
+      record: recordSummary(job)
+    };
   }
   async wait(jobId, waitMs) {
     const job = this.jobs.get(jobId);
@@ -37633,6 +37721,35 @@ var JobManager = class {
     }
   }
 };
+function recordableIds(result) {
+  return [
+    ...result.findings.map((f) => f.id),
+    ...result.unknowns.map((u) => u.id),
+    ...result.next_checks.map((c) => c.id)
+  ].filter(Boolean);
+}
+function tally(entries) {
+  const out = {};
+  for (const e of entries) out[e.verdict] = (out[e.verdict] ?? 0) + 1;
+  return out;
+}
+function recordSummary(job) {
+  const ids = recordableIds(job.result);
+  const written = new Set(job.record.entries.map((e) => e.id));
+  return {
+    ...job.record,
+    verdicts: tally(job.record.entries),
+    coverage: { recordable: ids.length, recorded: written.size },
+    unrecorded: ids.filter((id2) => !written.has(id2))
+  };
+}
+function text(value) {
+  if (typeof value !== "string") return null;
+  const t = redact(value).trim();
+  if (!t) return null;
+  return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}
+\u2026[truncated by peer-consult]` : t;
+}
 function adviceCaveat(normalized) {
   const { result, quality } = normalized;
   const notes = [];
@@ -37680,7 +37797,10 @@ function nextStep(job) {
   if (job.status === "running" || job.status === "queued") return "poll consult_get again, or consult_cancel to stop it";
   if (job.status === "completed") {
     const left = POLICY.maxRounds - job.round;
-    return left > 0 ? `check the grounds behind the points that matter, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}")` : "rounds exhausted: record which points you adopt, reject or hold, and decide";
+    const written = new Set((job.record?.entries ?? []).map((e) => e.id));
+    const open2 = job.result ? recordableIds(job.result).filter((id2) => !written.has(id2)).length : 0;
+    const close = open2 > 0 ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict.` : "";
+    return (left > 0 ? `check the grounds behind the points that matter, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
   }
   if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error") return "retriable: narrow the brief and start a new consultation";
   if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth") return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
@@ -37804,6 +37924,32 @@ function createServer(manager = new JobManager()) {
         return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
       }
       return ok(view);
+    }
+  );
+  server.registerTool(
+    "consult_record",
+    {
+      title: "Record what checking a point showed",
+      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.peer-consult/history, which is what makes the decision readable a month from now.',
+      inputSchema: {
+        job_id: external_exports.string().min(1),
+        entries: external_exports.array(external_exports.object({
+          id: external_exports.string().min(1).describe("the point this verdict is about: f1, u1, c1 ... as returned in the result"),
+          verdict: external_exports.enum(VERDICTS),
+          effect: external_exports.string().max(4e3).optional().describe("what it changed about your decision, or why it is still unverified"),
+          note: external_exports.string().max(4e3).optional().describe("what you checked and what you found")
+        })).min(1).max(100)
+      }
+    },
+    async ({ job_id, entries }) => {
+      try {
+        return ok(manager.record({ job_id, entries }));
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return fail({ error: err.code, message: err.message, details: err.details ?? null });
+        }
+        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+      }
     }
   );
   server.registerTool(

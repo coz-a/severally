@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { POLICY, availableTargets, configProblem, limitsSummary } from './policy.mjs';
+import { POLICY, VERDICTS, availableTargets, configProblem, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
 
@@ -130,6 +130,42 @@ export function createServer(manager = new JobManager()) {
         return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
       }
       return ok(view);
+    },
+  );
+
+  server.registerTool(
+    'consult_record',
+    {
+      title: 'Record what checking a point showed',
+      description:
+        'Write your own verdict against one or more points of an answer, after you have checked them in the '
+        + 'repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . '
+        + 'verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, '
+        + 'not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not '
+        + 'checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what '
+        + 'it changed about your decision; note is the evidence you used. Recording the same id again replaces '
+        + 'that entry. This server stores what you write and counts the verdicts; it never infers one, and never '
+        + 'decides a consultation was worth it. The entry is saved beside the answer and the brief in '
+        + '~/.peer-consult/history, which is what makes the decision readable a month from now.',
+      inputSchema: {
+        job_id: z.string().min(1),
+        entries: z.array(z.object({
+          id: z.string().min(1).describe('the point this verdict is about: f1, u1, c1 ... as returned in the result'),
+          verdict: z.enum(VERDICTS),
+          effect: z.string().max(4000).optional().describe('what it changed about your decision, or why it is still unverified'),
+          note: z.string().max(4000).optional().describe('what you checked and what you found'),
+        })).min(1).max(100),
+      },
+    },
+    async ({ job_id, entries }) => {
+      try {
+        return ok(manager.record({ job_id, entries }));
+      } catch (err) {
+        if (err instanceof RequestError) {
+          return fail({ error: err.code, message: err.message, details: err.details ?? null });
+        }
+        return fail({ error: 'internal_error', message: String(err?.message ?? err) });
+      }
     },
   );
 

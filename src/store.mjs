@@ -39,7 +39,10 @@ export function readIfExists(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return ''; }
 }
 
-export function persistRound(record) {
+// `appendIndex: false` rewrites a round that has already been recorded -- the
+// lead adding a verdict to it later. index.jsonl stays one line per
+// consultation, so counting rounds there never counts edits.
+export function persistRound(record, { appendIndex = true } = {}) {
   const dir = path.join(POLICY.home, 'history', record.chain_id);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.writeFileSync(
@@ -47,6 +50,7 @@ export function persistRound(record) {
     JSON.stringify(record, null, 2),
     { mode: 0o600 },
   );
+  if (!appendIndex) return;
   fs.appendFileSync(
     path.join(POLICY.home, 'history', 'index.jsonl'),
     `${JSON.stringify({

@@ -216,4 +216,22 @@ Report to the user, briefly:
 - what you are **holding** — plausible, not yet verified, with the check that would settle it
 - what the consultation cost: rounds used, wall-clock time, and the usage the result reports
 
+Then write the same thing back into the consultation, so it is still there when the decision is questioned
+a month from now:
+
+```
+consult_record({ job_id: "...", entries: [
+  { id: "f1", verdict: "confirmed", effect: "capped the retries at 3", note: "reproduced with a 30s outage" },
+  { id: "c1", verdict: "unverified", effect: "load test deferred to Thursday's window" }
+]})
+```
+
+The ids are the ones in the answer: findings `f1`, `f2` …, unknowns `u1` …, next_checks `c1` … . The verdict
+is **what checking showed, not whether you agreed**: `confirmed` (it holds here), `not_applicable` (true in
+general, not for this codebase), `unverifiable` (cannot be settled with what you can reach), `unverified` (you
+have not checked it — say why in `effect`). Leaving a point unrecorded and marking it `unverified` are
+different: the second is a decision you made, the first is a gap. Record the ones you checked as you check
+them; `consult_get`'s `next_step` names the points still without a verdict, and recording the same id again
+replaces it.
+
 The decision, the verification and the change stay yours.

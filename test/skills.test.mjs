@@ -165,3 +165,14 @@ test('every skill points at the stance column and forbids discarding a same-vend
     assert.match(text, /not a reason to (skip|discard|dismiss)/i, `${host} skill must say the caveat is not a reason to discard`);
   }
 });
+
+test('every skill closes a consultation by recording what checking showed', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /consult_record/, `${host} skill must tell the lead how to record a verdict`);
+    for (const verdict of ['unverified', 'confirmed', 'not_applicable', 'unverifiable']) {
+      assert.match(text, new RegExp(verdict), `${host} skill must name the verdict "${verdict}"`);
+    }
+    assert.match(text, /f1/, `${host} skill must say where the ids come from`);
+  }
+});

@@ -52,6 +52,29 @@ export function renderGuardrails() {
   return GUARDRAILS.join('\n');
 }
 
+// The material the lead handed over, kept in the shape it was sent in. The
+// rendered brief is thrown away with the job directory, so without this the
+// history holds an answer whose premises are gone -- and a finding read a month
+// later is only as good as the facts it was answering. Redacted the same way
+// renderBrief redacts the text itself, so the stored copy is what was sent.
+export function briefRecord(req) {
+  return redact({
+    objective: req.objective ?? null,
+    success_criteria: req.success_criteria ?? [],
+    constraints: req.constraints ?? [],
+    facts: req.context?.facts ?? [],
+    proposal: req.context?.proposal ?? null,
+    counterpoints: req.context?.counterpoints ?? [],
+    artifacts: (req.context?.artifacts ?? []).map((a) => ({
+      name: a.name,
+      kind: a.kind,
+      language: a.language ?? null,
+      source: a.source ?? null,
+      excerpt: a.excerpt,
+    })),
+  });
+}
+
 function section(title, body) {
   if (!body) return null;
   return `## ${title}\n${body}`;

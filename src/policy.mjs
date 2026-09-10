@@ -166,6 +166,13 @@ export function detectCaller(env = process.env) {
 
 export const MODES = ['explore', 'review', 'debate'];
 
+// What the lead may write against one point of an answer. Four words, chosen so
+// that "I have not checked this" is a first-class outcome rather than the
+// absence of a record: an unchecked finding and a finding that turned out not
+// to apply are different things a month later. The server stores the word and
+// counts the words; it never derives one from anything else the lead wrote.
+export const VERDICTS = ['unverified', 'confirmed', 'not_applicable', 'unverifiable'];
+
 // A request may name a model, but only one the operator has listed. The
 // default is always allowed; anything else has to be added to the target's
 // PEER_CONSULT_*_ALLOWED_MODELS list, so a runaway caller cannot reach a model the

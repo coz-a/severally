@@ -60,3 +60,29 @@ test('the stance is kept as declared, and an unknown one becomes null and counts
   assert.equal(result.stance, null);
   assert.ok(quality.missing_sections.includes('stance'));
 });
+
+test('findings, unknowns and next_checks carry stable ids a verdict can point at', () => {
+  const { result } = normalizeResult({
+    ...full,
+    findings: [
+      { point: 'p1', grounds: 'g', impact: 'i', severity: 'high', confidence: 'high' },
+      { point: 'p2', grounds: 'g', impact: 'i', severity: 'low', confidence: 'low' },
+    ],
+    unknowns: [{ item: 'u1', why_it_matters: 'w', how_to_obtain: 'h' }],
+    next_checks: [{ check: 'c1', method: 'm', expected_signal: 'e' }],
+  });
+  assert.deepEqual(result.findings.map((f) => f.id), ['f1', 'f2']);
+  assert.deepEqual(result.unknowns.map((u) => u.id), ['u1']);
+  assert.deepEqual(result.next_checks.map((c) => c.id), ['c1']);
+  // The id is assigned once, when the answer is parsed, and travels with the
+  // stored result -- so f2 names the same finding every time it is read back.
+  assert.equal(result.findings[1].point, 'p2');
+});
+
+test('ids are not read from the consultant: it does not get to renumber its own findings', () => {
+  const { result } = normalizeResult({
+    ...full,
+    findings: [{ id: 'f99', point: 'p', grounds: 'g', impact: 'i', severity: 'low', confidence: 'low' }],
+  });
+  assert.equal(result.findings[0].id, 'f1');
+});

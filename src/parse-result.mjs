@@ -81,12 +81,16 @@ export function extractJson(text) {
   return null;
 }
 
-function mapList(raw, fields, { requiredField }) {
+// `idPrefix` numbers the kept entries (f1, u1, c1 ...) so the lead can record a
+// verdict against one point later. The id is ours, assigned at parse time and
+// never read from the answer: a consultant that numbered its own findings
+// cannot make one of them impersonate another.
+function mapList(raw, fields, { requiredField, idPrefix = null }) {
   if (!Array.isArray(raw)) return [];
   const out = [];
   for (const entry of raw.slice(0, O.listMax)) {
     if (!entry || typeof entry !== 'object') continue;
-    const item = {};
+    const item = idPrefix ? { id: `${idPrefix}${out.length + 1}` } : {};
     for (const [key, kind] of Object.entries(fields)) {
       item[key] = kind === 'level' ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
@@ -119,19 +123,19 @@ export function normalizeResult(raw) {
     stance: stance(src.stance),
     findings: mapList(src.findings, {
       point: 'text', grounds: 'text', impact: 'text', severity: 'level', confidence: 'level',
-    }, { requiredField: 'point' }),
+    }, { requiredField: 'point', idPrefix: 'f' }),
     alternatives: mapList(src.alternatives, {
       option: 'text', tradeoffs: 'text', when_preferred: 'text',
     }, { requiredField: 'option' }),
     unknowns: mapList(src.unknowns, {
       item: 'text', why_it_matters: 'text', how_to_obtain: 'text',
-    }, { requiredField: 'item' }),
+    }, { requiredField: 'item', idPrefix: 'u' }),
     decision_changers: mapList(src.decision_changers, {
       condition: 'text', changes_to: 'text',
     }, { requiredField: 'condition' }),
     next_checks: mapList(src.next_checks, {
       check: 'text', method: 'text', expected_signal: 'text',
-    }, { requiredField: 'check' }),
+    }, { requiredField: 'check', idPrefix: 'c' }),
     remaining_disagreements: mapList(src.remaining_disagreements, {
       topic: 'text', your_position: 'text', why_unresolved: 'text',
     }, { requiredField: 'topic' }),

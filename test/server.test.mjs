@@ -17,11 +17,16 @@ async function connect() {
 
 const payload = (res) => JSON.parse(res.content[0].text);
 
-test('exposes the three protocol tools plus a history listing', async () => {
+test('exposes the three protocol tools, the lead\'s record, and a history listing', async () => {
   const { client, close } = await connect();
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['consult_cancel', 'consult_get', 'consult_list', 'consult_start']);
+  assert.deepEqual(names, ['consult_cancel', 'consult_get', 'consult_list', 'consult_record', 'consult_start']);
+  const record = tools.find((t) => t.name === 'consult_record');
+  assert.deepEqual(
+    record.inputSchema.properties.entries.items.properties.verdict.enum,
+    ['unverified', 'confirmed', 'not_applicable', 'unverifiable'],
+  );
   const start = tools.find((t) => t.name === 'consult_start');
   const req = start.inputSchema.properties.request;
   // target is now "a name" or "a name with a model suffix", so the accepted
@@ -146,5 +151,41 @@ test('wait_ms is capped below the request timeout MCP clients apply', async () =
   assert.equal(waitProp.maximum, POLICY.maxWaitMs);
   const res = await client.callTool({ name: 'consult_get', arguments: { job_id: 'x', wait_ms: 600_000 } });
   assert.equal(res.isError, true, 'an over-cap wait must be rejected, not silently clamped');
+  await close();
+});
+
+test('a verdict written over MCP lands on the consultation and comes back in the listing', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
+  await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
+
+  const recorded = payload(await client.callTool({
+    name: 'consult_record',
+    arguments: { job_id: started.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Capped the retries.' }] },
+  }));
+  assert.deepEqual(recorded.record.verdicts, { confirmed: 1 });
+  assert.deepEqual(recorded.record.unrecorded, ['u1', 'c1']);
+
+  const listed = payload(await client.callTool({ name: 'consult_list', arguments: {} })).jobs
+    .find((j) => j.job_id === started.job_id);
+  assert.equal(listed.recorded, true);
+  await close();
+});
+
+test('an id the consultant never produced is refused, with the ids that exist', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
+  await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
+
+  const res = await client.callTool({
+    name: 'consult_record',
+    arguments: { job_id: started.job_id, entries: [{ id: 'f9', verdict: 'confirmed' }] },
+  });
+  assert.equal(res.isError, true);
+  const err = payload(res);
+  assert.equal(err.error, 'unknown_entry_id');
+  assert.match(err.message, /f1, u1, c1/);
   await close();
 });

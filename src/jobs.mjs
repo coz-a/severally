@@ -4,9 +4,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { POLICY, limitsSummary, timeoutMs, detectCaller } from './policy.mjs';
+import { POLICY, VERDICTS, limitsSummary, timeoutMs, detectCaller } from './policy.mjs';
 import { parseRequest, RequestError } from './schema.mjs';
-import { renderBrief, renderGuardrails } from './brief.mjs';
+import { renderBrief, renderGuardrails, briefRecord } from './brief.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
 import { normalizeResult, OutputError } from './parse-result.mjs';
 import { redact } from './redact.mjs';
@@ -66,6 +66,8 @@ export class JobManager {
       status: job.status,
       model: job.model,
       question: job.question,
+      brief: job.brief,
+      record: job.record ?? null,
       created_at: job.created_at,
       started_at: job.started_at,
       finished_at: job.finished_at,
@@ -92,6 +94,7 @@ export class JobManager {
     rec.progress = job.status === 'running' && job._handle
       ? (ADAPTERS[job.target]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null)
       : null;
+    rec.record = job.record ? recordSummary(job) : null;
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -114,6 +117,8 @@ export class JobManager {
           created_at: j.created_at,
           duration_ms: j.duration_ms,
           summary: j.result ? j.result.summary.slice(0, 200) : null,
+          recorded: Boolean(j.record),
+          verdicts: j.record ? tally(j.record.entries) : null,
         };
       });
   }
@@ -183,6 +188,7 @@ export class JobManager {
         // view. The brief the consultant receives is redacted too
         // (renderBrief), so this is the same text it was actually sent.
         question: redact(req.question),
+        brief: briefRecord(req),
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: 'queued',
@@ -455,6 +461,73 @@ export class JobManager {
     job._cancelFns = [];
   }
 
+  // The lead's own column: what they checked, what it turned out to be, and
+  // what it changed. Nothing here is inferred -- the server refuses an id the
+  // consultant did not produce and a word outside VERDICTS, then stores what
+  // was written. It never decides that a finding was adopted, and it never
+  // fills in a verdict the lead did not write.
+  record({ job_id: jobId, entries }) {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      throw new RequestError(
+        `no consultation with job_id "${jobId}" in this session (job ids are lost when the client restarts; the round file under ~/.peer-consult/history keeps the answer)`,
+        'unknown_job',
+      );
+    }
+    if (!job.result) {
+      throw new RequestError(
+        `consultation "${jobId}" is ${job.status} and produced no advice, so there is nothing to record a verdict against`,
+        'no_result',
+      );
+    }
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw new RequestError('entries must be a non-empty array of { id, verdict, effect?, note? }', 'entries_required');
+    }
+
+    const ids = recordableIds(job.result);
+    const now = new Date().toISOString();
+    const merged = new Map((job.record?.entries ?? []).map((e) => [e.id, e]));
+
+    for (const entry of entries) {
+      const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
+      if (!ids.includes(id)) {
+        throw new RequestError(
+          `"${id}" is not a point in this answer; record against one of: ${ids.join(', ')}`,
+          'unknown_entry_id',
+        );
+      }
+      const verdict = typeof entry?.verdict === 'string' ? entry.verdict.trim() : '';
+      if (!VERDICTS.includes(verdict)) {
+        throw new RequestError(
+          `verdict for "${id}" must be one of: ${VERDICTS.join(', ')} -- these describe what checking the point showed, not whether you adopted it`,
+          'invalid_verdict',
+        );
+      }
+      merged.set(id, {
+        id,
+        verdict,
+        effect: text(entry?.effect),
+        note: text(entry?.note),
+        recorded_at: now,
+      });
+    }
+
+    job.record = {
+      updated_at: now,
+      entries: ids.filter((id) => merged.has(id)).map((id) => merged.get(id)),
+    };
+    // An update to a round that already happened, so the index line stays as it
+    // was: the history has one line per consultation, not one per edit.
+    try { store.persistRound(this.#record(job), { appendIndex: false }); } catch { /* history is best effort */ }
+
+    return {
+      job_id: job.job_id,
+      chain_id: job.chain_id,
+      round: job.round,
+      record: recordSummary(job),
+    };
+  }
+
   async wait(jobId, waitMs) {
     const job = this.jobs.get(jobId);
     if (!job) return null;
@@ -571,6 +644,42 @@ export class JobManager {
   }
 }
 
+// The points a verdict can name, in the order they appear in the answer.
+function recordableIds(result) {
+  return [
+    ...result.findings.map((f) => f.id),
+    ...result.unknowns.map((u) => u.id),
+    ...result.next_checks.map((c) => c.id),
+  ].filter(Boolean);
+}
+
+function tally(entries) {
+  const out = {};
+  for (const e of entries) out[e.verdict] = (out[e.verdict] ?? 0) + 1;
+  return out;
+}
+
+// Counting is mechanical and stays that way: how many points the answer has,
+// how many carry a verdict, which ones do not. No judgement about whether the
+// consultation was worth it -- that is the lead's to draw from the entries.
+function recordSummary(job) {
+  const ids = recordableIds(job.result);
+  const written = new Set(job.record.entries.map((e) => e.id));
+  return {
+    ...job.record,
+    verdicts: tally(job.record.entries),
+    coverage: { recordable: ids.length, recorded: written.size },
+    unrecorded: ids.filter((id) => !written.has(id)),
+  };
+}
+
+function text(value) {
+  if (typeof value !== 'string') return null;
+  const t = redact(value).trim();
+  if (!t) return null;
+  return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}\n…[truncated by peer-consult]` : t;
+}
+
 function adviceCaveat(normalized) {
   const { result, quality } = normalized;
   const notes = [];
@@ -636,9 +745,16 @@ function nextStep(job) {
   if (job.status === 'running' || job.status === 'queued') return 'poll consult_get again, or consult_cancel to stop it';
   if (job.status === 'completed') {
     const left = POLICY.maxRounds - job.round;
-    return left > 0
-      ? `check the grounds behind the points that matter, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}")`
-      : 'rounds exhausted: record which points you adopt, reject or hold, and decide';
+    // A consultation is finished when the lead has said what checking each
+    // point showed, not when the answer arrives. Name the open ones until then.
+    const written = new Set((job.record?.entries ?? []).map((e) => e.id));
+    const open = job.result ? recordableIds(job.result).filter((id) => !written.has(id)).length : 0;
+    const close = open > 0
+      ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open} point(s) still carry no verdict.`
+      : '';
+    return (left > 0
+      ? `check the grounds behind the points that matter, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").`
+      : 'rounds exhausted: decide with what you have.') + close;
   }
   if (job.failure?.kind === 'timeout' || job.failure?.kind === 'cli_error') return 'retriable: narrow the brief and start a new consultation';
   if (job.failure?.kind === 'usage_limit' || job.failure?.kind === 'auth') return 'not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first';
