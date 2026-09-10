@@ -36184,7 +36184,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
   }
   if (req.context.facts.length === 0 && req.context.artifacts.length === 0) {
     throw new RequestError(
-      "provide at least one entry in context.facts or context.artifacts: the consultant cannot read your filesystem, so every fact it needs must be in the request",
+      "provide at least one entry in context.facts or context.artifacts: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request",
       "context_required"
     );
   }
@@ -36347,7 +36347,7 @@ var GUARDRAILS = [
   "- You must not modify, create or delete any file, and must not run shell commands, build tools or tests. Those tools are withheld from you at the process level; do not look for a way around it.",
   "- You must not start, request or delegate another consultation, sub-agent or nested agent session. This exchange ends with your answer.",
   "- You may search and browse the web freely; cite what you actually opened in `references`.",
-  "- Do not read the local filesystem. Everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.",
+  "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.",
   "- Never include credentials, API keys, tokens, or environment variable values in your answer.",
   "- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.",
   "",
@@ -37735,9 +37735,9 @@ mode:
             (context.counterpoints) and the extra evidence, to get what would change the judgement, how to test
             it, and which disagreements remain. Both are required.
 
-The consultant cannot read your filesystem: put every fact it needs into context.facts and paste the relevant
-passages into context.artifacts. Model, permissions, round count, timeout and size caps are fixed by this
-server and cannot be raised from a request.`;
+The consultant starts in an empty working directory and is not told where your repository is: put every fact
+it needs into context.facts and paste the relevant passages into context.artifacts. Model, permissions, round
+count, timeout and size caps are fixed by this server and cannot be raised from a request.`;
 function createServer(manager = new JobManager()) {
   const server = new McpServer(
     { name: "peer-consult", version: "1.1.0" },

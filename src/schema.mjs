@@ -243,7 +243,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
   }
   if (req.context.facts.length === 0 && req.context.artifacts.length === 0) {
     throw new RequestError(
-      'provide at least one entry in context.facts or context.artifacts: the consultant cannot read your filesystem, so every fact it needs must be in the request',
+      'provide at least one entry in context.facts or context.artifacts: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request',
       'context_required',
     );
   }

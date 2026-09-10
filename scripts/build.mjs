@@ -87,7 +87,9 @@ export function renderSkills() {
     // hosts that actually have Codex as a peer need to hear it.
     const executionCaveat = peers.includes('codex')
       ? '\n\nOne caveat on that list: the Codex consultant is sandboxed read-only rather than execution-free,'
-        + '\nso it can still run read-only shell commands. Its writes and its network access are blocked.'
+        + '\nso it can still run read-only shell commands and read the disk. Its writes and its network access'
+        + '\nare blocked, and it starts in an empty working directory without being told where your repository'
+        + '\nis, so in practice it answers from the brief.'
       : '';
     const text = tmpl
       .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)

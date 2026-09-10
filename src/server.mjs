@@ -44,9 +44,9 @@ mode:
             (context.counterpoints) and the extra evidence, to get what would change the judgement, how to test
             it, and which disagreements remain. Both are required.
 
-The consultant cannot read your filesystem: put every fact it needs into context.facts and paste the relevant
-passages into context.artifacts. Model, permissions, round count, timeout and size caps are fixed by this
-server and cannot be raised from a request.`;
+The consultant starts in an empty working directory and is not told where your repository is: put every fact
+it needs into context.facts and paste the relevant passages into context.artifacts. Model, permissions, round
+count, timeout and size caps are fixed by this server and cannot be raised from a request.`;
 
 export function createServer(manager = new JobManager()) {
   const server = new McpServer(

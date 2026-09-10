@@ -34,7 +34,7 @@ const GUARDRAILS = [
   '- You must not modify, create or delete any file, and must not run shell commands, build tools or tests. Those tools are withheld from you at the process level; do not look for a way around it.',
   '- You must not start, request or delegate another consultation, sub-agent or nested agent session. This exchange ends with your answer.',
   '- You may search and browse the web freely; cite what you actually opened in `references`.',
-  '- Do not read the local filesystem. Everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.',
+  '- You are running in an empty working directory and do not have the lead\'s repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.',
   '- Never include credentials, API keys, tokens, or environment variable values in your answer.',
   '- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.',
   '',

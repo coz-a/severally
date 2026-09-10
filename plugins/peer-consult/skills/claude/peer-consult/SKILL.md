@@ -10,7 +10,9 @@ search and browse the web. They cannot edit files, reach the network outside sea
 see your session, or consult anyone else. They know only what you put in the brief.
 
 One caveat on that list: the Codex consultant is sandboxed read-only rather than execution-free,
-so it can still run read-only shell commands. Its writes and its network access are blocked.
+so it can still run read-only shell commands and read the disk. Its writes and its network access
+are blocked, and it starts in an empty working directory without being told where your repository
+is, so in practice it answers from the brief.
 
 ## Pick the consultant
 
@@ -95,13 +97,19 @@ Do the organising work yourself; a vague brief gets a vague answer.
 1. **State the question in one sentence.** Not "thoughts on this?" but the actual decision you are stuck on.
 2. **Write down what a useful answer looks like** (`success_criteria`) — e.g. "a concrete failure scenario with
    numbers, or a clear all-clear with its conditions".
-3. **Supply the evidence.** The consultant cannot read your filesystem. Put the load-bearing facts in
-   `context.facts` and paste the relevant passages — the function, the failing test output, the schema, the
-   diff — into `context.artifacts`. Excerpts, not whole files; the request has a character budget.
+3. **Supply the evidence.** The consultant starts in an empty working directory and is not told where your
+   repository is, so it works from the brief alone. Put the load-bearing facts in `context.facts` and paste
+   the relevant passages — the function, the failing test output, the schema, the diff — into
+   `context.artifacts`. Excerpts, not whole files; the request has a character budget.
 4. **Include the constraints that make cheap advice useless**: the stack, the traffic, what you cannot change.
 5. **Separate imposed constraints from your own assumptions.** A constraint is read as fixed and will not be
    challenged; if "we cannot change the schema" is your call rather than a given, put it under `facts` as a
    decision with its reason, or leave it out and let the consultant test it. Only what you wrote can be doubted.
+
+**Start small.** For a first consultation: one consultant, `mode: "review"`, the proposal in a paragraph, the
+few facts it rests on, and one diff or code excerpt. That is enough to get an answer in the shape described
+below. Length is not what makes the answer good — a brief that is long because it is thorough is fine, one
+that is long because you pasted everything buries the question.
 
 ## Running it
 
