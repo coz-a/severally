@@ -1,14 +1,8 @@
 {
-  "_comment": "Copy to ~/.peer-consult/config.json (or point PEER_CONSULT_CONFIG at it). Every key is optional: with no file at all, a consultant is offered when its CLI is on PATH.",
+  "//": "peer-consult config. Copy to ~/.peer-consult/config.json (or point PEER_CONSULT_CONFIG at it), or run `npm run init-config` to generate one. Precedence: environment variable > this file > autodetection. All keys are optional.",
   "targets": {
-    "codex": {
-      "enabled": false
-    },
-    "claude-code": {
-      "models": ["claude-opus-5", "claude-sonnet-5"]
-    },
-    "antigravity": {
-      "bin": "/opt/agy/bin/agy"
-    }
+    "codex": { "enabled": false, "note": "rate-limited until 15:00" },
+    "claude-code": { "models": ["claude-opus-5", "claude-sonnet-5"] },
+    "antigravity": { "bin": "/opt/agy/bin/agy" }
   }
 }

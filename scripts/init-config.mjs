@@ -17,50 +17,30 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TARGETS, POLICY, isInstalled } from '../src/policy.mjs';
 
-const README = [
-  'peer-consult, per-machine configuration. Every key is optional.',
-  'Precedence, knob by knob: environment variable > this file > autodetection > built-in default.',
-  'Keys starting with "_" are notes: the server ignores them, so you can leave them in place.',
-  'To use a suggestion, move the key out of its "_example" block into the target itself.',
-  'This file is read once, when the MCP server starts -- restart the client after editing it.',
-].join(' ');
+const HEADER = 'peer-consult config. Precedence: environment variable > this file > autodetection.'
+  + ' Read once at server start -- restart the client after editing. All keys are optional; README §4.5.';
 
-/** The config template for the machine this runs on. */
-export function renderConfig(env = process.env) {
+// Examples live in one block at the bottom rather than beside every target:
+// the loader ignores "//" keys, and repeating them per target is what made an
+// otherwise empty file unreadable.
+const EXAMPLES = {
+  'exclude a consultant whose CLI is installed (e.g. a rate-limited account)':
+    { codex: { enabled: false, note: 'rate-limited until 15:00' } },
+  'let a request name a model, on top of the always-allowed default':
+    { 'claude-code': { models: ['claude-opus-5', 'claude-sonnet-5'] } },
+  'point at a CLI that is not on PATH, or pin a different default model':
+    { antigravity: { bin: '/opt/agy/bin/agy', model: 'gemini-3.1-pro-high' } },
+};
+
+/**
+ * The config template for the machine this runs on. Each target starts empty,
+ * so the file shows at a glance that nothing is being overridden; what was
+ * detected is reported on the terminal, not written into the file.
+ */
+export function renderConfig() {
   const targets = {};
-  for (const id of TARGETS) {
-    const t = POLICY.targets[id];
-    const cli = t.cli;
-    const found = isInstalled(cli);
-    targets[id] = {
-      _detected: found
-        ? `"${cli}" is runnable here, so this consultant is offered by default`
-        : `"${cli}" was not found, so this consultant is not offered -- no config needed to exclude it`,
-      _defaults: { bin: cli, model: t.model },
-      _example: found
-        ? {
-          _enabled: 'set false to exclude this consultant even though its CLI is installed'
-            + ' -- e.g. an account you know is rate-limited or out of quota',
-          enabled: false,
-          _note: 'shown to the caller when it asks for a consultant that is off, so say why',
-          note: 'rate-limited on this account',
-          _models: 'models a request may name, on top of the default (which is always allowed)',
-          models: [t.model],
-        }
-        : {
-          _enabled: 'set true only if you also give a "bin" this machine can actually run',
-          enabled: true,
-          bin: cli,
-          models: [t.model],
-        },
-    };
-  }
-  return {
-    _readme: README,
-    _generated: new Date().toISOString(),
-    _host: os.hostname(),
-    targets,
-  };
+  for (const id of TARGETS) targets[id] = {};
+  return { '//': HEADER, targets, '//examples': EXAMPLES };
 }
 
 /** Where the server would look for this file, given the same environment. */
@@ -91,12 +71,16 @@ function main() {
   fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
   fs.writeFileSync(target, body, { mode: 0o600 });
 
-  const offered = TARGETS.filter((id) => isInstalled(POLICY.targets[id].cli));
-  const absent = TARGETS.filter((id) => !offered.includes(id));
+  // What the machine has belongs here rather than in the file: it is a fact
+  // about right now, and the server re-detects it every time it starts.
   console.log(`wrote ${target}`);
-  console.log(`   detected: ${offered.length ? offered.join(', ') : '(no consultant CLI on PATH)'}`);
-  if (absent.length) console.log(`   not found: ${absent.join(', ')} -- excluded automatically, no config needed`);
-  console.log('   restart the client for a change here to take effect');
+  for (const id of TARGETS) {
+    const t = POLICY.targets[id];
+    console.log(isInstalled(t.cli)
+      ? `   ${id.padEnd(12)} ${t.cli} found, default model ${t.model}`
+      : `   ${id.padEnd(12)} ${t.cli} not found -- excluded automatically, no config needed`);
+  }
+  console.log('   edit the file to override any of that; restart the client afterwards');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

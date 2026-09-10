@@ -161,8 +161,11 @@ test('the generated template is valid config the server can read back', async ()
   // The suggestions live in _example blocks, so a freshly generated file
   // changes nothing until the operator moves a key up.
   for (const id of policy.TARGETS) {
-    assert.ok(rendered.targets[id]._detected, `${id} must report what was detected`);
+    assert.deepEqual(rendered.targets[id], {}, `${id} must start with nothing overridden`);
     assert.equal(policy.POLICY.targets[id].available, policy.isInstalled(policy.POLICY.targets[id].cli),
       `${id} availability must still come from detection`);
   }
+  // The examples are documentation, so they must not be mistaken for config.
+  assert.ok(rendered['//examples'], 'the template should show what the keys look like');
+  assert.equal(Object.keys(rendered.targets).length, policy.TARGETS.length);
 });
