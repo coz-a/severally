@@ -4,7 +4,8 @@
 
 import { z } from 'zod';
 import {
-  POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds, resolveTarget, normalizeTargetInput,
+  POLICY, TARGETS, TARGET_INPUTS, MODES, artifactKinds,
+  resolveTarget, resolveModel, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
 } from './policy.mjs';
 
 const L = POLICY.input;
@@ -35,17 +36,41 @@ export const contextSchema = z
 // comes from policy.mjs, so it cannot drift away from resolveTarget().
 const normalizeTargetLike = normalizeTargetInput;
 
+// A consultant, optionally carrying the model to run it on: "claude-code", or
+// "claude:claude-opus-5". The bare-name branch keeps every accepted spelling
+// visible as an enum in the published tool schema; the suffixed branch is
+// checked in parseRequest, where the target is known and its operator
+// allowlist can be consulted.
+const targetSpec = z.preprocess(
+  normalizeTargetSpec,
+  z.union(
+    [
+      z.enum(TARGET_INPUTS),
+      // The message lives on this branch because zod surfaces the branch's own
+      // error, not the union's: a bare "must match pattern /.../" tells the
+      // caller nothing about which names it may use.
+      z.string().regex(/^[a-z0-9-]+:.*$/, {
+        message: `must be one of: ${TARGET_INPUTS.join(', ')}`
+          + ' -- optionally with the model to run it on, e.g. "claude:claude-opus-5"',
+      }),
+    ],
+    // Both branches failing means the value is neither an accepted name nor a
+    // name with a model suffix; zod would otherwise report a bare regex
+    // mismatch, which tells the caller nothing about what it may say.
+    {
+      error: () => `must be one of: ${TARGET_INPUTS.join(', ')}`
+        + ' -- optionally with the model to run it on, e.g. "claude:claude-opus-5"',
+    },
+  ),
+);
+
 export const requestSchema = z
   .object({
     // Exactly one of `target` (one consultant) or `targets` (ask several the
     // same question) is required; parseRequest below enforces the exclusivity,
     // because zod cannot phrase that refusal usefully.
-    target: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)).optional(),
-    targets: z
-      .array(z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)))
-      .min(1)
-      .max(TARGETS.length)
-      .optional(),
+    target: targetSpec.optional(),
+    targets: z.array(targetSpec).min(1).max(TARGETS.length).optional(),
     // Identifies the host CLI making this request, if it names itself. Purely
     // an annotation input for the same-vendor caveat below: it must never
     // gate permissions, limits, rounds, or which CLI gets launched.
@@ -103,7 +128,8 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
     );
   }
   const named = hasSingle ? [req.target] : req.targets;
-  const resolved = named.map((t) => resolveTarget(t));
+  const specs = named.map((t) => splitTargetSpec(t));
+  const resolved = specs.map((s) => resolveTarget(s.target));
   // The schema and resolveTarget() share one normaliser, so this should be
   // unreachable -- but if they ever do diverge, an unresolved target would
   // otherwise reach POLICY.targets[null].model and surface as a TypeError
@@ -128,6 +154,43 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
       'followup_fanout_not_allowed',
     );
   }
+
+  // A model suffix ("claude:claude-opus-5") picks which model that consultant
+  // runs on, from the list the operator sanctioned. Resolved here, before any
+  // CLI is launched, so a name the operator never allowed is a validation
+  // error rather than a consultation that burns a slot and fails.
+  const models = {};
+  resolved.forEach((target, i) => {
+    const wanted = specs[i].model;
+    const t = POLICY.targets[target];
+    if (wanted === null) {
+      models[target] = t.model;
+      return;
+    }
+    if (wanted === '') {
+      throw new RequestError(
+        `${JSON.stringify(named[i])} ends in ":" without naming a model; drop the colon to use ${t.model}`,
+        'model_not_allowed',
+      );
+    }
+    const match = resolveModel(target, wanted);
+    if (match === null) {
+      throw new RequestError(
+        `consultant "${target}" is not configured to run model ${JSON.stringify(wanted)}; `
+        + `allowed: ${t.models.join(', ')}. The operator adds more by setting ${t.modelsEnv}`,
+        'model_not_allowed',
+      );
+    }
+    if (match.ambiguous) {
+      throw new RequestError(
+        `${JSON.stringify(wanted)} matches more than one model allowed for "${target}": `
+        + `${match.ambiguous.join(', ')}. Name one of them exactly`,
+        'model_ambiguous',
+      );
+    }
+    models[target] = match.model;
+  });
+  req.models = models;
   req.targets = unique;
   req.target = unique[0]; // single-target consumers (brief, history, adapters) keep working
   req.fanout = unique.length > 1;

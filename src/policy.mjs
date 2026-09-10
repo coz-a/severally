@@ -54,11 +54,52 @@ export function normalizeTargetInput(raw) {
   return raw.trim().toLowerCase().replace(/[\s_]+/g, '-');
 }
 
+/**
+ * A target may carry a model as a suffix: "claude:claude-opus-5". Only the
+ * consultant half is spelling-normalised -- a model id is matched against the
+ * operator's allowlist verbatim, so its case and dots survive.
+ */
+export function normalizeTargetSpec(raw) {
+  if (typeof raw !== 'string') return raw;
+  const at = raw.indexOf(':');
+  if (at === -1) return normalizeTargetInput(raw);
+  return `${normalizeTargetInput(raw.slice(0, at))}:${raw.slice(at + 1).trim()}`;
+}
+
+/** Split "<target>[:<model>]" into its two halves; model is null when absent. */
+export function splitTargetSpec(raw) {
+  if (typeof raw !== 'string') return { target: raw, model: null };
+  const at = raw.indexOf(':');
+  if (at === -1) return { target: raw, model: null };
+  return { target: raw.slice(0, at), model: raw.slice(at + 1).trim() };
+}
+
 /** Canonical id for any accepted spelling of a target, or null. */
 export function resolveTarget(raw) {
   const key = normalizeTargetInput(raw);
   if (typeof key !== 'string') return null;
   return Object.hasOwn(TARGET_ALIASES, key) ? TARGET_ALIASES[key] : null;
+}
+
+/**
+ * Match what the user called a model against the ones the operator allowed
+ * for this consultant: "Claude Opus" -> "claude-opus-5". Exact wins; otherwise
+ * a unique substring match wins. Two candidates is an error, never a guess --
+ * running the wrong model is worse than asking which one was meant.
+ *
+ * @returns {{model: string} | {ambiguous: string[]} | null} null = no match.
+ */
+export function resolveModel(target, wanted) {
+  const allowed = POLICY.targets[target]?.models ?? [];
+  if (typeof wanted !== 'string' || wanted === '') return null;
+  if (allowed.includes(wanted)) return { model: wanted };
+  const key = wanted.trim().toLowerCase().replace(/[\s_]+/g, '-');
+  const exact = allowed.find((m) => m.toLowerCase() === key);
+  if (exact) return { model: exact };
+  const hits = allowed.filter((m) => m.toLowerCase().includes(key));
+  if (hits.length === 1) return { model: hits[0] };
+  if (hits.length > 1) return { ambiguous: hits };
+  return null;
 }
 
 // Which CLI is hosting this server. Used only to annotate a consultation that
@@ -72,20 +113,39 @@ export function detectCaller(env = process.env) {
 
 export const MODES = ['explore', 'review', 'debate'];
 
+// A request may name a model, but only one the operator has listed. The
+// default is always allowed; anything else has to be added to the target's
+// PEER_CONSULT_*_MODELS list, so a runaway caller cannot reach a model the
+// operator never sanctioned -- and a typo is refused before a CLI is launched.
+const list = (name) => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return [];
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+};
+const allowedFor = (dflt, envName) => Object.freeze([...new Set([dflt, ...list(envName)])]);
+
+const CODEX_MODEL = str('PEER_CONSULT_CODEX_MODEL', 'gpt-6-astra');
+const CLAUDE_MODEL = str('PEER_CONSULT_CLAUDE_MODEL', 'claude-fable-5-1');
+const AGY_MODEL = str('PEER_CONSULT_AGY_MODEL', 'gemini-3.8-flash-high');
+
 export const POLICY = Object.freeze({
   home: str('PEER_CONSULT_HOME', path.join(os.homedir(), '.peer-consult')),
 
   targets: Object.freeze({
     codex: Object.freeze({
       cli: str('PEER_CONSULT_CODEX_BIN', 'codex'),
-      model: str('PEER_CONSULT_CODEX_MODEL', 'gpt-6-astra'),
+      model: CODEX_MODEL,
+      models: allowedFor(CODEX_MODEL, 'PEER_CONSULT_CODEX_MODELS'),
+      modelsEnv: 'PEER_CONSULT_CODEX_MODELS',
       reasoningEffort: str('PEER_CONSULT_CODEX_EFFORT', 'medium'),
       label: 'Codex CLI',
       vendor: 'openai',
     }),
     'claude-code': Object.freeze({
       cli: str('PEER_CONSULT_CLAUDE_BIN', 'claude'),
-      model: str('PEER_CONSULT_CLAUDE_MODEL', 'claude-fable-5-1'),
+      model: CLAUDE_MODEL,
+      models: allowedFor(CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_MODELS'),
+      modelsEnv: 'PEER_CONSULT_CLAUDE_MODELS',
       label: 'Claude Code CLI',
       vendor: 'anthropic',
       maxBudgetUsd: num('PEER_CONSULT_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
@@ -93,7 +153,9 @@ export const POLICY = Object.freeze({
     antigravity: Object.freeze({
       cli: str('PEER_CONSULT_AGY_BIN', 'agy'),
       // The model name carries the reasoning effort; agy rejects --effort for it.
-      model: str('PEER_CONSULT_AGY_MODEL', 'gemini-3.8-flash-high'),
+      model: AGY_MODEL,
+      models: allowedFor(AGY_MODEL, 'PEER_CONSULT_AGY_MODELS'),
+      modelsEnv: 'PEER_CONSULT_AGY_MODELS',
       label: 'Antigravity CLI',
       vendor: 'google',
       // Where the real credentials live is credentialsHome() below, not a

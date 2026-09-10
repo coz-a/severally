@@ -152,8 +152,8 @@ consult_list({ limit? })    -> 直近の相談一覧
 
 | フィールド | 必須 | 内容 |
 |---|---|---|
-| `target` | いずれか一方 | `codex` / `claude-code` / `antigravity`（エイリアス: gpt, chatgpt, openai / claude, anthropic / gemini, agy, google。大小文字・空白は無視） |
-| `targets` | いずれか一方 | `target` と排他。1〜3件、重複不可。同一ブリーフを全員に同時送信し、1つの `group_id` にまとまる |
+| `target` | いずれか一方 | `codex` / `claude-code` / `antigravity`（エイリアス: gpt, chatgpt, openai / claude, anthropic / gemini, agy, google。大小文字・空白は無視）。`<target>:<model>` の形でモデルを指定できる（例: `claude:claude-opus-5`）|
+| `targets` | いずれか一方 | `target` と排他。1〜3件、重複不可（モデル指定の有無に関わらずターゲットで判定）。各要素が `<target>[:<model>]`。同一ブリーフを全員に同時送信し、1つの `group_id` にまとまる |
 | `caller` | – | 呼び出し元 CLI（同じ表記が使える）。`target`/`targets` と同じベンダーだと `quality.caveat` に「独立した意見ではなくフレッシュコンテキストでの再チェック」と注記される |
 | `mode` | ✔ | `explore` / `review` / `debate` |
 | `question` | ✔ | 決めたい問いを一文で |
@@ -165,6 +165,12 @@ consult_list({ limit? })    -> 直近の相談一覧
 | `context.counterpoints` | debate で必須 | 相手側の主張（相手の言い方で） |
 | `context.artifacts` | ※ | 資料。`{name, kind, language?, source?, excerpt}`。`kind` は code / log / doc / data / diff / spec / test-output / config |
 | `followup_to` | – | 初回 `null`、追加相談は先行ジョブの `job_id` |
+
+**モデルの指定**（`<target>:<model>`）は、ユーザーが名指ししたときだけ使う。指定できるのは運用者が
+`PEER_CONSULT_<TARGET>_MODELS` で許可したモデルだけで、既定モデルは常に許可される。書き方は緩く、
+大小文字・空白を無視したうえで許可リストに**一意に**部分一致すればよい（`claude:opus` → `claude-opus-5`）。
+許可外は起動前に `model_not_allowed`、2つに該当する場合は候補を挙げて `model_ambiguous` として拒否し、
+黙って一方を選ぶことはしない。現在許可されているモデルは `consult_start` のツール説明文に列挙される。
 
 ※ `facts` か `artifacts` のどちらかは必須。**相談相手はローカルファイルを読めない**ので、
 必要な本文は `artifacts.excerpt` に貼って渡す。
@@ -257,11 +263,14 @@ Codex CLI はコストを報告しないので `usage.cost_usd` は `null` に�
 |---|---|---|
 | `PEER_CONSULT_CODEX_BIN` | `codex` | – |
 | `PEER_CONSULT_CODEX_MODEL` | `gpt-6-astra` | – |
+| `PEER_CONSULT_CODEX_MODELS` | –（既定モデルのみ） | リクエストで指定を許すモデルをカンマ区切りで追加 |
 | `PEER_CONSULT_CODEX_EFFORT` | `medium` | – |
 | `PEER_CONSULT_CLAUDE_BIN` | `claude` | – |
 | `PEER_CONSULT_CLAUDE_MODEL` | `claude-fable-5-1` | – |
+| `PEER_CONSULT_CLAUDE_MODELS` | –（既定モデルのみ） | 同上（例: `claude-opus-5,claude-sonnet-5`）|
 | `PEER_CONSULT_AGY_BIN` | `agy` | – |
 | `PEER_CONSULT_AGY_MODEL` | `gemini-3.8-flash-high`（reasoning effort込みのモデル名。`--effort` は渡さない） | – |
+| `PEER_CONSULT_AGY_MODELS` | –（既定モデルのみ） | 同上 |
 | `PEER_CONSULT_AGY_CRED_HOME` | 実行ユーザの `$HOME`（合成 HOME に symlink するトークンの取得元） | – |
 | `PEER_CONSULT_TIMEOUT_MS` | 600000 | 1000–1800000 |
 | `PEER_CONSULT_MAX_ROUNDS` | 3（初回1＋追加2） | 1–5 |

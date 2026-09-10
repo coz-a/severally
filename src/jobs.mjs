@@ -180,7 +180,9 @@ export class JobManager {
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: 'queued',
-        model: POLICY.targets[target].model,
+        // The model the request asked for, already checked against the
+        // operator's allowlist; falls back to the target's default.
+        model: req.models?.[target] ?? POLICY.targets[target].model,
         created_at: new Date().toISOString(),
         started_at: null,
         finished_at: null,
@@ -337,6 +339,7 @@ export class JobManager {
         schemaPath,
         guardrails: renderGuardrails(),
         sandbox,
+        model: job.model,
       });
 
       assertNoForbiddenFlags(req.target, invocation.args);

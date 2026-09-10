@@ -117,3 +117,15 @@ test('the generated skills are in sync with the template', async () => {
     assert.equal(rendered[host], read(host), `${host} SKILL.md is stale: run node scripts/build.mjs --skills-only`);
   }
 });
+
+// A model override is only correct when the user asked for one; the skill has
+// to say both halves of that, or an agent will either never use it or use it
+// on its own initiative.
+test('every skill explains the model suffix and that it is user-driven', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /:<model>|:claude-opus-5/, `${host} skill must show the model-suffix form`);
+    assert.match(text, /Do not pick a model yourself/i, `${host} skill must forbid choosing a model unasked`);
+    assert.match(text, /usage_limit/, `${host} skill must rule out swapping models after a limit failure`);
+  }
+});

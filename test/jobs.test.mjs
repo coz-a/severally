@@ -5,7 +5,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, waitFor } from './helpers.mjs';
 
-const home = sandboxEnv();
+// A second codex model, so the model-suffix test has something besides the
+// default to name. POLICY freezes at first import, so this has to be set here
+// rather than inside the test.
+const home = sandboxEnv({ PEER_CONSULT_CODEX_MODELS: 'gpt-6-astra-mini' });
 const { JobManager } = await import('../src/jobs.mjs');
 const { POLICY } = await import('../src/policy.mjs');
 
@@ -535,4 +538,25 @@ test('a missing Antigravity credential fails the job as auth, before the child s
     delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
     process.env.PEER_CONSULT_AGY_CRED_HOME = prevCredHome;
   }
+});
+
+// The model a request names has to reach the CLI's argv, not just the job
+// record -- otherwise the consultation runs on the default and only *claims*
+// to have used what was asked for.
+test('a model named in the target reaches the consultant CLI', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const argvOut = path.join(home, 'model-argv.json');
+  process.env.STUB_ARGV_OUT = argvOut;
+  const mgr = new JobManager();
+
+  const started = mgr.start(reviewRequest({ target: 'codex:gpt-6-astra-mini' }));
+  assert.equal(started.model, 'gpt-6-astra-mini', 'the accepted model is reported back at start');
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'completed');
+  assert.equal(view.model, 'gpt-6-astra-mini', 'the job records the model that actually ran');
+
+  const argv = JSON.parse(fs.readFileSync(argvOut, 'utf8'));
+  assert.equal(argv[argv.indexOf('-m') + 1], 'gpt-6-astra-mini', 'codex was launched with the named model');
+
+  delete process.env.STUB_ARGV_OUT;
 });

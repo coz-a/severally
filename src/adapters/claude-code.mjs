@@ -26,11 +26,12 @@ export const FORBIDDEN_FLAGS = [
   '--plugin-url',
 ];
 
-export function buildInvocation({ workdir, guardrails }) {
+export function buildInvocation({ workdir, guardrails, model }) {
   const t = POLICY.targets['claude-code'];
+  const chosen = model ?? t.model;
   const args = [
     '-p',
-    '--model', t.model,
+    '--model', chosen,
     '--restricted',
     '--strict-mcp-config',
     '--setting-sources', '',
@@ -44,7 +45,7 @@ export function buildInvocation({ workdir, guardrails }) {
     '--max-budget-usd', String(t.maxBudgetUsd),
     '--append-system-prompt', guardrails,
   ];
-  return { command: t.cli, args, model: t.model, workdir };
+  return { command: t.cli, args, model: chosen, workdir };
 }
 
 function lastJsonObject(stdout) {

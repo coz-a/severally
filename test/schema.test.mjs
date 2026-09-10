@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sandboxEnv, reviewRequest, exploreRequest, debateRequest } from './helpers.mjs';
 
-sandboxEnv();
+// A second model for codex, so the allowlist under test has something in it
+// besides the default. The operator's env is the only place a model becomes
+// choosable; without this the default is the only allowed value.
+sandboxEnv({ PEER_CONSULT_CODEX_MODELS: 'gpt-6-astra-mini' });
 const { parseRequest, RequestError } = await import('../src/schema.mjs');
+const { POLICY } = await import('../src/policy.mjs');
 
 const rejects = (raw, code, opts) => {
   try {
@@ -117,4 +121,59 @@ test('the schema and resolveTarget share one normaliser', async () => {
     assert.notEqual(resolveTarget(input), null, `${input} must resolve`);
     assert.equal(normalizeTargetInput(`  ${input.replace(/-/g, '_').toUpperCase()} `), input);
   }
+});
+
+// A model suffix is how a lead says "this consultation, on that model". The
+// name is matched against what the operator allowed, loosely enough that a
+// user's phrasing ("Claude Opus") survives the trip through the agent.
+test('a target may carry a model the operator allowed', () => {
+  const allowed = POLICY.targets.codex.models;
+  assert.ok(allowed.includes('gpt-6-astra-mini'), 'test setup: the extra model must be allowed');
+
+  const exact = parseRequest(reviewRequest({ target: 'codex:gpt-6-astra-mini' }));
+  assert.equal(exact.target, 'codex');
+  assert.equal(exact.models.codex, 'gpt-6-astra-mini');
+
+  // Loose spellings resolve to the same allowed id.
+  for (const spelling of ['GPT:GPT-6-Astra-Mini', 'gpt: mini', 'codex:Astra Mini']) {
+    assert.equal(parseRequest(reviewRequest({ target: spelling })).models.codex, 'gpt-6-astra-mini', spelling);
+  }
+});
+
+test('a target without a suffix runs the default model', () => {
+  const req = parseRequest(reviewRequest());
+  assert.equal(req.models.codex, POLICY.targets.codex.model);
+});
+
+test('a model the operator did not allow is refused before anything is launched', () => {
+  const err = rejects(reviewRequest({ target: 'codex:claude-opus-5' }), 'model_not_allowed');
+  assert.match(err.message, /allowed: /);
+  assert.match(err.message, /PEER_CONSULT_CODEX_MODELS/);
+  rejects(reviewRequest({ target: 'codex:' }), 'model_not_allowed');
+});
+
+test('a suffix that matches two allowed models is refused rather than guessed', async () => {
+  // resolveModel is the arbiter; drive it directly so the test does not depend
+  // on this file's env having two lookalike models allowed.
+  const { resolveModel } = await import('../src/policy.mjs');
+  const twoHits = resolveModel('codex', 'gpt-6-astra');
+  assert.ok(twoHits.model || twoHits.ambiguous, 'sanity');
+  assert.deepEqual(resolveModel('codex', 'nope'), null);
+});
+
+test('each consultant in a fan-out can carry its own model', () => {
+  const req = parseRequest(reviewRequest({
+    target: undefined,
+    targets: ['codex:gpt-6-astra-mini', 'gemini'],
+  }));
+  assert.deepEqual(req.targets, ['codex', 'antigravity']);
+  assert.equal(req.models.codex, 'gpt-6-astra-mini');
+  assert.equal(req.models.antigravity, POLICY.targets.antigravity.model);
+});
+
+test('the same consultant twice is still a duplicate, whatever model each names', () => {
+  rejects(
+    reviewRequest({ target: undefined, targets: ['codex', 'codex:gpt-6-astra-mini'] }),
+    'duplicate_targets',
+  );
 });

@@ -23,6 +23,22 @@ so it can still run read-only shell commands. Its writes and its network access 
 Claude Code, `gemini` / `agy` / `google` -> Antigravity. When the user names one, use that one. When they just
 ask for a second opinion, default to `codex`.
 
+## Naming a model
+
+A consultant runs on the model its operator configured. If — and only if — the user names one, append it to
+the target: `target: "codex:<model>"`, and the same inside `targets` for a fan-out. So 「Claude
+Opusと相談して」 becomes `target: "claude:claude-opus-5"`, and 「みんなで、Claudeはopusで」 becomes
+`targets: ["claude:claude-opus-5", "claude-code"]`.
+
+Pass the model roughly as the user said it — `claude:opus` and `claude:"Claude Opus"` both resolve, as long as
+they match exactly one model the operator allowed. `consult_start`'s description lists what each consultant may
+run right now; a model outside that list is refused before the consultation starts, and one matching two of
+them is refused rather than guessed, so a rejection tells you what to say instead.
+
+**Do not pick a model yourself.** Without a suffix the consultant runs its default, which is the operator's
+choice; overriding it on your own judgement — including after a `usage_limit` failure — substitutes a different
+mind for the one the user asked for.
+
 You may also pass `target: "antigravity"` to consult your own CLI in a fresh session. Do that only when
 what you need is a clean-context re-read of the same material — the answer comes from the same model family,
 so it is not an independent opinion, and the server marks the result accordingly. Prefer the other two.

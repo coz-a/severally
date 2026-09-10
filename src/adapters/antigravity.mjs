@@ -42,16 +42,17 @@ export const FORBIDDEN_FLAGS = [
   '-i',
 ];
 
-export function buildInvocation({ schemaPath }) {
+export function buildInvocation({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;
+  const chosen = model ?? t.model;
   const args = [
     '--output-format', 'json',
     '--json-schema', schemaPath,
     '--disable-slash-commands',
-    '--model', t.model,
+    '--model', chosen,
     '--print-timeout', `${Math.ceil(timeoutMs() / 1000)}s`,
   ];
-  return { command: t.cli, args, model: t.model };
+  return { command: t.cli, args, model: chosen };
 }
 
 function lastJsonObject(stdout) {

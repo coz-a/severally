@@ -32,14 +32,16 @@ export const FORBIDDEN_FLAGS = [
   '--approve-for-me',
 ];
 
-export function buildInvocation({ workdir, schemaPath }) {
+export function buildInvocation({ workdir, schemaPath, model }) {
   const t = POLICY.targets.codex;
+  // The request may name a model the operator allowed; default otherwise.
+  const chosen = model ?? t.model;
   const lastMessagePath = path.join(workdir, '..', 'last-message.json');
   const args = [
     'exec',
     '--json',
     '--color', 'never',
-    '-m', t.model,
+    '-m', chosen,
     '-c', `model_reasoning_effort="${t.reasoningEffort}"`,
     '-c', 'tools.web_search=true',
     '-c', 'hooks.enabled=false',
@@ -55,7 +57,7 @@ export function buildInvocation({ workdir, schemaPath }) {
     '-o', lastMessagePath,
     '-',
   ];
-  return { command: t.cli, args, lastMessagePath, model: t.model };
+  return { command: t.cli, args, lastMessagePath, model: chosen };
 }
 
 function walkUsage(node, acc) {

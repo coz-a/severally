@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { POLICY, limitsSummary } from './policy.mjs';
+import { POLICY, TARGETS, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
 
@@ -26,6 +26,11 @@ target: "codex" (Codex), "claude-code" (Claude Code) or "antigravity" (Gemini). 
 targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+        A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
+        consultant is allowed to run is set by the operator, and this server currently allows:
+${TARGETS.map((t) => `          ${t}: ${POLICY.targets[t].models.join(', ')}`).join('\n')}
+        Only pass a model when the user asked for one; a name outside the list is refused before the
+        consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
         annotate a same-vendor consultation.
 mode:

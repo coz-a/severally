@@ -7172,8 +7172,8 @@ var require_dist = __commonJS({
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
-      const list = opts.formats || formats_1.formatNames;
-      addFormats(ajv, list, formats, exportName);
+      const list2 = opts.formats || formats_1.formatNames;
+      addFormats(ajv, list2, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7185,11 +7185,11 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs4, exportName) {
+    function addFormats(ajv, list2, fs4, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
-      for (const f of list)
+      for (const f of list2)
         ajv.addFormat(f, fs4[f]);
     }
     module.exports = exports = formatsPlugin;
@@ -35707,10 +35707,34 @@ function normalizeTargetInput(raw) {
   if (typeof raw !== "string") return raw;
   return raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
 }
+function normalizeTargetSpec(raw) {
+  if (typeof raw !== "string") return raw;
+  const at = raw.indexOf(":");
+  if (at === -1) return normalizeTargetInput(raw);
+  return `${normalizeTargetInput(raw.slice(0, at))}:${raw.slice(at + 1).trim()}`;
+}
+function splitTargetSpec(raw) {
+  if (typeof raw !== "string") return { target: raw, model: null };
+  const at = raw.indexOf(":");
+  if (at === -1) return { target: raw, model: null };
+  return { target: raw.slice(0, at), model: raw.slice(at + 1).trim() };
+}
 function resolveTarget(raw) {
   const key = normalizeTargetInput(raw);
   if (typeof key !== "string") return null;
   return Object.hasOwn(TARGET_ALIASES, key) ? TARGET_ALIASES[key] : null;
+}
+function resolveModel(target, wanted) {
+  const allowed = POLICY.targets[target]?.models ?? [];
+  if (typeof wanted !== "string" || wanted === "") return null;
+  if (allowed.includes(wanted)) return { model: wanted };
+  const key = wanted.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const exact = allowed.find((m) => m.toLowerCase() === key);
+  if (exact) return { model: exact };
+  const hits = allowed.filter((m) => m.toLowerCase().includes(key));
+  if (hits.length === 1) return { model: hits[0] };
+  if (hits.length > 1) return { ambiguous: hits };
+  return null;
 }
 function detectCaller(env = process.env) {
   if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
@@ -35719,19 +35743,32 @@ function detectCaller(env = process.env) {
   return null;
 }
 var MODES = ["explore", "review", "debate"];
+var list = (name) => {
+  const raw = process.env[name];
+  if (raw === void 0 || raw === "") return [];
+  return raw.split(",").map((s2) => s2.trim()).filter(Boolean);
+};
+var allowedFor = (dflt, envName) => Object.freeze([.../* @__PURE__ */ new Set([dflt, ...list(envName)])]);
+var CODEX_MODEL = str("PEER_CONSULT_CODEX_MODEL", "gpt-6-astra");
+var CLAUDE_MODEL = str("PEER_CONSULT_CLAUDE_MODEL", "claude-fable-5-1");
+var AGY_MODEL = str("PEER_CONSULT_AGY_MODEL", "gemini-3.8-flash-high");
 var POLICY = Object.freeze({
   home: str("PEER_CONSULT_HOME", path.join(os.homedir(), ".peer-consult")),
   targets: Object.freeze({
     codex: Object.freeze({
       cli: str("PEER_CONSULT_CODEX_BIN", "codex"),
-      model: str("PEER_CONSULT_CODEX_MODEL", "gpt-6-astra"),
+      model: CODEX_MODEL,
+      models: allowedFor(CODEX_MODEL, "PEER_CONSULT_CODEX_MODELS"),
+      modelsEnv: "PEER_CONSULT_CODEX_MODELS",
       reasoningEffort: str("PEER_CONSULT_CODEX_EFFORT", "medium"),
       label: "Codex CLI",
       vendor: "openai"
     }),
     "claude-code": Object.freeze({
       cli: str("PEER_CONSULT_CLAUDE_BIN", "claude"),
-      model: str("PEER_CONSULT_CLAUDE_MODEL", "claude-fable-5-1"),
+      model: CLAUDE_MODEL,
+      models: allowedFor(CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_MODELS"),
+      modelsEnv: "PEER_CONSULT_CLAUDE_MODELS",
       label: "Claude Code CLI",
       vendor: "anthropic",
       maxBudgetUsd: num("PEER_CONSULT_CLAUDE_MAX_BUDGET_USD", 2, 0.05, 20)
@@ -35739,7 +35776,9 @@ var POLICY = Object.freeze({
     antigravity: Object.freeze({
       cli: str("PEER_CONSULT_AGY_BIN", "agy"),
       // The model name carries the reasoning effort; agy rejects --effort for it.
-      model: str("PEER_CONSULT_AGY_MODEL", "gemini-3.8-flash-high"),
+      model: AGY_MODEL,
+      models: allowedFor(AGY_MODEL, "PEER_CONSULT_AGY_MODELS"),
+      modelsEnv: "PEER_CONSULT_AGY_MODELS",
       label: "Antigravity CLI",
       vendor: "google"
       // Where the real credentials live is credentialsHome() below, not a
@@ -35822,12 +35861,32 @@ var contextSchema = external_exports.object({
   artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).default([])
 }).strict();
 var normalizeTargetLike = normalizeTargetInput;
+var targetSpec = external_exports.preprocess(
+  normalizeTargetSpec,
+  external_exports.union(
+    [
+      external_exports.enum(TARGET_INPUTS),
+      // The message lives on this branch because zod surfaces the branch's own
+      // error, not the union's: a bare "must match pattern /.../" tells the
+      // caller nothing about which names it may use.
+      external_exports.string().regex(/^[a-z0-9-]+:.*$/, {
+        message: `must be one of: ${TARGET_INPUTS.join(", ")} -- optionally with the model to run it on, e.g. "claude:claude-opus-5"`
+      })
+    ],
+    // Both branches failing means the value is neither an accepted name nor a
+    // name with a model suffix; zod would otherwise report a bare regex
+    // mismatch, which tells the caller nothing about what it may say.
+    {
+      error: () => `must be one of: ${TARGET_INPUTS.join(", ")} -- optionally with the model to run it on, e.g. "claude:claude-opus-5"`
+    }
+  )
+);
 var requestSchema = external_exports.object({
   // Exactly one of `target` (one consultant) or `targets` (ask several the
   // same question) is required; parseRequest below enforces the exclusivity,
   // because zod cannot phrase that refusal usefully.
-  target: external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS)).optional(),
-  targets: external_exports.array(external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS))).min(1).max(TARGETS.length).optional(),
+  target: targetSpec.optional(),
+  targets: external_exports.array(targetSpec).min(1).max(TARGETS.length).optional(),
   // Identifies the host CLI making this request, if it names itself. Purely
   // an annotation input for the same-vendor caveat below: it must never
   // gate permissions, limits, rounds, or which CLI gets launched.
@@ -35877,7 +35936,8 @@ function parseRequest(raw, { isFollowup = false } = {}) {
     );
   }
   const named = hasSingle ? [req.target] : req.targets;
-  const resolved = named.map((t) => resolveTarget(t));
+  const specs = named.map((t) => splitTargetSpec(t));
+  const resolved = specs.map((s2) => resolveTarget(s2.target));
   const unresolved = named.filter((_, i) => resolved[i] === null);
   if (unresolved.length) {
     throw new RequestError(
@@ -35898,6 +35958,36 @@ function parseRequest(raw, { isFollowup = false } = {}) {
       "followup_fanout_not_allowed"
     );
   }
+  const models = {};
+  resolved.forEach((target, i) => {
+    const wanted = specs[i].model;
+    const t = POLICY.targets[target];
+    if (wanted === null) {
+      models[target] = t.model;
+      return;
+    }
+    if (wanted === "") {
+      throw new RequestError(
+        `${JSON.stringify(named[i])} ends in ":" without naming a model; drop the colon to use ${t.model}`,
+        "model_not_allowed"
+      );
+    }
+    const match = resolveModel(target, wanted);
+    if (match === null) {
+      throw new RequestError(
+        `consultant "${target}" is not configured to run model ${JSON.stringify(wanted)}; allowed: ${t.models.join(", ")}. The operator adds more by setting ${t.modelsEnv}`,
+        "model_not_allowed"
+      );
+    }
+    if (match.ambiguous) {
+      throw new RequestError(
+        `${JSON.stringify(wanted)} matches more than one model allowed for "${target}": ${match.ambiguous.join(", ")}. Name one of them exactly`,
+        "model_ambiguous"
+      );
+    }
+    models[target] = match.model;
+  });
+  req.models = models;
   req.targets = unique;
   req.target = unique[0];
   req.fanout = unique.length > 1;
@@ -36553,8 +36643,9 @@ var FORBIDDEN_FLAGS = [
   "--add-dir",
   "--approve-for-me"
 ];
-function buildInvocation({ workdir, schemaPath }) {
+function buildInvocation({ workdir, schemaPath, model }) {
   const t = POLICY.targets.codex;
+  const chosen = model ?? t.model;
   const lastMessagePath = path3.join(workdir, "..", "last-message.json");
   const args = [
     "exec",
@@ -36562,7 +36653,7 @@ function buildInvocation({ workdir, schemaPath }) {
     "--color",
     "never",
     "-m",
-    t.model,
+    chosen,
     "-c",
     `model_reasoning_effort="${t.reasoningEffort}"`,
     "-c",
@@ -36587,7 +36678,7 @@ function buildInvocation({ workdir, schemaPath }) {
     lastMessagePath,
     "-"
   ];
-  return { command: t.cli, args, lastMessagePath, model: t.model };
+  return { command: t.cli, args, lastMessagePath, model: chosen };
 }
 function walkUsage(node2, acc) {
   if (!node2 || typeof node2 !== "object") return;
@@ -36670,12 +36761,13 @@ var FORBIDDEN_FLAGS2 = [
   "--plugin-dir",
   "--plugin-url"
 ];
-function buildInvocation2({ workdir, guardrails }) {
+function buildInvocation2({ workdir, guardrails, model }) {
   const t = POLICY.targets["claude-code"];
+  const chosen = model ?? t.model;
   const args = [
     "-p",
     "--model",
-    t.model,
+    chosen,
     "--restricted",
     "--strict-mcp-config",
     "--setting-sources",
@@ -36697,7 +36789,7 @@ function buildInvocation2({ workdir, guardrails }) {
     "--append-system-prompt",
     guardrails
   ];
-  return { command: t.cli, args, model: t.model, workdir };
+  return { command: t.cli, args, model: chosen, workdir };
 }
 function lastJsonObject(stdout) {
   const lines = (stdout || "").split("\n");
@@ -36832,8 +36924,9 @@ var FORBIDDEN_FLAGS3 = [
   "--prompt-interactive",
   "-i"
 ];
-function buildInvocation3({ schemaPath }) {
+function buildInvocation3({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;
+  const chosen = model ?? t.model;
   const args = [
     "--output-format",
     "json",
@@ -36841,11 +36934,11 @@ function buildInvocation3({ schemaPath }) {
     schemaPath,
     "--disable-slash-commands",
     "--model",
-    t.model,
+    chosen,
     "--print-timeout",
     `${Math.ceil(timeoutMs() / 1e3)}s`
   ];
-  return { command: t.cli, args, model: t.model };
+  return { command: t.cli, args, model: chosen };
 }
 function lastJsonObject2(stdout) {
   const lines = (stdout || "").split("\n");
@@ -37027,7 +37120,9 @@ var JobManager = class {
         caller: req.caller ?? detectCaller(),
         followup_to: followupTo,
         status: "queued",
-        model: POLICY.targets[target].model,
+        // The model the request asked for, already checked against the
+        // operator's allowlist; falls back to the target's default.
+        model: req.models?.[target] ?? POLICY.targets[target].model,
         created_at: (/* @__PURE__ */ new Date()).toISOString(),
         started_at: null,
         finished_at: null,
@@ -37144,7 +37239,8 @@ var JobManager = class {
         workdir,
         schemaPath,
         guardrails: renderGuardrails(),
-        sandbox
+        sandbox,
+        model: job.model
       });
       assertNoForbiddenFlags(req.target, invocation.args);
       const budgetMs = timeoutMs();
@@ -37394,6 +37490,11 @@ target: "codex" (Codex), "claude-code" (Claude Code) or "antigravity" (Gemini). 
 targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+        A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
+        consultant is allowed to run is set by the operator, and this server currently allows:
+${TARGETS.map((t) => `          ${t}: ${POLICY.targets[t].models.join(", ")}`).join("\n")}
+        Only pass a model when the user asked for one; a name outside the list is refused before the
+        consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
         annotate a same-vendor consultation.
 mode:

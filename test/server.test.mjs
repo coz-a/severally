@@ -24,7 +24,9 @@ test('exposes the three protocol tools plus a history listing', async () => {
   assert.deepEqual(names, ['consult_cancel', 'consult_get', 'consult_list', 'consult_start']);
   const start = tools.find((t) => t.name === 'consult_start');
   const req = start.inputSchema.properties.request;
-  assert.deepEqual(req.properties.target.enum, [
+  // target is now "a name" or "a name with a model suffix", so the accepted
+  // names live in the first branch of the union rather than at the top level.
+  assert.deepEqual(req.properties.target.anyOf[0].enum, [
     'codex', 'gpt', 'chatgpt', 'openai',
     'claude-code', 'claude', 'anthropic',
     'antigravity', 'agy', 'gemini', 'google',
