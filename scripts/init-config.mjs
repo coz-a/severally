@@ -21,41 +21,53 @@ import { TARGETS, POLICY, isInstalled } from '../src/policy.mjs';
 // shape as much as its position: an example written as a nested object looks
 // exactly like a live setting, which is what made the earlier template hard to
 // read. The server reads only `targets`.
-const NOTES = [
-  'Everything in this "//" block is documentation. The server reads only "targets".',
-  'Precedence, per key: environment variable > this file > autodetection > built-in default.',
-  'Read once at server start -- restart the client after editing.',
-  '',
-  'Keys, per target (all optional; string values need quotes):',
-  '  enabled   false to exclude a consultant whose CLI is installed -- e.g. a rate-limited account',
-  '  note      why it is off; returned to whoever asks for that consultant',
-  '  bin       a CLI that is not on PATH, or a specific build',
-  '  model     this consultant\'s default model',
-  '  models    models a request may name, on top of the always-allowed default',
-  '',
-  'Example -- codex off, with the reason:',
-  '  "codex": { "enabled": false, "note": "rate-limited until 15:00" }',
-];
-
 /**
- * The config template for the machine this runs on: the settings first, then
- * one block of notes.
+ * The config template for this machine, as JSONC: the server strips comments
+ * before parsing, so the documentation can be documentation instead of fake
+ * data dressed up as settings.
  */
 export function renderConfig() {
-  const targets = {};
-  for (const id of TARGETS) targets[id] = {};
-  return { targets, '//': NOTES };
+  const lines = [
+    '{',
+    '  // peer-consult configuration. Comments and trailing commas are allowed.',
+    '  // Precedence, per key: environment variable > this file > autodetection > built-in default.',
+    '  // Read once at server start -- restart the client after editing.',
+    '  //',
+    '  // Per target, all optional:',
+    '  //   enabled   false to exclude a consultant whose CLI is installed -- e.g. a rate-limited account',
+    '  //   note      why it is off; returned to whoever asks for that consultant',
+    '  //   bin       a CLI that is not on PATH, or a specific build',
+    '  //   model     this consultant\'s default model',
+    '  //   models    models a request may name, on top of the always-allowed default',
+    '  "targets": {',
+  ];
+  TARGETS.forEach((id, i) => {
+    const t = POLICY.targets[id];
+    const comma = i === TARGETS.length - 1 ? '' : ',';
+    // Only what is true of this target here; the keys are documented once, above.
+    lines.push(
+      `    // ${isInstalled(t.cli) ? `${t.cli} found, default model ${t.model}` : `${t.cli} not found -- excluded automatically`}`,
+      `    ${JSON.stringify(id)}: {}${comma}`,
+    );
+  });
+  lines.push('  }', '}', '');
+  return lines.join('\n');
 }
 
 /** Where the server would look for this file, given the same environment. */
 export function configPath(env = process.env) {
-  return env.PEER_CONSULT_CONFIG
-    || path.join(env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult'), 'config.json');
+  if (env.PEER_CONSULT_CONFIG) return env.PEER_CONSULT_CONFIG;
+  const home = env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult');
+  // The server reads config.jsonc in preference to config.json, so an existing
+  // .jsonc is the file to leave alone -- writing .json beside it would produce
+  // a config that looks authoritative and is silently ignored.
+  const jsonc = path.join(home, 'config.jsonc');
+  return fs.existsSync(jsonc) ? jsonc : path.join(home, 'config.json');
 }
 
 function main() {
   const argv = new Set(process.argv.slice(2));
-  const body = `${JSON.stringify(renderConfig(), null, 2)}\n`;
+  const body = renderConfig();
 
   if (argv.has('--print')) {
     process.stdout.write(body);
@@ -88,6 +100,7 @@ function main() {
   console.log('per target: enabled (true/false)  note (why it is off)  bin (path)  model (id)  models (list)');
   console.log('   e.g.  "codex": { "enabled": false, "note": "rate-limited until 15:00" }');
   console.log('   more: config.example.json, README §4.5. Restart the client after editing.');
+  console.log('   comments and trailing commas are fine; name it config.jsonc if your editor prefers that');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

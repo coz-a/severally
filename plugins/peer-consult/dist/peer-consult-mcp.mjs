@@ -35678,11 +35678,75 @@ var StdioServerTransport = class {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-var CONFIG_PATH = process.env.PEER_CONSULT_CONFIG || path.join(process.env.PEER_CONSULT_HOME || path.join(os.homedir(), ".peer-consult"), "config.json");
+
+// src/jsonc.mjs
+function stripJsonc(text) {
+  const out = [];
+  let inString = false;
+  let i = 0;
+  const blankBack = () => {
+    for (let j = out.length - 1; j >= 0; j--) {
+      const c = out[j];
+      if (c === " " || c === "\n" || c === "\r" || c === "	") continue;
+      if (c === ",") out[j] = " ";
+      return;
+    }
+  };
+  while (i < text.length) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (inString) {
+      out.push(c);
+      if (c === "\\") {
+        out.push(next ?? "");
+        i += 2;
+        continue;
+      }
+      if (c === '"') inString = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out.push(c);
+      i++;
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      while (i < text.length && text[i] !== "\n") {
+        out.push(" ");
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      out.push(" ", " ");
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) {
+        out.push(text[i] === "\n" ? "\n" : " ");
+        i++;
+      }
+      out.push(" ", " ");
+      i += 2;
+      continue;
+    }
+    if (c === "}" || c === "]") blankBack();
+    out.push(c);
+    i++;
+  }
+  return out.join("");
+}
+function parseJsonc(text) {
+  return JSON.parse(stripJsonc(text));
+}
+
+// src/policy.mjs
+var CONFIG_HOME = process.env.PEER_CONSULT_HOME || path.join(os.homedir(), ".peer-consult");
+var CONFIG_PATH = process.env.PEER_CONSULT_CONFIG || [path.join(CONFIG_HOME, "config.jsonc"), path.join(CONFIG_HOME, "config.json")].find((p) => fs.existsSync(p)) || path.join(CONFIG_HOME, "config.json");
 var configError = null;
 var CONFIG = (() => {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+    return parseJsonc(fs.readFileSync(CONFIG_PATH, "utf8"));
   } catch (err) {
     if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
     return {};

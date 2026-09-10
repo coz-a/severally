@@ -272,18 +272,25 @@ node scripts/init-config.mjs --print   # 書かずに標準出力へ
 node scripts/init-config.mjs --force   # 既存を置き換える
 ```
 
-JSON にコメント構文は無いので、説明は末尾の `"//"` に**文字列の配列**として入れてある。設定は
-`targets`（オブジェクト）、説明は文字列 — 形が違うので混ざらない。サーバが読むのは `targets` だけ:
+設定ファイルは **JSONC**（コメントと末尾カンマを許す JSON）として読む。素の JSON も当然そのまま通る。
+生成される雛形は説明をコメントで持ち、データ側は空のまま:
 
-```json
+```jsonc
 {
-  "targets": { "codex": {}, "claude-code": {}, "antigravity": {} },
-  "//": ["Everything in this \"//\" block is documentation. The server reads only \"targets\".", "..."]
+  // peer-consult configuration. Comments and trailing commas are allowed.
+  //   enabled   false to exclude a consultant whose CLI is installed
+  //   note      why it is off; returned to whoever asks for that consultant
+  //   ...
+  "targets": {
+    // codex found, default model gpt-6-astra
+    "codex": {},
+  }
 }
 ```
 
-`"//"` にはキー一覧と「レート制限の相手を止める」例が入っている。どの CLI が検出されたかは
-生成コマンドの標準出力に出る（起動のたびに再検出される事実なので、ファイルには焼かない）。
+ファイル名は `config.json` でよいが、エディタが `.json` 内のコメントをエラー扱いする場合は
+`config.jsonc` でも読む（両方あれば `.jsonc` が優先）。どの CLI が検出されたかは生成コマンドの標準出力に
+出る（起動のたびに再検出される事実なので、ファイルには焼かない）。
 
 ```json
 {

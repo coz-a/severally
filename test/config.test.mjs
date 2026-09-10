@@ -152,7 +152,8 @@ test('the generated template is valid config the server can read back', async ()
   const { renderConfig } = await import('../scripts/init-config.mjs');
   const rendered = renderConfig();
 
-  // Round-trips as JSON, and the loader tolerates every note key it carries.
+  // It is JSONC now: comments in the text, parsed by the loader.
+  assert.match(rendered, /^\s*\/\/ peer-consult configuration/m, 'the template documents itself in comments');
   const file = writeConfig(rendered);
   sandboxEnv({ PEER_CONSULT_CONFIG: file });
   const policy = await import(`../src/policy.mjs?cfg=template-${Date.now()}`);
@@ -161,14 +162,12 @@ test('the generated template is valid config the server can read back', async ()
   // The suggestions live in _example blocks, so a freshly generated file
   // changes nothing until the operator moves a key up.
   for (const id of policy.TARGETS) {
-    assert.deepEqual(rendered.targets[id], {}, `${id} must start with nothing overridden`);
     assert.equal(policy.POLICY.targets[id].available, policy.isInstalled(policy.POLICY.targets[id].cli),
       `${id} availability must still come from detection`);
   }
-  // Settings first, then one block of notes -- and the notes are strings, so
-  // they cannot be mistaken for a live setting the way a nested example object
-  // could. The loader reads only `targets`, so the block is inert.
-  assert.deepEqual(Object.keys(rendered), ['targets', '//']);
-  assert.ok(rendered['//'].every((line) => typeof line === 'string'));
-  assert.equal(Object.keys(rendered.targets).length, policy.TARGETS.length);
+  // Nothing is overridden by a freshly generated file: the comments carry the
+  // documentation, so the data is only the empty targets.
+  const parsed = (await import('../src/jsonc.mjs')).parseJsonc(rendered);
+  assert.deepEqual(Object.keys(parsed), ['targets']);
+  for (const id of policy.TARGETS) assert.deepEqual(parsed.targets[id], {});
 });

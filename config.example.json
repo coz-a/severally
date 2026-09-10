@@ -1,5 +1,4 @@
 {
-  "//": "peer-consult config. Copy to ~/.peer-consult/config.json (or point PEER_CONSULT_CONFIG at it), or run `npm run init-config` to generate one. Precedence: environment variable > this file > autodetection. All keys are optional.",
   "targets": {
     "codex": { "enabled": false, "note": "rate-limited until 15:00" },
     "claude-code": { "models": ["claude-opus-5", "claude-sonnet-5"] },

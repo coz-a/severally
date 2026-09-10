@@ -5,19 +5,25 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parseJsonc } from './jsonc.mjs';
 
 // One file, read once at start, so an operator configures a machine in a
 // single place instead of editing each client's MCP registration. Precedence
 // is env > this file > autodetection > built-in default: the env vars stay the
 // per-client escape hatch, and a machine that simply lacks a CLI needs no
 // configuration at all.
+const CONFIG_HOME = process.env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult');
+// .jsonc first, for operators whose editor treats comments in a .json file as
+// an error; both are read the same way, comments and all.
 const CONFIG_PATH = process.env.PEER_CONSULT_CONFIG
-  || path.join(process.env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult'), 'config.json');
+  || [path.join(CONFIG_HOME, 'config.jsonc'), path.join(CONFIG_HOME, 'config.json')]
+    .find((p) => fs.existsSync(p))
+  || path.join(CONFIG_HOME, 'config.json');
 
 let configError = null;
 const CONFIG = (() => {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    return parseJsonc(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch (err) {
     // A missing file is the normal case. A malformed one is not: silently
     // ignoring it would run the machine on defaults the operator thinks they
