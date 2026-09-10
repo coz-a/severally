@@ -412,10 +412,16 @@ export class JobManager {
 
       job.result = normalized.result;
       const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target)].filter(Boolean);
+      // No `advice_usable` verdict here. It was always true, so it carried no
+      // information -- and worse, it read as the server vouching for advice it
+      // cannot judge. What this server may assert is what it can derive from
+      // its own inputs: the consultant's own evidence_basis, how many findings
+      // arrived without grounds, whether anything was cited. Whether that adds
+      // up to usable advice is the lead's call, made against context the server
+      // does not have.
       job.quality = {
         ...normalized.quality,
         evidence_basis: normalized.result.evidence_basis,
-        advice_usable: true,
         caveat: notes.length ? notes.join('; ') : null,
       };
       job.usage = adapter.usageRecord(interpreted.usageRaw);

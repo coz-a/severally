@@ -608,3 +608,18 @@ test('a running consultation reports what it is doing', async () => {
   process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
 });
+
+// The server may report what it can derive -- the consultant's own
+// evidence_basis, findings without grounds, whether anything was cited -- and
+// must stop short of pronouncing the advice usable, which is a judgement it
+// has neither the context nor the standing to make.
+test('the delivered result carries no verdict from the server', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const view = await finish(mgr, mgr.start(reviewRequest()).job_id);
+
+  assert.equal(view.status, 'completed');
+  assert.equal(Object.hasOwn(view.quality, 'advice_usable'), false, 'no "this is usable" stamp');
+  assert.equal(view.quality.evidence_basis, 'sufficient', 'the consultant\'s own claim, passed through');
+  assert.equal(typeof view.quality.findings_without_grounds, 'number', 'a count, not an opinion');
+});
