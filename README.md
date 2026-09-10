@@ -152,3 +152,4 @@ npm uninstall -g peer-consult-mcp
 | [docs/concept.md](docs/concept.md) | 例で見る使い方、手貼りや zen-mcp との違い、三者の役割、なぜ一致を判定しないのか、いつ使うか、限界と見送ったこと、価値の測り方 |
 | [docs/reference.md](docs/reference.md) | 構成、ツール API、mode、結果の構造、失敗分類、権限と隔離、設計原則、設定、上限、検証結果、既知の制約 |
 | [docs/experiments/](docs/experiments/) | 設計判断を実機で確かめた記録 |
+| [docs/backlog.md](docs/backlog.md) | これからの方針と作業の一覧、作らないこと、未検証のこと |
