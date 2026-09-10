@@ -62,6 +62,12 @@ function run() {
     process.exit(0);
   }
   if (behavior === 'hang') {
+    // Work visibly for a moment before wedging: a real consultant that runs out
+    // of budget has usually done something first, and that trail is what the
+    // timeout report is made of.
+    out({ type: 'item.started', item: { id: 'i1', type: 'command_execution' } });
+    out({ type: 'item.completed', item: { id: 'i1', type: 'command_execution' } });
+    out({ type: 'item.started', item: { id: 'i2', type: 'web_search' } });
     // Spawn a grandchild so the test can assert the whole process tree dies.
     const gc = spawn(process.execPath, ['-e', 'setInterval(()=>{},1e9)'], { stdio: 'ignore' });
     if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));

@@ -70,6 +70,9 @@ function run() {
     process.exit(0);
   }
   if (behavior === 'hang') {
+    // Same idea as the codex stub: leave a trail before wedging.
+    envelope({ event: 'step_update', step_update: { step_index: 1, step_type: 'agent_response', state: 'DONE' } });
+    envelope({ event: 'step_update', step_update: { step_index: 2, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' } });
     const gc = spawn(process.execPath, ['-e', 'setInterval(()=>{},1e9)'], { stdio: 'ignore' });
     if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));
     setInterval(() => {}, 1e9);

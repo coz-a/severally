@@ -4,14 +4,15 @@ import { sandboxEnv } from './helpers.mjs';
 
 sandboxEnv();
 const adapter = await import('../src/adapters/antigravity.mjs');
-const { POLICY } = await import('../src/policy.mjs');
+const { POLICY, timeoutMs } = await import('../src/policy.mjs');
 
 const line = (o) => `${JSON.stringify(o)}\n`;
 
 test('the invocation pins the model, the schema and print-mode JSON', () => {
   const inv = adapter.buildInvocation({ workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
   assert.equal(inv.command, POLICY.targets.antigravity.cli);
-  assert.deepEqual(inv.args.slice(0, 2), ['--output-format', 'json']);
+  // stream-json, so the step events before the final result survive a timeout.
+  assert.deepEqual(inv.args.slice(0, 2), ['--output-format', 'stream-json']);
   assert.ok(inv.args.includes('--json-schema'));
   assert.equal(inv.args[inv.args.indexOf('--json-schema') + 1], '/tmp/schema.json');
   assert.ok(inv.args.includes('--disable-slash-commands'));
@@ -22,7 +23,13 @@ test('the invocation pins the model, the schema and print-mode JSON', () => {
   // PEER_CONSULT_AGY_MODEL, so this reads the default and not the host's knob.
   assert.equal(POLICY.targets.antigravity.model, 'gemini-3.8-flash-high');
   assert.ok(/^--print-timeout$/.test(inv.args[inv.args.indexOf('--print-timeout')]));
-  assert.match(inv.args[inv.args.indexOf('--print-timeout') + 1], /^\d+s$/);
+  // agy's own timeout is deliberately longer than ours, so our SIGTERM lands
+  // first and the failure is classified as a timeout rather than as a missing
+  // envelope.
+  const printTimeout = inv.args[inv.args.indexOf('--print-timeout') + 1];
+  assert.match(printTimeout, /^\d+s$/);
+  assert.ok(Number.parseInt(printTimeout, 10) * 1000 > timeoutMs('antigravity'),
+    'agy must not be allowed to give up before we do');
   // agy takes the brief on stdin; the brief must never be an argv value.
   assert.equal(inv.args.includes('-p'), false);
   assert.equal(inv.args.includes('--effort'), false, 'the effort is part of the model name');
@@ -87,4 +94,45 @@ test('usage is mapped onto the common record and no cost is invented', () => {
   assert.equal(rec.turns, 2);
   assert.equal(rec.cost_usd, null, 'agy reports no cost; it must not be guessed');
   assert.deepEqual(rec.denied_actions, ['read_url']);
+});
+
+// stream-json means the final answer arrives as the last `result` event.
+test('the answer is read out of the stream-json result event', () => {
+  const stream = [
+    JSON.stringify({ event: 'init' }),
+    JSON.stringify({ event: 'step_update', step_update: { step_index: 1, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' } }),
+    JSON.stringify({ event: 'result', result: { status: 'SUCCESS', structured_output: { summary: 'from stream' }, usage: {} } }),
+  ].join('\n');
+  const out = adapter.interpret({ stdout: stream, stderr: '', code: 0 });
+  assert.equal(out.ok, true);
+  assert.equal(out.text.summary, 'from stream');
+});
+
+test('an ERROR result event is still classified, not treated as advice', () => {
+  const stream = JSON.stringify({
+    event: 'result',
+    result: { status: 'ERROR', error: 'You have reached your usage limit for this model.', usage: {} },
+  });
+  const out = adapter.interpret({ stdout: stream, stderr: '', code: 1 });
+  assert.equal(out.ok, false);
+  assert.equal(out.failureKind, 'usage_limit');
+});
+
+// The point of streaming: a consultation killed at its budget leaves a trail.
+test('progressSummary says how far a killed consultation got', () => {
+  const stream = [
+    JSON.stringify({ event: 'step_update', step_update: { step_index: 1, step_type: 'agent_response', state: 'DONE' } }),
+    JSON.stringify({ event: 'step_update', step_update: { step_index: 2, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' } }),
+    '{"event":"step_update","step_upda',  // a line cut off mid-write, as a kill does
+  ].join('\n');
+
+  const summary = adapter.progressSummary({ stdout: stream });
+  assert.match(summary, /2 step\(s\)/);
+  assert.match(summary, /search_web/);
+  assert.match(summary, /no answer was produced/);
+});
+
+test('progressSummary is null when there is nothing to report', () => {
+  assert.equal(adapter.progressSummary({ stdout: '' }), null);
+  assert.equal(adapter.progressSummary({ stdout: 'not json at all\n' }), null);
 });

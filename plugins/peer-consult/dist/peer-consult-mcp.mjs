@@ -35949,8 +35949,21 @@ var POLICY = Object.freeze({
     referencesMax: 40
   })
 });
-function timeoutMs() {
-  return num("PEER_CONSULT_TIMEOUT_MS", 6e5, 1e3, 18e5);
+var TIMEOUT_ENV = {
+  codex: "PEER_CONSULT_CODEX_TIMEOUT_MS",
+  "claude-code": "PEER_CONSULT_CLAUDE_TIMEOUT_MS",
+  antigravity: "PEER_CONSULT_AGY_TIMEOUT_MS"
+};
+function timeoutMs(target) {
+  const shared = num("PEER_CONSULT_TIMEOUT_MS", 6e5, 1e3, 18e5);
+  if (!target || !TIMEOUT_ENV[target]) return shared;
+  const fromEnv = num(TIMEOUT_ENV[target], null, 1e3, 18e5);
+  if (fromEnv !== null) return fromEnv;
+  const fromCfg = cfgTarget(target).timeout_ms;
+  if (typeof fromCfg === "number" && Number.isFinite(fromCfg)) {
+    return Math.min(18e5, Math.max(1e3, fromCfg));
+  }
+  return shared;
 }
 function credentialsHome() {
   return str("PEER_CONSULT_AGY_CRED_HOME", os.homedir());
@@ -35972,7 +35985,8 @@ function limitsSummary() {
   return {
     available_targets: availableTargets(),
     models,
-    timeout_ms: timeoutMs(),
+    // Per consultant, because they no longer share one budget.
+    timeout_ms: Object.fromEntries(availableTargets().map((t) => [t, timeoutMs(t)])),
     max_rounds_per_chain: POLICY.maxRounds,
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
@@ -36782,6 +36796,7 @@ __export(codex_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS,
   buildInvocation: () => buildInvocation,
   interpret: () => interpret,
+  progressSummary: () => progressSummary,
   usageRecord: () => usageRecord
 });
 import path3 from "node:path";
@@ -36839,22 +36854,22 @@ function walkUsage(node2, acc) {
   for (const v of Object.values(node2)) if (v && typeof v === "object") walkUsage(v, acc);
 }
 function interpret({ stdout, stderr, code, lastMessageText }) {
-  const events = [];
+  const events2 = [];
   for (const line of (stdout || "").split("\n")) {
     const t = line.trim();
     if (!t.startsWith("{")) continue;
     try {
-      events.push(JSON.parse(t));
+      events2.push(JSON.parse(t));
     } catch {
     }
   }
-  const errorEvents = events.filter((e) => e.type === "error" || e.type === "turn.failed");
+  const errorEvents = events2.filter((e) => e.type === "error" || e.type === "turn.failed");
   const usage = {};
-  for (const e of events) walkUsage(e, usage);
+  for (const e of events2) walkUsage(e, usage);
   let text = (lastMessageText || "").trim();
   if (!text) {
-    for (let i = events.length - 1; i >= 0 && !text; i--) {
-      const e = events[i];
+    for (let i = events2.length - 1; i >= 0 && !text; i--) {
+      const e = events2[i];
       const item = e.item ?? e;
       const candidate = item && item.type && String(item.type).includes("agent_message") && (item.text ?? item.message) || e.type === "item.completed" && item && (item.text ?? item.message) || null;
       if (typeof candidate === "string" && candidate.trim()) text = candidate.trim();
@@ -36862,7 +36877,7 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
   }
   if (errorEvents.length) {
     const msg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events.length };
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events2.length };
   }
   if (!text) {
     const msg = (stderr || "").trim() || `codex exited with code ${code} and produced no final message`;
@@ -36871,10 +36886,26 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       failureKind: code === 0 ? "invalid_output" : classifyMessage(msg),
       message: msg,
       usageRaw: usage,
-      events: events.length
+      events: events2.length
     };
   }
-  return { ok: true, text, usageRaw: usage, events: events.length };
+  return { ok: true, text, usageRaw: usage, events: events2.length };
+}
+function progressSummary({ stdout }) {
+  const items = [];
+  for (const line of (stdout || "").split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      const e = JSON.parse(t);
+      if (typeof e?.type === "string" && e.type.startsWith("item.")) items.push(e);
+    } catch {
+    }
+  }
+  if (!items.length) return null;
+  const last = items[items.length - 1];
+  const kind = last.item?.type ?? last.type;
+  return `no answer was produced; it was still working when the budget ran out: ${items.length} item event(s), last was ${kind}`;
 }
 function usageRecord(raw) {
   const u = raw ?? {};
@@ -36991,6 +37022,7 @@ __export(antigravity_exports, {
   buildInvocation: () => buildInvocation3,
   interpret: () => interpret3,
   prepareSandbox: () => prepareSandbox,
+  progressSummary: () => progressSummary2,
   usageRecord: () => usageRecord3
 });
 
@@ -37075,34 +37107,52 @@ var FORBIDDEN_FLAGS3 = [
 function buildInvocation3({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;
   const chosen = model ?? t.model;
+  const budget = timeoutMs("antigravity");
   const args = [
     "--output-format",
-    "json",
+    "stream-json",
     "--json-schema",
     schemaPath,
     "--disable-slash-commands",
     "--model",
     chosen,
     "--print-timeout",
-    `${Math.ceil(timeoutMs() / 1e3)}s`
+    `${Math.ceil((budget + 3e4) / 1e3)}s`
   ];
   return { command: t.cli, args, model: chosen };
 }
-function lastJsonObject2(stdout) {
-  const lines = (stdout || "").split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].trim();
+function events(stdout) {
+  const out = [];
+  for (const line of (stdout || "").split("\n")) {
+    const t = line.trim();
     if (!t.startsWith("{")) continue;
     try {
       const parsed = JSON.parse(t);
-      if (parsed && typeof parsed === "object") return parsed;
+      if (parsed && typeof parsed === "object") out.push(parsed);
     } catch {
     }
   }
+  return out;
+}
+function finalEnvelope(stdout) {
+  const all = events(stdout);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const e = all[i];
+    if (e.event === "result" && e.result && typeof e.result === "object") return e.result;
+    if (e.event === void 0 && (e.status || e.response || e.structured_output)) return e;
+  }
   return null;
 }
+function progressSummary2({ stdout }) {
+  const steps = events(stdout).filter((e) => e.event === "step_update" && e.step_update);
+  if (!steps.length) return null;
+  const last = steps[steps.length - 1].step_update;
+  const seen = new Set(steps.map((s2) => s2.step_update.step_index)).size;
+  const what = last.tool_name ? `tool ${last.tool_name}` : last.step_type ?? "a step";
+  return `no answer was produced; it was still working when the budget ran out: ${seen} step(s), last was ${what} (${last.state ?? "state unknown"})`;
+}
 function interpret3({ stdout, stderr, code }) {
-  const payload = lastJsonObject2(stdout);
+  const payload = finalEnvelope(stdout);
   if (!payload) {
     const msg = (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `agy exited with code ${code} and produced no JSON envelope`;
     return { ok: false, failureKind: code === 0 ? "invalid_output" : classifyMessage(msg), message: msg, usageRaw: null };
@@ -37391,7 +37441,7 @@ var JobManager = class {
         model: job.model
       });
       assertNoForbiddenFlags(req.target, invocation.args);
-      const budgetMs = timeoutMs();
+      const budgetMs = timeoutMs(req.target);
       job.status = "running";
       job.started_at = (/* @__PURE__ */ new Date()).toISOString();
       const t0 = Date.now();
@@ -37416,7 +37466,13 @@ var JobManager = class {
         return this.#fail(job, "cancelled", "consultation cancelled by the lead");
       }
       if (run.timedOut) {
-        return this.#fail(job, "timeout", `consultant exceeded the ${budgetMs} ms budget and was stopped`);
+        const progress = adapter.progressSummary?.(run) ?? null;
+        return this.#fail(
+          job,
+          "timeout",
+          `consultant exceeded the ${budgetMs} ms budget and was stopped`,
+          progress
+        );
       }
       const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
       const interpreted = adapter.interpret({ ...run, lastMessageText });

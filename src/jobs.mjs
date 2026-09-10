@@ -344,7 +344,7 @@ export class JobManager {
 
       assertNoForbiddenFlags(req.target, invocation.args);
 
-      const budgetMs = timeoutMs();
+      const budgetMs = timeoutMs(req.target);
       job.status = 'running';
       job.started_at = new Date().toISOString();
       const t0 = Date.now();
@@ -372,7 +372,17 @@ export class JobManager {
         return this.#fail(job, 'cancelled', 'consultation cancelled by the lead');
       }
       if (run.timedOut) {
-        return this.#fail(job, 'timeout', `consultant exceeded the ${budgetMs} ms budget and was stopped`);
+        // A timeout otherwise says nothing about whether the consultant was
+        // working or wedged. Adapters that stream their progress can say how
+        // far it got, which is what decides between "narrow the brief" and
+        // "this one just needs a longer budget".
+        const progress = adapter.progressSummary?.(run) ?? null;
+        return this.#fail(
+          job,
+          'timeout',
+          `consultant exceeded the ${budgetMs} ms budget and was stopped`,
+          progress,
+        );
       }
 
       const lastMessageText = invocation.lastMessagePath ? store.readIfExists(invocation.lastMessagePath) : '';

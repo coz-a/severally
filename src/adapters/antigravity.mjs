@@ -45,31 +45,72 @@ export const FORBIDDEN_FLAGS = [
 export function buildInvocation({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;
   const chosen = model ?? t.model;
+  // stream-json rather than json: the same final envelope arrives as the last
+  // `result` event, and the `step_update` events before it are the only record
+  // of what a consultation was doing when its budget ran out.
+  //
+  // --print-timeout gets a margin over our own budget on purpose. With both set
+  // to the same value, whichever fired first was a race, and agy winning meant
+  // no envelope at all -- reported as invalid_output rather than as the timeout
+  // it was. Ours has to fire first for the failure to be classified honestly.
+  const budget = timeoutMs('antigravity');
   const args = [
-    '--output-format', 'json',
+    '--output-format', 'stream-json',
     '--json-schema', schemaPath,
     '--disable-slash-commands',
     '--model', chosen,
-    '--print-timeout', `${Math.ceil(timeoutMs() / 1000)}s`,
+    '--print-timeout', `${Math.ceil((budget + 30_000) / 1000)}s`,
   ];
   return { command: t.cli, args, model: chosen };
 }
 
-function lastJsonObject(stdout) {
-  const lines = (stdout || '').split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].trim();
+/** Every complete NDJSON object agy wrote, oldest first. */
+function events(stdout) {
+  const out = [];
+  for (const line of (stdout || '').split('\n')) {
+    const t = line.trim();
     if (!t.startsWith('{')) continue;
     try {
       const parsed = JSON.parse(t);
-      if (parsed && typeof parsed === 'object') return parsed;
-    } catch { /* not the envelope */ }
+      if (parsed && typeof parsed === 'object') out.push(parsed);
+    } catch { /* a partial line, e.g. when the child was killed mid-write */ }
+  }
+  return out;
+}
+
+/**
+ * The final envelope: the `result` event under stream-json, or a bare envelope
+ * when agy was run with --output-format json (as older configs and the unit
+ * tests do).
+ */
+function finalEnvelope(stdout) {
+  const all = events(stdout);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const e = all[i];
+    if (e.event === 'result' && e.result && typeof e.result === 'object') return e.result;
+    if (e.event === undefined && (e.status || e.response || e.structured_output)) return e;
   }
   return null;
 }
 
+/**
+ * What the consultation had done when it was stopped. Only useful on a
+ * timeout: it separates "was working steadily and needed longer" from "was
+ * stuck on one tool call", which is the difference between raising the budget
+ * and narrowing the brief.
+ */
+export function progressSummary({ stdout }) {
+  const steps = events(stdout).filter((e) => e.event === 'step_update' && e.step_update);
+  if (!steps.length) return null;
+  const last = steps[steps.length - 1].step_update;
+  const seen = new Set(steps.map((s) => s.step_update.step_index)).size;
+  const what = last.tool_name ? `tool ${last.tool_name}` : (last.step_type ?? 'a step');
+  return `no answer was produced; it was still working when the budget ran out: `
+    + `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
+}
+
 export function interpret({ stdout, stderr, code }) {
-  const payload = lastJsonObject(stdout);
+  const payload = finalEnvelope(stdout);
   if (!payload) {
     const msg = (stderr || '').trim() || (stdout || '').trim().slice(0, 2000) ||
       `agy exited with code ${code} and produced no JSON envelope`;

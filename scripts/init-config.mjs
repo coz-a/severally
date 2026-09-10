@@ -39,6 +39,7 @@ export function renderConfig() {
     '  //   bin              a CLI that is not on PATH, a specific build, or a wrapper script (~/ is expanded)',
     '  //   default_model    the model this consultant runs unless a request names another',
     '  //   allowed_models   the models a request MAY name; the default above is always allowed',
+    '  //   timeout_ms       this consultant\'s own budget in ms (default 600000, max 1800000)',
     '  "targets": {',
   ];
   TARGETS.forEach((id, i) => {

@@ -117,6 +117,28 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
   return { ok: true, text, usageRaw: usage, events: events.length };
 }
 
+/**
+ * What the consultation had done when it was stopped. Codex already runs with
+ * `exec --json`, so its event stream is there for the reading -- no flag change
+ * and no parser change, only a use for events we were otherwise discarding.
+ */
+export function progressSummary({ stdout }) {
+  const items = [];
+  for (const line of (stdout || '').split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    try {
+      const e = JSON.parse(t);
+      if (typeof e?.type === 'string' && e.type.startsWith('item.')) items.push(e);
+    } catch { /* a partial line, e.g. when the child was killed mid-write */ }
+  }
+  if (!items.length) return null;
+  const last = items[items.length - 1];
+  const kind = last.item?.type ?? last.type;
+  return `no answer was produced; it was still working when the budget ran out: `
+    + `${items.length} item event(s), last was ${kind}`;
+}
+
 export function usageRecord(raw) {
   const u = raw ?? {};
   const pick = (...names) => {

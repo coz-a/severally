@@ -560,3 +560,25 @@ test('a model named in the target reaches the consultant CLI', async () => {
 
   delete process.env.STUB_ARGV_OUT;
 });
+
+// A bare "it timed out" says nothing about whether the consultant was working
+// or wedged, which is the difference between raising the budget and narrowing
+// the brief. The adapters that stream their events can say which it was.
+test('a timeout reports how far the consultant got', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  process.env.PEER_CONSULT_TIMEOUT_MS = '1200';
+  const { JobManager: M } = await import(`../src/jobs.mjs?progress=${Date.now()}`);
+  const mgr = new M();
+
+  const started = mgr.start(reviewRequest());
+  const view = await finish(mgr, started.job_id);
+
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'timeout');
+  assert.equal(view.failure.retriable, true);
+  assert.match(view.failure.detail ?? '', /still working when the budget ran out/,
+    'the trail the consultant left before it was killed');
+
+  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.STUB_BEHAVIOR = 'ok';
+});

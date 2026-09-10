@@ -314,10 +314,30 @@ export const POLICY = Object.freeze({
   }),
 });
 
-// Wall-clock budget for a single consultation. Read at job start (not frozen
-// into the module) so an operator restart is not needed to retune it.
-export function timeoutMs() {
-  return num('PEER_CONSULT_TIMEOUT_MS', 600_000, 1_000, 1_800_000);
+const TIMEOUT_ENV = {
+  codex: 'PEER_CONSULT_CODEX_TIMEOUT_MS',
+  'claude-code': 'PEER_CONSULT_CLAUDE_TIMEOUT_MS',
+  antigravity: 'PEER_CONSULT_AGY_TIMEOUT_MS',
+};
+
+/**
+ * Wall-clock budget for a single consultation, per consultant. Read at job
+ * start (not frozen into the module) so an operator restart is not needed to
+ * retune it, and per target because they do not take the same time: a long
+ * Gemini answer should not force the same patience on every other consultant.
+ * The 30 minute ceiling stays -- past that the answer is a different request,
+ * not a slower one.
+ */
+export function timeoutMs(target) {
+  const shared = num('PEER_CONSULT_TIMEOUT_MS', 600_000, 1_000, 1_800_000);
+  if (!target || !TIMEOUT_ENV[target]) return shared;
+  const fromEnv = num(TIMEOUT_ENV[target], null, 1_000, 1_800_000);
+  if (fromEnv !== null) return fromEnv;
+  const fromCfg = cfgTarget(target).timeout_ms;
+  if (typeof fromCfg === 'number' && Number.isFinite(fromCfg)) {
+    return Math.min(1_800_000, Math.max(1_000, fromCfg));
+  }
+  return shared;
 }
 
 /**
@@ -355,7 +375,8 @@ export function limitsSummary() {
   return {
     available_targets: availableTargets(),
     models,
-    timeout_ms: timeoutMs(),
+    // Per consultant, because they no longer share one budget.
+    timeout_ms: Object.fromEntries(availableTargets().map((t) => [t, timeoutMs(t)])),
     max_rounds_per_chain: POLICY.maxRounds,
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,

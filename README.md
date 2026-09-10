@@ -281,6 +281,7 @@ node scripts/init-config.mjs --force   # 既存を置き換える
   //   enabled          false to exclude a consultant whose CLI is installed
   //   default_model    the model it runs unless a request names another
   //   allowed_models   the models a request MAY name
+  //   timeout_ms       this consultant's own budget in ms
   //   ...
   "targets": {
     // codex found, default model gpt-6-astra
@@ -310,6 +311,7 @@ node scripts/init-config.mjs --force   # 既存を置き換える
 | `bin` | 実行ファイル名またはパス。ラッパースクリプトを噛ませたい場合はここ（絶対パス推奨。MCP サーバは対話シェルと PATH が同じとは限らない）。先頭の `~/` は展開する |
 | `default_model` | その相談相手が既定で使うモデル |
 | `allowed_models` | リクエストが**指名してよい**モデル。`default_model` は常に許可されるので、追加分だけ書く |
+| `timeout_ms` | この相談相手だけの制限時間（ms）。未指定なら共通値。上限 30 分 |
 
 **優先順位は env > 設定ファイル > 自動検出 > 既定値**（knob 単位）。`PEER_CONSULT_TARGETS=codex,claude-code`
 のように env で有効な相手を列挙した場合は、それが唯一の集合になる（設定ファイルの `enabled` より優先）。
@@ -336,6 +338,7 @@ node scripts/init-config.mjs --force   # 既存を置き換える
 | `PEER_CONSULT_AGY_ALLOWED_MODELS` | –（既定モデルのみ） | 同上 |
 | `PEER_CONSULT_AGY_CRED_HOME` | 実行ユーザの `$HOME`（合成 HOME に symlink するトークンの取得元） | – |
 | `PEER_CONSULT_TIMEOUT_MS` | 600000 | 1000–1800000 |
+| `PEER_CONSULT_CODEX_TIMEOUT_MS` / `_CLAUDE_` / `_AGY_` | 共通値 | 相談相手ごとの制限時間。Gemini は込み入った依頼で 10 分を超えることがある |
 | `PEER_CONSULT_MAX_ROUNDS` | 3（初回1＋追加2） | 1–5 |
 | `PEER_CONSULT_MAX_CONCURRENT` | 3（fan-out は N 消費） | 1–4 |
 | `PEER_CONSULT_MAX_JOBS_RETAINED` | 200（メモリ上に保持するジョブ数。超えると古い方から破棄され、`job_id` / `group_id` で参照できなくなる） | 20–2000 |
