@@ -36210,6 +36210,10 @@ var CONSULT_RESULT_SCHEMA = obj(
   {
     summary: s("2-6 sentence summary of your overall view, written for a peer who will act on it."),
     confidence: enumOf(["high", "medium", "low"], "Your confidence in this overall view."),
+    stance: enumOf(
+      ["proceed", "do_not_proceed", "alternative", "undetermined"],
+      `Your bottom line on the decision the brief puts to you, in one word, so it can be placed beside other consultants' without anyone interpreting the summaries: "proceed" (the direction as stated holds), "do_not_proceed" (it does not, as stated), "alternative" (a different direction is better -- name it under alternatives), "undetermined" (the material does not let you say).`
+    ),
     evidence_basis: enumOf(
       ["sufficient", "thin", "insufficient"],
       'Honest self-assessment of whether the material you were given (plus anything you looked up) is enough to support this advice. Use "thin"/"insufficient" rather than guessing.'
@@ -36450,6 +36454,7 @@ function clampText(v, max) {
 }
 var LEVELS = ["high", "medium", "low"];
 var BASIS = ["sufficient", "thin", "insufficient"];
+var STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
 function level(v, fallback = null) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
   return LEVELS.includes(t) ? t : fallback;
@@ -36457,6 +36462,10 @@ function level(v, fallback = null) {
 function basis(v) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
   return BASIS.includes(t) ? t : null;
+}
+function stance(v) {
+  const t = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return STANCES.includes(t) ? t : null;
 }
 function extractJson(text) {
   if (typeof text !== "string") return null;
@@ -36534,6 +36543,7 @@ function normalizeResult(raw) {
     summary,
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
+    stance: stance(src.stance),
     findings: mapList(src.findings, {
       point: "text",
       grounds: "text",
@@ -37504,7 +37514,6 @@ var JobManager = class {
       job.quality = {
         ...normalized.quality,
         evidence_basis: normalized.result.evidence_basis,
-        advice_usable: true,
         caveat: notes.length ? notes.join("; ") : null
       };
       job.usage = adapter.usageRecord(interpreted.usageRaw);
@@ -37643,7 +37652,7 @@ function adviceCaveat(normalized) {
 function sameVendorCaveat(caller, target) {
   if (!caller || !POLICY.targets[caller] || !POLICY.targets[target]) return null;
   if (POLICY.targets[caller].vendor !== POLICY.targets[target].vendor) return null;
-  return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}): this is a fresh-context check, not an independent opinion \u2014 prefer the other two consultants for genuine independence`;
+  return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}). A fresh session removes what your own session accumulated \u2014 history, sunk cost, drift toward your framing \u2014 but not what the lineage shares: training-data blind spots and the same reflexes toward this brief's wording. Weigh it as a fresh-context re-read rather than an independent opinion; that is not a reason to skip checking its grounds like any other answer`;
 }
 function comparison(members2) {
   return {
@@ -37651,6 +37660,11 @@ function comparison(members2) {
       target: m.target,
       status: m.status,
       failure_kind: m.failure?.kind ?? null,
+      // Declared by the consultant, relayed unjudged. In live runs, leads that
+      // saw two consultants share a finding read them as agreeing, when their
+      // bottom lines were opposite; one word per consultant makes that
+      // visible without the server interpreting anyone's summary.
+      stance: m.result?.stance ?? null,
       confidence: m.result?.confidence ?? null,
       evidence_basis: m.result?.evidence_basis ?? null,
       summary: m.result?.summary ?? null,
@@ -37659,7 +37673,7 @@ function comparison(members2) {
       unknowns: (m.result?.unknowns ?? []).map((u) => u.item),
       remaining_disagreements: m.result?.remaining_disagreements ?? []
     })),
-    note: "This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. Compare the grounds behind each point yourself, and spend a follow-up only where a divergence would change your decision."
+    note: "This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. Each stance is the consultant's own declaration, relayed as given -- consultants that share a finding can still declare opposite stances, and that is a divergence. Compare the grounds behind each point yourself, and spend a follow-up only where a divergence would change your decision."
   };
 }
 function nextStep(job) {
