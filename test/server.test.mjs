@@ -52,6 +52,8 @@ test('start -> get -> structured result, over MCP', async () => {
   assert.equal(view.status, 'completed');
   assert.equal(view.result.findings[0].point, 'Retry storm risk');
   assert.match(view.next_step, /remaining round/);
+  assert.match(view.next_step, /one check that would change the decision/,
+    'a completed answer must send the lead to run the decisive check, not only to read');
 
   const listed = payload(await client.callTool({ name: 'consult_list', arguments: {} }));
   assert.equal(listed.jobs[0].job_id, started.job_id);

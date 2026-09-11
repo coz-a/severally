@@ -198,3 +198,29 @@ test('every skill offers the explore-then-review pair for a heavy decision', () 
     assert.match(text, /explore` first|explore first/i, `${host} skill must describe the pair`);
   }
 });
+
+// The consultation is not over when the answer arrives. Before the lead hands
+// the decision back to the user, it runs the one check that would change the
+// decision and says what is still unverified -- otherwise "we consulted" is a
+// list of opinions the user has to check themselves.
+test('every skill closes by running the decision-critical check and naming what stays unverified', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /## Before you hand the decision back/, `${host} skill must have the hand-back section`);
+    assert.match(text, /one check that would change the decision/i, `${host} skill must ask for one decisive check`);
+    assert.match(text, /still unverified/i, `${host} skill must ask the lead to name what is still unverified`);
+    assert.match(text, /consult_record\(\{ job_id: "\.\.\.", entries: \[\s*\{ id: "c1", verdict: "confirmed"/,
+      `${host} skill must show recording the check it ran`);
+  }
+});
+
+// The hero scene is the agent asking "may I proceed?" on a hard-to-reverse
+// change with nobody to review it. If the skill only fires when the user
+// remembers to ask, that scene never happens.
+test('every skill offers a consultation at the moment the agent asks for approval of a hard-to-reverse change', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /before you ask the user to approve/i, `${host} skill must attach to the approval moment`);
+    assert.match(text, /offer .*consult/i, `${host} skill must offer, not force, the consultation`);
+  }
+});

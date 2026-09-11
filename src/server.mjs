@@ -152,7 +152,8 @@ export function createServer(manager = new JobManager()) {
         + 'it changed about your decision; note is the evidence you used. Recording the same id again replaces '
         + 'that entry. This server stores what you write and counts the verdicts; it never infers one, and never '
         + 'decides a consultation was worth it. The entry is saved beside the answer and the brief in '
-        + '~/.peer-consult/history, which is what makes the decision readable a month from now. '
+        + '~/.peer-consult/history, which is what makes the decision readable a month from now; the job is '
+        + 'read back from that history, so a consultation from an earlier session can still be recorded against. '
         + 'Pass `reflection` to record what the answer added over what you already expected, when the '
         + 'consultation was started with a `prediction`. A prediction itself cannot be written here: it goes '
         + 'in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',

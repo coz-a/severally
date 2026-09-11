@@ -39,6 +39,25 @@ export function readIfExists(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return ''; }
 }
 
+// A consultation from an earlier server session, found through the index and
+// read back from its round file. Verdicts are written after the checking, and
+// the checking can take days, so the record must not depend on the job still
+// being in this process's memory. Returns null when the index has no such job.
+export function loadRound(jobId) {
+  const historyDir = path.join(POLICY.home, 'history');
+  let row = null;
+  for (const line of readIfExists(path.join(historyDir, 'index.jsonl')).split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed.job_id === jobId) { row = parsed; break; }
+    } catch { /* a damaged line is skipped, not fatal */ }
+  }
+  if (!row) return null;
+  const file = path.join(historyDir, row.chain_id, `round-${String(row.round).padStart(2, '0')}.json`);
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
 // `appendIndex: false` rewrites a round that has already been recorded -- the
 // lead adding a verdict to it later. index.jsonl stays one line per
 // consultation, so counting rounds there never counts edits.

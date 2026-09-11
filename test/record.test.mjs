@@ -159,7 +159,36 @@ test('consult_list says which consultations have a verdict written and what the 
   assert.deepEqual(after.verdicts, { confirmed: 2, unverified: 1 });
 });
 
-test('recording against a consultation this session never saw is refused', async () => {
+test('a verdict can be written from a later session, against the round file on disk', async () => {
+  const { view } = await completed();
+  const later = new JobManager();
+  assert.equal(later.jobs.has(view.job_id), false);
+  const indexPath = path.join(home, 'history', 'index.jsonl');
+  const before = fs.readFileSync(indexPath, 'utf8').split('\n').filter(Boolean).length;
+
+  const out = later.record({
+    job_id: view.job_id,
+    entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Checked a week later.', note: 'Load test ran on Thursday.' }],
+    reflection: { delta: 'nothing new', related_item_ids: ['f1'] },
+  });
+  assert.equal(out.job_id, view.job_id);
+  assert.deepEqual(out.record.verdicts, { confirmed: 1 });
+
+  const stored = roundFile(view);
+  assert.equal(stored.record.entries[0].verdict, 'confirmed');
+  assert.equal(stored.record.entries[0].note, 'Load test ran on Thursday.');
+  assert.equal(stored.reflection.delta, 'nothing new');
+  assert.equal(stored.result.findings[0].id, 'f1', 'the answer itself must survive the rewrite');
+  assert.equal(stored.brief.objective, 'Ship a retry policy that will not amplify an outage.', 'so must the brief');
+  const after = fs.readFileSync(indexPath, 'utf8').split('\n').filter(Boolean).length;
+  assert.equal(after, before, 'a later verdict is an edit, not a new consultation');
+
+  // A second write from that later session merges, just as it does in-session.
+  later.record({ job_id: view.job_id, entries: [{ id: 'c1', verdict: 'unverified', effect: 'Not yet.' }] });
+  assert.equal(roundFile(view).record.entries.length, 2);
+});
+
+test('recording against a consultation neither this session nor the history knows is refused', async () => {
   const { mgr } = await completed();
   assert.throws(
     () => mgr.record({ job_id: 'job_nope', entries: [{ id: 'f1', verdict: 'confirmed' }] }),

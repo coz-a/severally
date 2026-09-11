@@ -27,6 +27,14 @@ test('accepts a well-formed review request', () => {
   assert.equal(req.context.counterpoints.length, 0);
 });
 
+test('objective is optional: the question alone carries what the consultation is for', () => {
+  const { objective, ...without } = reviewRequest();
+  const req = parseRequest(without);
+  assert.equal(req.objective ?? null, null);
+  assert.equal(parseRequest(reviewRequest({ objective: null })).objective, null);
+  rejects(reviewRequest({ objective: '   ' }), 'invalid_request');
+});
+
 test('explore must withhold the proposal on the first round', () => {
   rejects(exploreRequest({ context: { facts: ['f'], proposal: 'my plan' } }), 'explore_proposal_not_allowed');
 });

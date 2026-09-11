@@ -77,7 +77,9 @@ export const requestSchema = z
     caller: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)).nullish(),
     mode: z.enum(MODES),
     question: trimmed(L.questionMax, 'question'),
-    objective: trimmed(L.objectiveMax, 'objective'),
+    // Optional: most consultations state what they are after in the question
+    // itself, and a second field that repeats it is friction, not information.
+    objective: trimmed(L.objectiveMax, 'objective').nullish(),
     success_criteria: z.array(trimmed(L.constraintMax, 'success_criteria[]')).max(L.constraintsMax).default([]),
     constraints: z.array(trimmed(L.constraintMax, 'constraints[]')).max(L.constraintsMax).default([]),
     context: contextSchema.default({ facts: [], counterpoints: [], artifacts: [] }),
@@ -98,7 +100,7 @@ export const requestSchema = z
   .strict();
 
 function charCount(req) {
-  let n = req.question.length + req.objective.length;
+  let n = req.question.length + (req.objective?.length ?? 0);
   for (const c of req.constraints) n += c.length;
   for (const c of req.success_criteria) n += c.length;
   for (const f of req.context.facts) n += f.length;

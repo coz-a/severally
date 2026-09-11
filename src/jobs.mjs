@@ -495,10 +495,14 @@ export class JobManager {
     if (entries === undefined && reflection === undefined) {
       throw new RequestError('pass entries (verdicts on specific points), reflection (what the answer added), or both', 'nothing_to_record');
     }
-    const job = this.jobs.get(jobId);
+    // A job this process ran is in memory; one from an earlier session is read
+    // back from its round file, so a verdict can still be written once the
+    // checking -- which may take days -- is actually done.
+    const live = this.jobs.get(jobId);
+    const job = live ?? store.loadRound(jobId);
     if (!job) {
       throw new RequestError(
-        `no consultation with job_id "${jobId}" in this session (job ids are lost when the client restarts; the round file under ~/.peer-consult/history keeps the answer)`,
+        `no consultation with job_id "${jobId}" in this session or in ~/.peer-consult/history`,
         'unknown_job',
       );
     }
@@ -570,7 +574,7 @@ export class JobManager {
     }
     // An update to a round that already happened, so the index line stays as it
     // was: the history has one line per consultation, not one per edit.
-    try { store.persistRound(this.#record(job), { appendIndex: false }); } catch { /* history is best effort */ }
+    try { store.persistRound(live ? this.#record(job) : job, { appendIndex: false }); } catch { /* history is best effort */ }
 
     return {
       job_id: job.job_id,
@@ -817,7 +821,7 @@ function nextStep(job) {
       ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open} point(s) still carry no verdict.`
       : '';
     return (left > 0
-      ? `check the grounds behind the points that matter, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").`
+      ? `check the grounds behind the points that matter, run the one check that would change the decision, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").`
       : 'rounds exhausted: decide with what you have.') + close;
   }
   if (job.failure?.kind === 'timeout' || job.failure?.kind === 'cli_error') return 'retriable: narrow the brief and start a new consultation';

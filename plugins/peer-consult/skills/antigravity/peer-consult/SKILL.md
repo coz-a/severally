@@ -79,6 +79,11 @@ Do not use it for routine edits, formatting, a rename, a test that just needs wr
 be comfortable defending on your own. A consultation costs a couple of minutes and real quota, so spend it on
 questions where an independent answer could change what you do.
 
+**Before you ask the user to approve a change that is hard to reverse** — a migration, a public interface, a
+security or concurrency design — and nobody else has reviewed it, offer a consultation as one of the choices,
+in a sentence: what you would ask, whom, and that it takes a few minutes and real quota. The user decides;
+do not start one on your own, and do not offer one for a change that running the existing tests would settle.
+
 ## Pick the mode deliberately
 
 | Mode | Give it | Get back |
@@ -99,9 +104,27 @@ earn it.
 
 ## Before you call it
 
-Do the organising work yourself; a vague brief gets a vague answer.
+**The first consultation is small.** One consultant, `mode: "review"`, the proposal in a paragraph, the few
+facts it rests on, and one diff or code excerpt:
+
+```
+consult_start({ request: {
+  target: "codex",
+  mode: "review",
+  question: "the decision you are stuck on, in one sentence",
+  context: { facts: ["..."], proposal: "our plan, and why", artifacts: [{name, kind, language, excerpt}] }
+}})
+```
+
+That is enough to get an answer in the shape described below. Length is not what makes the answer good — a
+brief that is long because it is thorough is fine, one that is long because you pasted everything buries the
+question.
+
+**For a decision you will have to live with** — an interface, a migration, a security or concurrency call —
+do the organising work first; a vague brief gets a vague answer.
 
 1. **State the question in one sentence.** Not "thoughts on this?" but the actual decision you are stuck on.
+   `objective` is optional: add it only when what you are after is not already in the question.
 2. **Write down what a useful answer looks like** (`success_criteria`) — e.g. "a concrete failure scenario with
    numbers, or a clear all-clear with its conditions".
 3. **Supply the evidence.** The consultant starts in an empty working directory and is not told where your
@@ -112,18 +135,12 @@ Do the organising work yourself; a vague brief gets a vague answer.
 5. **Separate imposed constraints from your own assumptions.** A constraint is read as fixed and will not be
    challenged; if "we cannot change the schema" is your call rather than a given, put it under `facts` as a
    decision with its reason, or leave it out and let the consultant test it. Only what you wrote can be doubted.
-
-**Write down what you expect, before you send it.** Pass `prediction: { expected, worry }` in the request:
-the bottom line you expect (`proceed` / `do_not_proceed` / `alternative` / `undetermined`) and, in one
-sentence, the thing you are most worried about. It is stored with the consultation and **never sent to the
-consultant** — it exists so that afterwards you cannot quietly rewrite what you thought beforehand. It can
-only be written here, before the consultant runs; there is no way to add one later. Skip it when you have no
-expectation to commit to, rather than inventing one.
-
-**Start small.** For a first consultation: one consultant, `mode: "review"`, the proposal in a paragraph, the
-few facts it rests on, and one diff or code excerpt. That is enough to get an answer in the shape described
-below. Length is not what makes the answer good — a brief that is long because it is thorough is fine, one
-that is long because you pasted everything buries the question.
+6. **Write down what you expect, before you send it.** Pass `prediction: { expected, worry }` in the request:
+   the bottom line you expect (`proceed` / `do_not_proceed` / `alternative` / `undetermined`) and, in one
+   sentence, the thing you are most worried about. It is stored with the consultation and **never sent to the
+   consultant** — it exists so that afterwards you cannot quietly rewrite what you thought beforehand. It can
+   only be written here, before the consultant runs; there is no way to add one later. Skip it when you have
+   no expectation to commit to, rather than inventing one.
 
 ## Running it
 
@@ -132,15 +149,16 @@ consult_start({ request: {
   target: "codex",
   mode: "review",
   question: "...",
-  objective: "...",
+  objective: "...",                 // optional
   success_criteria: ["..."],
   constraints: ["..."],
   context: { facts: ["..."], proposal: "our plan, and why", artifacts: [{name, kind, language, excerpt}] },
+  prediction: { expected: "proceed", worry: "..." },   // optional, never sent to the consultant
   followup_to: null
 }})
 ```
 
-Then `consult_get({ job_id, wait_ms: 60000 })` until `status` is no longer `running`. Keep working on something
+Then `consult_get({ job_id, wait_ms: 45000 })` until `status` is no longer `running`. Keep working on something
 independent while it runs; do not sit in a tight polling loop. `consult_cancel({ job_id })` stops it and kills
 the consultant process.
 
@@ -221,6 +239,32 @@ docs; a peer that agrees with you is not evidence that you are right, and a conf
 from an agent that cannot read your codebase is a hypothesis. Wrong findings adopted uncritically cost more
 than the consultation saved.
 
+## Before you hand the decision back
+
+The consultation is not finished when the answer arrives. Before you go back to the user with a
+recommendation:
+
+1. **Pick the one check that would change the decision.** Read `decision_changers` and `next_checks` and
+   choose the one whose outcome would flip your recommendation, or would settle the finding you rate highest.
+   Say why that one.
+2. **Run it here, read-only.** A test, a grep, a measurement, a read of the schema or the docs. Do not edit
+   anything in order to run it. If it needs another person or a production system, do not run it — say so.
+3. **Come back with three things**: what you checked and what it showed; the decision you now recommend; and
+   what is still unverified, point by point, so the user approves knowing what has not been confirmed.
+
+Then write the check's verdict back, in one call. This is the record of the consultation, and it costs
+nothing beyond the check you already ran:
+
+```
+consult_record({ job_id: "...", entries: [
+  { id: "c1", verdict: "confirmed", effect: "the retry cap holds; recommending we proceed", note: "ran the 30 s outage test" }
+]})
+```
+
+"Checked" means you ran it here. A point you only read is "unverified" in the report, however plausible it
+looks. This applies to consultations about code. A consultation about a plan or a policy usually returns checks
+that need other people; say so, and hand the list back unrun rather than inventing a check you can run.
+
 ## Follow-ups
 
 You get one initial round plus at most two follow-ups per chain (`followup_to: "<previous job_id>"`). Spend
@@ -235,13 +279,15 @@ Do not push for agreement. A recorded, well-understood disagreement is a legitim
 
 Report to the user, briefly:
 
+- what you **checked**, and what it showed (the section above)
 - what you **adopted**, and why
 - what you **rejected**, and why (this is where you push back on a finding that does not survive checking)
-- what you are **holding** — plausible, not yet verified, with the check that would settle it
+- what is **still unverified** — plausible, not yet checked, with the check that would settle it
 - what the consultation cost: rounds used, wall-clock time, and the usage the result reports
 
-Then write the same thing back into the consultation, so it is still there when the decision is questioned
-a month from now:
+For a routine consultation, that report plus the one recorded check is the close. **For a decision you will
+have to live with**, write the rest back into the consultation too, so it is still there when the decision is
+questioned a month from now:
 
 ```
 consult_record({ job_id: "...", entries: [
@@ -249,6 +295,9 @@ consult_record({ job_id: "...", entries: [
   { id: "c1", verdict: "unverified", effect: "load test deferred to Thursday's window" }
 ]})
 ```
+
+The job is read back from `~/.peer-consult/history`, so a verdict can be written days later, from another
+session, once the check has actually been run — write it then, not before.
 
 If you sent a prediction, add what the answer actually added, in the same call:
 
@@ -273,8 +322,7 @@ different: the second is a decision you made, the first is a gap. Record the one
 them; `consult_get`'s `next_step` names the points still without a verdict, and recording the same id again
 replaces it.
 
-When the decision is one the team will have to live with — an interface, a migration, a security or
-concurrency call — ask for the record and put it in the repository:
+Then ask for the record and put it in the repository:
 
 ```
 consult_export({ chain_id: "..." })   // or group_id for a fan-out

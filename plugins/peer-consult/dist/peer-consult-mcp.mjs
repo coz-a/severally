@@ -36049,7 +36049,9 @@ var requestSchema = external_exports.object({
   caller: external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS)).nullish(),
   mode: external_exports.enum(MODES),
   question: trimmed(L.questionMax, "question"),
-  objective: trimmed(L.objectiveMax, "objective"),
+  // Optional: most consultations state what they are after in the question
+  // itself, and a second field that repeats it is friction, not information.
+  objective: trimmed(L.objectiveMax, "objective").nullish(),
   success_criteria: external_exports.array(trimmed(L.constraintMax, "success_criteria[]")).max(L.constraintsMax).default([]),
   constraints: external_exports.array(trimmed(L.constraintMax, "constraints[]")).max(L.constraintsMax).default([]),
   context: contextSchema.default({ facts: [], counterpoints: [], artifacts: [] }),
@@ -36065,7 +36067,7 @@ var requestSchema = external_exports.object({
   followup_to: external_exports.string().trim().max(80).nullish()
 }).strict();
 function charCount(req) {
-  let n = req.question.length + req.objective.length;
+  let n = req.question.length + (req.objective?.length ?? 0);
   for (const c of req.constraints) n += c.length;
   for (const c of req.success_criteria) n += c.length;
   for (const f of req.context.facts) n += f.length;
@@ -36355,7 +36357,7 @@ var GUARDRAILS = [
   'You are an independent peer consultant for another AI coding agent ("the lead"). You give advice only.',
   "",
   "Hard rules for this session:",
-  "- You must not modify, create or delete any file, and must not run shell commands, build tools or tests. Those tools are withheld from you at the process level; do not look for a way around it.",
+  "- You must not modify, create or delete any file, and must not run build tools, tests or any command that changes state. Writes are withheld from you at the process level; do not look for a way around it.",
   "- You must not start, request or delegate another consultation, sub-agent or nested agent session. This exchange ends with your answer.",
   "- You may search and browse the web freely; cite what you actually opened in `references`.",
   "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.",
@@ -36795,6 +36797,28 @@ function readIfExists(p) {
     return fs2.readFileSync(p, "utf8");
   } catch {
     return "";
+  }
+}
+function loadRound(jobId) {
+  const historyDir2 = path2.join(POLICY.home, "history");
+  let row = null;
+  for (const line of readIfExists(path2.join(historyDir2, "index.jsonl")).split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed.job_id === jobId) {
+        row = parsed;
+        break;
+      }
+    } catch {
+    }
+  }
+  if (!row) return null;
+  const file2 = path2.join(historyDir2, row.chain_id, `round-${String(row.round).padStart(2, "0")}.json`);
+  try {
+    return JSON.parse(fs2.readFileSync(file2, "utf8"));
+  } catch {
+    return null;
   }
 }
 function persistRound(record2, { appendIndex = true } = {}) {
@@ -37610,10 +37634,11 @@ var JobManager = class {
     if (entries === void 0 && reflection === void 0) {
       throw new RequestError("pass entries (verdicts on specific points), reflection (what the answer added), or both", "nothing_to_record");
     }
-    const job = this.jobs.get(jobId);
+    const live = this.jobs.get(jobId);
+    const job = live ?? loadRound(jobId);
     if (!job) {
       throw new RequestError(
-        `no consultation with job_id "${jobId}" in this session (job ids are lost when the client restarts; the round file under ~/.peer-consult/history keeps the answer)`,
+        `no consultation with job_id "${jobId}" in this session or in ~/.peer-consult/history`,
         "unknown_job"
       );
     }
@@ -37675,7 +37700,7 @@ var JobManager = class {
       };
     }
     try {
-      persistRound(this.#record(job), { appendIndex: false });
+      persistRound(live ? this.#record(job) : job, { appendIndex: false });
     } catch {
     }
     return {
@@ -37860,7 +37885,7 @@ function nextStep(job) {
     const written = new Set((job.record?.entries ?? []).map((e) => e.id));
     const open2 = job.result ? recordableIds(job.result).filter((id2) => !written.has(id2)).length : 0;
     const close = open2 > 0 ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict.` : "";
-    return (left > 0 ? `check the grounds behind the points that matter, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
+    return (left > 0 ? `check the grounds behind the points that matter, run the one check that would change the decision, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
   }
   if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error") return "retriable: narrow the brief and start a new consultation";
   if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth") return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
@@ -38221,7 +38246,7 @@ function createServer(manager = new JobManager()) {
     "consult_record",
     {
       title: "Record what checking a point showed",
-      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.peer-consult/history, which is what makes the decision readable a month from now. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
+      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.peer-consult/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
       inputSchema: {
         job_id: external_exports.string().min(1),
         entries: external_exports.array(external_exports.object({
