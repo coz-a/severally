@@ -1,6 +1,6 @@
 ---
 name: peer-consult
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from {{DESCRIPTION_PEERS}} through the peer-consult MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask every peer at once counts however it is phrased ({{TRIGGERS}}, "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from {{DESCRIPTION_PEERS}} through the peer-consult MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ({{TRIGGERS}}, "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
@@ -37,8 +37,8 @@ whether to retry with a longer budget or with a smaller question.
 
 A consultant runs on the model its operator configured. If — and only if — the user names one, append it to
 the target: `target: "{{DEFAULT_TARGET}}:<model>"`, and the same inside `targets` for a fan-out. So 「Claude
-Opusと相談して」 becomes `target: "claude:claude-opus-5"`, and 「みんなで、Claudeはopusで」 becomes
-`targets: ["claude:claude-opus-5", "{{SECOND_TARGET}}"]`.
+Opusと相談して」 becomes `target: "claude:claude-opus-5"`. In a fan-out only the member the model was named
+for carries a suffix: `targets: ["{{DEFAULT_TARGET}}", "{{SECOND_TARGET}}", "{{SELF_TARGET}}:<model>"]`.
 
 Pass the model roughly as the user said it — `claude:opus` and `claude:"Claude Opus"` both resolve, as long as
 they match exactly one model the operator allowed. `consult_start`'s description lists what each consultant may
@@ -172,18 +172,28 @@ consult_start({ request: {
 }})
 ```
 
-When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, 「両方に相談して」, "ask everyone", "ask
-both" — that is exactly the two peers above, `{{DEFAULT_TARGET}}` and `{{SECOND_TARGET}}`, and not yourself.
-Consulting your own CLI is a fresh-context re-read rather than a third opinion, so adding it on your own
-spends a concurrency slot and real quota on a third slot without a third lineage. The exception is when the
-user names a model of your own CLI for the fan-out (「みんなで、Claude は Fable で」): then include it as a
-third member, `"{{SELF_TARGET}}:<model>"`, and read its caveat like any other. Send **one** `targets` call
-and poll the single `group_id`; two separate consultations would give each peer a slightly different brief
-and leave you nothing comparable.
+When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, "ask everyone" — that is every
+consultant this host can reach: both peers **and your own CLI** on a fresh session, three members in one
+call.
 
-If a same-vendor answer is in the payload anyway, read it like any other. Its `quality.caveat` lowers the
-weight of its *agreement* with you; it is not a reason to discard its findings — those still stand or fall on
-their grounds.
+```
+consult_start({ request: {
+  targets: ["{{DEFAULT_TARGET}}", "{{SECOND_TARGET}}", "{{SELF_TARGET}}"],
+  mode: "review",
+  ...
+}})
+```
+
+Your own CLI is included because the user asked for everyone, not because it adds a lineage: it is a
+fresh-context re-read rather than a third lineage, and the server says so in its `quality.caveat`. Pass
+`caller_model` so that caveat can name which model answered. 「両方に相談して」 and "ask both" name two, so
+those stay the two peers. Three members is the **whole concurrency cap**, so let anything else finish or
+cancel it first, and expect three consultants' worth of quota. Send **one** `targets` call and poll the
+single `group_id`; separate consultations would give each one a slightly different brief and leave you
+nothing comparable.
+
+Read a same-vendor answer like any other. Its `quality.caveat` lowers the weight of its *agreement* with
+you; it is not a reason to discard its findings — those still stand or fall on their grounds.
 
 Every consultant receives the **byte-identical brief** — that is the whole point, because answers to slightly
 different questions are not comparable — and the server returns one `group_id` covering all of them. Poll

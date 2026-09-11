@@ -79,10 +79,11 @@ test('every skill teaches the fan-out: targets, group_id, and that agreement is 
   }
 });
 
-// "みんなで相談して" has to resolve to this host's two peers and never to
-// itself: consulting your own CLI is a fresh-context re-read, not a third
-// opinion, so including it in a fan-out spends a slot for nothing.
-test('every skill answers "ask everyone" with its own two peers, never itself', () => {
+// "みんなで相談して" means every consultant this host can reach, which is its
+// two peers and its own CLI on a fresh session. The self member is still a
+// fresh-context re-read rather than a third lineage, so the skill has to say
+// so -- but it is asked, because the user asked for everyone.
+test('every skill answers "ask everyone" with its two peers and its own CLI', () => {
   const SELF_ID = { claude: 'claude-code', codex: 'codex', antigravity: 'antigravity' };
   const PEER_IDS = {
     claude: ['codex', 'antigravity'],
@@ -98,15 +99,20 @@ test('every skill answers "ask everyone" with its own two peers, never itself', 
     assert.match(text, /everyone/i, `${host} skill must explain what "everyone" resolves to`);
     assert.match(
       text,
-      new RegExp(`targets: \\["${PEER_IDS[host][0]}", "${PEER_IDS[host][1]}"\\]`),
-      `${host} skill must show the everyone call as its own two peers`,
+      new RegExp(`targets: \\["${PEER_IDS[host][0]}", "${PEER_IDS[host][1]}", "${SELF_ID[host]}"\\]`),
+      `${host} skill must show the everyone call as both peers plus itself`,
     );
-    for (const call of text.match(/targets: \[[^\]]*\]/g) ?? []) {
-      assert.ok(
-        !call.includes(`"${SELF_ID[host]}"`),
-        `${host} must never put itself in a targets array: ${call}`,
-      );
-    }
+    // The plain two-reading fan-out is still the two peers: self is added
+    // because the user asked for everyone, not on the skill's own judgement.
+    assert.match(
+      text,
+      new RegExp(`targets: \\["${PEER_IDS[host][0]}", "${PEER_IDS[host][1]}"\\]`),
+      `${host} skill must keep a two-peer fan-out for "two independent readings"`,
+    );
+    assert.match(text, /re-read rather than a third lineage|not a third lineage/i,
+      `${host} skill must keep the self member's caveat`);
+    assert.match(text, /whole concurrency cap|concurrency cap/i,
+      `${host} skill must say a three-member fan-out uses the whole cap`);
   }
 });
 
@@ -226,16 +232,14 @@ test('every skill offers a consultation at the moment the agent asks for approva
 });
 
 // A lead on one model may consult a different model of the same vendor -- an
-// Opus lead asking Fable, or the reverse. The skill has to name that use, tell
-// the lead to declare its own model so the caveat can say "different model",
-// and stop excluding a self-CLI the user named by model from a fan-out.
+// Opus lead asking Fable, or the reverse. The skill has to name that use and
+// tell the lead to declare its own model, so the caveat can say which model
+// answered instead of only "the same vendor's model family".
 test('every skill covers consulting a different model of its own lineage', () => {
   for (const host of Object.keys(HOSTS)) {
     const text = read(host);
     assert.match(text, /caller_model/, `${host} skill must tell the lead to declare its model`);
     assert.match(text, /different model of your own lineage/i, `${host} skill must name the different-model use`);
     assert.doesNotMatch(text, /stronger model of the same lineage/i, `${host} skill must not frame it as escalation only`);
-    assert.match(text, /names a model of your own CLI|named a model of your own CLI/i,
-      `${host} skill must let a user-named self model into a fan-out`);
   }
 });
