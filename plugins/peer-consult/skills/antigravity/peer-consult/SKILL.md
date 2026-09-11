@@ -62,9 +62,14 @@ your own lineage removes what this session has accumulated — history, sunk cos
 — but keeps what the lineage shares: training-data blind spots, the same reflexes toward the brief's wording.
 So it is a clean-context re-read, not an independent opinion, and the server marks the result accordingly.
 Reach for the other two when the risk is your model's blind spot; reach for this when the risk is your
-session's drift.
+session's drift — or when the user wants a **different model of your own lineage** on the question (an Opus
+lead asking Fable, or the reverse, `target: "antigravity:<model>"`). That is a different model, not a
+second lineage; the caveat stays, and it says which model answered.
 
-Pass `caller: "antigravity"` in every request so the server can annotate that case.
+Pass `caller: "antigravity"` in every request so the server can annotate that case, and `caller_model`
+with the model you are running on when you know it (the server cannot see it). With both, the record keeps
+who asked whom, and a same-vendor answer says "same model" or "different model" when the server can place
+the name you gave, and otherwise relays both names without deciding.
 
 ## When this is worth it
 
@@ -176,11 +181,13 @@ consult_start({ request: {
 ```
 
 When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, 「両方に相談して」, "ask everyone", "ask
-both" — that is exactly the two peers above, `codex` and `claude-code`, and never yourself.
-Consulting your own CLI is a fresh-context re-read rather than a third opinion, so adding it to a fan-out
-spends a concurrency slot and real quota on a third slot without a third lineage. Send **one** `targets` call
-with both peers and poll the single `group_id`; two separate consultations would give each peer a slightly
-different brief and leave you nothing comparable.
+both" — that is exactly the two peers above, `codex` and `claude-code`, and not yourself.
+Consulting your own CLI is a fresh-context re-read rather than a third opinion, so adding it on your own
+spends a concurrency slot and real quota on a third slot without a third lineage. The exception is when the
+user names a model of your own CLI for the fan-out (「みんなで、Claude は Fable で」): then include it as a
+third member, `"antigravity:<model>"`, and read its caveat like any other. Send **one** `targets` call
+and poll the single `group_id`; two separate consultations would give each peer a slightly different brief
+and leave you nothing comparable.
 
 If a same-vendor answer is in the payload anyway, read it like any other. Its `quality.caveat` lowers the
 weight of its *agreement* with you; it is not a reason to discard its findings — those still stand or fall on

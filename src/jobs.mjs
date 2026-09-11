@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { POLICY, VERDICTS, limitsSummary, timeoutMs, detectCaller } from './policy.mjs';
+import { POLICY, VERDICTS, limitsSummary, timeoutMs, detectCaller, resolveModel } from './policy.mjs';
 import { parseRequest, RequestError } from './schema.mjs';
 import { renderBrief, renderGuardrails, briefRecord } from './brief.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
@@ -62,6 +62,7 @@ export class JobManager {
       round: job.round,
       target: job.target,
       caller: job.caller,
+      caller_model: job.caller_model ?? null,
       mode: job.mode,
       status: job.status,
       model: job.model,
@@ -203,6 +204,9 @@ export class JobManager {
           : null,
         reflection: null,
         caller: req.caller ?? detectCaller(),
+        // Declared by the lead, never checked: the server cannot see what
+        // model the host CLI runs. Kept so the record says who asked whom.
+        caller_model: req.caller_model ?? null,
         followup_to: followupTo,
         status: 'queued',
         // The model the request asked for, already checked against the
@@ -430,7 +434,7 @@ export class JobManager {
       }
 
       job.result = normalized.result;
-      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target)].filter(Boolean);
+      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target, job.caller_model, job.model)].filter(Boolean);
       // No `advice_usable` verdict here. It was always true, so it carried no
       // information -- and worse, it read as the server vouching for advice it
       // cannot judge. What this server may assert is what it can derive from
@@ -761,14 +765,42 @@ function adviceCaveat(normalized) {
 // session with no shared context is still a useful clean-context re-read.
 // But it is not an independent opinion -- the answer comes from the same
 // vendor's model family -- so flag it rather than let it pass as one.
-function sameVendorCaveat(caller, target) {
+// "Claude Fable 5.1" and "claude-fable-5-1" are one model: lower-case, and
+// runs of spaces, underscores and dots become one dash. Display only; the
+// model that gets launched is resolved elsewhere and never through this.
+function slug(name) {
+  return String(name ?? '').trim().toLowerCase().replace(/[\s_.]+/g, '-');
+}
+
+function sameVendorCaveat(caller, target, callerModel = null, consultantModel = null) {
   if (!caller || !POLICY.targets[caller] || !POLICY.targets[target]) return null;
   if (POLICY.targets[caller].vendor !== POLICY.targets[target].vendor) return null;
   // Say what a fresh session of the same lineage removes and what it keeps.
   // The earlier wording ("prefer the other two") was read, in live runs, as a
   // verdict on the answer: leads filed this consultant's findings under
   // Rejected without checking their grounds.
-  return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}). A fresh session removes what your own session accumulated — history, sunk cost, drift toward your framing — but not what the lineage shares: training-data blind spots and the same reflexes toward this brief's wording. Weigh it as a fresh-context re-read rather than an independent opinion; that is not a reason to skip checking its grounds like any other answer`;
+  const vendor = POLICY.targets[target].vendor;
+  // When the lead declared its model, say whether this is the same head or a
+  // different model of the same lineage -- an Opus lead asking Fable gets
+  // capability it does not have, but not a different training lineage. The
+  // lead's model is its own declaration; the consultant's is what was launched.
+  // The declaration arrives in whatever spelling the host has ("Claude Fable
+  // 5.1"); resolve it the way a target suffix is resolved before comparing,
+  // and never call an unplaceable name "a different model" -- a false
+  // "different" reads as more independence than there is.
+  // A host model is usually *not* on the consultant's allowlist (an Opus
+  // lead, a Fable consultant), so an unplaceable name is the common case and
+  // is relayed as declared -- both names side by side, no same/different
+  // verdict the server cannot back.
+  const declared = callerModel ? (resolveModel(target, callerModel)?.model ?? (slug(callerModel) === slug(consultantModel) ? consultantModel : null)) : null;
+  const models = !callerModel
+    ? `the consultant runs the same vendor's model family as you (${vendor}).`
+    : !declared
+      ? `the consultant runs the same vendor's model family as you (${vendor}). You declared ${callerModel}; it ran ${consultantModel}. That name is not one this server knows for ${vendor}, so it relays both without saying whether they are one model.`
+      : declared === consultantModel
+        ? `the consultant runs the same vendor's model family as you (${vendor}), and the same model (${consultantModel}, as you declared).`
+        : `the consultant runs the same vendor's model family as you (${vendor}), on a different model: you declared ${declared}, it ran ${consultantModel}. A different model of the same lineage is a different model, not a second lineage.`;
+  return `${models} A fresh session removes what your own session accumulated — history, sunk cost, drift toward your framing — but not what the lineage shares: training-data blind spots and the same reflexes toward this brief's wording. Weigh it as a fresh-context re-read rather than an independent opinion; that is not a reason to skip checking its grounds like any other answer`;
 }
 
 // A mechanical side-by-side. The server deliberately does not decide whether

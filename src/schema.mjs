@@ -75,6 +75,14 @@ export const requestSchema = z
     // an annotation input for the same-vendor caveat below: it must never
     // gate permissions, limits, rounds, or which CLI gets launched.
     caller: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)).nullish(),
+    // The model the host CLI is running on, if it says. Self-declared like
+    // `caller`, unverifiable by the server, and used for one thing: so a
+    // same-vendor caveat can say "same lineage, different model" (an Opus
+    // lead asking Fable) instead of treating every same-vendor call as the
+    // same head. Never gates the model launched, which comes from `target`.
+    caller_model: trimmed(120, 'caller_model')
+      .regex(/^[^\p{Cc}\p{Cf}]+$/u, 'caller_model must be a single line of printable characters')
+      .nullish(),
     mode: z.enum(MODES),
     question: trimmed(L.questionMax, 'question'),
     // Optional: most consultations state what they are after in the question
@@ -225,6 +233,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
   req.target = unique[0]; // single-target consumers (brief, history, adapters) keep working
   req.fanout = unique.length > 1;
   req.caller = resolveTarget(req.caller ?? '') ?? null;
+  req.caller_model = req.caller_model ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? '').trim();
   req.context.proposal = proposal.length ? proposal : null;

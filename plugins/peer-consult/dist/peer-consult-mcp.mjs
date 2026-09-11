@@ -36047,6 +36047,12 @@ var requestSchema = external_exports.object({
   // an annotation input for the same-vendor caveat below: it must never
   // gate permissions, limits, rounds, or which CLI gets launched.
   caller: external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS)).nullish(),
+  // The model the host CLI is running on, if it says. Self-declared like
+  // `caller`, unverifiable by the server, and used for one thing: so a
+  // same-vendor caveat can say "same lineage, different model" (an Opus
+  // lead asking Fable) instead of treating every same-vendor call as the
+  // same head. Never gates the model launched, which comes from `target`.
+  caller_model: trimmed(120, "caller_model").regex(/^[^\p{Cc}\p{Cf}]+$/u, "caller_model must be a single line of printable characters").nullish(),
   mode: external_exports.enum(MODES),
   question: trimmed(L.questionMax, "question"),
   // Optional: most consultations state what they are after in the question
@@ -36167,6 +36173,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
   req.target = unique[0];
   req.fanout = unique.length > 1;
   req.caller = resolveTarget(req.caller ?? "") ?? null;
+  req.caller_model = req.caller_model ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? "").trim();
   req.context.proposal = proposal.length ? proposal : null;
@@ -37286,6 +37293,7 @@ var JobManager = class {
       round: job.round,
       target: job.target,
       caller: job.caller,
+      caller_model: job.caller_model ?? null,
       mode: job.mode,
       status: job.status,
       model: job.model,
@@ -37404,6 +37412,9 @@ var JobManager = class {
         prediction: req.prediction ? { expected: req.prediction.expected, worry: redact(req.prediction.worry), recorded_at: (/* @__PURE__ */ new Date()).toISOString() } : null,
         reflection: null,
         caller: req.caller ?? detectCaller(),
+        // Declared by the lead, never checked: the server cannot see what
+        // model the host CLI runs. Kept so the record says who asked whom.
+        caller_model: req.caller_model ?? null,
         followup_to: followupTo,
         status: "queued",
         // The model the request asked for, already checked against the
@@ -37579,7 +37590,7 @@ var JobManager = class {
         throw err;
       }
       job.result = normalized.result;
-      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target)].filter(Boolean);
+      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target, job.caller_model, job.model)].filter(Boolean);
       job.quality = {
         ...normalized.quality,
         evidence_basis: normalized.result.evidence_basis,
@@ -37843,10 +37854,16 @@ function adviceCaveat(normalized) {
   }
   return notes.length ? notes.join("; ") : null;
 }
-function sameVendorCaveat(caller, target) {
+function slug(name) {
+  return String(name ?? "").trim().toLowerCase().replace(/[\s_.]+/g, "-");
+}
+function sameVendorCaveat(caller, target, callerModel = null, consultantModel = null) {
   if (!caller || !POLICY.targets[caller] || !POLICY.targets[target]) return null;
   if (POLICY.targets[caller].vendor !== POLICY.targets[target].vendor) return null;
-  return `the consultant runs the same vendor's model family as you (${POLICY.targets[target].vendor}). A fresh session removes what your own session accumulated \u2014 history, sunk cost, drift toward your framing \u2014 but not what the lineage shares: training-data blind spots and the same reflexes toward this brief's wording. Weigh it as a fresh-context re-read rather than an independent opinion; that is not a reason to skip checking its grounds like any other answer`;
+  const vendor = POLICY.targets[target].vendor;
+  const declared = callerModel ? resolveModel(target, callerModel)?.model ?? (slug(callerModel) === slug(consultantModel) ? consultantModel : null) : null;
+  const models = !callerModel ? `the consultant runs the same vendor's model family as you (${vendor}).` : !declared ? `the consultant runs the same vendor's model family as you (${vendor}). You declared ${callerModel}; it ran ${consultantModel}. That name is not one this server knows for ${vendor}, so it relays both without saying whether they are one model.` : declared === consultantModel ? `the consultant runs the same vendor's model family as you (${vendor}), and the same model (${consultantModel}, as you declared).` : `the consultant runs the same vendor's model family as you (${vendor}), on a different model: you declared ${declared}, it ran ${consultantModel}. A different model of the same lineage is a different model, not a second lineage.`;
+  return `${models} A fresh session removes what your own session accumulated \u2014 history, sunk cost, drift toward your framing \u2014 but not what the lineage shares: training-data blind spots and the same reflexes toward this brief's wording. Weigh it as a fresh-context re-read rather than an independent opinion; that is not a reason to skip checking its grounds like any other answer`;
 }
 function comparison(members2) {
   return {
@@ -38157,6 +38174,9 @@ ${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].allowedMode
         consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
         annotate a same-vendor consultation.
+caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
+        With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
+        whom; it never changes which model the consultant runs.
 mode:
   explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
             options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.

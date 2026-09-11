@@ -224,3 +224,18 @@ test('every skill offers a consultation at the moment the agent asks for approva
     assert.match(text, /offer .*consult/i, `${host} skill must offer, not force, the consultation`);
   }
 });
+
+// A lead on one model may consult a different model of the same vendor -- an
+// Opus lead asking Fable, or the reverse. The skill has to name that use, tell
+// the lead to declare its own model so the caveat can say "different model",
+// and stop excluding a self-CLI the user named by model from a fan-out.
+test('every skill covers consulting a different model of its own lineage', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /caller_model/, `${host} skill must tell the lead to declare its model`);
+    assert.match(text, /different model of your own lineage/i, `${host} skill must name the different-model use`);
+    assert.doesNotMatch(text, /stronger model of the same lineage/i, `${host} skill must not frame it as escalation only`);
+    assert.match(text, /names a model of your own CLI|named a model of your own CLI/i,
+      `${host} skill must let a user-named self model into a fan-out`);
+  }
+});

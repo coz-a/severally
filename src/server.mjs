@@ -36,6 +36,9 @@ ${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].allowedMode
         consultation starts, and a name matching two of them is refused rather than guessed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
         annotate a same-vendor consultation.
+caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
+        With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
+        whom; it never changes which model the consultant runs.
 mode:
   explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
             options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.
