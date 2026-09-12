@@ -55,6 +55,30 @@ test('every consultant in a group receives the identical brief', async () => {
   assert.equal(codexBrief, claudeBrief, 'a fan-out is only comparable if the brief is byte-identical');
 });
 
+test('a group prints the shared brief once, not once per consultant', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'antigravity'] }));
+
+  // While it runs, the lead is polling for an answer it does not have yet, and
+  // the brief is the biggest thing in the payload. Echoing it back on every
+  // poll spends the lead's context on what it wrote itself a minute ago.
+  const running = mgr.groupView(started.group_id);
+  assert.equal(running.status, 'running');
+  for (const m of running.members) {
+    assert.equal(m.brief, undefined, 'a member never carries its own copy of the brief');
+    assert.match(m.brief_note, /omitted while the consultation is running/);
+  }
+
+  const view = await finishGroup(mgr, started.group_id);
+  assert.equal(view.members.length, 2);
+  for (const m of view.members) assert.equal(m.brief, undefined);
+  // Nothing is lost: every member was sent the byte-identical brief, so one
+  // copy at the group says everything three copies said.
+  assert.ok(view.brief, 'the finished group still carries the brief it sent');
+  assert.equal(view.brief.objective, reviewRequest().objective);
+});
+
 test('a single target keeps the old response shape and gains a group_id', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();

@@ -100,6 +100,15 @@ export class JobManager {
     rec.record = job.record ? recordSummary(job) : null;
     rec.prediction = job.prediction ?? null;
     rec.reflection = job.reflection ?? null;
+    // A consultation is polled several times before it answers, and the brief
+    // is the largest thing in this payload. Echoing it back on every poll
+    // spends the lead's context on the one thing it wrote itself moments ago,
+    // and a fan-out multiplies that by the number of consultants. It comes
+    // back with the answer, which is when it is worth re-reading.
+    if (job.status === 'running' || job.status === 'queued' || job.status === 'cancelling') {
+      rec.brief = null;
+      rec.brief_note = 'omitted while the consultation is running; returned once it finishes, and kept in ~/.peer-consult/history either way';
+    }
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -626,11 +635,18 @@ export class JobManager {
     // exactly the "the consultants had no concerns" summary that a failure
     // must never be turned into.
     const anyResult = members.some((m) => m.result);
+    // Every member of a fan-out was sent the byte-identical brief -- that is
+    // the whole point of a fan-out -- so printing it once per member says the
+    // same thing three times. Hoist one copy to the group and strip it from
+    // the members, which keeps the payload readable without losing anything.
+    const groupBrief = members.find((m) => m.brief)?.brief ?? null;
+    const trimmed = members.map(({ brief, ...rest }) => rest);
     return {
       group_id: group.group_id,
       status: cancelling ? 'cancelling' : (live ? 'running' : 'done'),
       mode: group.mode,
       question: group.question,
+      brief: groupBrief,
       members_expected: group.job_ids.length,
       members_available: members.length,
       // History is capped, so an older member can already be gone. Say so:
@@ -639,7 +655,7 @@ export class JobManager {
       incomplete_note: missing > 0
         ? `${missing} of ${group.job_ids.length} member consultation(s) have aged out of this session's history; the comparison below is partial`
         : null,
-      members,
+      members: trimmed,
       comparison: comparison(members),
       cancellable: live,
       next_step: cancelling

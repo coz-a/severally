@@ -37325,6 +37325,10 @@ var JobManager = class {
     rec.record = job.record ? recordSummary(job) : null;
     rec.prediction = job.prediction ?? null;
     rec.reflection = job.reflection ?? null;
+    if (job.status === "running" || job.status === "queued" || job.status === "cancelling") {
+      rec.brief = null;
+      rec.brief_note = "omitted while the consultation is running; returned once it finishes, and kept in ~/.peer-consult/history either way";
+    }
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
     return rec;
@@ -37752,18 +37756,21 @@ var JobManager = class {
     const live = cancelling || members2.some((m) => m.status === "running" || m.status === "queued");
     const missing = group.job_ids.length - members2.length;
     const anyResult = members2.some((m) => m.result);
+    const groupBrief = members2.find((m) => m.brief)?.brief ?? null;
+    const trimmed2 = members2.map(({ brief, ...rest }) => rest);
     return {
       group_id: group.group_id,
       status: cancelling ? "cancelling" : live ? "running" : "done",
       mode: group.mode,
       question: group.question,
+      brief: groupBrief,
       members_expected: group.job_ids.length,
       members_available: members2.length,
       // History is capped, so an older member can already be gone. Say so:
       // a fan-out that quietly reports fewer answers than it asked for is
       // worse than one that admits the comparison is partial.
       incomplete_note: missing > 0 ? `${missing} of ${group.job_ids.length} member consultation(s) have aged out of this session's history; the comparison below is partial` : null,
-      members: members2,
+      members: trimmed2,
       comparison: comparison(members2),
       cancellable: live,
       next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? "list the points where the consultants diverge, check the grounds behind each one, then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision" : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
