@@ -7,12 +7,11 @@ description: Use when a decision deserves a second, independent mind - an archit
 
 You have two peers, each reached through the `peer-consult` MCP server as a fresh child session. They can
 search and browse the web. They cannot edit files, reach the network outside search/browse, load MCP tools,
-see your session, or consult anyone else. They know only what you put in the brief.
+see your session, or consult anyone else. In practice they know only what you put in the brief.
 
-One caveat on that list: the Codex consultant is sandboxed read-only rather than execution-free,
-so it can still run read-only shell commands and read the disk. Its writes and its network access
-are blocked, and it starts in an empty working directory without being told where your repository
-is, so in practice it answers from the brief.
+One caveat on that list: a consultant can read local files. Its writes and its
+network access are blocked, and it starts in an empty working directory without being told where
+your repository is, so in practice it answers from the brief. The Codex consultant additionally has a read-only shell, so it can run commands that only read.
 
 ## Pick the consultant
 

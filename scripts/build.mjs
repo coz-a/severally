@@ -82,15 +82,16 @@ export function renderSkills() {
       '|---|---|---|',
       ...peers.map((id) => `| \`${id}\` | ${PEERS[id].label} | ${PEERS[id].reach} |`),
     ].join('\n');
-    // `-s read-only` blocks Codex's writes and network but not its shell, so
-    // "they cannot run commands" would be false about Codex. Only the two
-    // hosts that actually have Codex as a peer need to hear it.
-    const executionCaveat = peers.includes('codex')
-      ? '\n\nOne caveat on that list: the Codex consultant is sandboxed read-only rather than execution-free,'
-        + '\nso it can still run read-only shell commands and read the disk. Its writes and its network access'
-        + '\nare blocked, and it starts in an empty working directory without being told where your repository'
-        + '\nis, so in practice it answers from the brief.'
+    // Every consultant can read files; what keeps the answer brief-only is
+    // that the child starts in an empty working directory and is never told
+    // where the repository is. Codex additionally keeps a read-only shell, so
+    // "they cannot run commands" would be false about it.
+    const codexCaveat = peers.includes('codex')
+      ? ' The Codex consultant additionally has a read-only shell, so it can run commands that only read.'
       : '';
+    const executionCaveat = '\n\nOne caveat on that list: a consultant can read local files. Its writes and its'
+      + '\nnetwork access are blocked, and it starts in an empty working directory without being told where'
+      + '\nyour repository is, so in practice it answers from the brief.' + codexCaveat;
     const text = tmpl
       .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
       .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))

@@ -4,8 +4,14 @@
 //   --restricted            drops the command/code-running tools, ignores user,
 //                           project and local settings files (so no inherited
 //                           hooks/permissions), refuses bypassPermissions.
-//   --tools WebSearch,WebFetch  the only tools provisioned -- verified: the
-//                           consultant has no Read/Write/Edit/Bash at all.
+//   --tools WebSearch,WebFetch,Read,Glob,Grep  the only tools provisioned.
+//                           Read/Glob/Grep are there so that all three
+//                           consultants are equal readers -- Codex's sandbox is
+//                           read-only rather than execution-free, and a fan-out
+//                           whose members can read different amounts is not a
+//                           fan-out. --restricted still drops every tool that
+//                           runs commands or code, so there is no Write, Edit
+//                           or Bash: verified by reading a file in the child.
 //   --strict-mcp-config     with no --mcp-config, zero MCP servers load, so the
 //                           peer-consult server is not reachable: recursion barrier.
 //   --setting-sources ''    belt and braces over --restricted.
@@ -36,7 +42,7 @@ export function buildInvocation({ workdir, guardrails, model }) {
     '--strict-mcp-config',
     '--setting-sources', '',
     '--disable-slash-commands',
-    '--tools', 'WebSearch,WebFetch',
+    '--tools', 'WebSearch,WebFetch,Read,Glob,Grep',
     '--permission-prompts', 'none',
     '--permission-mode', 'manual',
     '--no-session-persistence',

@@ -22,10 +22,14 @@ import { credentialsHome } from '../policy.mjs';
 // explicitly or the consultant can search but never open a page; search_web
 // needs no rule. Every consultant receives its brief on stdin, so file-system
 // reads are neither needed nor wanted.
-export const SANDBOX_ALLOW = Object.freeze(['read_url(*)']);
+// read_file is allowed, not denied: the three consultants have to be equal
+// readers. Codex's child is sandboxed read-only rather than execution-free, so
+// it could always read the disk; leaving the other two unable to meant the same
+// brief reached three differently-equipped readers. command(*) stays denied, so
+// this child reads files without gaining a shell.
+export const SANDBOX_ALLOW = Object.freeze(['read_url(*)', 'read_file(*)']);
 export const SANDBOX_DENY = Object.freeze([
   'write_file(*)',
-  'read_file(*)',
   'command(*)',
   'mcp(*)',
   'execute_url(*)',

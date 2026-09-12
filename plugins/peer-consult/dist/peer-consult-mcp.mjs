@@ -35993,10 +35993,12 @@ function limitsSummary() {
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    // Stated so it is true of all three consultants. Codex is sandboxed
-    // read-only rather than execution-free: `-s read-only` blocks writes and
-    // network but not the shell itself, so do not advertise "no execution".
-    consultant_permissions: "web search/browse allowed; file edits, network access, MCP tools and further consultations denied; the Codex consultant may still run read-only shell commands"
+    // Stated so it is true of all three consultants. Reading is allowed for
+    // every one of them -- what keeps a consultation brief-only is that the
+    // child starts in an empty working directory and is never told where the
+    // repository is, not that it cannot read. Codex is additionally sandboxed
+    // read-only rather than execution-free, so do not advertise "no execution".
+    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
   };
 }
 
@@ -37030,7 +37032,7 @@ function buildInvocation2({ workdir, guardrails, model }) {
     "",
     "--disable-slash-commands",
     "--tools",
-    "WebSearch,WebFetch",
+    "WebSearch,WebFetch,Read,Glob,Grep",
     "--permission-prompts",
     "none",
     "--permission-mode",
@@ -37106,10 +37108,9 @@ __export(antigravity_exports, {
 // src/adapters/antigravity-sandbox.mjs
 import fs3 from "node:fs";
 import path4 from "node:path";
-var SANDBOX_ALLOW = Object.freeze(["read_url(*)"]);
+var SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
 var SANDBOX_DENY = Object.freeze([
   "write_file(*)",
-  "read_file(*)",
   "command(*)",
   "mcp(*)",
   "execute_url(*)",

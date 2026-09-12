@@ -118,7 +118,14 @@ test('the consultant is launched with the restriction flags and none that widen 
   for (const flag of ['--restricted', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) {
     assert.ok(claudeArgs.includes(flag), `claude must be launched with ${flag}`);
   }
-  assert.equal(claudeArgs[claudeArgs.indexOf('--tools') + 1], 'WebSearch,WebFetch');
+  // Read/Glob/Grep are provisioned on purpose: Codex's child could always read
+  // the disk, and a fan-out whose members read different amounts is not one.
+  // Nothing that writes or executes is in the list.
+  const claudeTools = claudeArgs[claudeArgs.indexOf('--tools') + 1].split(',');
+  assert.deepEqual(claudeTools, ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep']);
+  for (const tool of ['Write', 'Edit', 'Bash', 'NotebookEdit']) {
+    assert.ok(!claudeTools.includes(tool), `claude must never be given ${tool}`);
+  }
   assert.equal(claudeArgs[claudeArgs.indexOf('--permission-prompts') + 1], 'none');
   for (const flag of ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--mcp-config', '--add-dir', '--plugin-dir']) {
     assert.ok(!claudeArgs.includes(flag), `claude must never be launched with ${flag}`);

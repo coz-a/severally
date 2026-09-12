@@ -30,8 +30,11 @@ test('the synthesised home loads no MCP servers and denies every write path', ()
   const settings = JSON.parse(
     fs.readFileSync(path.join(sandbox.root, '.gemini', 'antigravity-cli', 'settings.json'), 'utf8'),
   );
-  assert.deepEqual(settings.permissions.allow, ['read_url(*)']);
-  for (const rule of ['write_file(*)', 'read_file(*)', 'command(*)', 'mcp(*)', 'execute_url(*)', 'unsandboxed(*)']) {
+  // read_file is allowed so that all three consultants read the same amount;
+  // command stays denied, so reading a file never turns into a shell.
+  assert.deepEqual(settings.permissions.allow, ['read_url(*)', 'read_file(*)']);
+  assert.ok(!settings.permissions.deny.includes('read_file(*)'), 'reading is not denied for this consultant');
+  for (const rule of ['write_file(*)', 'command(*)', 'mcp(*)', 'execute_url(*)', 'unsandboxed(*)']) {
     assert.ok(settings.permissions.deny.includes(rule), `${rule} must be denied`);
   }
 

@@ -393,11 +393,14 @@ export function limitsSummary() {
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    // Stated so it is true of all three consultants. Codex is sandboxed
-    // read-only rather than execution-free: `-s read-only` blocks writes and
-    // network but not the shell itself, so do not advertise "no execution".
+    // Stated so it is true of all three consultants. Reading is allowed for
+    // every one of them -- what keeps a consultation brief-only is that the
+    // child starts in an empty working directory and is never told where the
+    // repository is, not that it cannot read. Codex is additionally sandboxed
+    // read-only rather than execution-free, so do not advertise "no execution".
     consultant_permissions:
-      'web search/browse allowed; file edits, network access, MCP tools and further consultations denied; ' +
-      'the Codex consultant may still run read-only shell commands',
+      'web search/browse and reading local files allowed, but the consultant starts in an empty working ' +
+      'directory and is not told where your repository is; file edits, network access, MCP tools and ' +
+      'further consultations denied; the Codex consultant additionally has a read-only shell',
   };
 }
