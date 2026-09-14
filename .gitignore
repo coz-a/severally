@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 .superpowers/
 .worktrees/
+
+# internal notes: design records, backlog, experiments (kept locally, not published)
+docs/

@@ -48,10 +48,8 @@ antigravity の指摘  大きな履歴ファイルを丸ごとメモリに読む
   答えが来なかったときは、その理由（レート制限、認証失敗、時間切れ）。複数に聞いても要約しない
 - **確かめた結果を、指摘の隣に書き戻せる。** 指摘ごとに「確認できた／当てはまらない／確認できない／
   未確認」と判断への影響を残し、Markdown にできる
-  （実例: [docs/decisions/2026-09-11-concept-direction.md](docs/decisions/2026-09-11-concept-direction.md)）
 
-Codex、Claude Code、Antigravity のどれから使っても、残りの 2 つに聞ける。考え方と他のツールとの違いは
-[docs/concept.md](docs/concept.md)、ツール API・権限・設定・既知の制約は [docs/reference.md](docs/reference.md)。
+Codex、Claude Code、Antigravity のどれから使っても、残りの 2 つに聞ける。
 
 ## しくみ
 
@@ -129,7 +127,6 @@ agy    mcp list                      # severally  stdio  enabled
 Markdown にしてリポジトリに置く。相談を始めるとすぐに制御が戻るので、待つ間も作業を続けられる。
 
 ブリーフの書き方、mode（`explore` / `review` / `debate`）の選び方、結果の読み方は Skill が主担当に指示する。
-ツールを直接呼ぶ場合の API は [docs/reference.md](docs/reference.md#ツール-api)。
 
 ## 設定
 
@@ -141,9 +138,8 @@ Markdown にしてリポジトリに置く。相談を始めるとすぐに制�
 npm run init-config            # ~/.severally/config.json を生成（既存は上書きしない）
 ```
 
-キーの一覧と優先順位（env > 設定ファイル > 自動検出 > 既定値）は
-[docs/reference.md](docs/reference.md#環境ごとの設定1-ファイル)。設定はサーバ起動時に 1 度だけ読むので、
-変更後はクライアントを再起動する。
+使えるキーは [config.example.json](config.example.json) にある。優先順位は env > 設定ファイル > 自動検出 >
+既定値。設定はサーバ起動時に 1 度だけ読むので、変更後はクライアントを再起動する。
 
 ## 使う前に知っておくこと
 
@@ -157,7 +153,6 @@ npm run init-config            # ~/.severally/config.json を生成（既存は�
 | Antigravity | できる（`read_file`） | 持たない | 不可 |
 
 どの相手も空の作業ディレクトリで起動し、サーバはリポジトリの場所を教えない。見せたい物はブリーフに貼る。
-詳細は [権限と隔離](docs/reference.md#権限と隔離) と [既知の制約](docs/reference.md#既知の制約)。
 
 - 相談相手が失敗した（`usage_limit` / `auth` / `timeout` …）ことと、答えたが根拠が薄いことは、別物として
   返る。失敗は「問題なし」ではない
@@ -194,13 +189,3 @@ npm uninstall -g severally-mcp
 ```
 
 どちらも履歴とバックアップは `~/.severally/` に残る（不要なら削除する）。
-
-## ドキュメント
-
-| | |
-|---|---|
-| [docs/concept.md](docs/concept.md) | 実際の相談で見る使い方、他のツールとの違い、相談相手・主担当・サーバの分担、いつ使うか、限界 |
-| [docs/decisions/](docs/decisions/) | 実際の相談の記録（ブリーフ・回答・指摘ごとの verdict） |
-| [docs/reference.md](docs/reference.md) | 構成、ツール API、mode、結果の構造、失敗分類、権限と隔離、設計原則、設定、上限、検証結果、既知の制約 |
-| [docs/experiments/](docs/experiments/) | 設計判断を実機で確かめた記録 |
-| [docs/backlog.md](docs/backlog.md) | 方針と作業の一覧、作らないこと、未検証のこと、価値の測り方（案） |

@@ -100,7 +100,7 @@ function main() {
   console.log('');
   console.log('per target: enabled  note  bin  default_model  allowed_models');
   console.log('   e.g.  "codex": { "enabled": false, "note": "rate-limited until 15:00" }');
-  console.log('   more: config.example.json, docs/reference.md (環境ごとの設定). Restart the client after editing.');
+  console.log('   more: config.example.json. Restart the client after editing.');
   console.log('   comments and trailing commas are fine; name it config.jsonc if your editor prefers that');
 }
 
