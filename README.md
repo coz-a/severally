@@ -1,4 +1,4 @@
-# peer-consult
+# severally
 
 設計案を別の CLI（Codex、Claude Code、Antigravity (Gemini) のいずれか）に送り、反対意見・その根拠・
 確かめるべきことを、同じ形式で受け取る MCP サーバと Skill。
@@ -53,9 +53,9 @@ next_checks           nn.LSTM(1,64)/(64,64)/(64,1) のパラメータ数を Kera
 は「使う前に知っておくこと」にまとめた。
 
 ```
-Claude Code ──(skill: peer-consult)──> mcp: peer-consult ──> codex exec | agy      (Codex / Antigravity)
-Codex       ──(skill: peer-consult)──> mcp: peer-consult ──> claude -p  | agy      (Claude Code / Antigravity)
-Antigravity ──(skill: peer-consult)──> mcp: peer-consult ──> codex exec | claude -p (Codex / Claude Code)
+Claude Code ──(skill: severally)──> mcp: severally ──> codex exec | agy      (Codex / Antigravity)
+Codex       ──(skill: severally)──> mcp: severally ──> claude -p  | agy      (Claude Code / Antigravity)
+Antigravity ──(skill: severally)──> mcp: severally ──> codex exec | claude -p (Codex / Claude Code)
 ```
 
 Claude Code と Codex にはプラグインとしてパッケージ済み、Antigravity はインストーラが直接登録する
@@ -73,9 +73,9 @@ node scripts/install.mjs    # --dry-run で実行計画のみ表示できる
 確認:
 
 ```bash
-claude plugin details peer-consult   # Skills (1) / MCP servers (1)
-codex  plugin list                   # peer-consult@peer-consult-local  installed, enabled
-agy    mcp list                      # peer-consult  stdio  enabled
+claude plugin details severally      # Skills (1) / MCP servers (1)
+codex  plugin list                   # severally@severally-local  installed, enabled
+agy    mcp list                      # severally  stdio  enabled
 ```
 
 **クライアントは再起動が必要**（起動済みセッションはプラグインを読み直さない）。
@@ -85,13 +85,13 @@ agy    mcp list                      # peer-consult  stdio  enabled
 
 | | プラグイン方式（既定） | 手動方式（`--manual`） |
 |---|---|---|
-| Claude Code | `~/.claude/skills/peer-consult/` にプラグインを配置（`peer-consult@skills-dir`） | `claude mcp add --scope user` ＋ Skill を単体コピー |
+| Claude Code | `~/.claude/skills/severally/` にプラグインを配置（`severally@skills-dir`） | `claude mcp add --scope user` ＋ Skill を単体コピー |
 | Codex | リポジトリ内 marketplace から `codex plugin add` | `codex mcp add` ＋ Skill を単体コピー |
 | Antigravity | `agy mcp add` ＋ Skill を単体コピー（プラグイン経路がないため方式による差はない） | 同左 |
-| MCP ツール名 | `mcp__plugin_peer-consult_peer-consult__*` | `mcp__peer-consult__*` |
+| MCP ツール名 | `mcp__plugin_severally_severally__*` | `mcp__severally__*` |
 
 インストーラは既存設定を保全する。クライアント設定は各 CLI（`plugin add` / `mcp add`）経由でのみ変更し、
-`~/.claude.json`・`~/.codex/config.toml`・既存 Skill ディレクトリを `~/.peer-consult/backups/<timestamp>/`
+`~/.claude.json`・`~/.codex/config.toml`・既存 Skill ディレクトリを `~/.severally/backups/<timestamp>/`
 （パス由来のユニークな名前）に退避してから作業する。方式を切り替えると、もう一方の方式で入った重複登録は
 バックアップのうえ削除される。
 
@@ -127,10 +127,10 @@ agy    mcp list                      # peer-consult  stdio  enabled
 
 **既定では設定不要。** サーバは起動時に `codex` / `claude` / `agy` が PATH にあるかを見て、無い相手を
 候補から外す。特定の相手を無効にしたい、モデルを変えたい、実行ファイルのパスを指定したい場合は
-`~/.peer-consult/config.json` を 1 つ置く。雛形はその環境向けに生成できる:
+`~/.severally/config.json` を 1 つ置く。雛形はその環境向けに生成できる:
 
 ```bash
-npm run init-config            # ~/.peer-consult/config.json を生成（既存は上書きしない）
+npm run init-config            # ~/.severally/config.json を生成（既存は上書きしない）
 ```
 
 キーの一覧と優先順位（env > 設定ファイル > 自動検出 > 既定値）は
@@ -153,7 +153,7 @@ npm run init-config            # ~/.peer-consult/config.json を生成（既存�
 
 - 相談相手が失敗した（`usage_limit` / `auth` / `timeout` …）ことと、答えたが根拠が薄いことは、別物として
   返る。失敗は「問題なし」ではない
-- 履歴は `~/.peer-consult/history/` に残る。1 ラウンドにつき、送ったブリーフ・相手の回答・指摘ごとに
+- 履歴は `~/.severally/history/` に残る。1 ラウンドにつき、送ったブリーフ・相手の回答・指摘ごとに
   主担当が書いた検証結果（`consult_record`）が 1 ファイルに揃い、`consult_export` で Markdown にして
   リポジトリに残せる。検証結果は後日、別のセッションから書き足せる。送信するブリーフと結果には
   資格情報のマスキングが掛かる
@@ -167,25 +167,25 @@ npm run init-config            # ~/.peer-consult/config.json を生成（既存�
 プラグイン方式:
 
 ```bash
-rm -rf ~/.claude/skills/peer-consult                       # Claude Code
-codex plugin remove peer-consult --marketplace peer-consult-local
-codex plugin marketplace remove peer-consult-local
-agy   mcp remove peer-consult                              # Antigravity（直接登録のため方式共通）
-rm -rf ~/.gemini/config/skills/peer-consult
-npm uninstall -g peer-consult-mcp
+rm -rf ~/.claude/skills/severally                       # Claude Code
+codex plugin remove severally --marketplace severally-local
+codex plugin marketplace remove severally-local
+agy   mcp remove severally                              # Antigravity（直接登録のため方式共通）
+rm -rf ~/.gemini/config/skills/severally
+npm uninstall -g severally-mcp
 ```
 
 手動方式:
 
 ```bash
-claude mcp remove peer-consult -s user
-codex  mcp remove peer-consult
-agy    mcp remove peer-consult
-rm -rf ~/.claude/skills/peer-consult ~/.codex/skills/peer-consult ~/.gemini/config/skills/peer-consult
-npm uninstall -g peer-consult-mcp
+claude mcp remove severally -s user
+codex  mcp remove severally
+agy    mcp remove severally
+rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/skills/severally
+npm uninstall -g severally-mcp
 ```
 
-どちらも履歴とバックアップは `~/.peer-consult/` に残る（不要なら削除する）。
+どちらも履歴とバックアップは `~/.severally/` に残る（不要なら削除する）。
 
 ## ドキュメント
 

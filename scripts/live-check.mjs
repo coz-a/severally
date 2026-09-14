@@ -4,7 +4,7 @@
 // installation, or to reproduce a failure classification.
 //
 //   node scripts/live-check.mjs --target antigravity --mode review
-//   PEER_CONSULT_AGY_MODEL=gemini-3.1-pro-high node scripts/live-check.mjs --target antigravity
+//   SEVERALLY_AGY_MODEL=gemini-3.1-pro-high node scripts/live-check.mjs --target antigravity
 
 import { JobManager } from '../src/jobs.mjs';
 import { limitsSummary } from '../src/policy.mjs';

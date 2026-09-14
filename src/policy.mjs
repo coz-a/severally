@@ -12,10 +12,10 @@ import { parseJsonc } from './jsonc.mjs';
 // is env > this file > autodetection > built-in default: the env vars stay the
 // per-client escape hatch, and a machine that simply lacks a CLI needs no
 // configuration at all.
-const CONFIG_HOME = process.env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult');
+const CONFIG_HOME = process.env.SEVERALLY_HOME || path.join(os.homedir(), '.severally');
 // .jsonc first, for operators whose editor treats comments in a .json file as
 // an error; both are read the same way, comments and all.
-const CONFIG_PATH = process.env.PEER_CONSULT_CONFIG
+const CONFIG_PATH = process.env.SEVERALLY_CONFIG
   || [path.join(CONFIG_HOME, 'config.jsonc'), path.join(CONFIG_HOME, 'config.json')]
     .find((p) => fs.existsSync(p))
   || path.join(CONFIG_HOME, 'config.json');
@@ -180,7 +180,7 @@ export const STANCES = ['proceed', 'do_not_proceed', 'alternative', 'undetermine
 
 // A request may name a model, but only one the operator has listed. The
 // default is always allowed; anything else has to be added to the target's
-// PEER_CONSULT_*_ALLOWED_MODELS list, so a runaway caller cannot reach a model the
+// SEVERALLY_*_ALLOWED_MODELS list, so a runaway caller cannot reach a model the
 // operator never sanctioned -- and a typo is refused before a CLI is launched.
 const list = (name) => {
   const raw = process.env[name];
@@ -220,10 +220,10 @@ const allowedFor = (id, dflt, envName) => {
   return Object.freeze([...new Set([dflt, ...extra])]);
 };
 
-// Enabled targets, in precedence order: PEER_CONSULT_TARGETS names the whole
+// Enabled targets, in precedence order: SEVERALLY_TARGETS names the whole
 // set explicitly; otherwise a per-target `enabled` in the config file decides;
 // otherwise the machine does -- a CLI that is not installed is not offered.
-const ENABLED_ENV = list('PEER_CONSULT_TARGETS').map((t) => t.trim().toLowerCase()).filter(Boolean);
+const ENABLED_ENV = list('SEVERALLY_TARGETS').map((t) => t.trim().toLowerCase()).filter(Boolean);
 // Why a consultant is off, in the operator's words: "quota exhausted until
 // 15:00" is more use to a lead than a bare refusal, and it is the reason a CLI
 // that IS installed gets excluded.
@@ -239,16 +239,16 @@ const isEnabled = (id, cli) => {
   return isInstalled(cli);
 };
 
-const CODEX_BIN = expandHome(knob('codex', 'PEER_CONSULT_CODEX_BIN', 'bin', 'codex'));
-const CLAUDE_BIN = expandHome(knob('claude-code', 'PEER_CONSULT_CLAUDE_BIN', 'bin', 'claude'));
-const AGY_BIN = expandHome(knob('antigravity', 'PEER_CONSULT_AGY_BIN', 'bin', 'agy'));
+const CODEX_BIN = expandHome(knob('codex', 'SEVERALLY_CODEX_BIN', 'bin', 'codex'));
+const CLAUDE_BIN = expandHome(knob('claude-code', 'SEVERALLY_CLAUDE_BIN', 'bin', 'claude'));
+const AGY_BIN = expandHome(knob('antigravity', 'SEVERALLY_AGY_BIN', 'bin', 'agy'));
 
-const CODEX_MODEL = knob('codex', 'PEER_CONSULT_CODEX_MODEL', 'default_model', 'gpt-6-astra');
-const CLAUDE_MODEL = knob('claude-code', 'PEER_CONSULT_CLAUDE_MODEL', 'default_model', 'claude-fable-5-1');
-const AGY_MODEL = knob('antigravity', 'PEER_CONSULT_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
+const CODEX_MODEL = knob('codex', 'SEVERALLY_CODEX_MODEL', 'default_model', 'gpt-6-astra');
+const CLAUDE_MODEL = knob('claude-code', 'SEVERALLY_CLAUDE_MODEL', 'default_model', 'claude-fable-5-1');
+const AGY_MODEL = knob('antigravity', 'SEVERALLY_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
 
 export const POLICY = Object.freeze({
-  home: str('PEER_CONSULT_HOME', path.join(os.homedir(), '.peer-consult')),
+  home: str('SEVERALLY_HOME', path.join(os.homedir(), '.severally')),
 
   targets: Object.freeze({
     codex: Object.freeze({
@@ -256,9 +256,9 @@ export const POLICY = Object.freeze({
       available: isEnabled('codex', CODEX_BIN),
       note: disabledNote('codex'),
       model: CODEX_MODEL,
-      allowedModels: allowedFor('codex', CODEX_MODEL, 'PEER_CONSULT_CODEX_ALLOWED_MODELS'),
-      allowedModelsEnv: 'PEER_CONSULT_CODEX_ALLOWED_MODELS',
-      reasoningEffort: str('PEER_CONSULT_CODEX_EFFORT', 'medium'),
+      allowedModels: allowedFor('codex', CODEX_MODEL, 'SEVERALLY_CODEX_ALLOWED_MODELS'),
+      allowedModelsEnv: 'SEVERALLY_CODEX_ALLOWED_MODELS',
+      reasoningEffort: str('SEVERALLY_CODEX_EFFORT', 'medium'),
       label: 'Codex CLI',
       vendor: 'openai',
     }),
@@ -267,11 +267,11 @@ export const POLICY = Object.freeze({
       available: isEnabled('claude-code', CLAUDE_BIN),
       note: disabledNote('claude-code'),
       model: CLAUDE_MODEL,
-      allowedModels: allowedFor('claude-code', CLAUDE_MODEL, 'PEER_CONSULT_CLAUDE_ALLOWED_MODELS'),
-      allowedModelsEnv: 'PEER_CONSULT_CLAUDE_ALLOWED_MODELS',
+      allowedModels: allowedFor('claude-code', CLAUDE_MODEL, 'SEVERALLY_CLAUDE_ALLOWED_MODELS'),
+      allowedModelsEnv: 'SEVERALLY_CLAUDE_ALLOWED_MODELS',
       label: 'Claude Code CLI',
       vendor: 'anthropic',
-      maxBudgetUsd: num('PEER_CONSULT_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
+      maxBudgetUsd: num('SEVERALLY_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
     }),
     antigravity: Object.freeze({
       cli: AGY_BIN,
@@ -279,8 +279,8 @@ export const POLICY = Object.freeze({
       note: disabledNote('antigravity'),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
-      allowedModels: allowedFor('antigravity', AGY_MODEL, 'PEER_CONSULT_AGY_ALLOWED_MODELS'),
-      allowedModelsEnv: 'PEER_CONSULT_AGY_ALLOWED_MODELS',
+      allowedModels: allowedFor('antigravity', AGY_MODEL, 'SEVERALLY_AGY_ALLOWED_MODELS'),
+      allowedModelsEnv: 'SEVERALLY_AGY_ALLOWED_MODELS',
       label: 'Antigravity CLI',
       vendor: 'google',
       // Where the real credentials live is credentialsHome() below, not a
@@ -290,15 +290,15 @@ export const POLICY = Object.freeze({
   }),
 
   // Grace period between SIGTERM and SIGKILL of the child process group.
-  killGraceMs: num('PEER_CONSULT_KILL_GRACE_MS', 5_000, 500, 60_000),
+  killGraceMs: num('SEVERALLY_KILL_GRACE_MS', 5_000, 500, 60_000),
   // 1 initial round + 2 follow-ups.
-  maxRounds: num('PEER_CONSULT_MAX_ROUNDS', 3, 1, 5),
-  maxConcurrent: num('PEER_CONSULT_MAX_CONCURRENT', 3, 1, 4),
-  maxJobsRetained: num('PEER_CONSULT_MAX_JOBS_RETAINED', 200, 20, 2000),
+  maxRounds: num('SEVERALLY_MAX_ROUNDS', 3, 1, 5),
+  maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 3, 1, 4),
+  maxJobsRetained: num('SEVERALLY_MAX_JOBS_RETAINED', 200, 20, 2000),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
   // a client-side timeout while the consultation is still healthy.
-  maxWaitMs: num('PEER_CONSULT_MAX_WAIT_MS', 45_000, 0, 600_000),
+  maxWaitMs: num('SEVERALLY_MAX_WAIT_MS', 45_000, 0, 600_000),
 
   input: Object.freeze({
     questionMax: 4_000,
@@ -327,9 +327,9 @@ export const POLICY = Object.freeze({
 });
 
 const TIMEOUT_ENV = {
-  codex: 'PEER_CONSULT_CODEX_TIMEOUT_MS',
-  'claude-code': 'PEER_CONSULT_CLAUDE_TIMEOUT_MS',
-  antigravity: 'PEER_CONSULT_AGY_TIMEOUT_MS',
+  codex: 'SEVERALLY_CODEX_TIMEOUT_MS',
+  'claude-code': 'SEVERALLY_CLAUDE_TIMEOUT_MS',
+  antigravity: 'SEVERALLY_AGY_TIMEOUT_MS',
 };
 
 /**
@@ -341,7 +341,7 @@ const TIMEOUT_ENV = {
  * not a slower one.
  */
 export function timeoutMs(target) {
-  const shared = num('PEER_CONSULT_TIMEOUT_MS', 600_000, 1_000, 1_800_000);
+  const shared = num('SEVERALLY_TIMEOUT_MS', 600_000, 1_000, 1_800_000);
   if (!target || !TIMEOUT_ENV[target]) return shared;
   const fromEnv = num(TIMEOUT_ENV[target], null, 1_000, 1_800_000);
   if (fromEnv !== null) return fromEnv;
@@ -359,7 +359,7 @@ export function timeoutMs(target) {
  * place an operator knob is spelled out.
  */
 export function credentialsHome() {
-  return str('PEER_CONSULT_AGY_CRED_HOME', os.homedir());
+  return str('SEVERALLY_AGY_CRED_HOME', os.homedir());
 }
 
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];

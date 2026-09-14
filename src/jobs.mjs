@@ -107,7 +107,7 @@ export class JobManager {
     // back with the answer, which is when it is worth re-reading.
     if (job.status === 'running' || job.status === 'queued' || job.status === 'cancelling') {
       rec.brief = null;
-      rec.brief_note = 'omitted while the consultation is running; returned once it finishes, and kept in ~/.peer-consult/history either way';
+      rec.brief_note = 'omitted while the consultation is running; returned once it finishes, and kept in ~/.severally/history either way';
     }
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
@@ -140,7 +140,7 @@ export class JobManager {
   }
 
   start(rawRequest) {
-    if (process.env.PEER_CONSULT_ACTIVE === '1') {
+    if (process.env.SEVERALLY_ACTIVE === '1') {
       throw new RequestError(
         'this process is itself running as a peer consultant; nested consultations are not allowed',
         'recursion_blocked',
@@ -343,9 +343,9 @@ export class JobManager {
 
       // A sandbox that found no credential to link would otherwise reach the
       // child, which reports whatever generic "not logged in" its vendor
-      // emits -- with no hint that peer-consult searched a specific HOME and
+      // emits -- with no hint that severally searched a specific HOME and
       // came back empty. That is exactly the case an operator who has moved
-      // their credentials (or set PEER_CONSULT_AGY_CRED_HOME) needs named.
+      // their credentials (or set SEVERALLY_AGY_CRED_HOME) needs named.
       //
       // But the linked token file and an API key / ADC file are *alternatives*:
       // an operator who authenticates with GEMINI_API_KEY, GOOGLE_API_KEY or
@@ -366,7 +366,7 @@ export class JobManager {
           'auth',
           `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at `
           + `${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(' / ')} names a `
-          + 'usable credential. Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home '
+          + 'usable credential. Log in with that CLI, point SEVERALLY_AGY_CRED_HOME at the home '
           + 'directory that holds the token, or set one of those variables to authenticate with an API key '
           + 'instead.',
         );
@@ -515,7 +515,7 @@ export class JobManager {
     const job = live ?? store.loadRound(jobId);
     if (!job) {
       throw new RequestError(
-        `no consultation with job_id "${jobId}" in this session or in ~/.peer-consult/history`,
+        `no consultation with job_id "${jobId}" in this session or in ~/.severally/history`,
         'unknown_job',
       );
     }
@@ -757,7 +757,7 @@ function text(value) {
   if (typeof value !== 'string') return null;
   const t = redact(value).trim();
   if (!t) return null;
-  return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}\n…[truncated by peer-consult]` : t;
+  return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}\n…[truncated by severally]` : t;
 }
 
 function adviceCaveat(normalized) {

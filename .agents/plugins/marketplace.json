@@ -1,14 +1,14 @@
 {
-  "name": "peer-consult-local",
+  "name": "severally-local",
   "interface": {
-    "displayName": "peer-consult (local)"
+    "displayName": "severally (local)"
   },
   "plugins": [
     {
-      "name": "peer-consult",
+      "name": "severally",
       "source": {
         "source": "local",
-        "path": "./plugins/peer-consult"
+        "path": "./plugins/severally"
       },
       "policy": {
         "installation": "AVAILABLE",

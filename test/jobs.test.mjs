@@ -8,7 +8,7 @@ import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, waitFor 
 // A second codex model, so the model-suffix test has something besides the
 // default to name. POLICY freezes at first import, so this has to be set here
 // rather than inside the test.
-const home = sandboxEnv({ PEER_CONSULT_CODEX_ALLOWED_MODELS: 'gpt-6-astra-mini' });
+const home = sandboxEnv({ SEVERALLY_CODEX_ALLOWED_MODELS: 'gpt-6-astra-mini' });
 const { JobManager } = await import('../src/jobs.mjs');
 const { POLICY } = await import('../src/policy.mjs');
 
@@ -106,7 +106,7 @@ test('the consultant is launched with the restriction flags and none that widen 
   // inherit="none" strips the recursion marker from anything Codex launches
   // from its shell, so it has to be put back explicitly.
   assert.ok(
-    codexArgs.includes('shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}'),
+    codexArgs.includes('shell_environment_policy.set={SEVERALLY_ACTIVE="1"}'),
     'the recursion marker must reach the consultant\'s own shell',
   );
   for (const flag of ['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--add-dir']) {
@@ -143,10 +143,10 @@ test('the child environment carries the recursion marker and drops the parent se
   const mgr = new JobManager();
   await finish(mgr, mgr.start(reviewRequest()).job_id);
   const childEnvSeen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
-  assert.equal(childEnvSeen.PEER_CONSULT_ACTIVE, '1');
+  assert.equal(childEnvSeen.SEVERALLY_ACTIVE, '1');
   assert.equal(childEnvSeen.CLAUDE_CODE_MESSAGING_TOKEN, undefined);
   assert.equal(childEnvSeen.CLAUDECODE, undefined);
-  assert.equal(childEnvSeen.PEER_CONSULT_HOME, undefined, 'server-only config must not leak into the consultant');
+  assert.equal(childEnvSeen.SEVERALLY_HOME, undefined, 'server-only config must not leak into the consultant');
   delete process.env.STUB_ENV_OUT;
   delete process.env.CLAUDE_CODE_MESSAGING_TOKEN;
   delete process.env.CLAUDECODE;
@@ -215,14 +215,14 @@ test('usage limits and auth failures are classified, not reported as advice', as
 
 test('a hung consultant hits the timeout and is stopped', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '1500';
+  process.env.SEVERALLY_TIMEOUT_MS = '1500';
   const { JobManager: TimedManager } = await import(`../src/jobs.mjs?timeout=${Date.now()}`);
   const mgr = new TimedManager();
   const view = await finish(mgr, mgr.start(reviewRequest()).job_id);
   assert.equal(view.status, 'failed');
   assert.equal(view.failure.kind, 'timeout');
   assert.equal(view.failure.retriable, true);
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 
 test('cancel stops the consultant and every process it spawned', async () => {
@@ -289,7 +289,7 @@ test('a follow-up brief carries the earlier rounds and cannot cross targets', as
 
 test('follow-up to an unfinished or unknown job is refused', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '1200';
+  process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?fu=${Date.now()}`);
   const mgr = new M();
   const r1 = mgr.start(reviewRequest());
@@ -297,12 +297,12 @@ test('follow-up to an unfinished or unknown job is refused', async () => {
   assert.throws(() => mgr.start(reviewRequest({ followup_to: 'job_nope' })), (e) => e.code === 'unknown_job');
   mgr.cancel(r1.job_id);
   await finish(mgr, r1.job_id);
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 
 test('concurrency is capped server-side', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '1200';
+  process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?cc=${Date.now()}`);
   const mgr = new M();
   const a = mgr.start(reviewRequest());
@@ -311,17 +311,17 @@ test('concurrency is capped server-side', async () => {
   assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'concurrency_limit');
   mgr.shutdown();
   await Promise.all([finish(mgr, a.job_id), finish(mgr, b.job_id), finish(mgr, c.job_id)]);
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 
 test('a consultation cannot be started from inside a consultant session', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
-  process.env.PEER_CONSULT_ACTIVE = '1';
+  process.env.SEVERALLY_ACTIVE = '1';
   try {
     assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'recursion_blocked');
   } finally {
-    delete process.env.PEER_CONSULT_ACTIVE;
+    delete process.env.SEVERALLY_ACTIVE;
   }
 });
 
@@ -496,17 +496,17 @@ test('a credential pasted into the question never reaches the history file', asy
 
 // The sandbox has always computed credentials: 'missing'; nothing consumed it,
 // so an operator whose token is absent -- or under a different
-// PEER_CONSULT_AGY_CRED_HOME -- got whatever generic auth error agy emits,
-// with no hint that peer-consult had searched a specific path and found
+// SEVERALLY_AGY_CRED_HOME -- got whatever generic auth error agy emits,
+// with no hint that severally had searched a specific path and found
 // nothing to link. Both branches are pinned here, because the token file and
 // an API key / ADC file are alternatives: refusing on the absence of the token
 // alone would break the API-key operator whose variables run.mjs keeps.
 test('a missing Antigravity credential fails the job as auth, before the child starts', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
-  const emptyCredHome = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-nocred-'));
-  const prevCredHome = process.env.PEER_CONSULT_AGY_CRED_HOME;
+  const emptyCredHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-nocred-'));
+  const prevCredHome = process.env.SEVERALLY_AGY_CRED_HOME;
   const envOut = path.join(home, 'nocred-env.json');
-  process.env.PEER_CONSULT_AGY_CRED_HOME = emptyCredHome;
+  process.env.SEVERALLY_AGY_CRED_HOME = emptyCredHome;
   process.env.STUB_ENV_OUT = envOut;
   try {
     const mgr = new JobManager();
@@ -551,7 +551,7 @@ test('a missing Antigravity credential fails the job as auth, before the child s
     delete process.env.STUB_ENV_OUT;
     delete process.env.GOOGLE_API_KEY;
     delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
-    process.env.PEER_CONSULT_AGY_CRED_HOME = prevCredHome;
+    process.env.SEVERALLY_AGY_CRED_HOME = prevCredHome;
   }
 });
 
@@ -581,7 +581,7 @@ test('a model named in the target reaches the consultant CLI', async () => {
 // the brief. The adapters that stream their events can say which it was.
 test('a timeout reports how far the consultant got', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '1200';
+  process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?progress=${Date.now()}`);
   const mgr = new M();
 
@@ -594,7 +594,7 @@ test('a timeout reports how far the consultant got', async () => {
   assert.match(view.failure.detail ?? '', /still working when the budget ran out/,
     'the trail the consultant left before it was killed');
 
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
 });
 
@@ -603,7 +603,7 @@ test('a timeout reports how far the consultant got', async () => {
 // short instead of waited out.
 test('a running consultation reports what it is doing', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '5000';
+  process.env.SEVERALLY_TIMEOUT_MS = '5000';
   const { JobManager: M } = await import(`../src/jobs.mjs?live=${Date.now()}`);
   const mgr = new M();
   const started = mgr.start(reviewRequest());
@@ -620,7 +620,7 @@ test('a running consultation reports what it is doing', async () => {
   await finish(mgr, started.job_id);
   assert.equal(mgr.view(started.job_id).progress, null, 'and nothing to report once it is over');
 
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
 });
 

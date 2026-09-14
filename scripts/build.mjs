@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const skillsDir = path.join(root, 'plugins', 'peer-consult', 'skills');
+const skillsDir = path.join(root, 'plugins', 'severally', 'skills');
 
 // `en`/`jp` are the everyday name a user would actually type when asking for
 // this peer by alias ("ask GPT", "gptと相談して") -- English keeps the
@@ -113,16 +113,16 @@ export function renderSkills() {
 export function generateSkills() {
   const rendered = renderSkills();
   for (const host of HOSTS) {
-    const out = path.join(skillsDir, host.dir, 'peer-consult');
+    const out = path.join(skillsDir, host.dir, 'severally');
     fs.mkdirSync(out, { recursive: true });
     fs.writeFileSync(path.join(out, 'SKILL.md'), rendered[host.dir]);
   }
 }
 
 export async function bundle() {
-  const outfile = path.join(root, 'plugins', 'peer-consult', 'dist', 'peer-consult-mcp.mjs');
+  const outfile = path.join(root, 'plugins', 'severally', 'dist', 'severally-mcp.mjs');
   const result = await build({
-    entryPoints: [path.join(root, 'bin', 'peer-consult-mcp.mjs')],
+    entryPoints: [path.join(root, 'bin', 'severally-mcp.mjs')],
     outfile,
     bundle: true,
     platform: 'node',
@@ -142,7 +142,7 @@ const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPa
 if (invoked) {
   generateSkills();
   for (const host of HOSTS) {
-    console.log(`skill -> ${path.relative(root, path.join(skillsDir, host.dir, 'peer-consult', 'SKILL.md'))}`);
+    console.log(`skill -> ${path.relative(root, path.join(skillsDir, host.dir, 'severally', 'SKILL.md'))}`);
   }
   if (!process.argv.includes('--skills-only')) await bundle();
 }

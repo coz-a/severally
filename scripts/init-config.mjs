@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Writes a starting ~/.peer-consult/config.json for THIS machine: what it
+// Writes a starting ~/.severally/config.json for THIS machine: what it
 // detected, what the defaults currently are, and the shape of each key.
 //
 //   node scripts/init-config.mjs            # write, refusing to clobber
@@ -29,7 +29,7 @@ import { TARGETS, POLICY, isInstalled } from '../src/policy.mjs';
 export function renderConfig() {
   const lines = [
     '{',
-    '  // peer-consult configuration. Comments and trailing commas are allowed.',
+    '  // severally configuration. Comments and trailing commas are allowed.',
     '  // Precedence, per key: environment variable > this file > autodetection > built-in default.',
     '  // Read once at server start -- restart the client after editing.',
     '  //',
@@ -57,8 +57,8 @@ export function renderConfig() {
 
 /** Where the server would look for this file, given the same environment. */
 export function configPath(env = process.env) {
-  if (env.PEER_CONSULT_CONFIG) return env.PEER_CONSULT_CONFIG;
-  const home = env.PEER_CONSULT_HOME || path.join(os.homedir(), '.peer-consult');
+  if (env.SEVERALLY_CONFIG) return env.SEVERALLY_CONFIG;
+  const home = env.SEVERALLY_HOME || path.join(os.homedir(), '.severally');
   // The server reads config.jsonc in preference to config.json, so an existing
   // .jsonc is the file to leave alone -- writing .json beside it would produce
   // a config that looks authoritative and is silently ignored.
@@ -78,7 +78,7 @@ function main() {
   const target = configPath();
   if (fs.existsSync(target) && !argv.has('--force')) {
     process.stderr.write(
-      `peer-consult: ${target} already exists; not overwriting it.\n`
+      `severally: ${target} already exists; not overwriting it.\n`
       + '  --force to replace it, or --print to see the template without writing.\n',
     );
     process.exitCode = 1;

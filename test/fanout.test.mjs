@@ -8,9 +8,9 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 // re-import of jobs.mjs reuses that same policy module -- so a cap the eviction
 // test below can actually reach has to be in place before the first import.
 // It goes through sandboxEnv's overrides because sandboxEnv clears the whole
-// PEER_CONSULT_ namespace first (see the comment there).
+// SEVERALLY_ namespace first (see the comment there).
 const RETAINED = 20;
-const home = sandboxEnv({ PEER_CONSULT_MAX_JOBS_RETAINED: String(RETAINED) });
+const home = sandboxEnv({ SEVERALLY_MAX_JOBS_RETAINED: String(RETAINED) });
 const { JobManager } = await import('../src/jobs.mjs');
 
 const finishGroup = async (mgr, groupId) => {
@@ -106,7 +106,7 @@ test('target and targets together, or neither, is refused', () => {
 
 test('a group that would exceed the concurrency cap is refused before anything starts', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '1200';
+  process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?fanout=${Date.now()}`);
   const mgr = new M();
   const a = mgr.start(reviewRequest());
@@ -117,7 +117,7 @@ test('a group that would exceed the concurrency cap is refused before anything s
   assert.equal(mgr.running.length, 1, 'a refused group must not leave half its jobs running');
   mgr.shutdown();
   await mgr.jobs.get(a.job_id).promise;
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 
 test('a follow-up cannot fan out', async () => {
@@ -137,7 +137,7 @@ test('a follow-up cannot fan out', async () => {
 
 test('cancelling a group stops every member', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '1500';
+  process.env.SEVERALLY_TIMEOUT_MS = '1500';
   const { JobManager: M } = await import(`../src/jobs.mjs?cancelgroup=${Date.now()}`);
   const mgr = new M();
   const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
@@ -153,7 +153,7 @@ test('cancelling a group stops every member', async () => {
   await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
   const after = mgr.groupView(started.group_id);
   assert.equal(after.members.every((m) => m.status === 'cancelled'), true);
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 
 test('cancelling a group that already finished does not claim to have signalled anything', async () => {

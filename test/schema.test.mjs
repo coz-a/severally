@@ -5,7 +5,7 @@ import { sandboxEnv, reviewRequest, exploreRequest, debateRequest } from './help
 // A second model for codex, so the allowlist under test has something in it
 // besides the default. The operator's env is the only place a model becomes
 // choosable; without this the default is the only allowed value.
-sandboxEnv({ PEER_CONSULT_CODEX_ALLOWED_MODELS: 'gpt-6-astra-mini' });
+sandboxEnv({ SEVERALLY_CODEX_ALLOWED_MODELS: 'gpt-6-astra-mini' });
 const { parseRequest, RequestError } = await import('../src/schema.mjs');
 const { POLICY } = await import('../src/policy.mjs');
 
@@ -156,7 +156,7 @@ test('a target without a suffix runs the default model', () => {
 test('a model the operator did not allow is refused before anything is launched', () => {
   const err = rejects(reviewRequest({ target: 'codex:claude-opus-5' }), 'model_not_allowed');
   assert.match(err.message, /allowed: /);
-  assert.match(err.message, /PEER_CONSULT_CODEX_ALLOWED_MODELS/);
+  assert.match(err.message, /SEVERALLY_CODEX_ALLOWED_MODELS/);
   rejects(reviewRequest({ target: 'codex:' }), 'model_not_allowed');
 });
 

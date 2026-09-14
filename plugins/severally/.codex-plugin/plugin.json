@@ -1,13 +1,13 @@
 {
-  "name": "peer-consult",
+  "name": "severally",
   "version": "1.1.0",
   "description": "Ask Claude Code or Antigravity (Gemini) for an independent opinion, review or structured debate, in a sandboxed child session that can search the web but cannot edit files or run commands.",
   "author": {
     "name": "coz.a",
     "url": "https://github.com/coz-a"
   },
-  "homepage": "https://github.com/coz-a/peer-consult-plugin",
-  "repository": "https://github.com/coz-a/peer-consult-plugin",
+  "homepage": "https://github.com/coz-a/severally",
+  "repository": "https://github.com/coz-a/severally",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -18,13 +18,13 @@
   ],
   "skills": "./skills/codex/",
   "mcpServers": {
-    "peer-consult": {
+    "severally": {
       "type": "stdio",
-      "command": "peer-consult-mcp"
+      "command": "severally-mcp"
     }
   },
   "interface": {
-    "displayName": "Peer Consult",
+    "displayName": "Severally",
     "shortDescription": "Ask Claude Code or Antigravity (Gemini) for an independent opinion, review or debate",
     "longDescription": "Runs a fresh, sandboxed Claude Code or Antigravity (Gemini) session as a peer consultant: it may search and browse the web, but cannot edit files, run commands, or start consultations of its own. Returns a structured answer -- findings with their grounds, alternatives, unknowns, what would change the judgement, and next checks."
   }

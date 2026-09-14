@@ -6,25 +6,25 @@ import { fileURLToPath } from 'node:url';
 export const here = path.dirname(fileURLToPath(import.meta.url));
 
 export function sandboxEnv(overrides = {}) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-test-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-test-'));
 
   // Every assertion in this suite is written against the shipped defaults in
   // policy.mjs, and each of those defaults is an operator knob a developer of
   // *this* project is exactly the person to have exported. So clear the whole
-  // PEER_CONSULT_ namespace before pinning what the tests need: leaving it
+  // SEVERALLY_ namespace before pinning what the tests need: leaving it
   // alone made the results depend on the host shell (measured:
-  // PEER_CONSULT_MAX_CONCURRENT=1 -> 7 failures,
-  // PEER_CONSULT_AGY_MODEL=<other slug> -> 1 failure). Anything not pinned
+  // SEVERALLY_MAX_CONCURRENT=1 -> 7 failures,
+  // SEVERALLY_AGY_MODEL=<other slug> -> 1 failure). Anything not pinned
   // below therefore falls back to the default, which is the single place the
   // value is defined; a test that needs a different one passes it in
   // `overrides` rather than exporting it.
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith('PEER_CONSULT_')) delete process.env[key];
+    if (key.startsWith('SEVERALLY_')) delete process.env[key];
   }
 
   // A synthesised credential source, so the suite never reads -- and never
   // depends on the presence of -- the developer's real ~/.gemini token.
-  const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-test-cred-'));
+  const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-test-cred-'));
   fs.mkdirSync(path.join(credHome, '.gemini', 'antigravity-cli'), { recursive: true });
   fs.writeFileSync(
     path.join(credHome, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
@@ -32,13 +32,13 @@ export function sandboxEnv(overrides = {}) {
   );
 
   Object.assign(process.env, {
-    PEER_CONSULT_HOME: home,
-    PEER_CONSULT_CODEX_BIN: path.join(here, 'fixtures', 'stub-codex.mjs'),
-    PEER_CONSULT_CLAUDE_BIN: path.join(here, 'fixtures', 'stub-claude.mjs'),
-    PEER_CONSULT_AGY_BIN: path.join(here, 'fixtures', 'stub-agy.mjs'),
-    PEER_CONSULT_AGY_CRED_HOME: credHome,
-    PEER_CONSULT_TIMEOUT_MS: '20000',
-    PEER_CONSULT_KILL_GRACE_MS: '500',
+    SEVERALLY_HOME: home,
+    SEVERALLY_CODEX_BIN: path.join(here, 'fixtures', 'stub-codex.mjs'),
+    SEVERALLY_CLAUDE_BIN: path.join(here, 'fixtures', 'stub-claude.mjs'),
+    SEVERALLY_AGY_BIN: path.join(here, 'fixtures', 'stub-agy.mjs'),
+    SEVERALLY_AGY_CRED_HOME: credHome,
+    SEVERALLY_TIMEOUT_MS: '20000',
+    SEVERALLY_KILL_GRACE_MS: '500',
     ...overrides,
   });
   // A test's recorded `caller` must come from the request, not from whichever

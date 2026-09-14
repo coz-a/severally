@@ -21,7 +21,7 @@ function clampText(v, max) {
   if (typeof v !== 'string') return null;
   const t = v.trim();
   if (!t) return null;
-  return t.length > max ? `${t.slice(0, max)}\n…[truncated by peer-consult]` : t;
+  return t.length > max ? `${t.slice(0, max)}\n…[truncated by severally]` : t;
 }
 
 const LEVELS = ['high', 'medium', 'low'];

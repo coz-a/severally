@@ -174,7 +174,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
       + 'is not available on this machine; '
       + (usable.length
         ? `available: ${usable.join(', ')}`
-        : 'no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS'),
+        : 'no consultant is available -- install one of the CLIs, or check SEVERALLY_TARGETS'),
       'target_unavailable',
     );
   }

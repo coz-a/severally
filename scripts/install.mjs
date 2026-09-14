@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Installs peer-consult into all three clients: Claude Code, Codex, Antigravity.
+// Installs severally into all three clients: Claude Code, Codex, Antigravity.
 //
 // Two modes:
-//   plugin (default) - installs plugins/peer-consult as a plugin in Claude Code
-//                      (~/.claude/skills/peer-consult, skills-dir plugin, no
+//   plugin (default) - installs plugins/severally as a plugin in Claude Code
+//                      (~/.claude/skills/severally, skills-dir plugin, no
 //                      marketplace) and in Codex (repo-local marketplace in
 //                      .agents/plugins). Antigravity has no verified
 //                      plugin-install path yet, so it is registered directly
@@ -19,7 +19,7 @@
 //
 // Existing configuration is preserved: client config is changed through each
 // client's own CLI rather than hand-edited, and every file this touches is
-// backed up first under ~/.peer-consult/backups/<timestamp>/.
+// backed up first under ~/.severally/backups/<timestamp>/.
 //
 //   node scripts/install.mjs [--dry-run] [--manual] [--skip-global] [--force]
 
@@ -30,7 +30,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PLUGIN = path.join(root, 'plugins', 'peer-consult');
+const PLUGIN = path.join(root, 'plugins', 'severally');
 const argv = new Set(process.argv.slice(2));
 const dryRun = argv.has('--dry-run');
 const skipGlobal = argv.has('--skip-global');
@@ -39,7 +39,7 @@ const mode = argv.has('--manual') ? 'manual' : 'plugin';
 
 const home = os.homedir();
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const backupDir = path.join(home, '.peer-consult', 'backups', stamp);
+const backupDir = path.join(home, '.severally', 'backups', stamp);
 
 const log = (...a) => console.log(...a);
 const step = (s) => log(`\n== ${s}`);
@@ -62,7 +62,7 @@ function tryRun(cmd, args, opts) {
 }
 
 // Backup names are derived from the whole path: two different clients both
-// hold a "peer-consult" directory, and one must not overwrite the other.
+// hold a "severally" directory, and one must not overwrite the other.
 function backupName(target) {
   return path
     .relative(home, target)
@@ -97,7 +97,7 @@ function which(bin) {
 
 // ---------------------------------------------------------------- global install
 step(`Installing the MCP server globally (mode: ${mode})`);
-let serverBin = which('peer-consult-mcp');
+let serverBin = which('severally-mcp');
 if (skipGlobal) {
   log('   --skip-global: leaving the global install alone');
 } else {
@@ -108,13 +108,13 @@ if (skipGlobal) {
   } else {
     log('   npm install -g ok');
     if (which('nodenv')) tryRun('nodenv', ['rehash']);
-    serverBin = which('peer-consult-mcp') ?? serverBin;
+    serverBin = which('severally-mcp') ?? serverBin;
   }
 }
 if (!serverBin) {
   // Fall back to the checkout so registration still points at something runnable.
-  serverBin = path.join(root, 'bin', 'peer-consult-mcp.mjs');
-  log(`   ${dryRun ? 'note' : 'WARNING'}: peer-consult-mcp is not on PATH; registering ${serverBin} instead`);
+  serverBin = path.join(root, 'bin', 'severally-mcp.mjs');
+  log(`   ${dryRun ? 'note' : 'WARNING'}: severally-mcp is not on PATH; registering ${serverBin} instead`);
 }
 log(`   server command: ${serverBin}`);
 
@@ -124,7 +124,7 @@ const claudeSkillsDir = path.join(home, '.claude', 'skills');
 // ---------------------------------------------------------------- clients
 // Each row fully describes how to register a client's MCP server directly
 // (through the client's own `mcp add`) and place its skill. This is the one
-// place that knows how peer-consult is installed outside of a bundled
+// place that knows how severally is installed outside of a bundled
 // plugin: --manual mode installs every row this way, and the default plugin
 // mode falls back to the Antigravity row alone, since agy has no verified
 // plugin-install path yet.
@@ -134,21 +134,21 @@ const CLIENTS = [
     label: 'Claude Code',
     backup: [path.join(home, '.claude.json')],
     // `claude mcp get` exits non-zero when the server is not registered.
-    isRegistered: () => tryRun('claude', ['mcp', 'get', 'peer-consult'], { real: true }).ok,
-    remove: () => tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'peer-consult']),
-    add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'peer-consult', '--', bin]),
-    skillFrom: path.join(PLUGIN, 'skills', 'claude', 'peer-consult'),
-    skillTo: path.join(claudeSkillsDir, 'peer-consult'),
+    isRegistered: () => tryRun('claude', ['mcp', 'get', 'severally'], { real: true }).ok,
+    remove: () => tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'severally']),
+    add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'severally', '--', bin]),
+    skillFrom: path.join(PLUGIN, 'skills', 'claude', 'severally'),
+    skillTo: path.join(claudeSkillsDir, 'severally'),
   },
   {
     bin: 'codex',
     label: 'Codex',
     backup: [path.join(codexHome, 'config.toml')],
-    isRegistered: () => tryRun('codex', ['mcp', 'get', 'peer-consult'], { real: true }).ok,
-    remove: () => tryRun('codex', ['mcp', 'remove', 'peer-consult']),
-    add: (bin) => tryRun('codex', ['mcp', 'add', 'peer-consult', '--', bin]),
-    skillFrom: path.join(PLUGIN, 'skills', 'codex', 'peer-consult'),
-    skillTo: path.join(codexHome, 'skills', 'peer-consult'),
+    isRegistered: () => tryRun('codex', ['mcp', 'get', 'severally'], { real: true }).ok,
+    remove: () => tryRun('codex', ['mcp', 'remove', 'severally']),
+    add: (bin) => tryRun('codex', ['mcp', 'add', 'severally', '--', bin]),
+    skillFrom: path.join(PLUGIN, 'skills', 'codex', 'severally'),
+    skillTo: path.join(codexHome, 'skills', 'severally'),
   },
   {
     bin: 'agy',
@@ -160,12 +160,12 @@ const CLIENTS = [
     // agy has no `mcp get`; list and look for the name.
     isRegistered: () => {
       const r = tryRun('agy', ['mcp', 'list'], { real: true });
-      return r.ok && /peer-consult/.test(r.out);
+      return r.ok && /severally/.test(r.out);
     },
-    remove: () => tryRun('agy', ['mcp', 'remove', 'peer-consult']),
-    add: (bin) => tryRun('agy', ['mcp', 'add', 'peer-consult', bin]),
-    skillFrom: path.join(PLUGIN, 'skills', 'antigravity', 'peer-consult'),
-    skillTo: path.join(home, '.gemini', 'config', 'skills', 'peer-consult'),
+    remove: () => tryRun('agy', ['mcp', 'remove', 'severally']),
+    add: (bin) => tryRun('agy', ['mcp', 'add', 'severally', bin]),
+    skillFrom: path.join(PLUGIN, 'skills', 'antigravity', 'severally'),
+    skillTo: path.join(home, '.gemini', 'config', 'skills', 'severally'),
   },
 ];
 const antigravityClient = CLIENTS.find((c) => c.bin === 'agy');
@@ -202,7 +202,7 @@ function installClientDirectly(client, bin) {
 if (mode === 'plugin') {
   // ------------------------------------------------------------- plugin mode
   step('Installing the plugin into Claude Code (skills-dir plugin, no marketplace)');
-  const target = path.join(claudeSkillsDir, 'peer-consult');
+  const target = path.join(claudeSkillsDir, 'severally');
   const saved = backupTree(target);
   if (saved) log(`   backed up the existing ${target} to ${saved}`);
   if (dryRun) {
@@ -211,14 +211,14 @@ if (mode === 'plugin') {
     fs.mkdirSync(claudeSkillsDir, { recursive: true });
     fs.rmSync(target, { recursive: true, force: true });
     fs.cpSync(PLUGIN, target, { recursive: true });
-    log(`   installed: ${target} (loads as peer-consult@skills-dir)`);
+    log(`   installed: ${target} (loads as severally@skills-dir)`);
   }
   // A user-scope MCP registration would duplicate the one the plugin provides.
   if (which('claude')) {
-    const dup = tryRun('claude', ['mcp', 'get', 'peer-consult'], { real: true });
+    const dup = tryRun('claude', ['mcp', 'get', 'severally'], { real: true });
     if (dup.ok) {
       backup(path.join(home, '.claude.json'));
-      const r = tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'peer-consult']);
+      const r = tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'severally']);
       log(r.ok ? '   removed the duplicate user-scope MCP registration' : `   could not remove the duplicate registration: ${r.out}`);
     }
   }
@@ -228,7 +228,7 @@ if (mode === 'plugin') {
     log('   codex CLI not found on PATH — skipped');
   } else {
     backup(path.join(codexHome, 'config.toml'));
-    const marketplace = 'peer-consult-local';
+    const marketplace = 'severally-local';
     const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
     if (!known.out.includes(marketplace)) {
       const r = tryRun('codex', ['plugin', 'marketplace', 'add', root]);
@@ -236,17 +236,17 @@ if (mode === 'plugin') {
     } else {
       log(`   marketplace ${marketplace} already configured`);
     }
-    tryRun('codex', ['plugin', 'remove', 'peer-consult', '--marketplace', marketplace]);
-    const r = tryRun('codex', ['plugin', 'add', `peer-consult@${marketplace}`]);
+    tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', marketplace]);
+    const r = tryRun('codex', ['plugin', 'add', `severally@${marketplace}`]);
     log(r.ok ? '   plugin installed' : `   plugin install failed: ${r.out}`);
     if (!r.ok) process.exitCode = 1;
     // Same duplication concern on the Codex side.
-    const dup = tryRun('codex', ['mcp', 'get', 'peer-consult'], { real: true });
+    const dup = tryRun('codex', ['mcp', 'get', 'severally'], { real: true });
     if (dup.ok) {
-      const rm = tryRun('codex', ['mcp', 'remove', 'peer-consult']);
+      const rm = tryRun('codex', ['mcp', 'remove', 'severally']);
       log(rm.ok ? '   removed the duplicate global MCP registration' : `   could not remove the duplicate registration: ${rm.out}`);
     }
-    const strayCodexSkill = path.join(codexHome, 'skills', 'peer-consult');
+    const strayCodexSkill = path.join(codexHome, 'skills', 'severally');
     if (fs.existsSync(strayCodexSkill)) {
       const s2 = backupTree(strayCodexSkill);
       if (!dryRun) fs.rmSync(strayCodexSkill, { recursive: true, force: true });
@@ -270,21 +270,21 @@ step('Done');
 if (fs.existsSync(backupDir)) log(`   backups: ${backupDir}`);
 log(mode === 'plugin' ? `
 Verify with:
-  claude plugin details peer-consult
+  claude plugin details severally
   codex  plugin list
   agy    mcp list
   node ${path.join(root, 'scripts', 'live-check.mjs')} --target claude-code
 
 Restart any running client session to pick the plugin up. In Claude Code the tools then appear as
-mcp__plugin_peer-consult_peer-consult__consult_start / _get / _cancel / _list.
+mcp__plugin_severally_severally__consult_start / _get / _cancel / _list.
 
 Re-run this after "npm run build" to push an updated plugin to both clients (Antigravity is
 registered directly each run, so a re-run always refreshes it too).` : `
 Verify with:
-  claude mcp get peer-consult
-  codex  mcp get peer-consult
+  claude mcp get severally
+  codex  mcp get severally
   agy    mcp list
   node ${path.join(root, 'scripts', 'live-check.mjs')} --target antigravity
 
-In a new Claude Code session the tools appear as mcp__peer-consult__consult_start / _get / _cancel / _list.
+In a new Claude Code session the tools appear as mcp__severally__consult_start / _get / _cancel / _list.
 Restart any running client session to pick the server up.`);

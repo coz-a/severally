@@ -4,13 +4,13 @@
 // then prints the history. Spends real quota.
 //
 //   node scripts/live-mcp-check.mjs
-//   PEER_CONSULT_CLAUDE_MODEL=claude-haiku-4-5-20251001 node scripts/live-mcp-check.mjs
+//   SEVERALLY_CLAUDE_MODEL=claude-haiku-4-5-20251001 node scripts/live-mcp-check.mjs
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { execFileSync } from 'node:child_process';
 
 // The globally installed server, unless another path is given.
-const BIN = process.argv[2] ?? 'peer-consult-mcp';
+const BIN = process.argv[2] ?? 'severally-mcp';
 const env = { ...process.env };
 const client = new Client({ name: 'live-mcp', version: '1' });
 await client.connect(new StdioClientTransport({ command: BIN, args: [], env }));

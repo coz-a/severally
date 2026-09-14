@@ -6,16 +6,16 @@ import path from 'node:path';
 import { sandboxEnv } from './helpers.mjs';
 
 // A stand-in for the operator's real ~/.gemini, so the test never touches it.
-const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-cred-'));
+const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-cred-'));
 const realTokenDir = path.join(credHome, '.gemini', 'antigravity-cli');
 fs.mkdirSync(realTokenDir, { recursive: true });
 fs.writeFileSync(path.join(realTokenDir, 'antigravity-oauth-token'), 'token-v1');
 
-sandboxEnv({ PEER_CONSULT_AGY_CRED_HOME: credHome });
+sandboxEnv({ SEVERALLY_AGY_CRED_HOME: credHome });
 const { prepareSandbox } = await import('../src/adapters/antigravity-sandbox.mjs');
 
 function makeWorkdir() {
-  const job = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-job-'));
+  const job = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-job-'));
   const work = path.join(job, 'work');
   fs.mkdirSync(work, { recursive: true });
   return work;
@@ -60,11 +60,11 @@ test('cleanup removes the synthesised home and leaves the real credential alone'
 });
 
 test('a missing credential is reported rather than faked', () => {
-  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-nocred-'));
-  const prev = process.env.PEER_CONSULT_AGY_CRED_HOME;
-  process.env.PEER_CONSULT_AGY_CRED_HOME = empty;
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-nocred-'));
+  const prev = process.env.SEVERALLY_AGY_CRED_HOME;
+  process.env.SEVERALLY_AGY_CRED_HOME = empty;
   const sandbox = prepareSandbox({ workdir: makeWorkdir() });
   assert.equal(sandbox.credentials, 'missing');
   sandbox.cleanup();
-  process.env.PEER_CONSULT_AGY_CRED_HOME = prev;
+  process.env.SEVERALLY_AGY_CRED_HOME = prev;
 });

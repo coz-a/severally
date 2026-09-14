@@ -6,7 +6,7 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
-const SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from another coding agent:
+const SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
 Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
 search and browse the web, it cannot edit files, run commands, load MCP tools, or consult anyone else, and it
 never sees your session -- only the brief you send.
@@ -59,7 +59,7 @@ prediction: optional -- { expected, worry }: the bottom line you expect back and
 
 export function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: 'peer-consult', version: '1.1.0' },
+    { name: 'severally', version: '1.1.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
 
@@ -155,7 +155,7 @@ export function createServer(manager = new JobManager()) {
         + 'it changed about your decision; note is the evidence you used. Recording the same id again replaces '
         + 'that entry. This server stores what you write and counts the verdicts; it never infers one, and never '
         + 'decides a consultation was worth it. The entry is saved beside the answer and the brief in '
-        + '~/.peer-consult/history, which is what makes the decision readable a month from now; the job is '
+        + '~/.severally/history, which is what makes the decision readable a month from now; the job is '
         + 'read back from that history, so a consultation from an earlier session can still be recorded against. '
         + 'Pass `reflection` to record what the answer added over what you already expected, when the '
         + 'consultation was started with a `prediction`. A prediction itself cannot be written here: it goes '
@@ -233,15 +233,15 @@ export async function main() {
   // A malformed config file would otherwise run the machine on defaults the
   // operator believes they overrode.
   const problem = configProblem();
-  if (problem) process.stderr.write(`peer-consult: ignoring unreadable config -- ${problem}\n`);
+  if (problem) process.stderr.write(`severally: ignoring unreadable config -- ${problem}\n`);
   if (availableTargets().length === 0) {
     process.stderr.write(
-      'peer-consult: no consultant CLI found on PATH (codex / claude / agy); every consultation will be refused\n',
+      'severally: no consultant CLI found on PATH (codex / claude / agy); every consultation will be refused\n',
     );
   }
-  if (process.env.PEER_CONSULT_ACTIVE === '1') {
+  if (process.env.SEVERALLY_ACTIVE === '1') {
     process.stderr.write(
-      'peer-consult: refusing to start inside a peer-consult consultant session (recursion barrier)\n',
+      'severally: refusing to start inside a severally consultant session (recursion barrier)\n',
     );
     process.exit(2);
   }

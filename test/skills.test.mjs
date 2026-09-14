@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { here } from './helpers.mjs';
 
-const skillsDir = path.join(here, '..', 'plugins', 'peer-consult', 'skills');
-const read = (host) => fs.readFileSync(path.join(skillsDir, host, 'peer-consult', 'SKILL.md'), 'utf8');
+const skillsDir = path.join(here, '..', 'plugins', 'severally', 'skills');
+const read = (host) => fs.readFileSync(path.join(skillsDir, host, 'severally', 'SKILL.md'), 'utf8');
 
 const HOSTS = {
   claude: { self: 'Claude Code', peers: ['Codex', 'Antigravity'] },

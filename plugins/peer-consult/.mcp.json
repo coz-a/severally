@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "peer-consult": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/peer-consult-mcp.mjs"]
-    }
-  }
-}

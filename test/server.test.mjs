@@ -86,7 +86,7 @@ test('protocol violations come back as guidance, not as a crash', async () => {
 
 test('cancel over MCP reports the effect; unknown ids are handled', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
-  process.env.PEER_CONSULT_TIMEOUT_MS = '2000';
+  process.env.SEVERALLY_TIMEOUT_MS = '2000';
   const { client, manager, close } = await connect();
   const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
   const cancelled = payload(await client.callTool({ name: 'consult_cancel', arguments: { job_id: started.job_id } }));
@@ -97,7 +97,7 @@ test('cancel over MCP reports the effect; unknown ids are handled', async () => 
 
   const unknown = await client.callTool({ name: 'consult_get', arguments: { job_id: 'job_missing' } });
   assert.equal(unknown.isError, true);
-  process.env.PEER_CONSULT_TIMEOUT_MS = '20000';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
   await close();
 });

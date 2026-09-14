@@ -13,9 +13,9 @@
 //                           runs commands or code, so there is no Write, Edit
 //                           or Bash: verified by reading a file in the child.
 //   --strict-mcp-config     with no --mcp-config, zero MCP servers load, so the
-//                           peer-consult server is not reachable: recursion barrier.
+//                           severally server is not reachable: recursion barrier.
 //   --setting-sources ''    belt and braces over --restricted.
-//   --disable-slash-commands  no skills, so the peer-consult skill cannot fire.
+//   --disable-slash-commands  no skills, so the severally skill cannot fire.
 //   --permission-prompts none  anything that would prompt is denied outright.
 //   --no-session-persistence   the brief is not written to the user's session store.
 

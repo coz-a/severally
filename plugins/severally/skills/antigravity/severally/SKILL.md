@@ -1,11 +1,11 @@
 ---
-name: peer-consult
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the peer-consult MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "みんなで相談して", "みんなに聞いて", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
+name: severally
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Claude Code through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Claude", "get Claude to review this", "Claudeに聞いて", "Claudeにレビューしてもらって", "みんなで相談して", "みんなに聞いて", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
 
-You have two peers, each reached through the `peer-consult` MCP server as a fresh child session. They can
+You have two peers, each reached through the `severally` MCP server as a fresh child session. They can
 search and browse the web. They cannot edit files, reach the network outside search/browse, load MCP tools,
 see your session, or consult anyone else. In practice they know only what you put in the brief.
 
@@ -18,7 +18,7 @@ your repository is, so in practice it answers from the brief. The Codex consulta
 | target | Consultant | Reach for it when |
 |---|---|---|
 | `codex` | Codex CLI | the question is about implementation detail, tricky code, or a decision where a different training lineage helps |
-| `antigravity` | Antigravity CLI (Gemini) | you want a third reading, or the question needs current web material |
+| `claude-code` | Claude Code CLI | you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact |
 
 `target` also accepts the everyday names: `gpt` / `chatgpt` / `openai` -> Codex, `claude` / `anthropic` ->
 Claude Code, `gemini` / `agy` / `google` -> Antigravity. When the user names one, use that one. When they just
@@ -45,7 +45,7 @@ whether to retry with a longer budget or with a smaller question.
 A consultant runs on the model its operator configured. If — and only if — the user names one, append it to
 the target: `target: "codex:<model>"`, and the same inside `targets` for a fan-out. So 「Claude
 Opusと相談して」 becomes `target: "claude:claude-opus-5"`. In a fan-out only the member the model was named
-for carries a suffix: `targets: ["codex", "antigravity", "claude-code:<model>"]`.
+for carries a suffix: `targets: ["codex", "claude-code", "antigravity:<model>"]`.
 
 Pass the model roughly as the user said it — `claude:opus` and `claude:"Claude Opus"` both resolve, as long as
 they match exactly one model the operator allowed. `consult_start`'s description lists what each consultant may
@@ -56,16 +56,16 @@ them is refused rather than guessed, so a rejection tells you what to say instea
 choice; overriding it on your own judgement — including after a `usage_limit` failure — substitutes a different
 mind for the one the user asked for.
 
-You may also pass `target: "claude-code"` to consult your own CLI in a fresh session. A fresh session of
+You may also pass `target: "antigravity"` to consult your own CLI in a fresh session. A fresh session of
 your own lineage removes what this session has accumulated — history, sunk cost, drift toward your own framing
 — but keeps what the lineage shares: training-data blind spots, the same reflexes toward the brief's wording.
 So it is a clean-context re-read, not an independent opinion, and the server marks the result accordingly.
 Reach for the other two when the risk is your model's blind spot; reach for this when the risk is your
 session's drift — or when the user wants a **different model of your own lineage** on the question (an Opus
-lead asking Fable, or the reverse, `target: "claude-code:<model>"`). That is a different model, not a
+lead asking Fable, or the reverse, `target: "antigravity:<model>"`). That is a different model, not a
 second lineage; the caveat stays, and it says which model answered.
 
-Pass `caller: "claude-code"` in every request so the server can annotate that case, and `caller_model`
+Pass `caller: "antigravity"` in every request so the server can annotate that case, and `caller_model`
 with the model you are running on when you know it (the server cannot see it). With both, the record keeps
 who asked whom, and a same-vendor answer says "same model" or "different model" when the server can place
 the name you gave, and otherwise relays both names without deciding.
@@ -173,7 +173,7 @@ enough that you want two genuinely independent readings of it:
 
 ```
 consult_start({ request: {
-  targets: ["codex", "antigravity"],
+  targets: ["codex", "claude-code"],
   mode: "review",
   ...
 }})
@@ -185,7 +185,7 @@ call.
 
 ```
 consult_start({ request: {
-  targets: ["codex", "antigravity", "claude-code"],
+  targets: ["codex", "claude-code", "antigravity"],
   mode: "review",
   ...
 }})
@@ -312,7 +312,7 @@ consult_record({ job_id: "...", entries: [
 ]})
 ```
 
-The job is read back from `~/.peer-consult/history`, so a verdict can be written days later, from another
+The job is read back from `~/.severally/history`, so a verdict can be written days later, from another
 session, once the check has actually been run — write it then, not before.
 
 If you sent a prediction, add what the answer actually added, in the same call:

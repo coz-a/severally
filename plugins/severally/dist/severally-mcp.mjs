@@ -35741,8 +35741,8 @@ function parseJsonc(text2) {
 }
 
 // src/policy.mjs
-var CONFIG_HOME = process.env.PEER_CONSULT_HOME || path.join(os.homedir(), ".peer-consult");
-var CONFIG_PATH = process.env.PEER_CONSULT_CONFIG || [path.join(CONFIG_HOME, "config.jsonc"), path.join(CONFIG_HOME, "config.json")].find((p) => fs.existsSync(p)) || path.join(CONFIG_HOME, "config.json");
+var CONFIG_HOME = process.env.SEVERALLY_HOME || path.join(os.homedir(), ".severally");
+var CONFIG_PATH = process.env.SEVERALLY_CONFIG || [path.join(CONFIG_HOME, "config.jsonc"), path.join(CONFIG_HOME, "config.json")].find((p) => fs.existsSync(p)) || path.join(CONFIG_HOME, "config.json");
 var configError = null;
 var CONFIG = (() => {
   try {
@@ -35860,7 +35860,7 @@ var allowedFor = (id2, dflt, envName) => {
   const extra = fromEnv.length ? fromEnv : fromCfg;
   return Object.freeze([.../* @__PURE__ */ new Set([dflt, ...extra])]);
 };
-var ENABLED_ENV = list("PEER_CONSULT_TARGETS").map((t) => t.trim().toLowerCase()).filter(Boolean);
+var ENABLED_ENV = list("SEVERALLY_TARGETS").map((t) => t.trim().toLowerCase()).filter(Boolean);
 var disabledNote = (id2) => {
   const n = cfgTarget(id2).note;
   return typeof n === "string" && n.trim() !== "" ? n.trim() : null;
@@ -35871,23 +35871,23 @@ var isEnabled = (id2, cli) => {
   if (typeof flag === "boolean") return flag;
   return isInstalled(cli);
 };
-var CODEX_BIN = expandHome(knob("codex", "PEER_CONSULT_CODEX_BIN", "bin", "codex"));
-var CLAUDE_BIN = expandHome(knob("claude-code", "PEER_CONSULT_CLAUDE_BIN", "bin", "claude"));
-var AGY_BIN = expandHome(knob("antigravity", "PEER_CONSULT_AGY_BIN", "bin", "agy"));
-var CODEX_MODEL = knob("codex", "PEER_CONSULT_CODEX_MODEL", "default_model", "gpt-6-astra");
-var CLAUDE_MODEL = knob("claude-code", "PEER_CONSULT_CLAUDE_MODEL", "default_model", "claude-fable-5-1");
-var AGY_MODEL = knob("antigravity", "PEER_CONSULT_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
+var CODEX_BIN = expandHome(knob("codex", "SEVERALLY_CODEX_BIN", "bin", "codex"));
+var CLAUDE_BIN = expandHome(knob("claude-code", "SEVERALLY_CLAUDE_BIN", "bin", "claude"));
+var AGY_BIN = expandHome(knob("antigravity", "SEVERALLY_AGY_BIN", "bin", "agy"));
+var CODEX_MODEL = knob("codex", "SEVERALLY_CODEX_MODEL", "default_model", "gpt-6-astra");
+var CLAUDE_MODEL = knob("claude-code", "SEVERALLY_CLAUDE_MODEL", "default_model", "claude-fable-5-1");
+var AGY_MODEL = knob("antigravity", "SEVERALLY_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
 var POLICY = Object.freeze({
-  home: str("PEER_CONSULT_HOME", path.join(os.homedir(), ".peer-consult")),
+  home: str("SEVERALLY_HOME", path.join(os.homedir(), ".severally")),
   targets: Object.freeze({
     codex: Object.freeze({
       cli: CODEX_BIN,
       available: isEnabled("codex", CODEX_BIN),
       note: disabledNote("codex"),
       model: CODEX_MODEL,
-      allowedModels: allowedFor("codex", CODEX_MODEL, "PEER_CONSULT_CODEX_ALLOWED_MODELS"),
-      allowedModelsEnv: "PEER_CONSULT_CODEX_ALLOWED_MODELS",
-      reasoningEffort: str("PEER_CONSULT_CODEX_EFFORT", "medium"),
+      allowedModels: allowedFor("codex", CODEX_MODEL, "SEVERALLY_CODEX_ALLOWED_MODELS"),
+      allowedModelsEnv: "SEVERALLY_CODEX_ALLOWED_MODELS",
+      reasoningEffort: str("SEVERALLY_CODEX_EFFORT", "medium"),
       label: "Codex CLI",
       vendor: "openai"
     }),
@@ -35896,11 +35896,11 @@ var POLICY = Object.freeze({
       available: isEnabled("claude-code", CLAUDE_BIN),
       note: disabledNote("claude-code"),
       model: CLAUDE_MODEL,
-      allowedModels: allowedFor("claude-code", CLAUDE_MODEL, "PEER_CONSULT_CLAUDE_ALLOWED_MODELS"),
-      allowedModelsEnv: "PEER_CONSULT_CLAUDE_ALLOWED_MODELS",
+      allowedModels: allowedFor("claude-code", CLAUDE_MODEL, "SEVERALLY_CLAUDE_ALLOWED_MODELS"),
+      allowedModelsEnv: "SEVERALLY_CLAUDE_ALLOWED_MODELS",
       label: "Claude Code CLI",
       vendor: "anthropic",
-      maxBudgetUsd: num("PEER_CONSULT_CLAUDE_MAX_BUDGET_USD", 2, 0.05, 20)
+      maxBudgetUsd: num("SEVERALLY_CLAUDE_MAX_BUDGET_USD", 2, 0.05, 20)
     }),
     antigravity: Object.freeze({
       cli: AGY_BIN,
@@ -35908,8 +35908,8 @@ var POLICY = Object.freeze({
       note: disabledNote("antigravity"),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
-      allowedModels: allowedFor("antigravity", AGY_MODEL, "PEER_CONSULT_AGY_ALLOWED_MODELS"),
-      allowedModelsEnv: "PEER_CONSULT_AGY_ALLOWED_MODELS",
+      allowedModels: allowedFor("antigravity", AGY_MODEL, "SEVERALLY_AGY_ALLOWED_MODELS"),
+      allowedModelsEnv: "SEVERALLY_AGY_ALLOWED_MODELS",
       label: "Antigravity CLI",
       vendor: "google"
       // Where the real credentials live is credentialsHome() below, not a
@@ -35918,15 +35918,15 @@ var POLICY = Object.freeze({
     })
   }),
   // Grace period between SIGTERM and SIGKILL of the child process group.
-  killGraceMs: num("PEER_CONSULT_KILL_GRACE_MS", 5e3, 500, 6e4),
+  killGraceMs: num("SEVERALLY_KILL_GRACE_MS", 5e3, 500, 6e4),
   // 1 initial round + 2 follow-ups.
-  maxRounds: num("PEER_CONSULT_MAX_ROUNDS", 3, 1, 5),
-  maxConcurrent: num("PEER_CONSULT_MAX_CONCURRENT", 3, 1, 4),
-  maxJobsRetained: num("PEER_CONSULT_MAX_JOBS_RETAINED", 200, 20, 2e3),
+  maxRounds: num("SEVERALLY_MAX_ROUNDS", 3, 1, 5),
+  maxConcurrent: num("SEVERALLY_MAX_CONCURRENT", 3, 1, 4),
+  maxJobsRetained: num("SEVERALLY_MAX_JOBS_RETAINED", 200, 20, 2e3),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
   // a client-side timeout while the consultation is still healthy.
-  maxWaitMs: num("PEER_CONSULT_MAX_WAIT_MS", 45e3, 0, 6e5),
+  maxWaitMs: num("SEVERALLY_MAX_WAIT_MS", 45e3, 0, 6e5),
   input: Object.freeze({
     questionMax: 4e3,
     objectiveMax: 4e3,
@@ -35952,12 +35952,12 @@ var POLICY = Object.freeze({
   })
 });
 var TIMEOUT_ENV = {
-  codex: "PEER_CONSULT_CODEX_TIMEOUT_MS",
-  "claude-code": "PEER_CONSULT_CLAUDE_TIMEOUT_MS",
-  antigravity: "PEER_CONSULT_AGY_TIMEOUT_MS"
+  codex: "SEVERALLY_CODEX_TIMEOUT_MS",
+  "claude-code": "SEVERALLY_CLAUDE_TIMEOUT_MS",
+  antigravity: "SEVERALLY_AGY_TIMEOUT_MS"
 };
 function timeoutMs(target) {
-  const shared = num("PEER_CONSULT_TIMEOUT_MS", 6e5, 1e3, 18e5);
+  const shared = num("SEVERALLY_TIMEOUT_MS", 6e5, 1e3, 18e5);
   if (!target || !TIMEOUT_ENV[target]) return shared;
   const fromEnv = num(TIMEOUT_ENV[target], null, 1e3, 18e5);
   if (fromEnv !== null) return fromEnv;
@@ -35968,7 +35968,7 @@ function timeoutMs(target) {
   return shared;
 }
 function credentialsHome() {
-  return str("PEER_CONSULT_AGY_CRED_HOME", os.homedir());
+  return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
 }
 var artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
 function unavailableReason(id2) {
@@ -36124,7 +36124,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
   const missing = [...new Set(resolved.filter((t) => !usable.includes(t)))];
   if (missing.length) {
     throw new RequestError(
-      `consultant ${missing.map((t) => `${JSON.stringify(t)} (${unavailableReason(t)})`).join(", ")} is not available on this machine; ` + (usable.length ? `available: ${usable.join(", ")}` : "no consultant is available -- install one of the CLIs, or check PEER_CONSULT_TARGETS"),
+      `consultant ${missing.map((t) => `${JSON.stringify(t)} (${unavailableReason(t)})`).join(", ")} is not available on this machine; ` + (usable.length ? `available: ${usable.join(", ")}` : "no consultant is available -- install one of the CLIs, or check SEVERALLY_TARGETS"),
       "target_unavailable"
     );
   }
@@ -36489,7 +36489,7 @@ function clampText(v, max) {
   const t = v.trim();
   if (!t) return null;
   return t.length > max ? `${t.slice(0, max)}
-\u2026[truncated by peer-consult]` : t;
+\u2026[truncated by severally]` : t;
 }
 var LEVELS = ["high", "medium", "low"];
 var BASIS = ["sufficient", "thin", "insufficient"];
@@ -36655,7 +36655,7 @@ var DROP_EXACT = /* @__PURE__ */ new Set([
   "ANTHROPIC_LOG",
   "NODE_OPTIONS"
 ]);
-var DROP_PREFIX = ["CLAUDE_CODE_", "PEER_CONSULT_", "MCP_"];
+var DROP_PREFIX = ["CLAUDE_CODE_", "SEVERALLY_", "MCP_"];
 var TARGET_DROP_PREFIX = {
   codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
   "claude-code": ["OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
@@ -36674,9 +36674,9 @@ function childEnv(target, extra = {}) {
     if (dropPrefixes.some((p) => k.startsWith(p))) continue;
     env[k] = v;
   }
-  env.PEER_CONSULT_ACTIVE = "1";
-  env.PEER_CONSULT_ROLE = "consultant";
-  env.PEER_CONSULT_TARGET = target;
+  env.SEVERALLY_ACTIVE = "1";
+  env.SEVERALLY_ROLE = "consultant";
+  env.SEVERALLY_TARGET = target;
   return { ...env, ...extra };
 }
 var ProcHandle = class {
@@ -36905,7 +36905,7 @@ function buildInvocation({ workdir, schemaPath, model }) {
     "-c",
     'shell_environment_policy.inherit="none"',
     "-c",
-    'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}',
+    'shell_environment_policy.set={SEVERALLY_ACTIVE="1"}',
     "--ignore-user-config",
     "--ignore-rules",
     "--skip-git-repo-check",
@@ -37149,7 +37149,7 @@ function prepareSandbox({ workdir }) {
     credentials,
     // The exact path searched, so a caller that has to report `credentials:
     // "missing"` can say where it looked instead of leaving the operator to
-    // guess which HOME peer-consult read.
+    // guess which HOME severally read.
     credentialsSource: source,
     env: { HOME: root },
     cleanup() {
@@ -37328,7 +37328,7 @@ var JobManager = class {
     rec.reflection = job.reflection ?? null;
     if (job.status === "running" || job.status === "queued" || job.status === "cancelling") {
       rec.brief = null;
-      rec.brief_note = "omitted while the consultation is running; returned once it finishes, and kept in ~/.peer-consult/history either way";
+      rec.brief_note = "omitted while the consultation is running; returned once it finishes, and kept in ~/.severally/history either way";
     }
     rec.limits = limitsSummary();
     rec.next_step = nextStep(job);
@@ -37356,7 +37356,7 @@ var JobManager = class {
     });
   }
   start(rawRequest) {
-    if (process.env.PEER_CONSULT_ACTIVE === "1") {
+    if (process.env.SEVERALLY_ACTIVE === "1") {
       throw new RequestError(
         "this process is itself running as a peer consultant; nested consultations are not allowed",
         "recursion_blocked"
@@ -37534,7 +37534,7 @@ var JobManager = class {
         return this.#fail(
           job,
           "auth",
-          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(" / ")} names a usable credential. Log in with that CLI, point PEER_CONSULT_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
+          `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(" / ")} names a usable credential. Log in with that CLI, point SEVERALLY_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
         );
       }
       const invocation = adapter.buildInvocation({
@@ -37654,7 +37654,7 @@ var JobManager = class {
     const job = live ?? loadRound(jobId);
     if (!job) {
       throw new RequestError(
-        `no consultation with job_id "${jobId}" in this session or in ~/.peer-consult/history`,
+        `no consultation with job_id "${jobId}" in this session or in ~/.severally/history`,
         "unknown_job"
       );
     }
@@ -37844,7 +37844,7 @@ function text(value) {
   const t = redact(value).trim();
   if (!t) return null;
   return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}
-\u2026[truncated by peer-consult]` : t;
+\u2026[truncated by severally]` : t;
 }
 function adviceCaveat(normalized) {
   const { result, quality } = normalized;
@@ -37956,7 +37956,7 @@ function roundsOf(chainId) {
 }
 function chainsOfGroup(groupId) {
   const group = readJson(path5.join(historyDir(), "groups", `${groupId}.json`));
-  if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.peer-consult/history`, "unknown_group");
+  if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.severally/history`, "unknown_group");
   const byJob = /* @__PURE__ */ new Map();
   try {
     for (const line of fs5.readFileSync(path5.join(historyDir(), "index.jsonl"), "utf8").split("\n")) {
@@ -38126,7 +38126,7 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
   const perChain = chainIds.map((id2) => ({ chain_id: id2, rounds: roundsOf(id2) }));
   const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
   if (total === 0) {
-    throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.peer-consult/history`, "unknown_chain");
+    throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, "unknown_chain");
   }
   const first = perChain.find((c) => c.rounds.length)?.rounds[0];
   const lines = [
@@ -38135,7 +38135,7 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     `- exported: ${(/* @__PURE__ */ new Date()).toISOString()}`,
     `- ${groupId ? `fan-out \`${groupId}\`, ${chainIds.length} consultant(s)` : `consultation \`${chainId}\``}`,
     "",
-    "Written from `~/.peer-consult/history`. Each round below is one consultation: the brief exactly as it was",
+    "Written from `~/.severally/history`. Each round below is one consultation: the brief exactly as it was",
     "sent, the answer exactly as it came back, and under each point what the lead found when they checked it.",
     "Nothing here is summarised across consultants and nothing is scored -- where two answers point different",
     "ways, both are printed and the difference is left standing.",
@@ -38153,7 +38153,7 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 }
 
 // src/server.mjs
-var SERVER_INSTRUCTIONS = `peer-consult lets you get a genuinely independent opinion from another coding agent:
+var SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
 Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
 search and browse the web, it cannot edit files, run commands, load MCP tools, or consult anyone else, and it
 never sees your session -- only the brief you send.
@@ -38204,7 +38204,7 @@ prediction: optional -- { expected, worry }: the bottom line you expect back and
         beforehand; consult_record takes the other half (reflection) once you have read the answer.`;
 function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: "peer-consult", version: "1.1.0" },
+    { name: "severally", version: "1.1.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
   const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
@@ -38274,7 +38274,7 @@ function createServer(manager = new JobManager()) {
     "consult_record",
     {
       title: "Record what checking a point showed",
-      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.peer-consult/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
+      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
       inputSchema: {
         job_id: external_exports.string().min(1),
         entries: external_exports.array(external_exports.object({
@@ -38336,16 +38336,16 @@ function createServer(manager = new JobManager()) {
 }
 async function main() {
   const problem = configProblem();
-  if (problem) process.stderr.write(`peer-consult: ignoring unreadable config -- ${problem}
+  if (problem) process.stderr.write(`severally: ignoring unreadable config -- ${problem}
 `);
   if (availableTargets().length === 0) {
     process.stderr.write(
-      "peer-consult: no consultant CLI found on PATH (codex / claude / agy); every consultation will be refused\n"
+      "severally: no consultant CLI found on PATH (codex / claude / agy); every consultation will be refused\n"
     );
   }
-  if (process.env.PEER_CONSULT_ACTIVE === "1") {
+  if (process.env.SEVERALLY_ACTIVE === "1") {
     process.stderr.write(
-      "peer-consult: refusing to start inside a peer-consult consultant session (recursion barrier)\n"
+      "severally: refusing to start inside a severally consultant session (recursion barrier)\n"
     );
     process.exit(2);
   }
@@ -38361,9 +38361,9 @@ async function main() {
   await server.connect(transport);
 }
 
-// bin/peer-consult-mcp.mjs
+// bin/severally-mcp.mjs
 main().catch((err) => {
-  process.stderr.write(`peer-consult: fatal: ${err?.stack ?? err}
+  process.stderr.write(`severally: fatal: ${err?.stack ?? err}
 `);
   process.exit(1);
 });

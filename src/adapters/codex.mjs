@@ -2,7 +2,7 @@
 //
 // Isolation applied here, not left to the parent's configuration:
 //   --ignore-user-config  ~/.codex/config.toml is not read, so the user's MCP
-//                         servers (peer-consult included) and plugins never
+//                         servers (severally included) and plugins never
 //                         load in the consultant -- this is the recursion barrier.
 //   --ignore-rules        no user/project execpolicy rules.
 //   -s read-only          verified: writes blocked, network from the shell
@@ -11,12 +11,12 @@
 //   shell_environment_policy.inherit="none"  child shell gets no parent env,
 //                         so `.set` has to put the recursion marker back: with
 //                         inherit="none" alone, anything Codex launches from
-//                         its shell would not see PEER_CONSULT_ACTIVE=1 and
+//                         its shell would not see SEVERALLY_ACTIVE=1 and
 //                         would not be refused by the guard in server.mjs.
 //                         Verified offline against codex 0.153.4:
 //                           codex sandbox -c 'shell_environment_policy.inherit="none"' \
-//                             -c 'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}' -- env
-//                         prints PEER_CONSULT_ACTIVE=1 and nothing else
+//                             -c 'shell_environment_policy.set={SEVERALLY_ACTIVE="1"}' -- env
+//                         prints SEVERALLY_ACTIVE=1 and nothing else
 //                         inherited (without `.set`, the marker is absent).
 //   --ephemeral           the brief is not persisted into the user's session store.
 //   tools.web_search=true search/browse stays available (server-side tool).
@@ -46,7 +46,7 @@ export function buildInvocation({ workdir, schemaPath, model }) {
     '-c', 'tools.web_search=true',
     '-c', 'hooks.enabled=false',
     '-c', 'shell_environment_policy.inherit="none"',
-    '-c', 'shell_environment_policy.set={PEER_CONSULT_ACTIVE="1"}',
+    '-c', 'shell_environment_policy.set={SEVERALLY_ACTIVE="1"}',
     '--ignore-user-config',
     '--ignore-rules',
     '--skip-git-repo-check',

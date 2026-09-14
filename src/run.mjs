@@ -8,7 +8,7 @@ const DROP_EXACT = new Set([
   'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'AI_AGENT',
   'ANTHROPIC_LOG', 'NODE_OPTIONS',
 ]);
-const DROP_PREFIX = ['CLAUDE_CODE_', 'PEER_CONSULT_', 'MCP_'];
+const DROP_PREFIX = ['CLAUDE_CODE_', 'SEVERALLY_', 'MCP_'];
 
 // Each consultant sees only its own vendor's credentials.
 //
@@ -77,9 +77,9 @@ export function childEnv(target, extra = {}) {
     if (dropPrefixes.some((p) => k.startsWith(p))) continue;
     env[k] = v;
   }
-  env.PEER_CONSULT_ACTIVE = '1';
-  env.PEER_CONSULT_ROLE = 'consultant';
-  env.PEER_CONSULT_TARGET = target;
+  env.SEVERALLY_ACTIVE = '1';
+  env.SEVERALLY_ROLE = 'consultant';
+  env.SEVERALLY_TARGET = target;
   return { ...env, ...extra };
 }
 

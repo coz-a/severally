@@ -9,7 +9,7 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 // One config file per machine is the point of this feature, so each case gets
 // its own file and its own module registry: POLICY reads the file once, at
 // import, exactly as the running server does.
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'peer-consult-cfg-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'severally-cfg-'));
 
 function writeConfig(body) {
   const dir = tmp();
@@ -46,7 +46,7 @@ function refusalInChild(configFile, request) {
     }
   `;
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', source], {
-    env: { ...process.env, PEER_CONSULT_CONFIG: configFile },
+    env: { ...process.env, SEVERALLY_CONFIG: configFile },
     encoding: 'utf8',
   });
   return JSON.parse(out.trim().split('\n').pop());
@@ -54,7 +54,7 @@ function refusalInChild(configFile, request) {
 
 test('a target the config file disables is not offered, even though its CLI exists', async () => {
   const config = writeConfig({ targets: { codex: { enabled: false } } });
-  const policy = await loadPolicy({ PEER_CONSULT_CONFIG: config }, 'disabled');
+  const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'disabled');
 
   assert.equal(policy.POLICY.targets.codex.available, false);
   assert.ok(!policy.availableTargets().includes('codex'));
@@ -63,7 +63,7 @@ test('a target the config file disables is not offered, even though its CLI exis
 });
 
 test('a CLI that is not installed makes its consultant unavailable with no configuration at all', async () => {
-  const policy = await loadPolicy({ PEER_CONSULT_AGY_BIN: '/nonexistent/agy' }, 'autodetect');
+  const policy = await loadPolicy({ SEVERALLY_AGY_BIN: '/nonexistent/agy' }, 'autodetect');
   assert.equal(policy.POLICY.targets.antigravity.available, false);
   assert.deepEqual(policy.availableTargets(), ['codex', 'claude-code']);
 });
@@ -75,15 +75,15 @@ test('the environment overrides the config file, target by target', async () => 
     },
   });
   const policy = await loadPolicy({
-    PEER_CONSULT_CONFIG: config,
-    PEER_CONSULT_TARGETS: 'codex,claude-code',
-    PEER_CONSULT_CODEX_MODEL: 'from-env',
+    SEVERALLY_CONFIG: config,
+    SEVERALLY_TARGETS: 'codex,claude-code',
+    SEVERALLY_CODEX_MODEL: 'from-env',
   }, 'override');
 
-  assert.equal(policy.POLICY.targets.codex.available, true, 'PEER_CONSULT_TARGETS wins over enabled:false');
+  assert.equal(policy.POLICY.targets.codex.available, true, 'SEVERALLY_TARGETS wins over enabled:false');
   assert.equal(policy.POLICY.targets.antigravity.available, false, 'and it is the whole enabled set');
   assert.equal(policy.POLICY.targets.codex.model, 'from-env', 'env model wins over the config file');
-  // PEER_CONSULT_CODEX_MODEL (the default) came from the env; the config's
+  // SEVERALLY_CODEX_MODEL (the default) came from the env; the config's
   // `models` list is a different knob and still contributes the extras.
   assert.deepEqual(policy.POLICY.targets.codex.allowedModels, ['from-env', 'from-config', 'also-config']);
 });
@@ -94,7 +94,7 @@ test('the config file supplies the bin and the model allowlist when no env does'
       'claude-code': { bin: '/usr/local/bin/claude-x', allowed_models: ['claude-opus-5'] },
     },
   });
-  const policy = await loadPolicy({ PEER_CONSULT_CONFIG: config }, 'fromfile', ['PEER_CONSULT_CLAUDE_BIN']);
+  const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'fromfile', ['SEVERALLY_CLAUDE_BIN']);
 
   assert.equal(policy.POLICY.targets['claude-code'].cli, '/usr/local/bin/claude-x');
   assert.deepEqual(policy.POLICY.targets['claude-code'].allowedModels, ['claude-fable-5-1', 'claude-opus-5']);
@@ -103,14 +103,14 @@ test('the config file supplies the bin and the model allowlist when no env does'
 
 test('a malformed config file is reported rather than silently ignored', async () => {
   const config = writeConfig('{ not json');
-  const policy = await loadPolicy({ PEER_CONSULT_CONFIG: config }, 'broken');
+  const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'broken');
 
   assert.match(policy.configProblem(), /config\.json/);
   assert.equal(policy.POLICY.targets.codex.model, 'gpt-6-astra', 'and the defaults still apply');
 });
 
 test('a missing config file is the normal case, not a problem', async () => {
-  const policy = await loadPolicy({ PEER_CONSULT_CONFIG: path.join(tmp(), 'absent.json') }, 'absent');
+  const policy = await loadPolicy({ SEVERALLY_CONFIG: path.join(tmp(), 'absent.json') }, 'absent');
   assert.equal(policy.configProblem(), null);
 });
 
@@ -127,7 +127,7 @@ test('an installed CLI can still be excluded, with the reason carried to the cal
   const config = writeConfig({
     targets: { codex: { enabled: false, note: 'rate-limited until 15:00' } },
   });
-  sandboxEnv({ PEER_CONSULT_CONFIG: config });
+  sandboxEnv({ SEVERALLY_CONFIG: config });
   const policy = await import(`../src/policy.mjs?cfg=note-${Date.now()}`);
 
   // The stub codex binary exists, so this exclusion is the operator's, not the machine's.
@@ -143,7 +143,7 @@ test('an installed CLI can still be excluded, with the reason carried to the cal
 
 test('an excluded consultant with no note still says why', async () => {
   const config = writeConfig({ targets: { codex: { enabled: false } } });
-  sandboxEnv({ PEER_CONSULT_CONFIG: config });
+  sandboxEnv({ SEVERALLY_CONFIG: config });
   const policy = await import(`../src/policy.mjs?cfg=nonote-${Date.now()}`);
   assert.match(policy.unavailableReason('codex'), /operator configuration/);
 });
@@ -153,9 +153,9 @@ test('the generated template is valid config the server can read back', async ()
   const rendered = renderConfig();
 
   // It is JSONC now: comments in the text, parsed by the loader.
-  assert.match(rendered, /^\s*\/\/ peer-consult configuration/m, 'the template documents itself in comments');
+  assert.match(rendered, /^\s*\/\/ severally configuration/m, 'the template documents itself in comments');
   const file = writeConfig(rendered);
-  sandboxEnv({ PEER_CONSULT_CONFIG: file });
+  sandboxEnv({ SEVERALLY_CONFIG: file });
   const policy = await import(`../src/policy.mjs?cfg=template-${Date.now()}`);
   assert.equal(policy.configProblem(), null, 'the template must not be a config the server rejects');
 
@@ -176,9 +176,9 @@ test('the generated template is valid config the server can read back', async ()
 // them, so without this the consultant silently disappears from the list.
 test('a ~ in a bin path is expanded, from the config file and from the env', async () => {
   const config = writeConfig({ targets: { 'claude-code': { bin: '~/bin/claudex' } } });
-  const fromFile = await loadPolicy({ PEER_CONSULT_CONFIG: config }, 'tilde', ['PEER_CONSULT_CLAUDE_BIN']);
+  const fromFile = await loadPolicy({ SEVERALLY_CONFIG: config }, 'tilde', ['SEVERALLY_CLAUDE_BIN']);
   assert.equal(fromFile.POLICY.targets['claude-code'].cli, path.join(os.homedir(), 'bin/claudex'));
 
-  const fromEnv = await loadPolicy({ PEER_CONSULT_AGY_BIN: '~/bin/agyx' }, 'tilde-env');
+  const fromEnv = await loadPolicy({ SEVERALLY_AGY_BIN: '~/bin/agyx' }, 'tilde-env');
   assert.equal(fromEnv.POLICY.targets.antigravity.cli, path.join(os.homedir(), 'bin/agyx'));
 });

@@ -2,7 +2,7 @@
 // next to the code the decision was about.
 //
 // The point is not prettiness: it is that "what we asked, what came back, what
-// we checked" survives outside ~/.peer-consult, where a teammate -- or the same
+// we checked" survives outside ~/.severally, where a teammate -- or the same
 // person in six months -- can read it in the repo. So the format is fixed, the
 // sections are in a fixed order, and nothing is summarised, merged or scored on
 // the way out. A round that failed is written as a failure, and a point nobody
@@ -42,7 +42,7 @@ function roundsOf(chainId) {
 // was, so the index -- one line per consultation -- is what maps them back.
 function chainsOfGroup(groupId) {
   const group = readJson(path.join(historyDir(), 'groups', `${groupId}.json`));
-  if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.peer-consult/history`, 'unknown_group');
+  if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.severally/history`, 'unknown_group');
   const byJob = new Map();
   try {
     for (const line of fs.readFileSync(path.join(historyDir(), 'index.jsonl'), 'utf8').split('\n')) {
@@ -230,7 +230,7 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
   const perChain = chainIds.map((id) => ({ chain_id: id, rounds: roundsOf(id) }));
   const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
   if (total === 0) {
-    throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.peer-consult/history`, 'unknown_chain');
+    throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, 'unknown_chain');
   }
 
   const first = perChain.find((c) => c.rounds.length)?.rounds[0];
@@ -240,7 +240,7 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     `- exported: ${new Date().toISOString()}`,
     `- ${groupId ? `fan-out \`${groupId}\`, ${chainIds.length} consultant(s)` : `consultation \`${chainId}\``}`,
     '',
-    'Written from `~/.peer-consult/history`. Each round below is one consultation: the brief exactly as it was',
+    'Written from `~/.severally/history`. Each round below is one consultation: the brief exactly as it was',
     'sent, the answer exactly as it came back, and under each point what the lead found when they checked it.',
     'Nothing here is summarised across consultants and nothing is scored -- where two answers point different',
     'ways, both are printed and the difference is left standing.',

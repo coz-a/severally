@@ -31,7 +31,7 @@ function run() {
   // STUB_BRIEF_OUT is a single shared path: in a fan-out several children would
   // overwrite each other's brief, so also drop one file per target.
   if (process.env.STUB_BRIEF_DIR) {
-    fs.writeFileSync(path.join(process.env.STUB_BRIEF_DIR, `${process.env.PEER_CONSULT_TARGET ?? 'unknown'}.txt`), stdin);
+    fs.writeFileSync(path.join(process.env.STUB_BRIEF_DIR, `${process.env.SEVERALLY_TARGET ?? 'unknown'}.txt`), stdin);
   }
   const behavior = process.env.STUB_BEHAVIOR ?? 'ok';
   if (behavior === 'usage_limit') {

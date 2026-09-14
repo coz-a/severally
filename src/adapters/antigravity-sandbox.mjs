@@ -78,7 +78,7 @@ export function prepareSandbox({ workdir }) {
     credentials,
     // The exact path searched, so a caller that has to report `credentials:
     // "missing"` can say where it looked instead of leaving the operator to
-    // guess which HOME peer-consult read.
+    // guess which HOME severally read.
     credentialsSource: source,
     env: { HOME: root },
     cleanup() {
