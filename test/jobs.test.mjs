@@ -127,9 +127,20 @@ test('the consultant is launched with the restriction flags and none that widen 
     assert.ok(!claudeTools.includes(tool), `claude must never be given ${tool}`);
   }
   assert.equal(claudeArgs[claudeArgs.indexOf('--permission-prompts') + 1], 'none');
-  for (const flag of ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--mcp-config', '--add-dir', '--plugin-dir']) {
+  // With --permission-mode manual and --permission-prompts none, a tool with no
+  // allow rule is denied outright: without this the consultant had no web at all.
+  // Only the two web tools get a rule, so nothing that writes is ever allowed.
+  const claudeAllowed = claudeArgs[claudeArgs.indexOf('--allowedTools') + 1].split(',');
+  assert.deepEqual(claudeAllowed, ['WebSearch', 'WebFetch']);
+  for (const flag of ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--mcp-config', '--plugin-dir']) {
     assert.ok(!claudeArgs.includes(flag), `claude must never be launched with ${flag}`);
   }
+  // --restricted confines the file tools to the (empty) working directory, so
+  // the read scope is widened to the whole disk -- once, and to nothing else.
+  assert.deepEqual(
+    claudeArgs.flatMap((a, i) => (a === '--add-dir' ? [claudeArgs[i + 1]] : [])),
+    ['/'],
+  );
   delete process.env.STUB_ARGV_OUT;
   fs.rmSync(argvOut, { force: true });
 });
@@ -345,7 +356,12 @@ test('the launch guard refuses permission-widening flags outright', async () => 
   assert.equal(assertNoForbiddenFlags('codex', ['exec', '-s', 'read-only']), true);
   assert.throws(() => assertNoForbiddenFlags('codex', ['exec', '--dangerously-bypass-approvals-and-sandbox']), /permission-widening/);
   assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--dangerously-skip-permissions']), /permission-widening/);
-  assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/']), /permission-widening/);
+  // --add-dir is accepted in exactly one shape: Claude Code, once, with `/`.
+  assert.equal(assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/']), true);
+  assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/home']), /widen consultant file access/);
+  assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/', '--add-dir', '/tmp']), /widen consultant file access/);
+  assert.throws(() => assertNoForbiddenFlags('codex', ['exec', '--add-dir', '/']), /permission-widening/);
+  assert.throws(() => assertNoForbiddenFlags('antigravity', ['--add-dir', '/']), /permission-widening/);
 });
 
 test('antigravity consultation: alias target, structured answer, usage recorded', async () => {

@@ -16,6 +16,11 @@
 //                           severally server is not reachable: recursion barrier.
 //   --setting-sources ''    belt and braces over --restricted.
 //   --disable-slash-commands  no skills, so the severally skill cannot fire.
+//   --allowedTools WebSearch,WebFetch  allow rules for the two web tools. Without
+//                           them --permission-mode manual asks before every search,
+//                           and --permission-prompts none turns that ask into a
+//                           denial: the consultant silently had no web at all.
+//                           Read/Glob/Grep need no rule (read-only tools).
 //   --permission-prompts none  anything that would prompt is denied outright.
 //   --no-session-persistence   the brief is not written to the user's session store.
 
@@ -23,10 +28,15 @@ import { POLICY } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 import { CONSULT_RESULT_SCHEMA } from '../result-schema.mjs';
 
+// --add-dir is not listed: the adapter passes `--add-dir /` itself, and
+// assertNoForbiddenFlags refuses any other value. --restricted confines the file
+// tools to the working directories, and the working directory is empty, so
+// without it this consultant could read nothing while Codex (read-only sandbox)
+// and Antigravity (read_file(*)) could read the whole disk. Verified 2026-09-13:
+// with it, Read/Grep outside the workdir succeed; the tool list is unchanged.
 export const FORBIDDEN_FLAGS = [
   '--dangerously-skip-permissions',
   '--allow-dangerously-skip-permissions',
-  '--add-dir',
   '--mcp-config',
   '--plugin-dir',
   '--plugin-url',
@@ -43,6 +53,8 @@ export function buildInvocation({ workdir, guardrails, model }) {
     '--setting-sources', '',
     '--disable-slash-commands',
     '--tools', 'WebSearch,WebFetch,Read,Glob,Grep',
+    '--allowedTools', 'WebSearch,WebFetch',
+    '--add-dir', '/',
     '--permission-prompts', 'none',
     '--permission-mode', 'manual',
     '--no-session-persistence',

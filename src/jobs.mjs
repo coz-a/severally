@@ -882,7 +882,12 @@ export function assertNoForbiddenFlags(target, args) {
   const forbidden = ADAPTERS[target].FORBIDDEN_FLAGS;
   const hit = args.find((a) => forbidden.includes(a));
   if (hit) throw new Error(`refusing to launch consultant with permission-widening flag ${hit}`);
-  const workdirIdx = args.indexOf('--add-dir');
-  if (workdirIdx !== -1) throw new Error('refusing to widen consultant file access');
+  // The one read scope any adapter adds: Claude Code's `--add-dir /`, which gives
+  // it the same whole-disk read access the other two consultants already have.
+  // Any other use -- another target, another directory, a second occurrence --
+  // is not something an adapter builds, so it is refused.
+  const addDirs = args.flatMap((a, i) => (a === '--add-dir' ? [args[i + 1]] : []));
+  const allowed = target === 'claude-code' && addDirs.length === 1 && addDirs[0] === '/';
+  if (addDirs.length > 0 && !allowed) throw new Error('refusing to widen consultant file access');
   return true;
 }
