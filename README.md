@@ -2,61 +2,65 @@
 
 *Independent opinions, returned severally. The verdict is yours.*
 
-コーディングエージェントが人に「この案で進めていいか」と聞く場面で使う MCP サーバと Skill。エージェントは
-別の CLI（Codex、Claude Code、Gemini を使う Antigravity）に意見を聞き、返ってきた指摘を手元で確かめてから、
-あらためて人に判断を求める。
+An MCP server and Skill for the moment a coding agent asks you "can I go ahead with this plan?". The agent asks
+another CLI (Codex, Claude Code, or Antigravity running Gemini) for its opinion, checks the findings that come
+back in its own repository, and only then asks you for a decision again.
 
-名前は法律用語の *jointly and severally*（連帯して、かつ各自が個別に）から取った。複数に聞いても答えは
-まとめず、相手ごとに返す。どれを採るかは読む側が決める。
+The name comes from the legal phrase *jointly and severally* — each party bound on its own. Ask several
+consultants and their answers are not merged: each comes back separately, and the reader decides which to take.
 
-## 例: 自作ツールを公開する前に
+## Example: before publishing a tool
 
-AI CLI の会話履歴を、プロジェクトフォルダの移動に合わせて書き換える小さなツールを作った。GitHub と PyPI に
-出す前に「公開前に必ず潰すべきものは何か」を 3 者に同時に聞くと、2 分ほどで相手ごとの答えが並んで戻った
-（抜粋）。
-
-```
-codex        do_not_proceed  フォルダの移動と複数の設定ファイルの更新について、途中で失敗したときの扱いが無い
-antigravity  do_not_proceed  LICENSE が無い。--force が「稼働中チェックの無視」と「フォルダの統合」を兼ねている
-claude-code  proceed         公開してよい。ただし LICENSE の追加や作者のローカルパスの除去など 5 件を先に
-```
-
-3 者が挙げたブロッカーは大きく重なっているのに、結論は割れた。差は「直してから出せ」か「直せば出してよい」
-かにある。この差は、答えを 1 つにまとめると消える。
-
-相談したエージェント（以下、主担当）は、指摘を読んで終わりにしない。自分のリポジトリで確かめる。
+I had written a small tool that rewrites AI CLI conversation histories when a project folder moves. Before
+putting it on GitHub and PyPI, I asked three consultants at once "what must be fixed before this is published?".
+About two minutes later their answers came back side by side (excerpt):
 
 ```
-codex の指摘     途中で失敗したときの扱いが必要
-  確かめた       移動先が移動元の内側にあると、例外のトレースバックで落ちる。
-                 さらに、途中でロールバックしたのに exit 0 で終わるバグが見つかった
-  判断           失敗を数えて 0 以外で終了し、再実行を案内する修正を公開前の作業に入れた
-
-antigravity の指摘  大きな履歴ファイルを丸ごとメモリに読むので、メモリ不足で落ちる
-  確かめた       手元で最大のファイルは 43.8 MB。読み込み方は直すが、重大度は下げた
+codex        do_not_proceed  no handling for a failure partway through moving the folder and updating several config files
+antigravity  do_not_proceed  no LICENSE; --force means both "ignore the running-session check" and "merge folders"
+claude-code  proceed         fine to publish, once 5 items such as adding a LICENSE and removing the author's local paths are done
 ```
 
-人に返るのは「賛成 1・反対 2」という票ではない。確かめた結果と推薦、まだ確かめていない項目の一覧だ。
-確かめた結果は指摘の隣に残り、Markdown にしてリポジトリに置ける。
+The blockers the three raised overlap heavily, yet the bottom lines split. The difference is "fix it, then
+publish" versus "publish once it is fixed". Merge the answers into one and that difference disappears.
 
-## 手で貼るのと比べて
+The agent that asked (the *lead*) does not stop at reading the findings. It checks them in its own repository.
 
-別のターミナルにブリーフを貼っても、似たことはできる。severally で増えるのは次の 3 つ。
+```
+codex finding        needs handling for a failure partway through
+  checked            if the destination is inside the source, it crashes with a traceback.
+                     it also turned up a bug: after rolling back partway, the tool still exits 0
+  decision           added a fix to the pre-publication work: count failures, exit non-zero, tell the user to re-run
 
-- **渡るのはブリーフ 1 通だけ。** 相手は毎回新しい子セッションで起動し、こちらの会話の履歴は届かない。
-  案を伏せて聞く `explore` では、案を渡す項目（`proposal`）を使えない
-- **答えが相手ごとに同じ形で届く。** 結論、指摘と根拠、足りなかった情報、判断が変わる条件、確かめ方。
-  答えが来なかったときは、その理由（レート制限、認証失敗、時間切れ）。複数に聞いても要約しない
-- **確かめた結果を、指摘の隣に書き戻せる。** 指摘ごとに「確認できた／当てはまらない／確認できない／
-  未確認」と判断への影響を残し、Markdown にできる
+antigravity finding  reads large history files entirely into memory, so it runs out of memory
+  checked            the largest file on this machine is 43.8 MB. the reading will be fixed, but the severity was lowered
+```
 
-Codex、Claude Code、Antigravity のどれから使っても、残りの 2 つに聞ける。
+What comes back to you is not a vote of "1 for, 2 against". It is what was checked, the recommendation, and a
+list of what has not been checked yet. The checked results stay next to the findings and can be exported as
+Markdown into your repository.
 
-## しくみ
+## Compared with pasting into another terminal
 
-相談のたびに専用の子セッションを起動する。既存のセッションには接続しない。相手に渡るのはこちらが書いた
-ブリーフだけで、会話の履歴は渡らない。1 回の依頼で最大 3 者に同一のブリーフを送り、1 つの `group_id` で
-受け取れる。相手に許すことと止めることは「使う前に知っておくこと」にまとめた。
+You can get something similar by pasting a brief into another terminal. severally adds three things:
+
+- **Only the brief goes across.** Each consultant starts in a fresh child session and never sees your
+  conversation history. In `explore` mode, which asks without showing your plan, the field for the plan
+  (`proposal`) cannot be used
+- **Every answer has the same shape.** Bottom line, findings with grounds, missing information, conditions that
+  would change the judgement, and how to check. If no answer arrives, the reason (rate limit, auth failure,
+  timeout). Ask several and nothing is summarised
+- **Checked results can be written back next to each finding.** For each finding, record "confirmed / not
+  applicable / unverifiable / unverified" and its effect on the decision, then export it as Markdown
+
+Whichever of Codex, Claude Code, or Antigravity you use, you can ask the other two.
+
+## How it works
+
+Every consultation starts a dedicated child session; it never attaches to an existing one. The consultant
+receives only the brief you wrote, never your conversation history. One request can send the identical brief to
+up to three consultants and collect the answers under one `group_id`. What consultants may and may not do is
+listed under "Before you use it".
 
 ```
 Claude Code ──(skill: severally)──> mcp: severally ──> codex exec | agy      (Codex / Antigravity)
@@ -64,19 +68,19 @@ Codex       ──(skill: severally)──> mcp: severally ──> claude -p  | 
 Antigravity ──(skill: severally)──> mcp: severally ──> codex exec | claude -p (Codex / Claude Code)
 ```
 
-Claude Code と Codex にはプラグインとして入り、Antigravity にはインストーラが直接登録する。どちらも公開
-マーケットプレイスは不要。
+Claude Code and Codex get it as a plugin; for Antigravity the installer registers it directly. Neither needs a
+public marketplace.
 
-## インストール
+## Install
 
 ```bash
-npm install                 # 依存の取得
-npm test                    # オフライン検証（実 API 呼び出しなし）
-npm run build               # プラグイン内 dist/ を再生成（コミット済みなので通常は不要）
-node scripts/install.mjs    # --dry-run で実行計画のみ表示できる
+npm install                 # fetch dependencies
+npm test                    # offline checks (no real API calls)
+npm run build               # regenerate dist/ inside the plugin (committed, so usually not needed)
+node scripts/install.mjs    # --dry-run prints the plan without changing anything
 ```
 
-確認:
+Verify:
 
 ```bash
 claude plugin details severally      # Skills (1) / MCP servers (1)
@@ -84,113 +88,118 @@ codex  plugin list                   # severally@severally-local  installed, ena
 agy    mcp list                      # severally  stdio  enabled
 ```
 
-**クライアントは再起動が必要**（起動済みのセッションはプラグインを読み直さない）。
-プラグインを更新したら `npm run build && node scripts/install.mjs` を再実行する。
+**Restart the clients** (a running session does not reload plugins).
+After updating the plugin, run `npm run build && node scripts/install.mjs` again.
 
-### 2 つの方式
+### Two install modes
 
-| | プラグイン方式（既定） | 手動方式（`--manual`） |
+| | Plugin mode (default) | Manual mode (`--manual`) |
 |---|---|---|
-| Claude Code | `~/.claude/skills/severally/` にプラグインを配置（`severally@skills-dir`） | `claude mcp add --scope user` ＋ Skill を単体コピー |
-| Codex | リポジトリ内 marketplace から `codex plugin add` | `codex mcp add` ＋ Skill を単体コピー |
-| Antigravity | `agy mcp add` ＋ Skill を単体コピー（プラグイン経路がないため方式による差はない） | 同左 |
-| MCP ツール名 | `mcp__plugin_severally_severally__*` | `mcp__severally__*` |
+| Claude Code | places the plugin in `~/.claude/skills/severally/` (`severally@skills-dir`) | `claude mcp add --scope user` + copy the Skill on its own |
+| Codex | `codex plugin add` from the in-repo marketplace | `codex mcp add` + copy the Skill on its own |
+| Antigravity | `agy mcp add` + copy the Skill on its own (there is no plugin route, so both modes are the same) | same |
+| MCP tool names | `mcp__plugin_severally_severally__*` | `mcp__severally__*` |
 
-インストーラは既存の設定を壊さない。クライアントの設定は各 CLI のコマンド（`plugin add` / `mcp add`）経由で
-しか変更しない。作業の前に `~/.claude.json`、`~/.codex/config.toml`、既存の Skill ディレクトリを
-`~/.severally/backups/<timestamp>/` に退避する。退避したファイルの名前は、元のパスから作る。方式を切り替えると、
-もう一方の方式で入った重複登録はバックアップしたうえで削除される。
+The installer does not break existing settings. It changes client settings only through each CLI's own commands
+(`plugin add` / `mcp add`). Before it does anything, it backs up `~/.claude.json`, `~/.codex/config.toml` and any
+existing Skill directory to `~/.severally/backups/<timestamp>/`, naming each backup after its original path.
+Switching modes backs up and then removes the duplicate registration left by the other mode.
 
-公開マーケットプレイスへの登録は不要。Claude Code はマーケットプレイスなしで動き、Codex 用の
-`.agents/plugins/marketplace.json` はこのリポジトリ内のローカルファイル。
+No public marketplace listing is needed. Claude Code works without a marketplace, and the Codex marketplace file
+`.agents/plugins/marketplace.json` is a local file in this repository.
 
-## 使い方
+## Usage
 
-「Codex に聞いて」「Claude にレビューしてもらって」「セカンドオピニオンが欲しい」といった依頼、
-あるいは次の状況で Skill が起動する。
+The Skill starts on requests such as "ask Codex", "have Claude review this" or "I want a second opinion", or in
+these situations:
 
-- 重要な設計判断・巻き戻しにくい選択（アーキテクチャ、データ移行、並行性、セキュリティ、公開前の点検）
-- 選択肢が拮抗して自力で差がつかないとき
-- 同じバグの修正に 2 回以上失敗し、新しい情報が出ていないとき
+- important design decisions and hard-to-reverse choices (architecture, data migration, concurrency, security,
+  pre-publication checks)
+- options that stay neck and neck however long you think about them
+- two or more failed attempts at the same bug with no new information
 
-「みんなで相談して」「全員に聞いて」なら、他の 2 つの CLI に加えて、自分と同じ CLI の新しいセッションにも、
-同じブリーフが同時に届く。同じ CLI からの回答には「同じ系統」の注記が付く。
+For "ask everyone" or "consult all of them", the same brief goes out at once to the other two CLIs and to a fresh
+session of your own CLI. Answers from your own CLI carry a "same lineage" note.
 
-巻き戻しにくい変更の承認を求めるときは、エージェントの方から「相談してから進めるか」を選択肢に出す。
-始めるかどうかは人が決める。
+When the agent asks you to approve a hard-to-reverse change, it offers "consult first?" as one of the choices.
+You decide whether to start.
 
-**小さな修正には使わない。** 1 回の相談で数分と実クォータを消費する。
+**Not for small fixes.** One consultation costs a few minutes and real quota.
 
-**ふだんの相談は小さくてよい。** 相手は 1 者。ブリーフは、案が 1 段落、根拠になる事実が数行、関係する
-コードの抜粋が 1 つ。Skill は、返ってきた指摘のうち判断を左右するものを 1 つ確かめる。そのうえで、
-確かめたこと・採らなかったこと・まだ確かめていないことを報告し、確かめた結果を指摘の隣に保存する。
-相談を始めるとすぐに制御が戻るので、待つ間も作業を続けられる。
+**A routine consultation is small.** One consultant. The brief is one paragraph of plan, a few lines of facts it
+rests on, and one relevant code excerpt. The Skill checks the one finding that would change the decision, reports
+what it checked, what it did not adopt and what is still unverified, and saves the checked result next to the
+finding. Starting a consultation returns immediately, so the agent keeps working while it waits.
 
-**後から理由を問われる判断**（インターフェース、移行、セキュリティ、並行性）では、Skill が段取りを足す。
-問いと成功条件を整理し、外から課された制約と自分の仮定を分けて書き、相談の前に予想を残し、記録を
-Markdown にしてリポジトリに置く。
+**For decisions you will have to justify later** (interfaces, migrations, security, concurrency), the Skill adds
+steps: it pins down the question and success criteria, separates imposed constraints from its own assumptions,
+writes down a prediction before consulting, and exports the record as Markdown into the repository.
 
-ブリーフの書き方、mode（`explore` / `review` / `debate`）の選び方、結果の読み方は Skill が主担当に指示する。
+The Skill tells the lead how to write the brief, which mode to pick (`explore` / `review` / `debate`), and how to
+read the results.
 
-## 設定
+## Configuration
 
-**既定では設定不要。** サーバは起動時に `codex` / `claude` / `agy` が PATH にあるかを見て、無い相手を
-候補から外す。特定の相手を無効にしたい、モデルを変えたい、実行ファイルのパスを指定したい場合は
-`~/.severally/config.json` を 1 つ置く。雛形は、手元の環境に合わせて生成できる。
+**No configuration needed by default.** At startup the server checks whether `codex` / `claude` / `agy` are on
+PATH and drops the ones that are missing. To disable a consultant, change a model, or point at a specific
+executable, put a single `~/.severally/config.json` in place. A template can be generated for your machine:
 
 ```bash
-npm run init-config            # ~/.severally/config.json を生成（既存は上書きしない）
+npm run init-config            # writes ~/.severally/config.json (never overwrites an existing one)
 ```
 
-使えるキーは [config.example.json](config.example.json) にある。優先順位は、環境変数 > 設定ファイル >
-自動検出 > 既定値。設定はサーバ起動時に 1 度だけ読むので、変更後はクライアントを再起動する。
+The available keys are in [config.example.json](config.example.json). Precedence is environment variables >
+config file > auto-detection > defaults. The config is read once at server startup, so restart the client after
+changing it.
 
-## 使う前に知っておくこと
+## Before you use it
 
-**相手に渡らないもの**は、こちらの会話の履歴。**どの相手にもできないこと**は次の 4 つ。
+**What never reaches a consultant**: your conversation history. **What no consultant can do**:
 
-- 書き込み
-- ネットワーク（Web の検索と閲覧だけは許す）
-- MCP
-- さらなる相談
+- write
+- use the network (web search and browsing are the only exception)
+- use MCP
+- consult anyone else
 
-**読み取りは止めていない**。子セッションごとの内訳:
+**Reading is not blocked.** Per child session:
 
-| 相談相手 | ディスクの読み取り | シェル | 書き込み・実行 |
+| Consultant | Reads the disk | Shell | Write / execute |
 |---|---|---|---|
-| Codex | できる | read-only で持つ | 不可 |
-| Claude Code | できる（`Read` / `Glob` / `Grep`） | 持たない | 不可 |
-| Antigravity | できる（`read_file`） | 持たない | 不可 |
+| Codex | yes | read-only | no |
+| Claude Code | yes (`Read` / `Glob` / `Grep`) | none | no |
+| Antigravity | yes (`read_file`) | none | no |
 
-どの相手も空の作業ディレクトリで起動し、サーバはリポジトリの場所を教えない。見せたい物はブリーフに貼る。
+Every consultant starts in an empty working directory, and the server does not tell it where your repository is.
+Paste whatever it should see into the brief.
 
-- 相談相手が失敗した（`usage_limit` / `auth` / `timeout` …）ことと、答えたが根拠が薄いことは、別物として
-  返る。失敗は「問題なし」ではない
-- 履歴は `~/.severally/history/` に残る。1 ラウンドにつき 1 ファイルに、送ったブリーフ、相手の回答、主担当が
-  指摘ごとに書いた検証結果（`consult_record` で書く）が揃う。`consult_export` で Markdown にしてリポジトリに
-  残せる。検証結果は後日、別のセッションからも書き足せる
-- 送るブリーフと返ってくる結果には、資格情報のマスキングが掛かる
-- 記録には、相談を頼んだのが人か、エージェントの提案を人が受けたのかも残る（自己申告）。人が断った提案は
-  `~/.severally/history/offers.jsonl` に 1 行ずつ残る。どちらも何かを制限することはない
-- 自分と同じ CLI の別モデルにも聞ける（Opus で作業中に Fable へ、`target: "claude:fable"`）。返答には
-  「同じ系統」の注記が付く。`caller_model` で自分のモデルを申告すると、記録に「誰が誰に聞いたか」が残る
-- 主担当が自分で実行して確かめられる項目が多く返るのは、コードの判断についての相談だ。プロジェクト方針に
-  ついての相談では他の人に頼る項目が返り、それは未実行のまま人に返る
+- A consultant that failed (`usage_limit` / `auth` / `timeout` …) and one that answered on thin grounds come back
+  as different things. A failure is not "no problems found"
+- History is kept in `~/.severally/history/`. Each round is one file holding the brief that was sent, the
+  consultant's answer, and the verdicts the lead wrote per finding (with `consult_record`). `consult_export` turns
+  it into Markdown for the repository. Verdicts can be added later, from another session
+- Credentials are masked in the brief that is sent and in the results that come back
+- You can also consult a different model of your own CLI (from Opus to Fable, `target: "claude:fable"`). The
+  answer carries a "same lineage" note. Declare your own model with `caller_model` and the record keeps who asked
+  whom
+- The record also keeps whether you asked for the consultation or accepted the agent's offer (self-declared).
+  Offers you declined are written one per line to `~/.severally/history/offers.jsonl`. Neither restricts anything
+- Consultations about code decisions return mostly checks the lead can run itself. Consultations about project
+  policy return checks that depend on other people, and those come back to you unrun
 
-## アンインストール
+## Uninstall
 
-プラグイン方式:
+Plugin mode:
 
 ```bash
 rm -rf ~/.claude/skills/severally                       # Claude Code
 codex plugin remove severally --marketplace severally-local
 codex plugin marketplace remove severally-local
-agy   mcp remove severally                              # Antigravity（直接登録のため方式共通）
+agy   mcp remove severally                              # Antigravity (registered directly in both modes)
 rm -rf ~/.gemini/config/skills/severally
 npm uninstall -g severally-mcp
 ```
 
-手動方式:
+Manual mode:
 
 ```bash
 claude mcp remove severally -s user
@@ -200,4 +209,4 @@ rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/ski
 npm uninstall -g severally-mcp
 ```
 
-どちらの方式でも、履歴とバックアップは `~/.severally/` に残る（不要なら削除する）。
+Either way, history and backups stay in `~/.severally/` (delete it if you no longer need them).
