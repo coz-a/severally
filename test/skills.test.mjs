@@ -243,3 +243,15 @@ test('every skill covers consulting a different model of its own lineage', () =>
     assert.doesNotMatch(text, /stronger model of the same lineage/i, `${host} skill must not frame it as escalation only`);
   }
 });
+
+// Whether offering a consultation at the approval moment works can only be read
+// from the history if both outcomes are written down: an accepted offer on the
+// consultation it started, and a declined one in a line of its own.
+test('every skill records who asked for a consultation and which offers were declined', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /initiator: "offer_accepted"/, `${host} skill must mark an accepted offer`);
+    assert.match(text, /initiator: "user"/, `${host} skill must mark a consultation the user asked for`);
+    assert.match(text, /consult_offer_declined/, `${host} skill must record a declined offer`);
+  }
+});

@@ -64,6 +64,11 @@ const targetSpec = z.preprocess(
   ),
 );
 
+// Who asked for a consultation, as the lead reports it. An offer the user
+// declines starts nothing, so it has no value here: it is written by
+// consult_offer_declined instead.
+export const INITIATORS = ['user', 'offer_accepted'];
+
 export const requestSchema = z
   .object({
     // Exactly one of `target` (one consultant) or `targets` (ask several the
@@ -83,6 +88,11 @@ export const requestSchema = z
     caller_model: trimmed(120, 'caller_model')
       .regex(/^[^\p{Cc}\p{Cf}]+$/u, 'caller_model must be a single line of printable characters')
       .nullish(),
+    // Who asked for this consultation, as the lead reports it: the user
+    // directly, or the user accepting an offer the lead made at an approval.
+    // Self-declared and unverifiable like caller_model, and it never gates
+    // anything. It exists so the history can say whether offering works.
+    initiator: z.enum(INITIATORS).nullish(),
     mode: z.enum(MODES),
     question: trimmed(L.questionMax, 'question'),
     // Optional: most consultations state what they are after in the question
@@ -234,6 +244,7 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
   req.fanout = unique.length > 1;
   req.caller = resolveTarget(req.caller ?? '') ?? null;
   req.caller_model = req.caller_model ?? null;
+  req.initiator = req.initiator ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? '').trim();
   req.context.proposal = proposal.length ? proposal : null;

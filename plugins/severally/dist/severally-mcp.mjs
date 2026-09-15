@@ -36039,6 +36039,7 @@ var targetSpec = external_exports.preprocess(
     }
   )
 );
+var INITIATORS = ["user", "offer_accepted"];
 var requestSchema = external_exports.object({
   // Exactly one of `target` (one consultant) or `targets` (ask several the
   // same question) is required; parseRequest below enforces the exclusivity,
@@ -36055,6 +36056,11 @@ var requestSchema = external_exports.object({
   // lead asking Fable) instead of treating every same-vendor call as the
   // same head. Never gates the model launched, which comes from `target`.
   caller_model: trimmed(120, "caller_model").regex(/^[^\p{Cc}\p{Cf}]+$/u, "caller_model must be a single line of printable characters").nullish(),
+  // Who asked for this consultation, as the lead reports it: the user
+  // directly, or the user accepting an offer the lead made at an approval.
+  // Self-declared and unverifiable like caller_model, and it never gates
+  // anything. It exists so the history can say whether offering works.
+  initiator: external_exports.enum(INITIATORS).nullish(),
   mode: external_exports.enum(MODES),
   question: trimmed(L.questionMax, "question"),
   // Optional: most consultations state what they are after in the question
@@ -36176,6 +36182,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
   req.fanout = unique.length > 1;
   req.caller = resolveTarget(req.caller ?? "") ?? null;
   req.caller_model = req.caller_model ?? null;
+  req.initiator = req.initiator ?? null;
   req.followup_to = req.followup_to ?? null;
   const proposal = (req.context.proposal ?? "").trim();
   req.context.proposal = proposal.length ? proposal : null;
@@ -36846,6 +36853,7 @@ function persistRound(record2, { appendIndex = true } = {}) {
       chain_id: record2.chain_id,
       round: record2.round,
       target: record2.target,
+      initiator: record2.initiator ?? null,
       mode: record2.mode,
       status: record2.status,
       failure_kind: record2.failure?.kind ?? null,
@@ -36861,6 +36869,23 @@ function persistGroup(group) {
   const dir = path2.join(POLICY.home, "history", "groups");
   fs2.mkdirSync(dir, { recursive: true, mode: 448 });
   fs2.writeFileSync(path2.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
+}
+function appendOffer(entry) {
+  const dir = path2.join(POLICY.home, "history");
+  fs2.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs2.appendFileSync(path2.join(dir, "offers.jsonl"), `${JSON.stringify(entry)}
+`, { mode: 384 });
+}
+function countOffers(outcome) {
+  let count = 0;
+  for (const line of readIfExists(path2.join(POLICY.home, "history", "offers.jsonl")).split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      if (JSON.parse(line).outcome === outcome) count += 1;
+    } catch {
+    }
+  }
+  return count;
 }
 function cleanupJobDir(jobId) {
   try {
@@ -37298,6 +37323,7 @@ var JobManager = class {
       target: job.target,
       caller: job.caller,
       caller_model: job.caller_model ?? null,
+      initiator: job.initiator ?? null,
       mode: job.mode,
       status: job.status,
       model: job.model,
@@ -37354,9 +37380,27 @@ var JobManager = class {
         recorded: Boolean(j.record),
         verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
         predicted: Boolean(j.prediction),
-        reflected: Boolean(j.reflection)
+        reflected: Boolean(j.reflection),
+        initiator: j.initiator ?? null
       };
     });
+  }
+  // An offer the user said no to. Declared by the lead and never checked -- the
+  // server cannot see the conversation -- and it starts nothing: the one line
+  // it writes is what lets the history count offers that were not taken.
+  declineOffer({ question, would_ask = null, reason = null } = {}) {
+    appendOffer({
+      outcome: "declined",
+      declined_at: (/* @__PURE__ */ new Date()).toISOString(),
+      caller: detectCaller(),
+      question: redact(question),
+      would_ask: would_ask ? redact(would_ask) : null,
+      reason: reason ? redact(reason) : null
+    });
+    return { recorded: true, outcome: "declined", offers_declined: countOffers("declined") };
+  }
+  offersDeclined() {
+    return countOffers("declined");
   }
   start(rawRequest) {
     if (process.env.SEVERALLY_ACTIVE === "1") {
@@ -37423,6 +37467,9 @@ var JobManager = class {
         // Declared by the lead, never checked: the server cannot see what
         // model the host CLI runs. Kept so the record says who asked whom.
         caller_model: req.caller_model ?? null,
+        // Also declared by the lead: whether the user asked for this, or said
+        // yes to an offer. Nothing reads it but the record.
+        initiator: req.initiator ?? null,
         followup_to: followupTo,
         status: "queued",
         // The model the request asked for, already checked against the
@@ -38189,6 +38236,10 @@ caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antig
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
         With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
         whom; it never changes which model the consultant runs.
+initiator: optional -- who asked for this consultation: "user" (the user asked for it) or "offer_accepted" (you
+        offered one when asking for approval and the user said yes). Self-declared, never checked, gates
+        nothing; it lets the record tell requested consultations from accepted offers. When the user declines
+        an offer, nothing starts -- call consult_offer_declined instead.
 mode:
   explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
             options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.
@@ -38328,13 +38379,30 @@ function createServer(manager = new JobManager()) {
     }
   );
   server.registerTool(
+    "consult_offer_declined",
+    {
+      title: "Record that an offered consultation was declined",
+      description: 'Call this once when you offered the user a consultation and they said no. It writes one line to ~/.severally/history/offers.jsonl and starts nothing. An accepted offer needs no call here: pass initiator: "offer_accepted" to consult_start instead. Together the two show whether offering a consultation when asking for approval is working -- without this, the history only holds the offers that were taken. Self-declared and never checked; it gates nothing.',
+      inputSchema: {
+        question: external_exports.string().trim().min(1).max(4e3).describe("what you would have asked, in one sentence"),
+        would_ask: external_exports.string().trim().min(1).max(200).optional().describe('whom you offered to ask, e.g. "codex" or "codex, antigravity"'),
+        reason: external_exports.string().trim().min(1).max(1e3).optional().describe("what the user said, if they gave a reason")
+      }
+    },
+    async ({ question, would_ask, reason }) => ok(manager.declineOffer({ question, would_ask, reason }))
+  );
+  server.registerTool(
     "consult_list",
     {
       title: "List recent consultations",
-      description: "Recent consultations from this session, newest first, with their status and one-line summary.",
+      description: "Recent consultations from this session, newest first, with their status, one-line summary and who asked for them (initiator), plus how many offered consultations have been declined in total.",
       inputSchema: { limit: external_exports.number().int().min(1).max(100).optional() }
     },
-    async ({ limit }) => ok({ jobs: manager.list({ limit: limit ?? 20 }), limits: limitsSummary() })
+    async ({ limit }) => ok({
+      jobs: manager.list({ limit: limit ?? 20 }),
+      offers_declined: manager.offersDeclined(),
+      limits: limitsSummary()
+    })
   );
   return { server, manager };
 }

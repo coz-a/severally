@@ -39,6 +39,10 @@ caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antig
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
         With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
         whom; it never changes which model the consultant runs.
+initiator: optional -- who asked for this consultation: "user" (the user asked for it) or "offer_accepted" (you
+        offered one when asking for approval and the user said yes). Self-declared, never checked, gates
+        nothing; it lets the record tell requested consultations from accepted offers. When the user declines
+        an offer, nothing starts -- call consult_offer_declined instead.
 mode:
   explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
             options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.
@@ -217,13 +221,38 @@ export function createServer(manager = new JobManager()) {
   );
 
   server.registerTool(
+    'consult_offer_declined',
+    {
+      title: 'Record that an offered consultation was declined',
+      description:
+        'Call this once when you offered the user a consultation and they said no. It writes one line to '
+        + '~/.severally/history/offers.jsonl and starts nothing. An accepted offer needs no call here: pass '
+        + 'initiator: "offer_accepted" to consult_start instead. Together the two show whether offering a '
+        + 'consultation when asking for approval is working -- without this, the history only holds the offers '
+        + 'that were taken. Self-declared and never checked; it gates nothing.',
+      inputSchema: {
+        question: z.string().trim().min(1).max(4000).describe('what you would have asked, in one sentence'),
+        would_ask: z.string().trim().min(1).max(200).optional().describe('whom you offered to ask, e.g. "codex" or "codex, antigravity"'),
+        reason: z.string().trim().min(1).max(1000).optional().describe('what the user said, if they gave a reason'),
+      },
+    },
+    async ({ question, would_ask, reason }) => ok(manager.declineOffer({ question, would_ask, reason })),
+  );
+
+  server.registerTool(
     'consult_list',
     {
       title: 'List recent consultations',
-      description: 'Recent consultations from this session, newest first, with their status and one-line summary.',
+      description:
+        'Recent consultations from this session, newest first, with their status, one-line summary and who '
+        + 'asked for them (initiator), plus how many offered consultations have been declined in total.',
       inputSchema: { limit: z.number().int().min(1).max(100).optional() },
     },
-    async ({ limit }) => ok({ jobs: manager.list({ limit: limit ?? 20 }), limits: limitsSummary() }),
+    async ({ limit }) => ok({
+      jobs: manager.list({ limit: limit ?? 20 }),
+      offers_declined: manager.offersDeclined(),
+      limits: limitsSummary(),
+    }),
   );
 
   return { server, manager };

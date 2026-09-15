@@ -77,6 +77,7 @@ export function persistRound(record, { appendIndex = true } = {}) {
       chain_id: record.chain_id,
       round: record.round,
       target: record.target,
+      initiator: record.initiator ?? null,
       mode: record.mode,
       status: record.status,
       failure_kind: record.failure?.kind ?? null,
@@ -95,6 +96,26 @@ export function persistGroup(group) {
   const dir = path.join(POLICY.home, 'history', 'groups');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   fs.writeFileSync(path.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 0o600 });
+}
+
+// An offer the user turned down never becomes a consultation, so it has no
+// round file. Without a line of its own the history would only ever hold the
+// offers that were taken, and could not say whether offering is working.
+export function appendOffer(entry) {
+  const dir = path.join(POLICY.home, 'history');
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.appendFileSync(path.join(dir, 'offers.jsonl'), `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+}
+
+export function countOffers(outcome) {
+  let count = 0;
+  for (const line of readIfExists(path.join(POLICY.home, 'history', 'offers.jsonl')).split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      if (JSON.parse(line).outcome === outcome) count += 1;
+    } catch { /* a damaged line is skipped, not fatal */ }
+  }
+  return count;
 }
 
 export function cleanupJobDir(jobId) {

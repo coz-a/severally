@@ -21,7 +21,7 @@ test('exposes the three protocol tools, the lead\'s record, and a history listin
   const { client, close } = await connect();
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['consult_cancel', 'consult_export', 'consult_get', 'consult_list', 'consult_record', 'consult_start']);
+  assert.deepEqual(names, ['consult_cancel', 'consult_export', 'consult_get', 'consult_list', 'consult_offer_declined', 'consult_record', 'consult_start']);
   const record = tools.find((t) => t.name === 'consult_record');
   assert.deepEqual(
     record.inputSchema.properties.entries.items.properties.verdict.enum,

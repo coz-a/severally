@@ -88,6 +88,11 @@ security or concurrency design — and nobody else has reviewed it, offer a cons
 in a sentence: what you would ask, whom, and that it takes a few minutes and real quota. The user decides;
 do not start one on your own, and do not offer one for a change that running the existing tests would settle.
 
+Write down how it went, so the record can show whether offering is working at all. If the user takes the
+offer, pass `initiator: "offer_accepted"` in `consult_start`; when the user asked for the consultation
+themselves, pass `initiator: "user"`. If the user declines, call `consult_offer_declined({ question, would_ask })`
+once and carry on -- it starts nothing and costs nothing.
+
 ## Pick the mode deliberately
 
 | Mode | Give it | Get back |

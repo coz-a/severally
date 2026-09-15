@@ -63,6 +63,7 @@ export class JobManager {
       target: job.target,
       caller: job.caller,
       caller_model: job.caller_model ?? null,
+      initiator: job.initiator ?? null,
       mode: job.mode,
       status: job.status,
       model: job.model,
@@ -135,8 +136,28 @@ export class JobManager {
           verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
           predicted: Boolean(j.prediction),
           reflected: Boolean(j.reflection),
+          initiator: j.initiator ?? null,
         };
       });
+  }
+
+  // An offer the user said no to. Declared by the lead and never checked -- the
+  // server cannot see the conversation -- and it starts nothing: the one line
+  // it writes is what lets the history count offers that were not taken.
+  declineOffer({ question, would_ask = null, reason = null } = {}) {
+    store.appendOffer({
+      outcome: 'declined',
+      declined_at: new Date().toISOString(),
+      caller: detectCaller(),
+      question: redact(question),
+      would_ask: would_ask ? redact(would_ask) : null,
+      reason: reason ? redact(reason) : null,
+    });
+    return { recorded: true, outcome: 'declined', offers_declined: store.countOffers('declined') };
+  }
+
+  offersDeclined() {
+    return store.countOffers('declined');
   }
 
   start(rawRequest) {
@@ -216,6 +237,9 @@ export class JobManager {
         // Declared by the lead, never checked: the server cannot see what
         // model the host CLI runs. Kept so the record says who asked whom.
         caller_model: req.caller_model ?? null,
+        // Also declared by the lead: whether the user asked for this, or said
+        // yes to an offer. Nothing reads it but the record.
+        initiator: req.initiator ?? null,
         followup_to: followupTo,
         status: 'queued',
         // The model the request asked for, already checked against the
