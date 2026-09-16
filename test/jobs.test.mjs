@@ -25,7 +25,7 @@ test('codex consultation: end-to-end success path', async () => {
   assert.equal(started.target, 'codex');
   assert.equal(started.round, 1);
   assert.equal(started.model, POLICY.targets.codex.model);
-  assert.equal(started.rounds_remaining, 2);
+  assert.equal(started.rounds_remaining, 4);
 
   const view = await finish(mgr, started.job_id);
   assert.equal(view.status, 'completed');
@@ -259,20 +259,21 @@ test('cancel stops the consultant and every process it spawned', async () => {
   fs.rmSync(pidOut, { force: true });
 });
 
-test('rounds are capped at 1 initial + 2 follow-ups per chain', async () => {
+test('rounds are capped at 1 initial + 4 follow-ups per chain by default', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   const r1 = mgr.start(reviewRequest());
   await finish(mgr, r1.job_id);
-  const r2 = mgr.start(reviewRequest({ followup_to: r1.job_id }));
-  assert.equal(r2.round, 2);
-  assert.equal(r2.chain_id, r1.chain_id);
-  await finish(mgr, r2.job_id);
-  const r3 = mgr.start(reviewRequest({ followup_to: r2.job_id }));
-  assert.equal(r3.round, 3);
-  await finish(mgr, r3.job_id);
+  let last = r1;
+  for (let round = 2; round <= 5; round++) {
+    last = mgr.start(reviewRequest({ followup_to: last.job_id }));
+    assert.equal(last.round, round);
+    assert.equal(last.chain_id, r1.chain_id);
+    assert.equal(last.rounds_remaining, 5 - round);
+    assert.equal((await finish(mgr, last.job_id)).status, 'completed');
+  }
   assert.throws(
-    () => mgr.start(reviewRequest({ followup_to: r3.job_id })),
+    () => mgr.start(reviewRequest({ followup_to: last.job_id })),
     (err) => err.code === 'round_limit',
   );
 });
@@ -390,7 +391,7 @@ test('antigravity: the synthesised home is handed over as HOME and removed after
 
   const childEnvSeen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
   assert.notEqual(childEnvSeen.HOME, os.homedir(), 'the consultant must not run with the real HOME');
-  assert.match(childEnvSeen.HOME, /jobs\/.*\/home$/);
+  assert.match(childEnvSeen.HOME, /jobs[\\/].*[\\/]home$/);
   assert.equal(fs.existsSync(childEnvSeen.HOME), false, 'the sandbox must be gone once the job finished');
 });
 
@@ -478,7 +479,7 @@ test('the Antigravity consultant gets no config-redirecting variable', async () 
     assert.equal(seen.XDG_CONFIG_HOME, undefined, 'a redirected config dir must not survive');
     assert.equal(seen.AGY_CLI_HIDE_LOGO, undefined);
     assert.equal(seen.ANTIGRAVITY_EXECUTABLE_DATA_DIR, undefined);
-    assert.match(seen.HOME, /jobs\/.*\/home$/, 'HOME must still be the synthesised one');
+    assert.match(seen.HOME, /jobs[\\/].*[\\/]home$/, 'HOME must still be the synthesised one');
     assert.equal(
       seen.GOOGLE_APPLICATION_CREDENTIALS, '/tmp/adc.json',
       'an API-key/ADC credential is how some operators authenticate: it must survive',

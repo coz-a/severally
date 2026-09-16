@@ -73,6 +73,9 @@ public marketplace.
 
 ## Install
 
+Requires Node.js 20.10 or newer. Windows runs natively from PowerShell or Command Prompt;
+WSL is not required. Install and authenticate the consultant CLIs you want to use first.
+
 ```bash
 npm install                 # fetch dependencies
 npm test                    # offline checks (no real API calls)
@@ -91,12 +94,71 @@ agy    mcp list                      # severally  stdio  enabled
 **Restart the clients** (a running session does not reload plugins).
 After updating the plugin, run `npm run build && node scripts/install.mjs` again.
 
+### Windows (PowerShell)
+
+```powershell
+npm.cmd install
+npm.cmd test
+npm.cmd run build
+node scripts/install.mjs
+```
+
+On Windows the installer defaults to **manual mode** for all three clients. It copies the
+standalone server (including its dependencies) to `~/.severally/runtime/severally-mcp.mjs`,
+registers that file with the absolute path to `node.exe`, and copies each client's Skill.
+After successful registration, the source checkout can be moved or deleted. Node.js must remain
+installed. Global npm installation is unnecessary; `--skip-global` is still accepted but is optional
+on Windows. Add `--dry-run` to inspect the changes without writing anything.
+
+**Upgrading an earlier checkout-based installation:** run `node scripts/install.mjs --force`
+to switch the existing MCP registrations to the dedicated runtime. Without `--force`, existing
+registrations are preserved and may still point to the checkout. Updates replace the runtime
+after checking the new bundle's syntax and backing up the previous file. To update later, obtain
+a new checkout, run `npm.cmd install`, `npm.cmd run build`, and the installer again, then restart
+the clients. The temporary checkout is no longer needed after registration succeeds.
+
+Verify with `claude mcp get severally`, `codex mcp get severally`, and `agy mcp list`, then restart
+the clients. Tool names in this mode are `mcp__severally__*`.
+
+CLI detection supports `.exe`, `.cmd`, and `.bat` through `PATH`/`PATHEXT`, including paths with
+spaces. For a custom executable path in `config.json`, use forward slashes
+(`"bin": "C:/Tools/claude.exe"`) or escaped backslashes (`"bin": "C:\\Tools\\claude.exe"`).
+The test suite uses local stand-in CLIs; authentication and live consultations still depend on
+the installed client versions and accounts.
+
+### Linux/macOS: installation independent of the checkout
+
+After a successful installation, the source checkout can be moved or deleted on Linux and macOS too:
+
+- Claude Code receives a copy of the bundled plugin in `~/.claude/skills/severally/`.
+- The standalone server lives in `~/.severally/runtime/severally-mcp.mjs`.
+- Codex launches the global `severally-mcp` command, installed from that persistent runtime.
+  Its marketplace and plugin files are copied into `~/.severally/marketplace/`.
+- Antigravity (and all clients in `--manual` mode) launches Node.js with the copied runtime directly.
+
+To migrate an existing installation, run:
+
+```bash
+npm install
+npm run build
+node scripts/install.mjs --force
+```
+
+This refreshes the Codex marketplace location and switches existing direct MCP registrations to the
+copied runtime. Restart the clients after registration succeeds; the checkout is then disposable.
+Node.js and the installed runtime must remain. For updates, obtain a fresh checkout and run the same
+commands. Previous runtime and marketplace files are backed up under `~/.severally/backups/`.
+
+Plugin mode requires npm's global executable directory on `PATH`. `--skip-global` is accepted only
+when `severally-mcp` already resolves to the copied runtime; a command linked to an old checkout is
+rejected. In `--manual` mode no global install is needed and `--skip-global` is optional.
+
 ### Two install modes
 
-| | Plugin mode (default) | Manual mode (`--manual`) |
+| | Plugin mode (default on macOS/Linux) | Manual mode (`--manual`, default on Windows) |
 |---|---|---|
 | Claude Code | places the plugin in `~/.claude/skills/severally/` (`severally@skills-dir`) | `claude mcp add --scope user` + copy the Skill on its own |
-| Codex | `codex plugin add` from the in-repo marketplace | `codex mcp add` + copy the Skill on its own |
+| Codex | `codex plugin add` from the copied marketplace | `codex mcp add` + copy the Skill on its own |
 | Antigravity | `agy mcp add` + copy the Skill on its own (there is no plugin route, so both modes are the same) | same |
 | MCP tool names | `mcp__plugin_severally_severally__*` | `mcp__severally__*` |
 
@@ -106,7 +168,7 @@ existing Skill directory to `~/.severally/backups/<timestamp>/`, naming each bac
 Switching modes backs up and then removes the duplicate registration left by the other mode.
 
 No public marketplace listing is needed. Claude Code works without a marketplace, and the Codex marketplace file
-`.agents/plugins/marketplace.json` is a local file in this repository.
+`.agents/plugins/marketplace.json` is copied from this repository into the managed marketplace directory.
 
 ## Usage
 
@@ -154,6 +216,14 @@ changing it.
 
 ## Before you use it
 
+### Consultation round limit
+
+A consultation chain defaults to **5 total rounds** (one initial consultation and up to four follow-ups).
+Set `SEVERALLY_MAX_ROUNDS` in the MCP server's environment to change the limit to **1–20 total rounds**;
+values above 20 are capped at 20. For example, `SEVERALLY_MAX_ROUNDS=20` allows the initial consultation
+plus 19 follow-ups. Restart the client/server after changing this setting. This is an environment setting,
+not a key in `config.json`. The server reports the active budget in `rounds_remaining`.
+
 **What never reaches a consultant**: your conversation history. **What no consultant can do**:
 
 - write
@@ -188,6 +258,24 @@ Paste whatever it should see into the brief.
 
 ## Uninstall
 
+Windows (the default manual installation):
+
+```powershell
+claude mcp remove severally -s user
+codex mcp remove severally
+agy mcp remove severally
+Remove-Item -LiteralPath "$HOME/.claude/skills/severally" -Recurse -Force
+Remove-Item -LiteralPath "$HOME/.codex/skills/severally" -Recurse -Force
+Remove-Item -LiteralPath "$HOME/.gemini/config/skills/severally" -Recurse -Force
+Remove-Item -LiteralPath "$HOME/.severally/runtime" -Recurse -Force
+# Only if you previously installed the global command:
+npm.cmd uninstall -g severally-mcp
+```
+
+If `CODEX_HOME` is set, use that directory instead of `$HOME/.codex` for the Codex Skill.
+
+macOS/Linux:
+
 Plugin mode:
 
 ```bash
@@ -197,6 +285,7 @@ codex plugin marketplace remove severally-local
 agy   mcp remove severally                              # Antigravity (registered directly in both modes)
 rm -rf ~/.gemini/config/skills/severally
 npm uninstall -g severally-mcp
+rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```
 
 Manual mode:
@@ -206,7 +295,9 @@ claude mcp remove severally -s user
 codex  mcp remove severally
 agy    mcp remove severally
 rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/skills/severally
+# Only if a global command was previously installed:
 npm uninstall -g severally-mcp
+rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```
 
 Either way, history and backups stay in `~/.severally/` (delete it if you no longer need them).

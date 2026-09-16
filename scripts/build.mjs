@@ -127,6 +127,7 @@ export async function bundle() {
     bundle: true,
     platform: 'node',
     format: 'esm',
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
     target: 'node20',
     minify: false, // keep it auditable: this file runs with the user's credentials
     logLevel: 'info',
@@ -134,7 +135,8 @@ export async function bundle() {
   });
   fs.chmodSync(outfile, 0o755);
   const bytes = fs.statSync(outfile).size;
-  const inputs = Object.keys(result.metafile.outputs[path.relative(process.cwd(), outfile)]?.inputs ?? {}).length;
+  const outputKey = path.relative(process.cwd(), outfile).split(path.sep).join('/');
+  const inputs = Object.keys(result.metafile.outputs[outputKey]?.inputs ?? {}).length;
   console.log(`\nbundled ${inputs} modules -> ${outfile} (${(bytes / 1024).toFixed(0)} KB)`);
 }
 

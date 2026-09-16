@@ -39,15 +39,20 @@ test('the synthesised home loads no MCP servers and denies every write path', ()
   }
 
   assert.equal(sandbox.env.HOME, sandbox.root);
-  assert.equal((fs.statSync(sandbox.root).mode & 0o777), 0o700);
+  // Windows uses ACLs and cannot represent Unix owner-only mode bits.
+  if (process.platform !== 'win32') assert.equal((fs.statSync(sandbox.root).mode & 0o777), 0o700);
   sandbox.cleanup();
 });
 
-test('the credential is linked, not copied, so a refreshed token is not stranded', () => {
+test('the credential is linked when permitted, with a copy fallback', () => {
   const sandbox = prepareSandbox({ workdir: makeWorkdir() });
   const link = path.join(sandbox.root, '.gemini', 'antigravity-cli', 'antigravity-oauth-token');
-  assert.equal(sandbox.credentials, 'symlink');
-  assert.equal(fs.realpathSync(link), fs.realpathSync(path.join(realTokenDir, 'antigravity-oauth-token')));
+  if (sandbox.credentials === 'symlink') {
+    assert.equal(fs.realpathSync(link), fs.realpathSync(path.join(realTokenDir, 'antigravity-oauth-token')));
+  } else {
+    assert.equal(sandbox.credentials, 'copy');
+    assert.equal(fs.lstatSync(link).isSymbolicLink(), false);
+  }
   assert.equal(fs.readFileSync(link, 'utf8'), 'token-v1');
   sandbox.cleanup();
 });

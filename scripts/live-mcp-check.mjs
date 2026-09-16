@@ -78,7 +78,14 @@ await client.close();
 
 function countClaudeChildren() {
   try {
-    const out = execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
+    const out = process.platform === 'win32'
+      ? execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        'Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine'],
+      { encoding: 'utf8', windowsHide: true })
+      : execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
     return out.split('\n').filter((l) => l.includes('--no-session-persistence') && l.includes('--restricted')).length;
-  } catch { return 0; }
+  } catch (error) {
+    console.warn(`Could not inspect consultant processes: ${error.message}`);
+    return null;
+  }
 }

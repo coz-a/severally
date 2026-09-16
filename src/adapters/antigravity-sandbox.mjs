@@ -80,7 +80,16 @@ export function prepareSandbox({ workdir }) {
     // "missing"` can say where it looked instead of leaving the operator to
     // guess which HOME severally read.
     credentialsSource: source,
-    env: { HOME: root },
+    env: {
+      HOME: root,
+      ...(process.platform === 'win32' ? {
+        USERPROFILE: root,
+        HOMEDRIVE: path.parse(root).root.replace(/[\\/]$/, ''),
+        HOMEPATH: root.slice(path.parse(root).root.length - 1),
+        APPDATA: path.join(root, 'AppData', 'Roaming'),
+        LOCALAPPDATA: path.join(root, 'AppData', 'Local'),
+      } : {}),
+    },
     cleanup() {
       try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* best effort */ }
     },

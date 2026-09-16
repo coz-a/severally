@@ -288,8 +288,10 @@ that need other people; say so, and hand the list back unrun rather than inventi
 
 ## Follow-ups
 
-You get one initial round plus at most two follow-ups per chain (`followup_to: "<previous job_id>"`). Spend
-them only where you and the consultant actually diverge: quote the specific point, give the evidence that
+By default, you get five rounds per chain: one initial round plus up to four follow-ups
+(`followup_to: "<previous job_id>"`). The operator can configure 1–20 total rounds with
+`SEVERALLY_MAX_ROUNDS`; use the server's reported `rounds_remaining` for the active budget. Spend
+follow-ups only where you and the consultant actually diverge: quote the specific point, give the evidence that
 answers it, and ask what would change their view. Stop as soon as no new evidence and no judgement-changing
 argument is arriving — an early stop is a good outcome, not a missed one.
 

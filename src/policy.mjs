@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseJsonc } from './jsonc.mjs';
+import { findCommand } from './platform.mjs';
 
 // One file, read once at start, so an operator configures a machine in a
 // single place instead of editing each client's MCP registration. Precedence
@@ -46,16 +47,7 @@ const cfgTarget = (id) => (CONFIG.targets && typeof CONFIG.targets === 'object' 
  * going through POLICY, which already reflects any config file it found.
  */
 export function isInstalled(command) {
-  if (typeof command !== 'string' || command === '') return false;
-  if (command.includes('/')) return fs.existsSync(command);
-  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
-    if (!dir) continue;
-    try {
-      fs.accessSync(path.join(dir, command), fs.constants.X_OK);
-      return true;
-    } catch { /* not here */ }
-  }
-  return false;
+  return findCommand(command) !== null;
 }
 
 const num = (name, dflt, min, max) => {
@@ -196,7 +188,7 @@ const list = (name) => {
 function expandHome(value) {
   if (typeof value !== 'string') return value;
   if (value === '~') return os.homedir();
-  return value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value;
+  return /^~[\\/]/.test(value) ? path.join(os.homedir(), value.slice(2)) : value;
 }
 
 // env > config file > built-in default, for one target-scoped knob.
@@ -291,8 +283,8 @@ export const POLICY = Object.freeze({
 
   // Grace period between SIGTERM and SIGKILL of the child process group.
   killGraceMs: num('SEVERALLY_KILL_GRACE_MS', 5_000, 500, 60_000),
-  // 1 initial round + 2 follow-ups.
-  maxRounds: num('SEVERALLY_MAX_ROUNDS', 3, 1, 5),
+  // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
+  maxRounds: num('SEVERALLY_MAX_ROUNDS', 5, 1, 20),
   maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 3, 1, 4),
   maxJobsRetained: num('SEVERALLY_MAX_JOBS_RETAINED', 200, 20, 2000),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default

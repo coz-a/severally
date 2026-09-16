@@ -4,18 +4,22 @@
 // Two modes:
 //   plugin (default) - installs plugins/severally as a plugin in Claude Code
 //                      (~/.claude/skills/severally, skills-dir plugin, no
-//                      marketplace) and in Codex (repo-local marketplace in
-//                      .agents/plugins). Antigravity has no verified
+//                      marketplace) and in Codex (a copied local marketplace
+//                      under ~/.severally/marketplace). Antigravity has no verified
 //                      plugin-install path yet, so it is registered directly
 //                      in both modes: `agy mcp add` plus a skill copy, same
 //                      as --manual mode below.
-//   --manual         - register the MCP server with each client's own `mcp
+//   --manual         - (default on Windows) register the MCP server with each client's own `mcp
 //                      add` (`agy mcp add` for Antigravity) and copy each
 //                      client's skill by hand.
 //
-// Either way the global npm install happens: Codex can only launch a plugin MCP
+// In plugin mode the global npm install happens unless --skip-global is set:
+// Codex can only launch a plugin MCP
 // server by bare executable name from PATH (verified: contained "./" paths and
 // ${PLUGIN_ROOT} substitution do not work in codex 0.153.4).
+// All platforms copy the bundle into ~/.severally/runtime. Plugin mode also
+// copies its marketplace into ~/.severally/marketplace; no installed path
+// points back to this checkout.
 //
 // Existing configuration is preserved: client config is changed through each
 // client's own CLI rather than hand-edited, and every file this touches is
@@ -23,7 +27,7 @@
 //
 //   node scripts/install.mjs [--dry-run] [--manual] [--skip-global] [--force]
 
-import { execFileSync } from 'node:child_process';
+import { execCommandSync, findCommand } from '../src/platform.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,11 +39,14 @@ const argv = new Set(process.argv.slice(2));
 const dryRun = argv.has('--dry-run');
 const skipGlobal = argv.has('--skip-global');
 const force = argv.has('--force');
-const mode = argv.has('--manual') ? 'manual' : 'plugin';
+// Native Windows clients cannot all launch npm .cmd shims as MCP servers.
+// Direct registration uses node.exe plus an absolute script path instead.
+const mode = argv.has('--manual') || process.platform === 'win32' ? 'manual' : 'plugin';
 
 const home = os.homedir();
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const backupDir = path.join(home, '.severally', 'backups', stamp);
+let keptRegistrations = false;
 
 const log = (...a) => console.log(...a);
 const step = (s) => log(`\n== ${s}`);
@@ -50,7 +57,7 @@ function run(cmd, args, opts = {}) {
     log(`   [dry-run] ${cmd} ${args.join(' ')}`);
     return '';
   }
-  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...spawnOpts });
+  return execCommandSync(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...spawnOpts });
 }
 
 function tryRun(cmd, args, opts) {
@@ -76,6 +83,9 @@ function backup(file) {
   if (dryRun) { log(`   [dry-run] backup ${file}`); return null; }
   fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
   const dest = path.join(backupDir, backupName(file));
+  // Several client operations can touch the same config in one install.
+  // Keep the first snapshot, before any of those operations changed it.
+  if (fs.existsSync(dest)) return dest;
   fs.copyFileSync(file, dest);
   return dest;
 }
@@ -91,32 +101,101 @@ function backupTree(dir) {
 
 // Read-only probes run even under --dry-run, so the plan it prints is accurate.
 function which(bin) {
-  const r = tryRun('sh', ['-c', `command -v ${bin}`], { real: true });
-  return r.ok ? r.out.trim() : null;
+  return findCommand(bin);
 }
 
-// ---------------------------------------------------------------- global install
-step(`Installing the MCP server globally (mode: ${mode})`);
-let serverBin = which('severally-mcp');
-if (skipGlobal) {
-  log('   --skip-global: leaving the global install alone');
-} else {
-  const r = tryRun('npm', ['install', '-g', root], { cwd: root });
-  if (!r.ok) {
-    log(`   npm install -g failed:\n${r.out}`);
-    process.exitCode = 1;
-  } else {
-    log('   npm install -g ok');
-    if (which('nodenv')) tryRun('nodenv', ['rehash']);
-    serverBin = which('severally-mcp') ?? serverBin;
+// ---------------------------------------------------------------- server install
+function installRuntime() {
+  const source = path.join(PLUGIN, 'dist', 'severally-mcp.mjs');
+  const installed = path.join(home, '.severally', 'runtime', 'severally-mcp.mjs');
+  if (!fs.existsSync(source)) throw new Error(`Missing server bundle: ${source}. Run npm run build first.`);
+  if (dryRun) {
+    backup(installed);
+    log(`   [dry-run] copy ${source} -> ${installed}`);
+    return installed;
   }
+  fs.mkdirSync(path.dirname(installed), { recursive: true });
+  // Validate a staged copy before replacing the working runtime. The bundle
+  // contains its dependencies, so it needs neither the checkout nor npm.
+  const stagedDir = fs.mkdtempSync(path.join(path.dirname(installed), '.install-'));
+  const staged = path.join(stagedDir, 'severally-mcp.mjs');
+  try {
+    fs.copyFileSync(source, staged);
+    run(process.execPath, ['--check', staged], { real: true });
+    backup(installed);
+    fs.renameSync(staged, installed);
+  } finally {
+    fs.rmSync(stagedDir, { recursive: true, force: true });
+  }
+  log(`   installed: ${installed}`);
+  return installed;
 }
-if (!serverBin) {
-  // Fall back to the checkout so registration still points at something runnable.
-  serverBin = path.join(root, 'bin', 'severally-mcp.mjs');
-  log(`   ${dryRun ? 'note' : 'WARNING'}: severally-mcp is not on PATH; registering ${serverBin} instead`);
+
+step(`Installing the standalone MCP server (mode: ${mode})`);
+const serverCommand = [process.execPath, installRuntime()];
+const runtimeDir = path.dirname(serverCommand[1]);
+const marketplaceRoot = path.join(home, '.severally', 'marketplace');
+
+if (mode === 'plugin') {
+  // npm may symlink a directory install. Its source must therefore be the
+  // persistent runtime, never the user's disposable checkout.
+  const packageFile = path.join(runtimeDir, 'package.json');
+  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  if (!dryRun) {
+    backup(packageFile);
+    fs.writeFileSync(packageFile, `${JSON.stringify({ name: metadata.name, version: metadata.version,
+      type: 'module', bin: { 'severally-mcp': 'severally-mcp.mjs' } }, null, 2)}\n`);
+    fs.chmodSync(serverCommand[1], 0o755);
+  }
+  if (skipGlobal) {
+    const existing = which('severally-mcp');
+    if (!dryRun && (!existing || fs.realpathSync(existing) !== fs.realpathSync(serverCommand[1]))) {
+      throw new Error('--skip-global requires severally-mcp on PATH to point to the installed runtime. Omit --skip-global or use --manual.');
+    }
+    log('   --skip-global: using the existing runtime command');
+  } else {
+    run('npm', ['install', '-g', runtimeDir, '--install-links=false'], { cwd: dryRun ? root : runtimeDir });
+    if (which('nodenv')) tryRun('nodenv', ['rehash']);
+    if (!dryRun) {
+      const installedCommand = which('severally-mcp');
+      if (!installedCommand || fs.realpathSync(installedCommand) !== fs.realpathSync(serverCommand[1])) {
+        throw new Error('The installed severally-mcp runtime command is not first on PATH. Fix PATH and rerun, or use --manual.');
+      }
+    }
+  }
+  if (dryRun) {
+    backupTree(marketplaceRoot);
+    log(`   [dry-run] copy plugin and marketplace -> ${marketplaceRoot}`);
+  } else {
+    // Replace the complete owned tree: merging would retain hooks or skills
+    // removed in a newer release. Keep the old tree until the new one lands.
+    const staging = fs.mkdtempSync(path.join(home, '.severally', '.marketplace-'));
+    const next = path.join(staging, 'next');
+    const previous = path.join(staging, 'previous');
+    let installed = false;
+    try {
+      fs.mkdirSync(path.join(next, '.agents', 'plugins'), { recursive: true });
+      fs.cpSync(PLUGIN, path.join(next, 'plugins', 'severally'), { recursive: true });
+      fs.copyFileSync(path.join(root, '.agents', 'plugins', 'marketplace.json'),
+        path.join(next, '.agents', 'plugins', 'marketplace.json'));
+      backupTree(marketplaceRoot);
+      if (fs.existsSync(marketplaceRoot)) fs.renameSync(marketplaceRoot, previous);
+      try {
+        fs.renameSync(next, marketplaceRoot);
+      } catch (error) {
+        if (fs.existsSync(previous)) fs.renameSync(previous, marketplaceRoot);
+        throw error;
+      }
+      installed = true;
+    } finally {
+      if (installed || !fs.existsSync(previous)) fs.rmSync(staging, { recursive: true, force: true });
+      else log(`   Previous marketplace preserved for recovery: ${previous}`);
+    }
+  }
+} else {
+  log('   Global npm installation is not needed in manual mode (--skip-global is optional).');
 }
-log(`   server command: ${serverBin}`);
+log(`   server command: ${JSON.stringify(serverCommand)}`);
 
 const codexHome = process.env.CODEX_HOME ?? path.join(home, '.codex');
 const claudeSkillsDir = path.join(home, '.claude', 'skills');
@@ -136,7 +215,7 @@ const CLIENTS = [
     // `claude mcp get` exits non-zero when the server is not registered.
     isRegistered: () => tryRun('claude', ['mcp', 'get', 'severally'], { real: true }).ok,
     remove: () => tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'severally']),
-    add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'severally', '--', bin]),
+    add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'severally', '--', ...bin]),
     skillFrom: path.join(PLUGIN, 'skills', 'claude', 'severally'),
     skillTo: path.join(claudeSkillsDir, 'severally'),
   },
@@ -146,7 +225,7 @@ const CLIENTS = [
     backup: [path.join(codexHome, 'config.toml')],
     isRegistered: () => tryRun('codex', ['mcp', 'get', 'severally'], { real: true }).ok,
     remove: () => tryRun('codex', ['mcp', 'remove', 'severally']),
-    add: (bin) => tryRun('codex', ['mcp', 'add', 'severally', '--', bin]),
+    add: (bin) => tryRun('codex', ['mcp', 'add', 'severally', '--', ...bin]),
     skillFrom: path.join(PLUGIN, 'skills', 'codex', 'severally'),
     skillTo: path.join(codexHome, 'skills', 'severally'),
   },
@@ -163,7 +242,7 @@ const CLIENTS = [
       return r.ok && /severally/.test(r.out);
     },
     remove: () => tryRun('agy', ['mcp', 'remove', 'severally']),
-    add: (bin) => tryRun('agy', ['mcp', 'add', 'severally', bin]),
+    add: (bin) => tryRun('agy', ['mcp', 'add', 'severally', ...bin]),
     skillFrom: path.join(PLUGIN, 'skills', 'antigravity', 'severally'),
     skillTo: path.join(home, '.gemini', 'config', 'skills', 'severally'),
   },
@@ -181,6 +260,7 @@ function installClientDirectly(client, bin) {
   }
   for (const f of client.backup) backup(f);
   if (client.isRegistered() && !force) {
+    keptRegistrations = true;
     log('   already registered; leaving it as it is (use --force to re-register)');
   } else {
     if (client.isRegistered()) client.remove();
@@ -223,20 +303,22 @@ if (mode === 'plugin') {
     }
   }
 
-  step('Installing the plugin into Codex (repo-local marketplace)');
+  step('Installing the plugin into Codex (managed local marketplace)');
   if (!which('codex')) {
     log('   codex CLI not found on PATH — skipped');
   } else {
     backup(path.join(codexHome, 'config.toml'));
     const marketplace = 'severally-local';
     const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
-    if (!known.out.includes(marketplace)) {
-      const r = tryRun('codex', ['plugin', 'marketplace', 'add', root]);
-      log(r.ok ? `   marketplace added: ${marketplace} -> ${root}` : `   marketplace add failed: ${r.out}`);
-    } else {
-      log(`   marketplace ${marketplace} already configured`);
+    if (!known.ok) throw new Error(`Could not inspect Codex marketplaces: ${known.out}`);
+    // Refresh our own registration even when already present: older installs
+    // registered the checkout here. Reusing it would retain that dependency.
+    if (known.out.includes(marketplace)) {
+      tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', marketplace]);
+      run('codex', ['plugin', 'marketplace', 'remove', marketplace]);
     }
-    tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', marketplace]);
+    run('codex', ['plugin', 'marketplace', 'add', marketplaceRoot]);
+    log(`   marketplace added: ${marketplace} -> ${marketplaceRoot}`);
     const r = tryRun('codex', ['plugin', 'add', `severally@${marketplace}`]);
     log(r.ok ? '   plugin installed' : `   plugin install failed: ${r.out}`);
     if (!r.ok) process.exitCode = 1;
@@ -259,21 +341,35 @@ if (mode === 'plugin') {
   // directly here too -- the same `mcp add` + skill copy that --manual mode
   // uses for every client.
   log('\nAntigravity has no verified plugin-install path yet; registering it directly.');
-  installClientDirectly(antigravityClient, serverBin);
+  installClientDirectly(antigravityClient, serverCommand);
 } else {
   // ------------------------------------------------------------- manual mode
-  for (const client of CLIENTS) installClientDirectly(client, serverBin);
+  // A previous plugin installation would otherwise retain its old checkout
+  // marketplace alongside the new direct server registration.
+  if (which('codex')) {
+    const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
+    if (known.ok && known.out.includes('severally-local')) {
+      backup(path.join(codexHome, 'config.toml'));
+      tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', 'severally-local']);
+      run('codex', ['plugin', 'marketplace', 'remove', 'severally-local']);
+    }
+  }
+  for (const client of CLIENTS) installClientDirectly(client, serverCommand);
 }
 
 // ---------------------------------------------------------------- summary
 step('Done');
 if (fs.existsSync(backupDir)) log(`   backups: ${backupDir}`);
+if (keptRegistrations) {
+  log('   Existing MCP registrations were kept. Rerun with --force before deleting the source checkout.');
+} else if (!dryRun && !process.exitCode) {
+  log('   The registered server and skills no longer depend on the source checkout.');
+}
 log(mode === 'plugin' ? `
 Verify with:
   claude plugin details severally
   codex  plugin list
   agy    mcp list
-  node ${path.join(root, 'scripts', 'live-check.mjs')} --target claude-code
 
 Restart any running client session to pick the plugin up. In Claude Code the tools then appear as
 mcp__plugin_severally_severally__consult_start / _get / _cancel / _list.
@@ -284,7 +380,6 @@ Verify with:
   claude mcp get severally
   codex  mcp get severally
   agy    mcp list
-  node ${path.join(root, 'scripts', 'live-check.mjs')} --target antigravity
 
 In a new Claude Code session the tools appear as mcp__severally__consult_start / _get / _cancel / _list.
 Restart any running client session to pick the server up.`);

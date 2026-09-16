@@ -1,7 +1,8 @@
 // Child-process plumbing: sanitised environment, own process group, hard
 // wall-clock timeout, cancellation, and output caps.
 
-import { spawn } from 'node:child_process';
+import { spawnCommand as spawn } from './platform.mjs';
+import path from 'node:path';
 import { POLICY } from './policy.mjs';
 
 const DROP_EXACT = new Set([
@@ -73,9 +74,10 @@ export function childEnv(target, extra = {}) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
-    if (dropExact.has(k)) continue;
-    if (dropPrefixes.some((p) => k.startsWith(p))) continue;
-    env[k] = v;
+    const key = process.platform === 'win32' ? k.toUpperCase() : k;
+    if (dropExact.has(key)) continue;
+    if (dropPrefixes.some((p) => key.startsWith(p))) continue;
+    env[key] = v;
   }
   env.SEVERALLY_ACTIVE = '1';
   env.SEVERALLY_ROLE = 'consultant';
@@ -98,6 +100,16 @@ export class ProcHandle {
     this.killed = true;
     const pid = this.child.pid;
     if (!pid) return;
+    if (process.platform === 'win32') {
+      // Negative PIDs/process groups are POSIX-only. Kill the Windows tree
+      // before its parent exits and its descendants become unreachable.
+      const killer = spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+        ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+      const fallback = () => { try { this.child.kill('SIGKILL'); } catch { /* gone */ } };
+      killer.on('error', fallback);
+      killer.on('exit', (code) => { if (code !== 0) fallback(); });
+      return;
+    }
     try { process.kill(-pid, signal); } catch { try { this.child.kill(signal); } catch { /* gone */ } }
     setTimeout(() => {
       try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ }
@@ -112,7 +124,8 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
   const child = spawn(command, args, {
     cwd,
     env,
-    detached: true, // own process group => descendants die with it
+    detached: process.platform !== 'win32', // POSIX process group; Windows uses taskkill /T
+    windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const cap = POLICY.output.rawCaptureMax;

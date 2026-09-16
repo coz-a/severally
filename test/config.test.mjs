@@ -11,6 +11,15 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 // import, exactly as the running server does.
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'severally-cfg-'));
 
+test('round budget defaults to five and can be configured up to twenty', async () => {
+  for (const [value, expected] of [[undefined, 5], ['20', 20], ['99', 20], ['0', 1], ['invalid', 5]]) {
+    const env = value === undefined ? {} : { SEVERALLY_MAX_ROUNDS: value };
+    const policy = await loadPolicy(env, `rounds-${value}`);
+    assert.equal(policy.POLICY.maxRounds, expected, `round setting ${value}`);
+    assert.equal(policy.limitsSummary().max_rounds_per_chain, expected);
+  }
+});
+
 function writeConfig(body) {
   const dir = tmp();
   const file = path.join(dir, 'config.json');
