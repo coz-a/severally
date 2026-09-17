@@ -5,6 +5,12 @@ import spawn from 'cross-spawn';
 import escape from 'cross-spawn/lib/util/escape.js';
 import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from 'node:child_process';
 
+export function copyTree(source, destination) {
+  // Node 22.23.2's native cpSync fast path corrupts non-ASCII Windows paths.
+  // A filter selects its JS traversal, preserving Japanese directory names.
+  fs.cpSync(source, destination, { recursive: true, filter: () => true });
+}
+
 function batchInvocation(command, args, options) {
   if (process.platform !== 'win32') return null;
   const resolved = findCommand(command, options);

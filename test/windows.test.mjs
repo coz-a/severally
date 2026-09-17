@@ -13,7 +13,7 @@ sandboxEnv();
 const { isInstalled } = await import('../src/policy.mjs');
 const { runChild, childEnv } = await import('../src/run.mjs');
 const { prepareSandbox } = await import('../src/adapters/antigravity-sandbox.mjs');
-const { execCommandSync, findCommand } = await import('../src/platform.mjs');
+const { copyTree, execCommandSync, findCommand } = await import('../src/platform.mjs');
 const windows = process.platform === 'win32';
 
 test('Windows detects a CLI through PATHEXT and a backslash path', { skip: !windows }, (t) => {
@@ -88,10 +88,10 @@ function installerFixture(t) {
   for (const relative of ['scripts/install.mjs', 'src/platform.mjs', 'plugins/severally']) {
     const dest = path.join(checkout, relative);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.cpSync(path.join(root, relative), dest, { recursive: true });
+    copyTree(path.join(root, relative), dest);
   }
   for (const dependency of ['cross-spawn', 'which', 'path-key', 'shebang-command', 'shebang-regex', 'isexe']) {
-    fs.cpSync(path.join(root, 'node_modules', dependency), path.join(checkout, 'node_modules', dependency), { recursive: true });
+    copyTree(path.join(root, 'node_modules', dependency), path.join(checkout, 'node_modules', dependency));
   }
   const env = { ...childEnv('codex'), PATH: dir, HOME: dir, USERPROFILE: dir,
     CODEX_HOME: path.join(dir, '.codex'), INSTALL_TEST_LOG: log,

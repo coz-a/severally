@@ -27,7 +27,7 @@
 //
 //   node scripts/install.mjs [--dry-run] [--manual] [--skip-global] [--force]
 
-import { execCommandSync, findCommand } from '../src/platform.mjs';
+import { copyTree, execCommandSync, findCommand } from '../src/platform.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -95,7 +95,7 @@ function backupTree(dir) {
   if (dryRun) { log(`   [dry-run] backup ${dir}`); return null; }
   fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
   const dest = path.join(backupDir, backupName(dir));
-  fs.cpSync(dir, dest, { recursive: true });
+  copyTree(dir, dest);
   return dest;
 }
 
@@ -175,7 +175,7 @@ if (mode === 'plugin') {
     let installed = false;
     try {
       fs.mkdirSync(path.join(next, '.agents', 'plugins'), { recursive: true });
-      fs.cpSync(PLUGIN, path.join(next, 'plugins', 'severally'), { recursive: true });
+      copyTree(PLUGIN, path.join(next, 'plugins', 'severally'));
       fs.copyFileSync(path.join(root, '.agents', 'plugins', 'marketplace.json'),
         path.join(next, '.agents', 'plugins', 'marketplace.json'));
       backupTree(marketplaceRoot);
@@ -275,7 +275,7 @@ function installClientDirectly(client, bin) {
   if (saved) log(`   backed up the existing ${client.label} skill to ${saved}`);
   if (dryRun) { log(`   [dry-run] copy ${client.skillFrom} -> ${client.skillTo}`); return; }
   fs.rmSync(client.skillTo, { recursive: true, force: true });
-  fs.cpSync(client.skillFrom, client.skillTo, { recursive: true });
+  copyTree(client.skillFrom, client.skillTo);
   log(`   skill: ${client.skillTo}`);
 }
 
@@ -290,7 +290,7 @@ if (mode === 'plugin') {
   } else {
     fs.mkdirSync(claudeSkillsDir, { recursive: true });
     fs.rmSync(target, { recursive: true, force: true });
-    fs.cpSync(PLUGIN, target, { recursive: true });
+    copyTree(PLUGIN, target);
     log(`   installed: ${target} (loads as severally@skills-dir)`);
   }
   // A user-scope MCP registration would duplicate the one the plugin provides.
