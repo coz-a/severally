@@ -79,7 +79,7 @@ test('POSIX plugin installation survives checkout deletion, including npm comman
   const manifest = JSON.parse(fs.readFileSync(path.join(marketplace, '.agents', 'plugins', 'marketplace.json'), 'utf8'));
   assert.ok(fs.existsSync(path.resolve(marketplace, manifest.plugins[0].source.path, 'dist', 'severally-mcp.mjs')));
   const command = path.join(f.dir, 'prefix', 'bin', 'severally-mcp');
-  assert.equal(fs.realpathSync(command), runtime);
+  assert.equal(fs.realpathSync(command), fs.realpathSync(runtime));
   f.install('--force', '--skip-global');
   fs.rmSync(f.checkout, { recursive: true, force: true });
   const client = new Client({ name: 'posix-installed-test', version: '1' });

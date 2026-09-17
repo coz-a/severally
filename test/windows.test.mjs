@@ -64,7 +64,8 @@ test('Windows resolves wrappers and relative PATH entries in the requested cwd',
 });
 
 function installerFixture(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-install 日本語 '));
+  // Resolve Windows short-name temp paths before recursively copying files.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-install 日本語 ')));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const log = path.join(dir, 'calls.jsonl');
   const fake = `import fs from 'node:fs';
