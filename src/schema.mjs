@@ -3,6 +3,7 @@
 // mode-specific protocol rule is enforced here rather than in the prompt.
 
 import { z } from 'zod';
+import path from 'node:path';
 import {
   POLICY, TARGETS, TARGET_INPUTS, MODES, STANCES, artifactKinds,
   resolveTarget, resolveModel, availableTargets, unavailableReason, normalizeTargetInput, normalizeTargetSpec, splitTargetSpec,
@@ -22,12 +23,24 @@ export const artifactSchema = z
   })
   .strict();
 
+// An absolute path on the machine this server runs on. Relative is refused
+// rather than resolved: relative-to-what has no answer once the value has
+// crossed from the lead's process into this one. Whether it exists is
+// settled later, by the walk that has to stat it anyway.
+const exposedPathSchema = z
+  .string()
+  .trim()
+  .min(1, 'context.expose_paths[] must not be empty')
+  .max(1_000, 'context.expose_paths[] exceeds 1000 characters')
+  .refine((p) => path.isAbsolute(p), { message: 'context.expose_paths[] must be an absolute path' });
+
 export const contextSchema = z
   .object({
     facts: z.array(trimmed(L.factMax, 'context.facts[]')).max(L.factsMax).default([]),
     proposal: z.string().trim().max(L.proposalMax).nullish(),
     counterpoints: z.array(trimmed(L.counterpointMax, 'context.counterpoints[]')).max(L.counterpointsMax).default([]),
     artifacts: z.array(artifactSchema).max(L.artifactsMax).default([]),
+    expose_paths: z.array(exposedPathSchema).max(L.exposePathsMax).default([]),
   })
   .strict();
 
@@ -275,9 +288,9 @@ export function parseRequest(raw, { isFollowup = false } = {}) {
       'counterpoints_required',
     );
   }
-  if (req.context.facts.length === 0 && req.context.artifacts.length === 0) {
+  if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0) {
     throw new RequestError(
-      'provide at least one entry in context.facts or context.artifacts: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request',
+      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request',
       'context_required',
     );
   }

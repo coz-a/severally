@@ -305,6 +305,13 @@ export const POLICY = Object.freeze({
     artifactsMax: 10,
     artifactExcerptMax: 20_000,
     artifactNameMax: 200,
+    // expose_paths: how many paths a lead may name, and what the copy of
+    // them may add up to. Fixed like every other input cap -- a consultant
+    // that can be pointed at more of the disk by configuration is a
+    // different consultant, not a tuned one.
+    exposePathsMax: 20,
+    exposeFilesMax: 500,
+    exposeBytesMax: 5_000_000,
     totalCharsMax: 120_000,
   }),
 
@@ -392,7 +399,9 @@ export function limitsSummary() {
     // read-only rather than execution-free, so do not advertise "no execution".
     consultant_permissions:
       'web search/browse and reading local files allowed, but the consultant starts in an empty working ' +
-      'directory and is not told where your repository is; file edits, network access, MCP tools and ' +
-      'further consultations denied; the Codex consultant additionally has a read-only shell',
+      'directory and is not told where your repository is -- unless context.expose_paths names files or ' +
+      'directories, which are copied read-only into that working directory and are then the only part of ' +
+      'your repository it has; file edits, network access, MCP tools and further consultations denied; the ' +
+      'Codex consultant additionally has a read-only shell',
   };
 }

@@ -205,3 +205,41 @@ test('caller_model must be a single printable line', () => {
   rejects(reviewRequest({ caller_model: 'claude-‮opus-5' }), 'invalid_request');
   assert.equal(parseRequest(reviewRequest({ caller_model: 'Claude Opus 5' })).caller_model, 'Claude Opus 5');
 });
+
+// expose_paths is how a lead says "explore these, rather than only what I
+// pasted". The shape checks live here; whether the paths exist is settled by
+// the walk in expose-paths.mjs, which has to stat them anyway.
+test('expose_paths accepts absolute paths and refuses relative ones', () => {
+  const abs = process.platform === 'win32' ? 'C:\\repo\\src\\index.mjs' : '/repo/src/index.mjs';
+  const req = parseRequest(reviewRequest({
+    context: { facts: ['f'], proposal: 'p', expose_paths: [abs] },
+  }));
+  assert.deepEqual(req.context.expose_paths, [abs]);
+  rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: ['src/index.mjs'] } }), 'invalid_request');
+  rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: ['   '] } }), 'invalid_request');
+});
+
+test('expose_paths defaults to an empty list and is capped', () => {
+  assert.deepEqual(parseRequest(reviewRequest()).context.expose_paths, []);
+  const abs = (i) => (process.platform === 'win32' ? `C:\\repo\\f${i}` : `/repo/f${i}`);
+  const tooMany = Array.from({ length: POLICY.input.exposePathsMax + 1 }, (_, i) => abs(i));
+  rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: tooMany } }), 'invalid_request');
+});
+
+// Naming paths to explore is giving the consultant material, so it satisfies
+// the same rule that facts and artifacts do.
+test('expose_paths alone satisfies the context requirement', () => {
+  const abs = process.platform === 'win32' ? 'C:\\repo\\src' : '/repo/src';
+  const req = parseRequest(reviewRequest({ context: { proposal: 'p', expose_paths: [abs] } }));
+  assert.equal(req.context.facts.length, 0);
+  assert.equal(req.context.artifacts.length, 0);
+  assert.deepEqual(req.context.expose_paths, [abs]);
+});
+
+test('the advertised limits name the caps a lead has to plan against', async () => {
+  const { limitsSummary } = await import('../src/policy.mjs');
+  assert.equal(POLICY.input.exposePathsMax, 20);
+  assert.equal(POLICY.input.exposeFilesMax, 500);
+  assert.equal(POLICY.input.exposeBytesMax, 5_000_000);
+  assert.match(limitsSummary().consultant_permissions, /expose_paths/);
+});
