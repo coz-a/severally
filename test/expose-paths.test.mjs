@@ -160,6 +160,24 @@ test('materialize: text is redacted on the way in, binary is copied byte-for-byt
   );
 });
 
+// A non-utf8 text file (no null byte, so isBinary() calls it text) must not
+// be run through redact()'s utf8 decode: that would replace every invalid
+// byte sequence with U+FFFD and hand the consultant a silently corrupted
+// file while the brief claims it was only credential-masked.
+test('materialize: non-utf8 text is copied through unchanged rather than corrupted', () => {
+  const dir = tmp('severally-expose-');
+  const workdir = tmp('severally-workdir-');
+  // 0xA9 repeated is the copyright sign in Latin-1/CP1252, but a lone 0xA9
+  // byte is not valid utf8 (it's a continuation byte with no leading byte),
+  // and there is no null byte in it, so isBinary() would call this "text".
+  const original = Buffer.from([0x41, 0xA9, 0x42, 0xA9, 0xA9, 0x43]);
+  fs.writeFileSync(path.join(dir, 'latin1.txt'), original);
+
+  materializeExposedPaths(workdir, [path.join(dir, 'latin1.txt')]);
+  const copied = fs.readFileSync(path.join(workdir, 'workspace', '0-latin1.txt'));
+  assert.ok(copied.equals(original), 'non-utf8 bytes must survive byte-for-byte');
+});
+
 test('materialize: a path that vanished since the preview fails rather than copying half a tree', () => {
   const workdir = tmp('severally-workdir-');
   const missing = path.join(tmp('severally-expose-'), 'gone');

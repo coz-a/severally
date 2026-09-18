@@ -158,11 +158,11 @@ export function previewExposePaths(exposePaths) {
 
 /**
  * The copy the consultant actually reads, under
- * `<workdir>/workspace/<index>-<basename>/`. Text files go through the same
- * redact() the brief does; binary files are copied unchanged, since a utf8
- * round-trip would corrupt them. Walks from scratch and re-checks the caps,
- * so a tree that grew or vanished since the preview fails here instead of
- * being copied in part.
+ * `<workdir>/workspace/<index>-<basename>/`. Valid-utf8 text goes through the
+ * same redact() the brief does; binary files, and text in any other encoding,
+ * are copied unchanged, since a utf8 round-trip would corrupt them. Walks
+ * from scratch and re-checks the caps, so a tree that grew or vanished since
+ * the preview fails here instead of being copied in part.
  */
 export function materializeExposedPaths(workdir, exposePaths) {
   if (!exposePaths || exposePaths.length === 0) return null;
@@ -172,7 +172,15 @@ export function materializeExposedPaths(workdir, exposePaths) {
     const base = path.join(root, `${index}-${path.basename(source)}`);
     const dest = rel ? path.join(base, rel) : base;
     const buf = fs.readFileSync(abs);
-    const out = isBinary(buf) ? buf : Buffer.from(redact(buf.toString('utf8')), 'utf8');
+    let out = buf;
+    if (!isBinary(buf)) {
+      const text = buf.toString('utf8');
+      // A lossy round-trip (lone continuation bytes, Shift-JIS, Latin-1, ...)
+      // means the original was never valid utf8 text, so redact()'s decode
+      // would silently replace bytes with U+FFFD and corrupt the file --
+      // treat it like binary and copy it through instead.
+      if (Buffer.from(text, 'utf8').equals(buf)) out = Buffer.from(redact(text), 'utf8');
+    }
     fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
     fs.writeFileSync(dest, out, { mode: 0o600 });
     totals.files += 1;
