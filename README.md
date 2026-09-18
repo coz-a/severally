@@ -239,8 +239,14 @@ not a key in `config.json`. The server reports the active budget in `rounds_rema
 | Claude Code | yes (`Read` / `Glob` / `Grep`) | none | no |
 | Antigravity | yes (`read_file`) | none | no |
 
-Every consultant starts in an empty working directory, and the server does not tell it where your repository is.
-Paste whatever it should see into the brief.
+Every consultant starts in an empty working directory, and the server does not tell it where your repository
+is. Paste whatever it should see into the brief — or, when a consultant needs to explore rather than read what
+you picked out, name absolute paths in `context.expose_paths`. Those files and directories are copied read-only
+into the consultant's working directory (under `./workspace`) and are then the only part of your repository it
+has. At most 20 entries, 500 files and 5 MB in total; symlinks are skipped rather than followed; text files are
+credential-masked exactly as the brief is, binary files are copied unchanged. The copy is deleted with the job,
+and the history keeps only which paths were shown, not their contents. The Claude Code consultant's whole-disk
+read scope is dropped for a consultation that uses it.
 
 - A consultant that failed (`usage_limit` / `auth` / `timeout` …) and one that answered on thin grounds come back
   as different things. A failure is not "no problems found"

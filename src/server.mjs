@@ -53,8 +53,12 @@ mode:
             it, and which disagreements remain. Both are required.
 
 The consultant starts in an empty working directory and is not told where your repository is: put every fact
-it needs into context.facts and paste the relevant passages into context.artifacts. Model, permissions, round
-count, timeout and size caps are fixed by this server and cannot be raised from a request.
+it needs into context.facts and paste the relevant passages into context.artifacts. When it needs to explore
+rather than read what you picked out, name absolute paths in context.expose_paths: those files and directories
+are copied read-only into its working directory (under ./workspace) and are then the only part of your
+repository it has. At most 20 entries, 500 files and 5 MB in total; symlinks are skipped rather than followed,
+and text files are credential-masked exactly as the brief is. Model, permissions, round count, timeout and size
+caps are fixed by this server and cannot be raised from a request.
 
 prediction: optional -- { expected, worry }: the bottom line you expect back and, in one sentence, what you are
         most worried about. Stored with the consultation and NEVER sent to the consultant. It can only be
