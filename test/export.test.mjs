@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
 sandboxEnv();
@@ -129,4 +132,24 @@ test('the exported record carries what the lead expected and what the answer add
     markdown.indexOf('Only the retry cap really matters here.') < markdown.indexOf('Stub consultant summary'),
     'the prediction is printed before the answer it preceded',
   );
+});
+
+test('the export records which paths the consultant could read, without reprinting them', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-export-repo-'));
+  fs.mkdirSync(path.join(repo, 'src'));
+  fs.writeFileSync(path.join(repo, 'src', 'retry.ts'), 'const everyLineOfIt = "do not reprint me";');
+
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({
+    context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'src')] },
+  }));
+  const view = await finish(mgr, started.job_id);
+
+  const { markdown } = exportChain({ chain_id: view.chain_id });
+  assert.match(markdown, /Files exposed to the consultant/);
+  assert.match(markdown, /workspace\/0-src/);
+  assert.match(markdown, /directory, 1 file\(s\)/);
+  assert.ok(markdown.includes(path.join(repo, 'src')), 'the record names where it came from');
+  assert.ok(!markdown.includes('do not reprint me'), 'a manifest, not a dump');
 });

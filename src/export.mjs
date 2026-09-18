@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { POLICY } from './policy.mjs';
+import { humanSize } from './expose-paths.mjs';
 
 export class ExportError extends Error {
   constructor(message, code) {
@@ -87,6 +88,21 @@ function briefSection(brief) {
   for (const a of brief.artifacts ?? []) {
     out.push(`**Material: ${a.name}** (${[a.kind, a.language, a.source].filter(Boolean).join(', ')})`, '');
     out.push(...fence(a.excerpt, a.language));
+    out.push('');
+  }
+  // What the consultant could open for itself. A manifest rather than a dump:
+  // the copy lived in the job directory and was deleted with it, and the files
+  // have moved on since -- so the record states what was shown and where it
+  // came from, which is the part a reader six months later can still act on.
+  const exposed = brief.expose_paths;
+  if (exposed?.entries?.length) {
+    out.push('**Files exposed to the consultant**', '');
+    for (const e of exposed.entries) {
+      out.push(`- ${e.exposed_as} (${e.kind}, ${e.files} file(s), ${humanSize(e.bytes)}) -- from ${e.source}`);
+    }
+    if (exposed.skipped?.length) {
+      out.push(`- ${exposed.skipped.length} symlink(s) inside those directories were skipped, not followed`);
+    }
     out.push('');
   }
   return out;
