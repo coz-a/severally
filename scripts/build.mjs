@@ -90,8 +90,10 @@ export function renderSkills() {
       ? ' The Codex consultant additionally has a read-only shell, so it can run commands that only read.'
       : '';
     const executionCaveat = '\n\nOne caveat on that list: a consultant can read local files. Its writes and its'
-      + '\nnetwork access are blocked, and it starts in an empty working directory without being told where'
-      + '\nyour repository is, so in practice it answers from the brief.' + codexCaveat;
+      + '\nnetwork access are blocked, and by default it starts in an empty working directory without being'
+      + '\ntold where your repository is, so in practice it answers from the brief -- unless'
+      + '\n`context.expose_paths` names absolute paths, which are then copied read-only into its working'
+      + '\ndirectory.' + codexCaveat;
     const text = tmpl
       .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
       .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))

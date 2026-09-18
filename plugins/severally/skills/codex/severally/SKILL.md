@@ -10,8 +10,10 @@ search and browse the web. They cannot edit files, reach the network outside sea
 see your session, or consult anyone else. In practice they know only what you put in the brief.
 
 One caveat on that list: a consultant can read local files. Its writes and its
-network access are blocked, and it starts in an empty working directory without being told where
-your repository is, so in practice it answers from the brief.
+network access are blocked, and by default it starts in an empty working directory without being
+told where your repository is, so in practice it answers from the brief -- unless
+`context.expose_paths` names absolute paths, which are then copied read-only into its working
+directory.
 
 ## Pick the consultant
 
@@ -137,9 +139,12 @@ do the organising work first; a vague brief gets a vague answer.
 2. **Write down what a useful answer looks like** (`success_criteria`) — e.g. "a concrete failure scenario with
    numbers, or a clear all-clear with its conditions".
 3. **Supply the evidence.** The consultant starts in an empty working directory and is not told where your
-   repository is, so it works from the brief alone. Put the load-bearing facts in `context.facts` and paste
-   the relevant passages — the function, the failing test output, the schema, the diff — into
-   `context.artifacts`. Excerpts, not whole files; the request has a character budget.
+   repository is, unless `context.expose_paths` names specific absolute paths — those files and directories
+   are copied read-only into its working directory (under `./workspace`) and are then the only part of your
+   repository it has. By default, put the load-bearing facts in `context.facts` and paste the relevant
+   passages — the function, the failing test output, the schema, the diff — into `context.artifacts`.
+   Excerpts, not whole files; the request has a character budget. Reach for `expose_paths` instead when the
+   consultant needs to explore rather than read what you picked out for it.
 4. **Include the constraints that make cheap advice useless**: the stack, the traffic, what you cannot change.
 5. **Separate imposed constraints from your own assumptions.** A constraint is read as fixed and will not be
    challenged; if "we cannot change the schema" is your call rather than a given, put it under `facts` as a
