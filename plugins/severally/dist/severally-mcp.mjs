@@ -37013,7 +37013,11 @@ function materializeExposedPaths(workdir, exposePaths) {
     const base = path4.join(root, `${index}-${path4.basename(source)}`);
     const dest = rel ? path4.join(base, rel) : base;
     const buf = fs3.readFileSync(abs);
-    const out = isBinary(buf) ? buf : Buffer.from(redact(buf.toString("utf8")), "utf8");
+    let out = buf;
+    if (!isBinary(buf)) {
+      const text2 = buf.toString("utf8");
+      if (Buffer.from(text2, "utf8").equals(buf)) out = Buffer.from(redact(text2), "utf8");
+    }
     fs3.mkdirSync(path4.dirname(dest), { recursive: true, mode: 448 });
     fs3.writeFileSync(dest, out, { mode: 384 });
     totals.files += 1;
