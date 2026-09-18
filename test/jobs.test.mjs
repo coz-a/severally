@@ -718,3 +718,111 @@ test('a same-vendor caveat resolves the declared caller model before comparing',
   assert.doesNotMatch(unknown.quality.caveat, /and the same model/i);
   assert.match(unknown.quality.caveat, /claude-opus-9/, 'the declaration itself is still relayed');
 });
+
+// The point of expose_paths: the consultant is told where a bounded set of
+// real files is, instead of being handed excerpts someone pre-selected.
+test('exposed paths reach the consultant working directory and are named in the brief', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const briefOut = path.join(home, 'expose-brief.txt');
+  const cwdOut = path.join(home, 'expose-cwd.json');
+  process.env.STUB_BRIEF_OUT = briefOut;
+  process.env.STUB_CWD_OUT = cwdOut;
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-repo-'));
+  fs.mkdirSync(path.join(repo, 'src'));
+  fs.writeFileSync(path.join(repo, 'src', 'retry.ts'), 'for (let i=0;i<5;i++) await call();');
+  fs.writeFileSync(path.join(repo, 'README.md'), '# demo');
+
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({
+    context: {
+      facts: ['The client retries 5 times.'],
+      proposal: 'Add jitter.',
+      expose_paths: [path.join(repo, 'src'), path.join(repo, 'README.md')],
+    },
+  }));
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'completed');
+
+  // What the consultant could actually open, as it saw it.
+  const seen = JSON.parse(fs.readFileSync(cwdOut, 'utf8'));
+  assert.ok(seen.includes('workspace/0-src/retry.ts'), `exposed file missing from the consultant cwd: ${seen}`);
+  assert.ok(seen.includes('workspace/1-README.md'), `exposed file missing from the consultant cwd: ${seen}`);
+
+  const brief = fs.readFileSync(briefOut, 'utf8');
+  assert.match(brief, /Files available to you/);
+  assert.match(brief, /workspace\/0-src/);
+  assert.match(brief, /workspace\/1-README\.md/);
+  assert.match(brief, /directory, 1 file\(s\)/);
+  // The empty-working-directory rule has to flip, or the consultant is told
+  // in one breath that it has files and in the next that it has none.
+  assert.doesNotMatch(brief, /You are running in an empty working directory/);
+  assert.match(brief, /Your working directory is not empty/);
+
+  assert.ok(!fs.existsSync(path.join(home, 'jobs', started.job_id)), 'the copy goes with the job directory');
+  delete process.env.STUB_BRIEF_OUT;
+  delete process.env.STUB_CWD_OUT;
+});
+
+test('the history keeps what was exposed as a manifest, not as content', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-repo-'));
+  fs.writeFileSync(path.join(repo, 'secret-plan.md'), 'the whole plan, in full');
+
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({
+    context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'secret-plan.md')] },
+  }));
+  await finish(mgr, started.job_id);
+
+  const record = JSON.parse(
+    fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8'),
+  );
+  const exposed = record.brief.expose_paths;
+  assert.equal(exposed.entries.length, 1);
+  assert.equal(exposed.entries[0].exposed_as, 'workspace/0-secret-plan.md');
+  assert.equal(exposed.entries[0].kind, 'file');
+  assert.equal(exposed.entries[0].files, 1);
+  assert.ok(exposed.entries[0].bytes > 0);
+  assert.ok(
+    !JSON.stringify(record).includes('the whole plan, in full'),
+    'the record says what was shown, it does not keep a copy of it',
+  );
+});
+
+// Nothing should be spent on a request that names a path that is not there:
+// no job, no round, no consultant process.
+test('a path that does not exist is refused before a job exists', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const missing = path.join(os.tmpdir(), `severally-not-here-${Date.now()}`);
+  assert.throws(
+    () => mgr.start(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: [missing] } })),
+    (err) => err.code === 'expose_path_invalid' && err.message.includes(missing),
+  );
+  assert.equal(mgr.list().length, 0, 'no job may have been created');
+});
+
+test('a tree over the size cap is refused before a job exists', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-big-'));
+  fs.writeFileSync(path.join(repo, 'huge.bin'), Buffer.alloc(6_000_000, 3));
+  const mgr = new JobManager();
+  assert.throws(
+    () => mgr.start(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: [repo] } })),
+    (err) => err.code === 'expose_paths_too_large',
+  );
+  assert.equal(mgr.list().length, 0);
+});
+
+// A consultation with no exposed paths must read exactly as it did before.
+test('a consultation that exposes nothing still says the working directory is empty', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const briefOut = path.join(home, 'no-expose-brief.txt');
+  process.env.STUB_BRIEF_OUT = briefOut;
+  const mgr = new JobManager();
+  await finish(mgr, mgr.start(reviewRequest()).job_id);
+  const brief = fs.readFileSync(briefOut, 'utf8');
+  assert.match(brief, /You are running in an empty working directory/);
+  assert.doesNotMatch(brief, /Files available to you/);
+  delete process.env.STUB_BRIEF_OUT;
+});

@@ -13,6 +13,7 @@ import { redact } from './redact.mjs';
 import { isRetriable } from './failures.mjs';
 import { childEnv, runChild } from './run.mjs';
 import * as store from './store.mjs';
+import { previewExposePaths, materializeExposedPaths } from './expose-paths.mjs';
 import * as codex from './adapters/codex.mjs';
 import * as claudeCode from './adapters/claude-code.mjs';
 import * as antigravity from './adapters/antigravity.mjs';
@@ -186,6 +187,22 @@ export class JobManager {
 
     const req = parseRequest(rawRequest, { isFollowup: Boolean(parent) });
 
+    // Walked once for the whole request, before a round is counted or a job
+    // exists: the brief needs the sizes, and a path that is missing or a tree
+    // that blows the cap is the lead's to fix now rather than a job that
+    // fails a moment later having already spent a round of this chain.
+    let exposeManifest = null;
+    if (req.context.expose_paths.length > 0) {
+      try {
+        exposeManifest = previewExposePaths(req.context.expose_paths);
+      } catch (err) {
+        throw new RequestError(
+          err.message,
+          err.code === 'too_large' ? 'expose_paths_too_large' : 'expose_path_invalid',
+        );
+      }
+    }
+
     if (parent && parent.target !== req.target) {
       throw new RequestError(
         `follow-up must go to the same consultant as job "${parent.job_id}" (${parent.target})`,
@@ -225,7 +242,7 @@ export class JobManager {
         // view. The brief the consultant receives is redacted too
         // (renderBrief), so this is the same text it was actually sent.
         question: redact(req.question),
-        brief: briefRecord(req),
+        brief: briefRecord(req, exposeManifest),
         // Written before the consultant is launched and never sent to it. The
         // timestamp is the server's, so the record shows the prediction
         // predates the answer rather than asking anyone to take that on trust.
@@ -279,7 +296,7 @@ export class JobManager {
     // follow-up (parseRequest refuses that), so each member's fresh chain is
     // empty, and a follow-up is always a group of one on the parent's chain.
     const chain = { round, priorRounds: this.#chainHistory(members[0].chain_id) };
-    const brief = renderBrief(req, chain);
+    const brief = renderBrief(req, chain, exposeManifest);
     for (const job of members) {
       job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
         this.#fail(job, 'cli_error', err?.message ?? String(err));
@@ -356,6 +373,18 @@ export class JobManager {
   async #execute(job, req, chain, brief) {
     const adapter = ADAPTERS[req.target];
     const workdir = store.makeWorkdir(job.job_id);
+    // Copied per job, not per group: members of a fan-out run at the same
+    // time and their job directories are cleaned up independently, so one
+    // shared tree would be removed underneath a consultant still reading it.
+    // A path that changed since start() walked it fails the job here, before
+    // the CLI is launched -- a half-copied tree is worse than no answer.
+    if (req.context.expose_paths.length > 0) {
+      try {
+        materializeExposedPaths(workdir, req.context.expose_paths);
+      } catch (err) {
+        return this.#fail(job, 'spawn_error', err.message);
+      }
+    }
     // start() renders the brief once per chain and hands it in, so every member
     // of a fan-out is sent byte-identical text.
     const text = brief ?? renderBrief(req, chain);
@@ -399,9 +428,10 @@ export class JobManager {
       const invocation = adapter.buildInvocation({
         workdir,
         schemaPath,
-        guardrails: renderGuardrails(),
+        guardrails: renderGuardrails(req.context.expose_paths.length > 0),
         sandbox,
         model: job.model,
+        hasExposedPaths: req.context.expose_paths.length > 0,
       });
 
       assertNoForbiddenFlags(req.target, invocation.args);

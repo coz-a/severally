@@ -8,6 +8,15 @@ import { spawn } from 'node:child_process';
 const args = process.argv.slice(2);
 if (process.env.STUB_ARGV_OUT) fs.writeFileSync(process.env.STUB_ARGV_OUT, JSON.stringify(args));
 if (process.env.STUB_ENV_OUT) fs.writeFileSync(process.env.STUB_ENV_OUT, JSON.stringify(process.env));
+// A recursive listing of the directory this consultant was launched in. It is
+// the only way a test can tell a file that actually reached the consultant
+// from one the brief merely claims is there.
+if (process.env.STUB_CWD_OUT) {
+  const list = (dir, prefix = '') => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (
+    e.isDirectory() ? list(path.join(dir, e.name), `${prefix}${e.name}/`) : [`${prefix}${e.name}`]
+  ));
+  fs.writeFileSync(process.env.STUB_CWD_OUT, JSON.stringify(list(process.cwd())));
+}
 
 let stdin = '';
 process.stdin.setEncoding('utf8');
