@@ -29,11 +29,13 @@ import { classifyMessage } from '../failures.mjs';
 import { CONSULT_RESULT_SCHEMA } from '../result-schema.mjs';
 
 // --add-dir is not listed: the adapter passes `--add-dir /` itself, and
-// assertNoForbiddenFlags refuses any other value. --restricted confines the file
-// tools to the working directories, and the working directory is empty, so
-// without it this consultant could read nothing while Codex (read-only sandbox)
-// and Antigravity (read_file(*)) could read the whole disk. Verified 2026-09-13:
-// with it, Read/Grep outside the workdir succeed; the tool list is unchanged.
+// assertNoForbiddenFlags refuses any other value. --restricted confines the
+// file tools to the working directories, and without expose_paths that
+// directory is empty, so the widening is what keeps this consultant an equal
+// reader with Codex (read-only sandbox) and Antigravity (read_file(*)), both
+// of which can already reach the whole disk. Verified 2026-09-13: with it,
+// Read/Grep outside the workdir succeed; the tool list is unchanged.
+// With expose_paths the widening is dropped -- see buildInvocation.
 export const FORBIDDEN_FLAGS = [
   '--dangerously-skip-permissions',
   '--allow-dangerously-skip-permissions',
@@ -42,7 +44,7 @@ export const FORBIDDEN_FLAGS = [
   '--plugin-url',
 ];
 
-export function buildInvocation({ workdir, guardrails, model }) {
+export function buildInvocation({ workdir, guardrails, model, hasExposedPaths = false }) {
   const t = POLICY.targets['claude-code'];
   const chosen = model ?? t.model;
   const args = [
@@ -54,7 +56,13 @@ export function buildInvocation({ workdir, guardrails, model }) {
     '--disable-slash-commands',
     '--tools', 'WebSearch,WebFetch,Read,Glob,Grep',
     '--allowedTools', 'WebSearch,WebFetch',
-    '--add-dir', '/',
+    // When the lead has exposed paths, they are already copied into the
+    // working directory --restricted confines the file tools to, and the
+    // lead has said what this consultation may see. Widening to the whole
+    // disk on top of that would contradict the scope it just drew, so the
+    // flag goes. Equal-reader parity is not lost: what every consultant now
+    // has is the same copied tree, which is the material that exists.
+    ...(hasExposedPaths ? [] : ['--add-dir', '/']),
     '--permission-prompts', 'none',
     '--permission-mode', 'manual',
     '--no-session-persistence',

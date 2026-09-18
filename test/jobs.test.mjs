@@ -826,3 +826,33 @@ test('a consultation that exposes nothing still says the working directory is em
   assert.doesNotMatch(brief, /Files available to you/);
   delete process.env.STUB_BRIEF_OUT;
 });
+
+// --add-dir / exists so the three consultants read the same amount of an
+// empty directory. Once the lead has drawn a scope, widening to the whole
+// disk contradicts it -- and this is the one consultant whose read scope can
+// actually be enforced rather than merely undisclosed.
+test('the Claude Code consultant loses its whole-disk read scope once paths are exposed', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const argvOut = path.join(home, 'expose-argv.json');
+  process.env.STUB_ARGV_OUT = argvOut;
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-repo-'));
+  fs.writeFileSync(path.join(repo, 'index.mjs'), 'export const x = 1;');
+  const mgr = new JobManager();
+
+  await finish(mgr, mgr.start(exploreRequest()).job_id);
+  const wide = JSON.parse(fs.readFileSync(argvOut, 'utf8'));
+  assert.deepEqual(wide.flatMap((a, i) => (a === '--add-dir' ? [wide[i + 1]] : [])), ['/']);
+
+  await finish(mgr, mgr.start(exploreRequest({
+    context: { facts: ['f'], expose_paths: [path.join(repo, 'index.mjs')] },
+  })).job_id);
+  const scoped = JSON.parse(fs.readFileSync(argvOut, 'utf8'));
+  assert.ok(!scoped.includes('--add-dir'), 'a scoped consultation must not widen to the whole disk');
+  // Everything else about the consultant is unchanged.
+  for (const flag of ['--restricted', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) {
+    assert.ok(scoped.includes(flag), `${flag} must survive`);
+  }
+  assert.deepEqual(scoped[scoped.indexOf('--tools') + 1].split(','), ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep']);
+
+  delete process.env.STUB_ARGV_OUT;
+});
