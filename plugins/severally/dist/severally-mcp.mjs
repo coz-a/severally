@@ -3269,8 +3269,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path8) {
-      let input2 = path8;
+    function removeDotSegments(path10) {
+      let input2 = path10;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3679,8 +3679,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path8 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
+        const path10 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path10 && path10 !== "/" ? path10 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7192,12 +7192,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list2, fs7, exportName) {
+    function addFormats(ajv, list2, fs8, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list2)
-        ajv.addFormat(f, fs7[f]);
+        ajv.addFormat(f, fs8[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7210,8 +7210,8 @@ var require_windows = __commonJS({
   "node_modules/isexe/windows.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs7 = __require("fs");
-    function checkPathExt(path8, options) {
+    var fs8 = __require("fs");
+    function checkPathExt(path10, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -7222,25 +7222,25 @@ var require_windows = __commonJS({
       }
       for (var i = 0; i < pathext.length; i++) {
         var p = pathext[i].toLowerCase();
-        if (p && path8.substr(-p.length).toLowerCase() === p) {
+        if (p && path10.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat, path8, options) {
+    function checkStat(stat, path10, options) {
       if (!stat.isSymbolicLink() && !stat.isFile()) {
         return false;
       }
-      return checkPathExt(path8, options);
+      return checkPathExt(path10, options);
     }
-    function isexe(path8, options, cb) {
-      fs7.stat(path8, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path8, options));
+    function isexe(path10, options, cb) {
+      fs8.stat(path10, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path10, options));
       });
     }
-    function sync(path8, options) {
-      return checkStat(fs7.statSync(path8), path8, options);
+    function sync(path10, options) {
+      return checkStat(fs8.statSync(path10), path10, options);
     }
   }
 });
@@ -7250,14 +7250,14 @@ var require_mode = __commonJS({
   "node_modules/isexe/mode.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs7 = __require("fs");
-    function isexe(path8, options, cb) {
-      fs7.stat(path8, function(er, stat) {
+    var fs8 = __require("fs");
+    function isexe(path10, options, cb) {
+      fs8.stat(path10, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
       });
     }
-    function sync(path8, options) {
-      return checkStat(fs7.statSync(path8), options);
+    function sync(path10, options) {
+      return checkStat(fs8.statSync(path10), options);
     }
     function checkStat(stat, options) {
       return stat.isFile() && checkMode(stat, options);
@@ -7281,7 +7281,7 @@ var require_mode = __commonJS({
 // node_modules/isexe/index.js
 var require_isexe = __commonJS({
   "node_modules/isexe/index.js"(exports, module) {
-    var fs7 = __require("fs");
+    var fs8 = __require("fs");
     var core;
     if (process.platform === "win32" || global.TESTING_WINDOWS) {
       core = require_windows();
@@ -7290,7 +7290,7 @@ var require_isexe = __commonJS({
     }
     module.exports = isexe;
     isexe.sync = sync;
-    function isexe(path8, options, cb) {
+    function isexe(path10, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -7300,7 +7300,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve, reject) {
-          isexe(path8, options || {}, function(er, is) {
+          isexe(path10, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -7309,7 +7309,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path8, options || {}, function(er, is) {
+      core(path10, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -7319,9 +7319,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path8, options) {
+    function sync(path10, options) {
       try {
-        return core.sync(path8, options || {});
+        return core.sync(path10, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -7337,7 +7337,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "node_modules/which/which.js"(exports, module) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path8 = __require("path");
+    var path10 = __require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -7375,7 +7375,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path8.join(pathPart, cmd);
+        const pCmd = path10.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve(subStep(p, i, 0));
       });
@@ -7402,7 +7402,7 @@ var require_which = __commonJS({
       for (let i = 0; i < pathEnv.length; i++) {
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path8.join(pathPart, cmd);
+        const pCmd = path10.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -7450,7 +7450,7 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
     "use strict";
-    var path8 = __require("path");
+    var path10 = __require("path");
     var which2 = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -7468,7 +7468,7 @@ var require_resolveCommand = __commonJS({
       try {
         resolved = which2.sync(parsed.command, {
           path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path8.delimiter : void 0
+          pathExt: withoutPathExt ? path10.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -7477,7 +7477,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path8.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path10.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -7531,8 +7531,8 @@ var require_shebang_command = __commonJS({
       if (!match) {
         return null;
       }
-      const [path8, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path8.split("/").pop();
+      const [path10, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path10.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -7545,16 +7545,16 @@ var require_shebang_command = __commonJS({
 var require_readShebang = __commonJS({
   "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
     "use strict";
-    var fs7 = __require("fs");
+    var fs8 = __require("fs");
     var shebangCommand = require_shebang_command();
     function readShebang(command) {
       const size = 150;
       const buffer = Buffer.alloc(size);
       let fd;
       try {
-        fd = fs7.openSync(command, "r");
-        fs7.readSync(fd, buffer, 0, size, 0);
-        fs7.closeSync(fd);
+        fd = fs8.openSync(command, "r");
+        fs8.readSync(fd, buffer, 0, size, 0);
+        fs8.closeSync(fd);
       } catch (e) {
       }
       return shebangCommand(buffer.toString());
@@ -7567,7 +7567,7 @@ var require_readShebang = __commonJS({
 var require_parse = __commonJS({
   "node_modules/cross-spawn/lib/parse.js"(exports, module) {
     "use strict";
-    var path8 = __require("path");
+    var path10 = __require("path");
     var resolveCommand = require_resolveCommand();
     var escape3 = require_escape();
     var readShebang = require_readShebang();
@@ -7592,7 +7592,7 @@ var require_parse = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path8.normalize(parsed.command);
+        parsed.command = path10.normalize(parsed.command);
         parsed.command = escape3.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -8446,10 +8446,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path8) {
-  if (!path8)
+function getElementAtPath(obj2, path10) {
+  if (!path10)
     return obj2;
-  return path8.reduce((acc, key) => acc?.[key], obj2);
+  return path10.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -8861,11 +8861,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path8, issues) {
+function prefixIssues(path10, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path8);
+    iss.path.unshift(path10);
     return iss;
   });
 }
@@ -9298,16 +9298,16 @@ function flattenError(error61, mapper = (issue2) => issue2.message) {
 }
 function formatError(error61, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error62, path8 = []) => {
+  const processError = (error62, path10 = []) => {
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path8, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -9346,17 +9346,17 @@ function formatError(error61, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error61, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error62, path8 = []) => {
+  const processError = (error62, path10 = []) => {
     var _a3;
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
       } else {
-        const fullpath = [...path8, ...issue2.path];
+        const fullpath = [...path10, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -9395,8 +9395,8 @@ function treeifyError(error61, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path8 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path8) {
+  const path10 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path10) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -25906,13 +25906,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path8 = ref.slice(1).split("/").filter(Boolean);
-  if (path8.length === 0) {
+  const path10 = ref.slice(1).split("/").filter(Boolean);
+  if (path10.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path8[0] === defsKey) {
-    const key = path8[1] === void 0 ? void 0 : decodeJSONPointerSegment(path8[1]);
+  if (path10[0] === defsKey) {
+    const key = path10[1] === void 0 ? void 0 : decodeJSONPointerSegment(path10[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -26942,8 +26942,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path8, errorMaps, issueData } = params;
-  const fullPath = [...path8, ...issueData.path || []];
+  const { data, path: path10, errorMaps, issueData } = params;
+  const fullPath = [...path10, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -27058,11 +27058,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path8, key) {
+  constructor(parent, value, path10, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path8;
+    this._path = path10;
     this._key = key;
   }
   get path() {
@@ -30613,11 +30613,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path8) {
-  if (path8.length === 0) {
+function getDotPath(path10) {
+  if (path10.length === 0) {
     return "object root";
   }
-  return path8.reduce((acc, seg, index) => {
+  return path10.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -36484,6 +36484,13 @@ var POLICY = Object.freeze({
     artifactsMax: 10,
     artifactExcerptMax: 2e4,
     artifactNameMax: 200,
+    // expose_paths: how many paths a lead may name, and what the copy of
+    // them may add up to. Fixed like every other input cap -- a consultant
+    // that can be pointed at more of the disk by configuration is a
+    // different consultant, not a tuned one.
+    exposePathsMax: 20,
+    exposeFilesMax: 500,
+    exposeBytesMax: 5e6,
     totalCharsMax: 12e4
   }),
   output: Object.freeze({
@@ -36542,11 +36549,12 @@ function limitsSummary() {
     // child starts in an empty working directory and is never told where the
     // repository is, not that it cannot read. Codex is additionally sandboxed
     // read-only rather than execution-free, so do not advertise "no execution".
-    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
+    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is -- unless context.expose_paths names files or directories, which are copied read-only into that working directory and are then the only part of your repository it has; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
   };
 }
 
 // src/schema.mjs
+import path3 from "node:path";
 var L = POLICY.input;
 var trimmed = (max, label) => external_exports.string().trim().min(1, `${label} must not be empty`).max(max, `${label} exceeds ${max} characters`);
 var artifactSchema = external_exports.object({
@@ -36556,11 +36564,13 @@ var artifactSchema = external_exports.object({
   source: external_exports.string().trim().max(500).optional(),
   excerpt: trimmed(L.artifactExcerptMax, "artifacts[].excerpt")
 }).strict();
+var exposedPathSchema = external_exports.string().trim().min(1, "context.expose_paths[] must not be empty").max(1e3, "context.expose_paths[] exceeds 1000 characters").refine((p) => path3.isAbsolute(p), { message: "context.expose_paths[] must be an absolute path" });
 var contextSchema = external_exports.object({
   facts: external_exports.array(trimmed(L.factMax, "context.facts[]")).max(L.factsMax).default([]),
   proposal: external_exports.string().trim().max(L.proposalMax).nullish(),
   counterpoints: external_exports.array(trimmed(L.counterpointMax, "context.counterpoints[]")).max(L.counterpointsMax).default([]),
-  artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).default([])
+  artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).default([]),
+  expose_paths: external_exports.array(exposedPathSchema).max(L.exposePathsMax).default([])
 }).strict();
 var normalizeTargetLike = normalizeTargetInput;
 var targetSpec = external_exports.preprocess(
@@ -36755,9 +36765,9 @@ function parseRequest(raw, { isFollowup = false } = {}) {
       "counterpoints_required"
     );
   }
-  if (req.context.facts.length === 0 && req.context.artifacts.length === 0) {
+  if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0) {
     throw new RequestError(
-      "provide at least one entry in context.facts or context.artifacts: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request",
+      "provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request",
       "context_required"
     );
   }
@@ -36766,7 +36776,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
 
 // src/jobs.mjs
 import crypto from "node:crypto";
-import fs5 from "node:fs";
+import fs6 from "node:fs";
 
 // src/result-schema.mjs
 var s = (desc) => ({ type: "string", description: desc });
@@ -36892,6 +36902,125 @@ function redact(value) {
   return value;
 }
 
+// src/expose-paths.mjs
+import fs3 from "node:fs";
+import path4 from "node:path";
+var ExposeError = class extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = "ExposeError";
+    this.code = code;
+  }
+};
+function humanSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+function isBinary(buf) {
+  const len = Math.min(buf.length, 8e3);
+  for (let i = 0; i < len; i++) if (buf[i] === 0) return true;
+  return false;
+}
+function checkBudget(totals) {
+  if (totals.files > POLICY.input.exposeFilesMax) {
+    throw new ExposeError(
+      `expose_paths reaches more than ${POLICY.input.exposeFilesMax} files, over the file cap; name the files or the subdirectory that actually matters instead of the tree above them`,
+      "too_large"
+    );
+  }
+  if (totals.bytes > POLICY.input.exposeBytesMax) {
+    throw new ExposeError(
+      `expose_paths reaches more than ${humanSize(POLICY.input.exposeBytesMax)}, over the size cap; name the files or the subdirectory that actually matters instead of the tree above them`,
+      "too_large"
+    );
+  }
+}
+function statEntry(source) {
+  let stat;
+  try {
+    stat = fs3.lstatSync(source);
+  } catch (err) {
+    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${err.message}`, "not_found");
+  }
+  if (stat.isSymbolicLink()) {
+    throw new ExposeError(`expose_paths entry "${source}" is a symlink; name the path it points at instead`, "invalid_type");
+  }
+  if (!stat.isFile() && !stat.isDirectory()) {
+    throw new ExposeError(`expose_paths entry "${source}" is neither a file nor a directory`, "invalid_type");
+  }
+  return stat;
+}
+function walkDir(root, dir, onFile, totals, skipped) {
+  let items;
+  try {
+    items = fs3.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${err.message}`, "not_found");
+  }
+  for (const item of items) {
+    const child = path4.join(dir, item.name);
+    if (item.isSymbolicLink()) {
+      skipped.push(child);
+      continue;
+    }
+    if (item.isDirectory()) {
+      walkDir(root, child, onFile, totals, skipped);
+    } else if (item.isFile()) {
+      onFile(child, path4.relative(root, child));
+      checkBudget(totals);
+    }
+  }
+}
+function walkEntries(exposePaths, onFile) {
+  const totals = { files: 0, bytes: 0 };
+  const skipped = [];
+  const entries = exposePaths.map((source, index) => {
+    const stat = statEntry(source);
+    const before = { files: totals.files, bytes: totals.bytes };
+    if (stat.isFile()) {
+      onFile(source, "", index, source, totals);
+      checkBudget(totals);
+    } else {
+      walkDir(source, source, (abs, rel) => onFile(abs, rel, index, source, totals), totals, skipped);
+    }
+    return {
+      index,
+      source,
+      kind: stat.isDirectory() ? "directory" : "file",
+      // Indexed, so two entries whose basenames collide (two different
+      // util.mjs) stay apart, and the brief can name each one exactly.
+      exposedAs: `workspace/${index}-${path4.basename(source)}`,
+      files: totals.files - before.files,
+      bytes: totals.bytes - before.bytes
+    };
+  });
+  return { entries, totals, skipped: skipped.map((source) => ({ source, reason: "symlink" })) };
+}
+function previewExposePaths(exposePaths) {
+  if (!exposePaths || exposePaths.length === 0) return null;
+  return walkEntries(exposePaths, (abs, _rel, _index, _source, totals) => {
+    totals.files += 1;
+    totals.bytes += fs3.statSync(abs).size;
+  });
+}
+function materializeExposedPaths(workdir, exposePaths) {
+  if (!exposePaths || exposePaths.length === 0) return null;
+  const root = path4.join(workdir, "workspace");
+  fs3.mkdirSync(root, { recursive: true, mode: 448 });
+  return walkEntries(exposePaths, (abs, rel, index, source, totals) => {
+    const base = path4.join(root, `${index}-${path4.basename(source)}`);
+    const dest = rel ? path4.join(base, rel) : base;
+    const buf = fs3.readFileSync(abs);
+    const out = isBinary(buf) ? buf : Buffer.from(redact(buf.toString("utf8")), "utf8");
+    fs3.mkdirSync(path4.dirname(dest), { recursive: true, mode: 448 });
+    fs3.writeFileSync(dest, out, { mode: 384 });
+    totals.files += 1;
+    totals.bytes += out.length;
+  });
+}
+
 // src/brief.mjs
 var MODE_BRIEFS = {
   explore: [
@@ -36913,14 +37042,17 @@ var MODE_BRIEFS = {
     "Do not converge for the sake of converging. If the disagreement is real, record it in remaining_disagreements with your position and why the exchange did not settle it."
   ]
 };
-var GUARDRAILS = [
+var GUARDRAILS_HEAD = [
   'You are an independent peer consultant for another AI coding agent ("the lead"). You give advice only.',
   "",
   "Hard rules for this session:",
   "- You must not modify, create or delete any file, and must not run build tools, tests or any command that changes state. Writes are withheld from you at the process level; do not look for a way around it.",
   "- You must not start, request or delegate another consultation, sub-agent or nested agent session. This exchange ends with your answer.",
-  "- You may search and browse the web freely; cite what you actually opened in `references`.",
-  "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.",
+  "- You may search and browse the web freely; cite what you actually opened in `references`."
+];
+var WORKDIR_EMPTY = "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.";
+var WORKDIR_EXPOSED = '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository you have. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
+var GUARDRAILS_TAIL = [
   "- Never include credentials, API keys, tokens, or environment variable values in your answer.",
   "- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.",
   "",
@@ -36933,10 +37065,10 @@ var GUARDRAILS = [
   "",
   "Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not."
 ];
-function renderGuardrails() {
-  return GUARDRAILS.join("\n");
+function renderGuardrails(hasExposedPaths = false) {
+  return [...GUARDRAILS_HEAD, hasExposedPaths ? WORKDIR_EXPOSED : WORKDIR_EMPTY, ...GUARDRAILS_TAIL].join("\n");
 }
-function briefRecord(req) {
+function briefRecord(req, exposeManifest = null) {
   return redact({
     objective: req.objective ?? null,
     success_criteria: req.success_criteria ?? [],
@@ -36950,7 +37082,23 @@ function briefRecord(req) {
       language: a.language ?? null,
       source: a.source ?? null,
       excerpt: a.excerpt
-    }))
+    })),
+    // A manifest, not a snapshot. The copy lived in the job directory and was
+    // deleted with it, and the files themselves go on changing -- so what is
+    // worth keeping is which paths were shown and how much of them, not a
+    // frozen duplicate of a repository that has moved on since.
+    expose_paths: exposeManifest ? {
+      entries: exposeManifest.entries.map((e) => ({
+        index: e.index,
+        source: e.source,
+        exposed_as: e.exposedAs,
+        kind: e.kind,
+        files: e.files,
+        bytes: e.bytes
+      })),
+      totals: exposeManifest.totals,
+      skipped: exposeManifest.skipped
+    } : null
   });
 }
 function section(title, body) {
@@ -36974,9 +37122,26 @@ ${a.excerpt}
 ${fence2}`;
   }).join("\n\n");
 }
-function renderBrief(req, chain = { round: 1, priorRounds: [] }) {
+function renderExposeManifest(manifest) {
+  if (!manifest || manifest.entries.length === 0) return null;
+  const lines = manifest.entries.map((e) => {
+    const shape = e.kind === "directory" ? `directory, ${e.files} file(s), ${humanSize(e.bytes)}` : `file, ${humanSize(e.bytes)}`;
+    return `- ${e.exposedAs} (${shape}) -- copied from ${e.source}`;
+  });
+  const skipped = manifest.skipped.length ? ["", `${manifest.skipped.length} symlink(s) inside those directories were skipped, not followed.`] : [];
+  return [
+    "The lead exposed these paths; they are copied under ./workspace in your working directory and you may read",
+    "them directly. They are the only part of the lead's repository you have -- if you need something that is",
+    "not here, record it under `unknowns` rather than guessing. Text files were passed through the same",
+    "credential masking as this brief; binary files were copied unchanged.",
+    "",
+    ...lines,
+    ...skipped
+  ].join("\n");
+}
+function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
-  parts.push(renderGuardrails());
+  parts.push(renderGuardrails(Boolean(exposeManifest)));
   parts.push("");
   parts.push("---");
   parts.push("");
@@ -36995,7 +37160,8 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }) {
       req.context.proposal
     ),
     section("Opposing claims, as the other side states them", bullets(req.context.counterpoints)),
-    section("Supplied material", renderArtifacts(req.context.artifacts))
+    section("Supplied material", renderArtifacts(req.context.artifacts)),
+    section("Files available to you", renderExposeManifest(exposeManifest))
   ].filter(Boolean);
   parts.push(sections.join("\n\n"));
   if (chain.priorRounds && chain.priorRounds.length) {
@@ -37197,7 +37363,7 @@ function isRetriable(kind) {
 }
 
 // src/run.mjs
-import path3 from "node:path";
+import path5 from "node:path";
 var DROP_EXACT = /* @__PURE__ */ new Set([
   "CLAUDECODE",
   "CLAUDE_PID",
@@ -37245,7 +37411,7 @@ var ProcHandle = class {
     if (!pid) return;
     if (process.platform === "win32") {
       const killer = spawnCommand(
-        path3.join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
+        path5.join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
         ["/pid", String(pid), "/T", "/F"],
         { windowsHide: true, stdio: "ignore" }
       );
@@ -37345,44 +37511,44 @@ function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs
 }
 
 // src/store.mjs
-import fs3 from "node:fs";
-import path4 from "node:path";
+import fs4 from "node:fs";
+import path6 from "node:path";
 function ensureDirs() {
   const home = POLICY.home;
-  fs3.mkdirSync(path4.join(home, "history"), { recursive: true, mode: 448 });
-  fs3.mkdirSync(path4.join(home, "jobs"), { recursive: true, mode: 448 });
+  fs4.mkdirSync(path6.join(home, "history"), { recursive: true, mode: 448 });
+  fs4.mkdirSync(path6.join(home, "jobs"), { recursive: true, mode: 448 });
   try {
-    fs3.chmodSync(home, 448);
+    fs4.chmodSync(home, 448);
   } catch {
   }
   return home;
 }
 function jobDir(jobId) {
-  return path4.join(POLICY.home, "jobs", jobId);
+  return path6.join(POLICY.home, "jobs", jobId);
 }
 function makeWorkdir(jobId) {
-  const dir = path4.join(jobDir(jobId), "work");
-  fs3.mkdirSync(dir, { recursive: true, mode: 448 });
+  const dir = path6.join(jobDir(jobId), "work");
+  fs4.mkdirSync(dir, { recursive: true, mode: 448 });
   return dir;
 }
 function writeJobArtifact(jobId, name, content) {
   const dir = jobDir(jobId);
-  fs3.mkdirSync(dir, { recursive: true, mode: 448 });
-  const p = path4.join(dir, name);
-  fs3.writeFileSync(p, content, { mode: 384 });
+  fs4.mkdirSync(dir, { recursive: true, mode: 448 });
+  const p = path6.join(dir, name);
+  fs4.writeFileSync(p, content, { mode: 384 });
   return p;
 }
 function readIfExists(p) {
   try {
-    return fs3.readFileSync(p, "utf8");
+    return fs4.readFileSync(p, "utf8");
   } catch {
     return "";
   }
 }
 function loadRound(jobId) {
-  const historyDir2 = path4.join(POLICY.home, "history");
+  const historyDir2 = path6.join(POLICY.home, "history");
   let row = null;
-  for (const line of readIfExists(path4.join(historyDir2, "index.jsonl")).split("\n")) {
+  for (const line of readIfExists(path6.join(historyDir2, "index.jsonl")).split("\n")) {
     if (!line.trim()) continue;
     try {
       const parsed = JSON.parse(line);
@@ -37394,24 +37560,24 @@ function loadRound(jobId) {
     }
   }
   if (!row) return null;
-  const file2 = path4.join(historyDir2, row.chain_id, `round-${String(row.round).padStart(2, "0")}.json`);
+  const file2 = path6.join(historyDir2, row.chain_id, `round-${String(row.round).padStart(2, "0")}.json`);
   try {
-    return JSON.parse(fs3.readFileSync(file2, "utf8"));
+    return JSON.parse(fs4.readFileSync(file2, "utf8"));
   } catch {
     return null;
   }
 }
 function persistRound(record2, { appendIndex = true } = {}) {
-  const dir = path4.join(POLICY.home, "history", record2.chain_id);
-  fs3.mkdirSync(dir, { recursive: true, mode: 448 });
-  fs3.writeFileSync(
-    path4.join(dir, `round-${String(record2.round).padStart(2, "0")}.json`),
+  const dir = path6.join(POLICY.home, "history", record2.chain_id);
+  fs4.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs4.writeFileSync(
+    path6.join(dir, `round-${String(record2.round).padStart(2, "0")}.json`),
     JSON.stringify(record2, null, 2),
     { mode: 384 }
   );
   if (!appendIndex) return;
-  fs3.appendFileSync(
-    path4.join(POLICY.home, "history", "index.jsonl"),
+  fs4.appendFileSync(
+    path6.join(POLICY.home, "history", "index.jsonl"),
     `${JSON.stringify({
       job_id: record2.job_id,
       chain_id: record2.chain_id,
@@ -37430,19 +37596,19 @@ function persistRound(record2, { appendIndex = true } = {}) {
   );
 }
 function persistGroup(group) {
-  const dir = path4.join(POLICY.home, "history", "groups");
-  fs3.mkdirSync(dir, { recursive: true, mode: 448 });
-  fs3.writeFileSync(path4.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
+  const dir = path6.join(POLICY.home, "history", "groups");
+  fs4.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs4.writeFileSync(path6.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
 }
 function appendOffer(entry) {
-  const dir = path4.join(POLICY.home, "history");
-  fs3.mkdirSync(dir, { recursive: true, mode: 448 });
-  fs3.appendFileSync(path4.join(dir, "offers.jsonl"), `${JSON.stringify(entry)}
+  const dir = path6.join(POLICY.home, "history");
+  fs4.mkdirSync(dir, { recursive: true, mode: 448 });
+  fs4.appendFileSync(path6.join(dir, "offers.jsonl"), `${JSON.stringify(entry)}
 `, { mode: 384 });
 }
 function countOffers(outcome) {
   let count = 0;
-  for (const line of readIfExists(path4.join(POLICY.home, "history", "offers.jsonl")).split("\n")) {
+  for (const line of readIfExists(path6.join(POLICY.home, "history", "offers.jsonl")).split("\n")) {
     if (!line.trim()) continue;
     try {
       if (JSON.parse(line).outcome === outcome) count += 1;
@@ -37453,7 +37619,7 @@ function countOffers(outcome) {
 }
 function cleanupJobDir(jobId) {
   try {
-    fs3.rmSync(jobDir(jobId), { recursive: true, force: true });
+    fs4.rmSync(jobDir(jobId), { recursive: true, force: true });
   } catch {
   }
 }
@@ -37467,7 +37633,7 @@ __export(codex_exports, {
   progress: () => progress,
   usageRecord: () => usageRecord
 });
-import path5 from "node:path";
+import path7 from "node:path";
 var FORBIDDEN_FLAGS = [
   "--dangerously-bypass-approvals-and-sandbox",
   "--dangerously-bypass-hook-trust",
@@ -37477,7 +37643,7 @@ var FORBIDDEN_FLAGS = [
 function buildInvocation({ workdir, schemaPath, model }) {
   const t = POLICY.targets.codex;
   const chosen = model ?? t.model;
-  const lastMessagePath = path5.join(workdir, "..", "last-message.json");
+  const lastMessagePath = path7.join(workdir, "..", "last-message.json");
   const args = [
     "exec",
     "--json",
@@ -37607,7 +37773,7 @@ var FORBIDDEN_FLAGS2 = [
   "--plugin-dir",
   "--plugin-url"
 ];
-function buildInvocation2({ workdir, guardrails, model }) {
+function buildInvocation2({ workdir, guardrails, model, hasExposedPaths = false }) {
   const t = POLICY.targets["claude-code"];
   const chosen = model ?? t.model;
   const args = [
@@ -37623,8 +37789,13 @@ function buildInvocation2({ workdir, guardrails, model }) {
     "WebSearch,WebFetch,Read,Glob,Grep",
     "--allowedTools",
     "WebSearch,WebFetch",
-    "--add-dir",
-    "/",
+    // When the lead has exposed paths, they are already copied into the
+    // working directory --restricted confines the file tools to, and the
+    // lead has said what this consultation may see. Widening to the whole
+    // disk on top of that would contradict the scope it just drew, so the
+    // flag goes. Equal-reader parity is not lost: what every consultant now
+    // has is the same copied tree, which is the material that exists.
+    ...hasExposedPaths ? [] : ["--add-dir", "/"],
     "--permission-prompts",
     "none",
     "--permission-mode",
@@ -37698,8 +37869,8 @@ __export(antigravity_exports, {
 });
 
 // src/adapters/antigravity-sandbox.mjs
-import fs4 from "node:fs";
-import path6 from "node:path";
+import fs5 from "node:fs";
+import path8 from "node:path";
 var SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
 var SANDBOX_DENY = Object.freeze([
   "write_file(*)",
@@ -37708,31 +37879,31 @@ var SANDBOX_DENY = Object.freeze([
   "execute_url(*)",
   "unsandboxed(*)"
 ]);
-var TOKEN_REL = path6.join(".gemini", "antigravity-cli", "antigravity-oauth-token");
+var TOKEN_REL = path8.join(".gemini", "antigravity-cli", "antigravity-oauth-token");
 function prepareSandbox({ workdir }) {
-  const root = path6.join(path6.dirname(workdir), "home");
-  const cliDir = path6.join(root, ".gemini", "antigravity-cli");
-  const cfgDir = path6.join(root, ".gemini", "config");
-  fs4.mkdirSync(cliDir, { recursive: true, mode: 448 });
-  fs4.mkdirSync(cfgDir, { recursive: true, mode: 448 });
-  fs4.chmodSync(root, 448);
-  fs4.writeFileSync(path6.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
-  fs4.writeFileSync(
-    path6.join(cliDir, "settings.json"),
+  const root = path8.join(path8.dirname(workdir), "home");
+  const cliDir = path8.join(root, ".gemini", "antigravity-cli");
+  const cfgDir = path8.join(root, ".gemini", "config");
+  fs5.mkdirSync(cliDir, { recursive: true, mode: 448 });
+  fs5.mkdirSync(cfgDir, { recursive: true, mode: 448 });
+  fs5.chmodSync(root, 448);
+  fs5.writeFileSync(path8.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
+  fs5.writeFileSync(
+    path8.join(cliDir, "settings.json"),
     `${JSON.stringify({ permissions: { allow: [...SANDBOX_ALLOW], deny: [...SANDBOX_DENY] } }, null, 2)}
 `,
     { mode: 384 }
   );
-  const source = path6.join(credentialsHome(), TOKEN_REL);
-  const link = path6.join(cliDir, "antigravity-oauth-token");
+  const source = path8.join(credentialsHome(), TOKEN_REL);
+  const link = path8.join(cliDir, "antigravity-oauth-token");
   let credentials = "missing";
-  if (fs4.existsSync(source)) {
+  if (fs5.existsSync(source)) {
     try {
-      fs4.symlinkSync(source, link);
+      fs5.symlinkSync(source, link);
       credentials = "symlink";
     } catch {
-      fs4.copyFileSync(source, link);
-      fs4.chmodSync(link, 384);
+      fs5.copyFileSync(source, link);
+      fs5.chmodSync(link, 384);
       credentials = "copy";
     }
   }
@@ -37747,15 +37918,15 @@ function prepareSandbox({ workdir }) {
       HOME: root,
       ...process.platform === "win32" ? {
         USERPROFILE: root,
-        HOMEDRIVE: path6.parse(root).root.replace(/[\\/]$/, ""),
-        HOMEPATH: root.slice(path6.parse(root).root.length - 1),
-        APPDATA: path6.join(root, "AppData", "Roaming"),
-        LOCALAPPDATA: path6.join(root, "AppData", "Local")
+        HOMEDRIVE: path8.parse(root).root.replace(/[\\/]$/, ""),
+        HOMEPATH: root.slice(path8.parse(root).root.length - 1),
+        APPDATA: path8.join(root, "AppData", "Roaming"),
+        LOCALAPPDATA: path8.join(root, "AppData", "Local")
       } : {}
     },
     cleanup() {
       try {
-        fs4.rmSync(root, { recursive: true, force: true });
+        fs5.rmSync(root, { recursive: true, force: true });
       } catch {
       }
     }
@@ -37874,7 +38045,7 @@ var CREDENTIAL_FILE_VARS = ["GOOGLE_APPLICATION_CREDENTIALS"];
 var ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
 function hasApiCredential(env) {
   if (API_KEY_VARS.some((name) => env[name])) return true;
-  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs5.existsSync(env[name]));
+  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs6.existsSync(env[name]));
 }
 var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 var JobManager = class {
@@ -37995,6 +38166,17 @@ var JobManager = class {
       }
     }
     const req = parseRequest(rawRequest, { isFollowup: Boolean(parent) });
+    let exposeManifest = null;
+    if (req.context.expose_paths.length > 0) {
+      try {
+        exposeManifest = previewExposePaths(req.context.expose_paths);
+      } catch (err) {
+        throw new RequestError(
+          err.message,
+          err.code === "too_large" ? "expose_paths_too_large" : "expose_path_invalid"
+        );
+      }
+    }
     if (parent && parent.target !== req.target) {
       throw new RequestError(
         `follow-up must go to the same consultant as job "${parent.job_id}" (${parent.target})`,
@@ -38030,7 +38212,7 @@ var JobManager = class {
         // view. The brief the consultant receives is redacted too
         // (renderBrief), so this is the same text it was actually sent.
         question: redact(req.question),
-        brief: briefRecord(req),
+        brief: briefRecord(req, exposeManifest),
         // Written before the consultant is launched and never sent to it. The
         // timestamp is the server's, so the record shows the prediction
         // predates the answer rather than asking anyone to take that on trust.
@@ -38079,7 +38261,7 @@ var JobManager = class {
     } catch {
     }
     const chain = { round, priorRounds: this.#chainHistory(members2[0].chain_id) };
-    const brief = renderBrief(req, chain);
+    const brief = renderBrief(req, chain, exposeManifest);
     for (const job of members2) {
       job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
         this.#fail(job, "cli_error", err?.message ?? String(err));
@@ -38148,6 +38330,13 @@ var JobManager = class {
   async #execute(job, req, chain, brief) {
     const adapter = ADAPTERS[req.target];
     const workdir = makeWorkdir(job.job_id);
+    if (req.context.expose_paths.length > 0) {
+      try {
+        materializeExposedPaths(workdir, req.context.expose_paths);
+      } catch (err) {
+        return this.#fail(job, "spawn_error", err.message);
+      }
+    }
     const text2 = brief ?? renderBrief(req, chain);
     const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
@@ -38163,9 +38352,10 @@ var JobManager = class {
       const invocation = adapter.buildInvocation({
         workdir,
         schemaPath,
-        guardrails: renderGuardrails(),
+        guardrails: renderGuardrails(req.context.expose_paths.length > 0),
         sandbox,
-        model: job.model
+        model: job.model,
+        hasExposedPaths: req.context.expose_paths.length > 0
       });
       assertNoForbiddenFlags(req.target, invocation.args);
       const budgetMs = timeoutMs(req.target);
@@ -38551,8 +38741,8 @@ function assertNoForbiddenFlags(target, args) {
 }
 
 // src/export.mjs
-import fs6 from "node:fs";
-import path7 from "node:path";
+import fs7 from "node:fs";
+import path9 from "node:path";
 var ExportError = class extends Error {
   constructor(message, code) {
     super(message);
@@ -38560,30 +38750,30 @@ var ExportError = class extends Error {
     this.code = code;
   }
 };
-var historyDir = () => path7.join(POLICY.home, "history");
+var historyDir = () => path9.join(POLICY.home, "history");
 function readJson(p) {
   try {
-    return JSON.parse(fs6.readFileSync(p, "utf8"));
+    return JSON.parse(fs7.readFileSync(p, "utf8"));
   } catch {
     return null;
   }
 }
 function roundsOf(chainId) {
-  const dir = path7.join(historyDir(), chainId);
+  const dir = path9.join(historyDir(), chainId);
   let names = [];
   try {
-    names = fs6.readdirSync(dir);
+    names = fs7.readdirSync(dir);
   } catch {
     return [];
   }
-  return names.filter((n) => /^round-\d+\.json$/.test(n)).sort().map((n) => readJson(path7.join(dir, n))).filter(Boolean);
+  return names.filter((n) => /^round-\d+\.json$/.test(n)).sort().map((n) => readJson(path9.join(dir, n))).filter(Boolean);
 }
 function chainsOfGroup(groupId) {
-  const group = readJson(path7.join(historyDir(), "groups", `${groupId}.json`));
+  const group = readJson(path9.join(historyDir(), "groups", `${groupId}.json`));
   if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.severally/history`, "unknown_group");
   const byJob = /* @__PURE__ */ new Map();
   try {
-    for (const line of fs6.readFileSync(path7.join(historyDir(), "index.jsonl"), "utf8").split("\n")) {
+    for (const line of fs7.readFileSync(path9.join(historyDir(), "index.jsonl"), "utf8").split("\n")) {
       if (!line.trim()) continue;
       const row = JSON.parse(line);
       byJob.set(row.job_id, row.chain_id);
@@ -38623,6 +38813,17 @@ function briefSection(brief) {
   for (const a of brief.artifacts ?? []) {
     out.push(`**Material: ${a.name}** (${[a.kind, a.language, a.source].filter(Boolean).join(", ")})`, "");
     out.push(...fence(a.excerpt, a.language));
+    out.push("");
+  }
+  const exposed = brief.expose_paths;
+  if (exposed?.entries?.length) {
+    out.push("**Files exposed to the consultant**", "");
+    for (const e of exposed.entries) {
+      out.push(`- ${e.exposed_as} (${e.kind}, ${e.files} file(s), ${humanSize(e.bytes)}) -- from ${e.source}`);
+    }
+    if (exposed.skipped?.length) {
+      out.push(`- ${exposed.skipped.length} symlink(s) inside those directories were skipped, not followed`);
+    }
     out.push("");
   }
   return out;
@@ -38823,8 +39024,12 @@ mode:
             it, and which disagreements remain. Both are required.
 
 The consultant starts in an empty working directory and is not told where your repository is: put every fact
-it needs into context.facts and paste the relevant passages into context.artifacts. Model, permissions, round
-count, timeout and size caps are fixed by this server and cannot be raised from a request.
+it needs into context.facts and paste the relevant passages into context.artifacts. When it needs to explore
+rather than read what you picked out, name absolute paths in context.expose_paths: those files and directories
+are copied read-only into its working directory (under ./workspace) and are then the only part of your
+repository it has. At most 20 entries, 500 files and 5 MB in total; symlinks are skipped rather than followed,
+and text files are credential-masked exactly as the brief is. Model, permissions, round count, timeout and size
+caps are fixed by this server and cannot be raised from a request.
 
 prediction: optional -- { expected, worry }: the bottom line you expect back and, in one sentence, what you are
         most worried about. Stored with the consultation and NEVER sent to the consultant. It can only be
