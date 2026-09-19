@@ -263,7 +263,7 @@ export const POLICY = Object.freeze({
       allowedModelsEnv: 'SEVERALLY_CLAUDE_ALLOWED_MODELS',
       label: 'Claude Code CLI',
       vendor: 'anthropic',
-      maxBudgetUsd: num('SEVERALLY_CLAUDE_MAX_BUDGET_USD', 2, 0.05, 20),
+      maxBudgetUsd: num('SEVERALLY_CLAUDE_MAX_BUDGET_USD', 10, 0.05, 20),
     }),
     antigravity: Object.freeze({
       cli: AGY_BIN,
