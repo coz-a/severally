@@ -13,8 +13,16 @@ const args = process.argv.slice(2);
 
 // A capability probe target: the adapter discovers 2.x-only flags through
 // `run --help`. STUB_HELP=standalone advertises --standalone (the 2.x flag
-// list), the default hides it (the 1.18.31 list).
+// list), the default hides it (the 1.18.31 list), and STUB_HELP=fail exits
+// nonzero while mentioning the flag -- a diagnostic that must not count as
+// support. STUB_HELP_DELAY_MS simulates a slow probe.
 if (args.includes('--help')) {
+  const delay = Number(process.env.STUB_HELP_DELAY_MS ?? 0);
+  if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+  if (process.env.STUB_HELP === 'fail') {
+    console.error('error: no such command; see --standalone docs');
+    process.exit(1);
+  }
   if (process.env.STUB_HELP === 'standalone') console.log('FLAGS\n  --standalone            Run with a private server instead of the background service');
   else console.log('FLAGS\n  --format choice         Output format (choices: default, json)');
   process.exit(0);
@@ -147,6 +155,10 @@ async function run() {
       emit('error', { error: { type: 'provider.no-route', message: 'Model unavailable: zai-coding-plan/glm-5.3' } });
       process.exit(1);
     }
+    // Seeded: the retry answers, optionally after its own delay so tests can
+    // assert the job's duration covers BOTH attempts.
+    const retryDelay = Number(process.env.STUB_RETRY_DELAY_MS ?? 0);
+    if (retryDelay) await new Promise((resolve) => setTimeout(resolve, retryDelay));
   }
 
   emit('step_start', { part: { type: 'step-start' } });

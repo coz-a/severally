@@ -472,6 +472,45 @@ test('opencode: the recovery respawn never extends the budget', async () => {
   }
 });
 
+// duration_ms and finished_at must describe the job as a whole: a respawned
+// consultation that succeeds reports the total time of both attempts plus
+// the seeding, not the timestamp of the first failure.
+test('opencode: a job that needed its retry reports the full duration', async () => {
+  process.env.STUB_BEHAVIOR = 'no_route_after_delay';
+  process.env.STUB_DELAY_MS = '2500';
+  process.env.STUB_RETRY_DELAY_MS = '2000';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    assert.ok(view.duration_ms >= 4000,
+      `duration must cover both attempts (first ~2.5s + retry ~2s), got ${view.duration_ms}`);
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+    delete process.env.STUB_DELAY_MS;
+    delete process.env.STUB_RETRY_DELAY_MS;
+  }
+});
+
+// The capability probe runs inside the job's accounting: its latency is part
+// of the consultation, not free time before the clock starts.
+test('opencode: the capability probe counts into the job duration', async () => {
+  const { resetProbe } = await import('../src/adapters/opencode.mjs');
+  process.env.STUB_HELP = 'standalone';
+  process.env.STUB_HELP_DELAY_MS = '1500';
+  try {
+    await resetProbe();
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    assert.ok(view.duration_ms >= 1500, `probe latency must be inside duration_ms, got ${view.duration_ms}`);
+  } finally {
+    delete process.env.STUB_HELP;
+    delete process.env.STUB_HELP_DELAY_MS;
+    await resetProbe();
+  }
+});
+
 test('opencode: the synthesised home is handed over as HOME and removed afterwards', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'oc-env.json');

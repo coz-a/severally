@@ -277,6 +277,42 @@ test('a truncated stream fails when a later text part has no finish after it', (
   assert.equal(out.failureKind, 'invalid_output');
 });
 
+// The finish-after-text reset covers a captured LATER text; the remaining
+// hole is work that continued past a finish and was cut before any new text
+// arrived (text A -> finish -> step 2 starts -> capture cut). The final
+// answer never arrived, so under truncation only a stream that ENDS on a
+// step-finish may be trusted.
+test('a truncated stream fails when work continued past the last finish', () => {
+  const out = adapter.interpret({
+    stdout: textEvent(JSON.stringify({ summary: 'step one answer' })) + finishEvent({}, null)
+      + line({ type: 'step_start', part: { type: 'step-start' } }),
+    stderr: '',
+    code: 0,
+    truncated: true,
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.failureKind, 'invalid_output');
+});
+
+// A capability probe that FAILED (spawn error, timeout, nonzero exit) must
+// not be cached as "flag unsupported": on a 2.x install that would pin every
+// later job to the shared-service route that hangs. Only a successful help
+// invocation may cache -- and only a zero exit counts, so a diagnostic line
+// that happens to mention --standalone cannot establish support.
+test('a transient probe failure is not cached, and a nonzero-exit help proves nothing', async () => {
+  process.env.STUB_HELP = 'fail';
+  await adapter.resetProbe();
+  await adapter.prepare();
+  assert.equal(adapter.buildInvocation({}).args.includes('--standalone'), false,
+    'a failed probe yields no flag for this job');
+  process.env.STUB_HELP = 'standalone';
+  await adapter.prepare(); // no resetProbe: the failure must not have been cached
+  assert.ok(adapter.buildInvocation({}).args.includes('--standalone'),
+    'a later job must re-probe and find the flag');
+  delete process.env.STUB_HELP;
+  await adapter.resetProbe();
+});
+
 // Both CLI generations exit 0 on every observed success; a nonzero exit with
 // a usable-looking text part means the CLI crashed around it, and accepting
 // the text would dress a crashed consultation up as advice.

@@ -51,12 +51,21 @@ if(cli==='npm') {
   // actually added (recorded in the registry state), so a post-add
   // registration check has something real to find. STUB_MCP_LIST prepends
   // fixture-set lines; STUB_ADD_SILENT makes 'mcp add' exit 0 while recording
-  // nothing -- the opencode failure mode where flags print usage instead.
+  // nothing and writing no config -- the opencode failure mode where flags
+  // print usage instead. A real add also writes the global config file, which
+  // is what the installer's command verification reads.
   if(args[1]==='list') {
     const registered = state[cli] ? [cli + ': severally connected'] : [];
     console.log([process.env.STUB_MCP_LIST ?? '', ...registered].filter(Boolean).join('\\n'));
   }
-  if(args[1]==='add' && !process.env.STUB_ADD_SILENT) state[cli]=args.slice(-2);
+  if(args[1]==='add' && !process.env.STUB_ADD_SILENT) {
+    state[cli]=args.slice(-2);
+    if(cli==='opencode') {
+      const cfgDir = path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME,'.config'),'opencode');
+      fs.mkdirSync(cfgDir,{recursive:true});
+      fs.writeFileSync(path.join(cfgDir,'opencode.json'), JSON.stringify({mcp:{servers:{severally:{command:args.slice(-2)}}}},null,2));
+    }
+  }
 }
 fs.writeFileSync(file,JSON.stringify(state));
 `;
@@ -184,6 +193,25 @@ test('POSIX opencode add that did not register is reported as a failure', { skip
     calls.some((args) => args[0] === 'opencode' && args[1] === 'mcp' && args[2] === 'add'),
     'the add must still have been attempted',
   );
+});
+
+// --force replaces a registration, and opencode has no `mcp remove`, so a
+// silent add leaves the OLD entry listed: the name-only check would pass
+// while the obsolete command stays. The registered command itself must match
+// this install's server command.
+test('POSIX opencode --force over a stale registration verifies the command, not just the name', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const xdg = path.join(f.dir, 'xdg-config');
+  f.env.XDG_CONFIG_HOME = xdg;
+  const stale = ['old-node', 'old-runtime.mjs'];
+  const registry = JSON.parse(fs.readFileSync(f.registry, 'utf8'));
+  registry.opencode = stale;
+  fs.writeFileSync(f.registry, JSON.stringify(registry));
+  fs.mkdirSync(path.join(xdg, 'opencode'), { recursive: true });
+  fs.writeFileSync(path.join(xdg, 'opencode', 'opencode.json'),
+    JSON.stringify({ mcp: { servers: { severally: { command: stale } } } }));
+  f.env.STUB_ADD_SILENT = '1';
+  assert.throws(() => f.install('--manual', '--force'), (err) => /not verified/.test(err.stdout));
 });
 
 test('POSIX dry-run leaves runtime, marketplace and client configuration untouched', { skip: !posix }, (t) => {

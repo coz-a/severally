@@ -91,22 +91,42 @@ export async function prepare() {
   if (!probePromise) {
     probePromise = new Promise((resolve) => {
       let settled = false;
-      const done = (v) => { if (!settled) { settled = true; standaloneSupport = Boolean(v); resolve(); } };
+      let timer = null;
+      // Only a SUCCESSFUL help invocation may cache its answer: a spawn
+      // error, a timeout or a nonzero exit is transient, and caching it as
+      // "unsupported" would pin a 2.x install to the shared-service route
+      // for the process lifetime. Transient outcomes resolve without
+      // caching, so the next job probes again.
+      const finishProbe = (supported, cache) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (cache) standaloneSupport = Boolean(supported);
+        else probePromise = null;
+        resolve();
+      };
       try {
         // The probe inherits the server environment minus the test-suite's
-        // STUB_* observables (a stubbed CLI cannot tell it ran), keeping
-        // STUB_HELP so a test can still shape the advertised flag list.
+        // STUB_* observables (a stubbed CLI cannot tell it ran), keeping the
+        // STUB_HELP knobs so a test can still shape the advertised flag list
+        // and the probe's latency.
         const env = Object.fromEntries(Object.entries(process.env)
-          .filter(([k]) => !k.startsWith('STUB_') || k === 'STUB_HELP'));
+          .filter(([k]) => !k.startsWith('STUB_') || k === 'STUB_HELP' || k === 'STUB_HELP_DELAY_MS'));
         const child = spawnCommand(POLICY.targets.opencode.cli, ['run', '--help'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
         let out = '';
         child.stdout.on('data', (c) => { out += c; });
         child.stderr.on('data', (c) => { out += c; });
-        child.on('error', () => done(false));
-        child.on('close', () => done(out.includes('--standalone')));
-        setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } done(false); }, 10_000).unref();
+        child.on('error', () => finishProbe(false, false));
+        child.on('close', (code) => {
+          // A nonzero exit proves nothing either way -- a diagnostic that
+          // happens to mention --standalone must not establish support.
+          if (code !== 0) return finishProbe(false, false);
+          finishProbe(out.includes('--standalone'), true);
+        });
+        timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } finishProbe(false, false); }, 10_000);
+        timer.unref();
       } catch {
-        done(false);
+        finishProbe(false, false);
       }
     });
   }
@@ -254,11 +274,14 @@ export function interpret({ stdout, stderr, code, truncated = false }) {
       || `opencode exited with code ${code} after producing an answer`;
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
   }
-  if (truncated && !finishedAfterText) {
+  if (truncated && !(finishedAfterText && all.length > 0 && all[all.length - 1].type === 'step_finish')) {
     // stdout hit the rawCaptureMax before the consultation finished, so the
-    // final answer event may never have been read. The text we hold is likely
-    // interim prose; returning it as the answer would look like advice that
-    // never existed. Fail explicitly instead.
+    // final answer event may never have been read. Under truncation only a
+    // stream that ENDS on a step-finish -- the terminal event of a completed
+    // consultation -- may be trusted; anything else (a later text part, work
+    // that continued past an earlier finish) means the answer we hold is
+    // interim prose, and returning it would look like advice that never
+    // existed. Fail explicitly instead.
     return {
       ok: false,
       failureKind: 'invalid_output',

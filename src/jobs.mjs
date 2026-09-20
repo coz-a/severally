@@ -437,8 +437,15 @@ export class JobManager {
         );
       }
 
+      const budgetMs = timeoutMs(req.target);
+      job.status = 'running';
+      job.started_at = new Date().toISOString();
+      const t0 = Date.now();
+
       // One-time per-process capability probe (e.g. the opencode adapter
-      // discovering 2.x-only flags through `run --help`).
+      // discovering 2.x-only flags through `run --help`). Inside the clock:
+      // its latency is part of this job's duration and budget, not free time
+      // before the meter starts.
       if (adapter.prepare) await adapter.prepare();
       const invocation = adapter.buildInvocation({
         workdir,
@@ -450,11 +457,6 @@ export class JobManager {
       });
 
       assertNoForbiddenFlags(req.target, invocation.args);
-
-      const budgetMs = timeoutMs(req.target);
-      job.status = 'running';
-      job.started_at = new Date().toISOString();
-      const t0 = Date.now();
 
       const { handle, done } = runChild({
         command: invocation.command,
@@ -517,6 +519,10 @@ export class JobManager {
           job._handle = retry.handle;
           if (job.cancelRequested) retry.handle.stop();
           const rerun = await retry.done;
+          // The job's timing describes the whole consultation: both attempts
+          // plus the seeding, not the first failure.
+          job.duration_ms = Date.now() - t0;
+          job.finished_at = new Date().toISOString();
           if (rerun.spawnError) {
             return this.#fail(job, 'spawn_error', `could not start ${invocation.command}: ${rerun.spawnError}`);
           }

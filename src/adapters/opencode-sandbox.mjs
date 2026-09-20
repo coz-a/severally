@@ -192,38 +192,38 @@ export function seedCredentialFromAuth(sandbox, provider) {
   if (!fs.existsSync(dbPath)) return false;
 
   let row = null;
-  if (fs.existsSync(authPath)) {
+  // The operator's session database is what the 2.x CLI itself authenticates
+  // with, so it outranks the copied auth.json: an operator who rotated their
+  // key through `auth login` can be left with a stale auth.json entry, and
+  // seeding that would waste the single retry while the working key sat
+  // unread. Among several rows the most recently updated one is the live
+  // credential. Read-only, and only this one provider's row -- never a copy
+  // of the store, whose sessions must not cross into the sandbox.
+  const operatorDb = path.join(opencodeCredentialsHome(), '.local', 'share', 'opencode', 'opencode.db');
+  if (fs.existsSync(operatorDb)) {
+    try {
+      const db = new DatabaseSync(operatorDb, { readOnly: true });
+      try {
+        const found = db.prepare('SELECT label, value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1').get(provider);
+        if (found && typeof found.value === 'string') {
+          const parsed = JSON.parse(found.value);
+          if (parsed && typeof parsed === 'object' && typeof parsed.key === 'string' && parsed.key) {
+            row = { label: found.label ?? 'API key', value: found.value };
+          }
+        }
+      } finally {
+        db.close();
+      }
+    } catch { /* unreadable or reshaped: try the auth.json source */ }
+  }
+  if (!row && fs.existsSync(authPath)) {
     try {
       const entry = JSON.parse(fs.readFileSync(authPath, 'utf8'))[provider];
       if (entry && typeof entry === 'object' && typeof entry.key === 'string' && entry.key
         && (!entry.type || entry.type === 'api')) {
         row = { label: 'API key', value: JSON.stringify({ type: 'key', key: entry.key }) };
       }
-    } catch { /* unreadable auth.json: fall through to the database source */ }
-  }
-  if (!row) {
-    // A fresh 2.x installation may hold its credentials only in the
-    // operator's session database, with no auth.json at all. Read that one
-    // provider's row -- read-only, never a copy of the whole store, whose
-    // sessions must not cross into the sandbox -- and carry it verbatim,
-    // because it is already the CLI's own format.
-    const operatorDb = path.join(opencodeCredentialsHome(), '.local', 'share', 'opencode', 'opencode.db');
-    if (fs.existsSync(operatorDb)) {
-      try {
-        const db = new DatabaseSync(operatorDb, { readOnly: true });
-        try {
-          const found = db.prepare('SELECT label, value FROM credential WHERE integration_id = ?').get(provider);
-          if (found && typeof found.value === 'string') {
-            const parsed = JSON.parse(found.value);
-            if (parsed && typeof parsed === 'object' && typeof parsed.key === 'string' && parsed.key) {
-              row = { label: found.label ?? 'API key', value: found.value };
-            }
-          }
-        } finally {
-          db.close();
-        }
-      } catch { /* unreadable or reshaped: not seedable from here */ }
-    }
+    } catch { /* unreadable auth.json: nothing seedable */ }
   }
   if (!row) return false;
   try {

@@ -38203,33 +38203,31 @@ function seedCredentialFromAuth(sandbox, provider) {
   const dbPath = path9.join(dataDir, "opencode.db");
   if (!fs6.existsSync(dbPath)) return false;
   let row = null;
-  if (fs6.existsSync(authPath)) {
+  const operatorDb = path9.join(opencodeCredentialsHome(), ".local", "share", "opencode", "opencode.db");
+  if (fs6.existsSync(operatorDb)) {
+    try {
+      const db = new DatabaseSync(operatorDb, { readOnly: true });
+      try {
+        const found = db.prepare("SELECT label, value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1").get(provider);
+        if (found && typeof found.value === "string") {
+          const parsed = JSON.parse(found.value);
+          if (parsed && typeof parsed === "object" && typeof parsed.key === "string" && parsed.key) {
+            row = { label: found.label ?? "API key", value: found.value };
+          }
+        }
+      } finally {
+        db.close();
+      }
+    } catch {
+    }
+  }
+  if (!row && fs6.existsSync(authPath)) {
     try {
       const entry = JSON.parse(fs6.readFileSync(authPath, "utf8"))[provider];
       if (entry && typeof entry === "object" && typeof entry.key === "string" && entry.key && (!entry.type || entry.type === "api")) {
         row = { label: "API key", value: JSON.stringify({ type: "key", key: entry.key }) };
       }
     } catch {
-    }
-  }
-  if (!row) {
-    const operatorDb = path9.join(opencodeCredentialsHome(), ".local", "share", "opencode", "opencode.db");
-    if (fs6.existsSync(operatorDb)) {
-      try {
-        const db = new DatabaseSync(operatorDb, { readOnly: true });
-        try {
-          const found = db.prepare("SELECT label, value FROM credential WHERE integration_id = ?").get(provider);
-          if (found && typeof found.value === "string") {
-            const parsed = JSON.parse(found.value);
-            if (parsed && typeof parsed === "object" && typeof parsed.key === "string" && parsed.key) {
-              row = { label: found.label ?? "API key", value: found.value };
-            }
-          }
-        } finally {
-          db.close();
-        }
-      } catch {
-      }
     }
   }
   if (!row) return false;
@@ -38275,15 +38273,17 @@ async function prepare() {
   if (!probePromise) {
     probePromise = new Promise((resolve) => {
       let settled = false;
-      const done = (v) => {
-        if (!settled) {
-          settled = true;
-          standaloneSupport = Boolean(v);
-          resolve();
-        }
+      let timer = null;
+      const finishProbe = (supported, cache) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (cache) standaloneSupport = Boolean(supported);
+        else probePromise = null;
+        resolve();
       };
       try {
-        const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP"));
+        const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP" || k === "STUB_HELP_DELAY_MS"));
         const child = spawnCommand(POLICY.targets.opencode.cli, ["run", "--help"], { env, stdio: ["ignore", "pipe", "pipe"] });
         let out = "";
         child.stdout.on("data", (c) => {
@@ -38292,17 +38292,21 @@ async function prepare() {
         child.stderr.on("data", (c) => {
           out += c;
         });
-        child.on("error", () => done(false));
-        child.on("close", () => done(out.includes("--standalone")));
-        setTimeout(() => {
+        child.on("error", () => finishProbe(false, false));
+        child.on("close", (code) => {
+          if (code !== 0) return finishProbe(false, false);
+          finishProbe(out.includes("--standalone"), true);
+        });
+        timer = setTimeout(() => {
           try {
             child.kill("SIGKILL");
           } catch {
           }
-          done(false);
-        }, 1e4).unref();
+          finishProbe(false, false);
+        }, 1e4);
+        timer.unref();
       } catch {
-        done(false);
+        finishProbe(false, false);
       }
     });
   }
@@ -38400,7 +38404,7 @@ function interpret4({ stdout, stderr, code, truncated = false }) {
     const msg = errors.join(" | ") || (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `opencode exited with code ${code} after producing an answer`;
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
   }
-  if (truncated && !finishedAfterText) {
+  if (truncated && !(finishedAfterText && all.length > 0 && all[all.length - 1].type === "step_finish")) {
     return {
       ok: false,
       failureKind: "invalid_output",
@@ -38750,6 +38754,10 @@ var JobManager = class {
           `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(" / ")} names a usable credential. Log in with that CLI, point SEVERALLY_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
         );
       }
+      const budgetMs = timeoutMs(req.target);
+      job.status = "running";
+      job.started_at = (/* @__PURE__ */ new Date()).toISOString();
+      const t0 = Date.now();
       if (adapter.prepare) await adapter.prepare();
       const invocation = adapter.buildInvocation({
         workdir,
@@ -38760,10 +38768,6 @@ var JobManager = class {
         hasExposedPaths: req.context.expose_paths.length > 0
       });
       assertNoForbiddenFlags(req.target, invocation.args);
-      const budgetMs = timeoutMs(req.target);
-      job.status = "running";
-      job.started_at = (/* @__PURE__ */ new Date()).toISOString();
-      const t0 = Date.now();
       const { handle, done } = runChild({
         command: invocation.command,
         args: invocation.args,
@@ -38811,6 +38815,8 @@ var JobManager = class {
           job._handle = retry.handle;
           if (job.cancelRequested) retry.handle.stop();
           const rerun = await retry.done;
+          job.duration_ms = Date.now() - t0;
+          job.finished_at = (/* @__PURE__ */ new Date()).toISOString();
           if (rerun.spawnError) {
             return this.#fail(job, "spawn_error", `could not start ${invocation.command}: ${rerun.spawnError}`);
           }

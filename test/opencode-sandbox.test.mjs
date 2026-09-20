@@ -176,3 +176,38 @@ test('seedCredentialFromAuth falls back to the operator database when auth.json 
   }
   fs.rmSync(dbOnlyHome, { recursive: true, force: true });
 });
+
+// The database is what the 2.x CLI itself authenticates with, so it wins over
+// a copied auth.json: an operator who rotated their key through `auth login`
+// can be left with a stale auth.json entry, and seeding that would fail the
+// single retry while the working key sat unread. Among several database rows
+// the most recently updated one is the live credential.
+test('the operator database outranks a stale auth.json entry, latest row first', { skip: !sqlite }, () => {
+  const mixedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-mixed-'));
+  const dir = path.join(mixedHome, '.local', 'share', 'opencode');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'auth.json'), '{"zai-coding-plan":{"type":"api","key":"stale-key"}}');
+  const operatorDb = new sqlite.DatabaseSync(path.join(dir, 'opencode.db'));
+  operatorDb.exec('CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)');
+  const insert = operatorDb.prepare('INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)');
+  insert.run('cred_old', 'zai-coding-plan', 'API key', '{"type":"key","key":"old-rotated-away"}', 1, 1);
+  insert.run('cred_live', 'zai-coding-plan', 'API key', '{"type":"key","key":"live-key"}', 2, 3);
+  operatorDb.close();
+
+  const prev = process.env.SEVERALLY_OPENCODE_CRED_HOME;
+  process.env.SEVERALLY_OPENCODE_CRED_HOME = mixedHome;
+  try {
+    const sandbox = prepareSandbox({ workdir: makeWorkdir() });
+    bootstrapCredentialTable(sandbox);
+    assert.equal(seedCredentialFromAuth(sandbox, 'zai-coding-plan'), true);
+    assert.deepEqual(
+      credentialRows(sandbox).map((r) => r.value),
+      ['{"type":"key","key":"live-key"}'],
+      'the live database credential must outrank the stale auth.json entry',
+    );
+    sandbox.cleanup();
+  } finally {
+    process.env.SEVERALLY_OPENCODE_CRED_HOME = prev;
+  }
+  fs.rmSync(mixedHome, { recursive: true, force: true });
+});

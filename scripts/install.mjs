@@ -280,8 +280,13 @@ const CLIENTS = [
     remove: () => ({ ok: true, out: 'opencode has no mcp remove; re-adding replaces the entry' }),
     add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--', ...bin]),
     // A zero exit from `mcp add` can be a usage dump in disguise (see above),
-    // so this client's registration is verified by listing after adding.
+    // so this client's registration is verified by listing after adding --
+    // and the recorded command is compared against this install's.
     verifyAdd: true,
+    registrationConfig: [
+      path.join(xdgConfig, 'opencode', 'opencode.json'),
+      path.join(xdgConfig, 'opencode', 'opencode.jsonc'),
+    ],
     skillFrom: path.join(PLUGIN, 'skills', 'opencode', 'severally'),
     skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
@@ -289,11 +294,27 @@ const CLIENTS = [
 const antigravityClient = CLIENTS.find((c) => c.bin === 'agy');
 const opencodeClient = CLIENTS.find((c) => c.bin === 'opencode');
 
+// opencode re-adds in place and has no `mcp remove`, so --force over an
+// existing registration can silently keep the OLD command while the
+// name-only list check passes. The global config is where the CLI records
+// the server command; confirm it matches what this install registers.
+function registrationCommandMatches(client, bin) {
+  for (const file of client.registrationConfig ?? []) {
+    let cfg;
+    try {
+      cfg = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, ''));
+    } catch { continue; }
+    const entry = cfg.mcp?.servers?.severally ?? cfg.mcp?.severally;
+    const command = entry?.command ?? entry;
+    if (Array.isArray(command)) return JSON.stringify(command) === JSON.stringify(bin);
+  }
+  return false;
+}
+
 // Registers one client's MCP server directly (through its own `mcp add`) and
 // copies its skill, backing up everything it touches first. Shared by plugin
 // mode (Antigravity only) and --manual mode (all three clients).
-function installClientDirectly(client, bin) {
-  step(`Registering with ${client.label}`);
+function installClientDirectly(client, bin) {  step(`Registering with ${client.label}`);
   if (!which(client.bin)) {
     log(`   ${client.bin} CLI not found on PATH — skipped`);
     return;
@@ -313,6 +334,9 @@ function installClientDirectly(client, bin) {
       // so a zero exit from `mcp add` proves nothing: confirm the entry is
       // actually listed, or the server silently never reaches the client.
       log('   add exited 0 but the server is not listed; registration failed');
+      process.exitCode = 1;
+    } else if (!dryRun && client.verifyAdd && !registrationCommandMatches(client, bin)) {
+      log('   registration not verified: the listed server command does not match this install');
       process.exitCode = 1;
     } else {
       log('   registered');
