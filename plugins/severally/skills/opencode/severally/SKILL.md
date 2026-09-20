@@ -1,6 +1,6 @@
 ---
 name: severally
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Claude Code or Antigravity or OpenCode through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ("ask Claude", "get Claude to review this", "Claudeに聞いて", "Claudeにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "ask GLM", "get GLM to review this", "GLMに聞いて", "GLMにレビューしてもらって", "みんなで相談して", "みんなに聞いて", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Claude Code or Antigravity through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Claude", "get Claude to review this", "Claudeに聞いて", "Claudeにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "みんなで相談して", "みんなに聞いて", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
@@ -13,19 +13,19 @@ One caveat on that list: a consultant can read local files. Its writes and its
 network access are blocked, and by default it starts in an empty working directory without being
 told where your repository is, so in practice it answers from the brief -- unless
 `context.expose_paths` names absolute paths, which are then copied read-only into its working
-directory.
+directory. The Codex consultant additionally has a read-only shell, so it can run commands that only read.
 
 ## Pick the consultant
 
 | target | Consultant | Reach for it when |
 |---|---|---|
+| `codex` | Codex CLI | the question is about implementation detail, tricky code, or a decision where a different training lineage helps |
 | `claude-code` | Claude Code CLI | you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact |
 | `antigravity` | Antigravity CLI (Gemini) | you want a third reading, or the question needs current web material |
-| `opencode` | OpenCode CLI (GLM) | you want another training lineage (GLM) on the question, or a fourth reading when the first three stay neck and neck |
 
 `target` also accepts the everyday names: `gpt` / `chatgpt` / `openai` -> Codex, `claude` / `anthropic` ->
 Claude Code, `gemini` / `agy` / `google` -> Antigravity, `glm` / `opencode` -> OpenCode. When the user names
-one, use that one. When they just ask for a second opinion, default to `claude-code`.
+one, use that one. When they just ask for a second opinion, default to `codex`.
 
 Not every machine has every peer installed. `consult_start`'s description lists the consultants this one can
 actually reach, and naming a missing one comes back as `target_unavailable` with the available list — take that
@@ -46,9 +46,9 @@ whether to retry with a longer budget or with a smaller question.
 ## Naming a model
 
 A consultant runs on the model its operator configured. If — and only if — the user names one, append it to
-the target: `target: "claude-code:<model>"`, and the same inside `targets` for a fan-out. So 「Claude
+the target: `target: "codex:<model>"`, and the same inside `targets` for a fan-out. So 「Claude
 Opusと相談して」 becomes `target: "claude:claude-opus-5"`. In a fan-out only the member the model was named
-for carries a suffix: `targets: ["claude-code", "antigravity", "codex:<model>"]`.
+for carries a suffix: `targets: ["codex", "claude-code", "opencode:<model>"]`.
 
 Pass the model roughly as the user said it — `claude:opus` and `claude:"Claude Opus"` both resolve, as long as
 they match exactly one model the operator allowed. `consult_start`'s description lists what each consultant may
@@ -59,16 +59,16 @@ them is refused rather than guessed, so a rejection tells you what to say instea
 choice; overriding it on your own judgement — including after a `usage_limit` failure — substitutes a different
 mind for the one the user asked for.
 
-You may also pass `target: "codex"` to consult your own CLI in a fresh session. A fresh session of
+You may also pass `target: "opencode"` to consult your own CLI in a fresh session. A fresh session of
 your own lineage removes what this session has accumulated — history, sunk cost, drift toward your own framing
 — but keeps what the lineage shares: training-data blind spots, the same reflexes toward the brief's wording.
 So it is a clean-context re-read, not an independent opinion, and the server marks the result accordingly.
 Reach for the other peers when the risk is your model's blind spot; reach for this when the risk is your
 session's drift — or when the user wants a **different model of your own lineage** on the question (an Opus
-lead asking Fable, or the reverse, `target: "codex:<model>"`). That is a different model, not a
+lead asking Fable, or the reverse, `target: "opencode:<model>"`). That is a different model, not a
 second lineage; the caveat stays, and it says which model answered.
 
-Pass `caller: "codex"` in every request so the server can annotate that case, and `caller_model`
+Pass `caller: "opencode"` in every request so the server can annotate that case, and `caller_model`
 with the model you are running on when you know it (the server cannot see it). With both, the record keeps
 who asked whom, and a same-vendor answer says "same model" or "different model" when the server can place
 the name you gave, and otherwise relays both names without deciding.
@@ -121,7 +121,7 @@ facts it rests on, and one diff or code excerpt:
 
 ```
 consult_start({ request: {
-  target: "claude-code",
+  target: "codex",
   mode: "review",
   question: "the decision you are stuck on, in one sentence",
   context: { facts: ["..."], proposal: "our plan, and why", artifacts: [{name, kind, language, excerpt}] }
@@ -161,7 +161,7 @@ do the organising work first; a vague brief gets a vague answer.
 
 ```
 consult_start({ request: {
-  target: "claude-code",
+  target: "codex",
   mode: "review",
   question: "...",
   objective: "...",                 // optional
@@ -184,7 +184,7 @@ enough that you want two genuinely independent readings of it:
 
 ```
 consult_start({ request: {
-  targets: ["claude-code", "antigravity"],
+  targets: ["codex", "claude-code"],
   mode: "review",
   ...
 }})
@@ -196,7 +196,7 @@ call.
 
 ```
 consult_start({ request: {
-  targets: ["claude-code", "antigravity", "opencode", "codex"],
+  targets: ["codex", "claude-code", "antigravity", "opencode"],
   mode: "review",
   ...
 }})

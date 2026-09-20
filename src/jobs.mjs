@@ -17,8 +17,9 @@ import { previewExposePaths, materializeExposedPaths } from './expose-paths.mjs'
 import * as codex from './adapters/codex.mjs';
 import * as claudeCode from './adapters/claude-code.mjs';
 import * as antigravity from './adapters/antigravity.mjs';
+import * as opencode from './adapters/opencode.mjs';
 
-const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity };
+const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity, opencode };
 
 // The second way a consultant can be authenticated. A linked token file and an
 // API key / ADC file are alternatives, not both required, so the presence of
@@ -409,11 +410,17 @@ export class JobManager {
       // the token path has been verified against the live CLI; the API-key
       // path is passed through, not proven.
       //
+      // Scoped to antigravity on purpose: the message and the alternative
+      // variables below are the Gemini ones. The opencode sandbox reports
+      // `credentials: "missing"` the same way, but its only credential is
+      // auth.json -- there is no env-var alternative to name -- so its
+      // unauthenticated child is classified by classifyMessage like any other
+      // auth failure the CLI reports.
       // Read from `env`, not process.env: what matters is what the child will
       // actually receive. No test can currently tell the two apart, because
       // childEnv keeps GEMINI_*/GOOGLE_* for the only target that has a
       // sandbox -- so do not "simplify" this to process.env.
-      if (sandbox && sandbox.credentials === 'missing' && !hasApiCredential(env)) {
+      if (req.target === 'antigravity' && sandbox && sandbox.credentials === 'missing' && !hasApiCredential(env)) {
         return this.#fail(
           job,
           'auth',

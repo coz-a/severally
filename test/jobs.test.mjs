@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, opencodeRequest, waitFor } from './helpers.mjs';
 
 // A second codex model, so the model-suffix test has something besides the
 // default to name. POLICY freezes at first import, so this has to be set here
@@ -317,12 +317,10 @@ test('concurrency is capped server-side', async () => {
   process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?cc=${Date.now()}`);
   const mgr = new M();
-  const a = mgr.start(reviewRequest());
-  const b = mgr.start(reviewRequest());
-  const c = mgr.start(reviewRequest());
+  const started = [1, 2, 3, 4].map(() => mgr.start(reviewRequest()));
   assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'concurrency_limit');
   mgr.shutdown();
-  await Promise.all([finish(mgr, a.job_id), finish(mgr, b.job_id), finish(mgr, c.job_id)]);
+  await Promise.all(started.map((s) => finish(mgr, s.job_id)));
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 
@@ -363,6 +361,9 @@ test('the launch guard refuses permission-widening flags outright', async () => 
   assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/', '--add-dir', '/tmp']), /widen consultant file access/);
   assert.throws(() => assertNoForbiddenFlags('codex', ['exec', '--add-dir', '/']), /permission-widening/);
   assert.throws(() => assertNoForbiddenFlags('antigravity', ['--add-dir', '/']), /permission-widening/);
+  assert.throws(() => assertNoForbiddenFlags('opencode', ['run', '--auto']), /permission-widening/);
+  assert.throws(() => assertNoForbiddenFlags('opencode', ['run', '--attach', 'http://localhost:4096']), /permission-widening/);
+  assert.equal(assertNoForbiddenFlags('opencode', ['run', '--format', 'json', '--pure']), true);
 });
 
 test('antigravity consultation: alias target, structured answer, usage recorded', async () => {
@@ -406,6 +407,90 @@ test('antigravity: an ERROR envelope becomes a classified failure, not advice', 
   process.env.STUB_BEHAVIOR = 'ok';
 });
 
+test('opencode consultation: alias target, last text part wins, usage recorded', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(opencodeRequest());
+  assert.equal(started.target, 'opencode', 'the alias "glm" must be normalised');
+  assert.equal(started.model, POLICY.targets.opencode.model);
+
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'completed');
+  assert.match(view.result.summary, /Stub opencode summary/);
+  assert.equal(view.usage.input_tokens, 10);
+  assert.equal(view.usage.cached_input_tokens, 7);
+  assert.equal(view.usage.output_tokens, 3);
+  assert.equal(view.usage.total_tokens, 21);
+  assert.equal(view.usage.reasoning_tokens, 1);
+  assert.equal(view.usage.cost_usd, 0.02);
+});
+
+test('opencode: the synthesised home is handed over as HOME and removed afterwards', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const envOut = path.join(home, 'oc-env.json');
+  process.env.STUB_ENV_OUT = envOut;
+  const mgr = new JobManager();
+  const started = mgr.start(opencodeRequest());
+  await finish(mgr, started.job_id);
+  delete process.env.STUB_ENV_OUT;
+
+  const childEnvSeen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+  assert.notEqual(childEnvSeen.HOME, os.homedir(), 'the consultant must not run with the real HOME');
+  assert.match(childEnvSeen.HOME, /jobs[\\/].*[\\/]home$/);
+  assert.equal(fs.existsSync(childEnvSeen.HOME), false, 'the sandbox must be gone once the job finished');
+  assert.match(childEnvSeen.XDG_DATA_HOME, /^\/|^[A-Za-z]:[\\/]/, 'the XDG data dir must be redirected with HOME');
+  assert.ok(
+    childEnvSeen.XDG_DATA_HOME.startsWith(childEnvSeen.HOME),
+    'the session store must live inside the sandbox, so the brief never reaches the real one',
+  );
+});
+
+test('opencode: an error-only stream becomes a classified failure, not advice', async () => {
+  process.env.STUB_BEHAVIOR = 'usage_limit';
+  const mgr = new JobManager();
+  const started = mgr.start(opencodeRequest());
+  const view = await finish(mgr, started.job_id);
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'usage_limit');
+  assert.equal(view.result, null);
+  process.env.STUB_BEHAVIOR = 'ok';
+});
+
+// The synthesised HOME is the only thing isolating the OpenCode consultant,
+// and whatever the hosting session exported under OPENCODE_ (OPENCODE_CONFIG,
+// OPENCODE_CONFIG_CONTENT, OPENCODE_PERMISSION...) could override the
+// sandbox's config outright -- so none of it may reach the child.
+test('the OpenCode consultant gets no config-redirecting variable', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const envOut = path.join(home, 'oc-narrow-env.json');
+  process.env.STUB_ENV_OUT = envOut;
+  const staged = {
+    OPENCODE_CONFIG: '/tmp/some-other-opencode.json',
+    OPENCODE_CONFIG_CONTENT: '{"permission":{"bash":"allow"}}',
+    OPENCODE_PERMISSION: '{"edit":"allow"}',
+    ANTHROPIC_API_KEY: 'sk-ant-should-not-cross',
+  };
+  const saved = Object.fromEntries(Object.keys(staged).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, staged);
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    const seen = JSON.parse(fs.readFileSync(envOut, 'utf8'));
+    for (const key of ['OPENCODE_CONFIG', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_PERMISSION']) {
+      assert.equal(seen[key], undefined, `${key} must not survive into the consultant`);
+    }
+    assert.equal(seen.ANTHROPIC_API_KEY, undefined, 'another vendor\'s key must not cross');
+    assert.equal(seen.OPENCODE_DISABLE_AUTOUPDATE, '1', 'the sandbox belt-and-braces still lands');
+  } finally {
+    delete process.env.STUB_ENV_OUT;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 // One key per prefix TARGET_DROP_PREFIX is meant to strip. The claude-code row
 // is the longest of the three and used to have no test at all, so a typo in it
 // would have leaked an OpenAI or Gemini key into the Claude consultant with
@@ -417,6 +502,7 @@ const VENDOR_KEYS = {
     ANTHROPIC_AUTH_TOKEN: 'ant-token-should-not-cross',
   },
   google: { GEMINI_API_KEY: 'g-should-not-cross', GOOGLE_API_KEY: 'goog-should-not-cross' },
+  zai: { ZAI_API_KEY: 'zai-should-not-cross', ZAI_CODING_PLAN_KEY: 'zai-plan-should-not-cross' },
 };
 
 test('each consultant runs with its own vendor credentials and none of the others', async () => {
@@ -429,6 +515,7 @@ test('each consultant runs with its own vendor credentials and none of the other
     { target: 'codex', request: reviewRequest(), own: 'openai' },
     { target: 'claude-code', request: exploreRequest(), own: 'anthropic' },
     { target: 'antigravity', request: antigravityRequest(), own: 'google' },
+    { target: 'opencode', request: opencodeRequest(), own: 'zai' },
   ];
 
   try {

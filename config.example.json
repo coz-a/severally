@@ -2,6 +2,7 @@
   "targets": {
     "codex": { "enabled": false, "note": "rate-limited until 15:00" },
     "claude-code": { "allowed_models": ["claude-opus-5", "claude-sonnet-5"] },
-    "antigravity": { "bin": "/opt/agy/bin/agy", "default_model": "gemini-3.1-pro-high" }
+    "antigravity": { "bin": "/opt/agy/bin/agy", "default_model": "gemini-3.1-pro-high" },
+    "opencode": { "default_model": "zai-coding-plan/glm-5.3", "allowed_models": ["zai-coding-plan/glm-5.3", "zai-coding-plan/glm-5.3-flash"] }
   }
 }

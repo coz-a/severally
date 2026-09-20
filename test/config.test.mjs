@@ -74,7 +74,7 @@ test('a target the config file disables is not offered, even though its CLI exis
 test('a CLI that is not installed makes its consultant unavailable with no configuration at all', async () => {
   const policy = await loadPolicy({ SEVERALLY_AGY_BIN: '/nonexistent/agy' }, 'autodetect');
   assert.equal(policy.POLICY.targets.antigravity.available, false);
-  assert.deepEqual(policy.availableTargets(), ['codex', 'claude-code']);
+  assert.deepEqual(policy.availableTargets(), ['codex', 'claude-code', 'opencode']);
 });
 
 test('the environment overrides the config file, target by target', async () => {
@@ -129,7 +129,7 @@ test('consulting an unavailable target is refused before a job exists', () => {
 
   assert.equal(result.threw, true, 'the request must not be accepted');
   assert.equal(result.code, 'target_unavailable');
-  assert.match(result.message, /available: codex, claude-code/);
+  assert.match(result.message, /available: codex, claude-code, opencode/);
 });
 
 test('an installed CLI can still be excluded, with the reason carried to the caller', async () => {

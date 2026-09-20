@@ -63,7 +63,7 @@ const str = (name, dflt) => {
   return raw === undefined || raw === '' ? dflt : raw;
 };
 
-export const TARGETS = ['codex', 'claude-code', 'antigravity'];
+export const TARGETS = ['codex', 'claude-code', 'antigravity', 'opencode'];
 
 // Input aliases. The canonical ids above are what the rest of the server uses;
 // these are accepted at the tool boundary only, so a lead can say "gpt" or
@@ -83,6 +83,8 @@ const TARGET_ALIASES = Object.freeze(Object.assign(Object.create(null), {
   agy: 'antigravity',
   gemini: 'antigravity',
   google: 'antigravity',
+  opencode: 'opencode',
+  glm: 'opencode',
 }));
 
 export const TARGET_INPUTS = Object.freeze(Object.keys(TARGET_ALIASES));
@@ -234,10 +236,12 @@ const isEnabled = (id, cli) => {
 const CODEX_BIN = expandHome(knob('codex', 'SEVERALLY_CODEX_BIN', 'bin', 'codex'));
 const CLAUDE_BIN = expandHome(knob('claude-code', 'SEVERALLY_CLAUDE_BIN', 'bin', 'claude'));
 const AGY_BIN = expandHome(knob('antigravity', 'SEVERALLY_AGY_BIN', 'bin', 'agy'));
+const OPENCODE_BIN = expandHome(knob('opencode', 'SEVERALLY_OPENCODE_BIN', 'bin', 'opencode'));
 
 const CODEX_MODEL = knob('codex', 'SEVERALLY_CODEX_MODEL', 'default_model', 'gpt-6-astra');
 const CLAUDE_MODEL = knob('claude-code', 'SEVERALLY_CLAUDE_MODEL', 'default_model', 'claude-fable-5-1');
 const AGY_MODEL = knob('antigravity', 'SEVERALLY_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
+const OPENCODE_MODEL = knob('opencode', 'SEVERALLY_OPENCODE_MODEL', 'default_model', 'zai-coding-plan/glm-5.3');
 
 export const POLICY = Object.freeze({
   home: str('SEVERALLY_HOME', path.join(os.homedir(), '.severally')),
@@ -279,13 +283,31 @@ export const POLICY = Object.freeze({
       // field here: the sandbox has to read it per job rather than have it
       // frozen at import (see the note on timeoutMs()).
     }),
+    opencode: Object.freeze({
+      cli: OPENCODE_BIN,
+      available: isEnabled('opencode', OPENCODE_BIN),
+      note: disabledNote('opencode'),
+      model: OPENCODE_MODEL,
+      allowedModels: allowedFor('opencode', OPENCODE_MODEL, 'SEVERALLY_OPENCODE_ALLOWED_MODELS'),
+      allowedModelsEnv: 'SEVERALLY_OPENCODE_ALLOWED_MODELS',
+      label: 'OpenCode CLI',
+      // The vendor of the default model's lineage, exactly as antigravity's
+      // "google" describes Gemini. opencode itself can run any provider's
+      // models; if the operator repoints default_model at another vendor's
+      // model, this field lags -- it only feeds the same-vendor caveat, which
+      // is annotation, never a permission or a limit.
+      vendor: 'zai',
+    }),
   }),
 
   // Grace period between SIGTERM and SIGKILL of the child process group.
   killGraceMs: num('SEVERALLY_KILL_GRACE_MS', 5_000, 500, 60_000),
   // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
   maxRounds: num('SEVERALLY_MAX_ROUNDS', 5, 1, 20),
-  maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 3, 1, 4),
+  // Default 4 so a "consult everyone" fan-out (the three peers plus a fresh
+  // session of the caller's own CLI) fits the default cap. The ceiling matches
+  // TARGETS.length: a fan-out can never name more members than that anyway.
+  maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 4, 1, 4),
   maxJobsRetained: num('SEVERALLY_MAX_JOBS_RETAINED', 200, 20, 2000),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
@@ -329,6 +351,7 @@ const TIMEOUT_ENV = {
   codex: 'SEVERALLY_CODEX_TIMEOUT_MS',
   'claude-code': 'SEVERALLY_CLAUDE_TIMEOUT_MS',
   antigravity: 'SEVERALLY_AGY_TIMEOUT_MS',
+  opencode: 'SEVERALLY_OPENCODE_TIMEOUT_MS',
 };
 
 /**
@@ -359,6 +382,15 @@ export function timeoutMs(target) {
  */
 export function credentialsHome() {
   return str('SEVERALLY_AGY_CRED_HOME', os.homedir());
+}
+
+/**
+ * The same for opencode: the HOME-like root that holds .local/share/opencode
+ * (whose auth.json is where `opencode auth login` writes provider keys). The
+ * per-job sandbox links that file into its synthesised HOME.
+ */
+export function opencodeCredentialsHome() {
+  return str('SEVERALLY_OPENCODE_CRED_HOME', os.homedir());
 }
 
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];

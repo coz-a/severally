@@ -1,11 +1,11 @@
 ---
 name: severally
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "みんなで相談して", "みんなに聞いて", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from Codex or Antigravity or OpenCode through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ("ask GPT", "get GPT to review this", "gptと相談して", "gptにレビューしてもらって", "ask Gemini", "get Gemini to review this", "Geminiと相談して", "Geminiにレビューしてもらって", "ask GLM", "get GLM to review this", "GLMに聞いて", "GLMにレビューしてもらって", "みんなで相談して", "みんなに聞いて", "全員に聞いて", "両方に相談して", "ask everyone", "ask both", "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
 
-You have two peers, each reached through the `severally` MCP server as a fresh child session. They can
+You have three peers, each reached through the `severally` MCP server as a fresh child session. They can
 search and browse the web. They cannot edit files, reach the network outside search/browse, load MCP tools,
 see your session, or consult anyone else. In practice they know only what you put in the brief.
 
@@ -21,12 +21,13 @@ directory. The Codex consultant additionally has a read-only shell, so it can ru
 |---|---|---|
 | `codex` | Codex CLI | the question is about implementation detail, tricky code, or a decision where a different training lineage helps |
 | `antigravity` | Antigravity CLI (Gemini) | you want a third reading, or the question needs current web material |
+| `opencode` | OpenCode CLI (GLM) | you want another training lineage (GLM) on the question, or a fourth reading when the first three stay neck and neck |
 
 `target` also accepts the everyday names: `gpt` / `chatgpt` / `openai` -> Codex, `claude` / `anthropic` ->
-Claude Code, `gemini` / `agy` / `google` -> Antigravity. When the user names one, use that one. When they just
-ask for a second opinion, default to `codex`.
+Claude Code, `gemini` / `agy` / `google` -> Antigravity, `glm` / `opencode` -> OpenCode. When the user names
+one, use that one. When they just ask for a second opinion, default to `codex`.
 
-Not every machine has both peers installed. `consult_start`'s description lists the consultants this one can
+Not every machine has every peer installed. `consult_start`'s description lists the consultants this one can
 actually reach, and naming a missing one comes back as `target_unavailable` with the available list — take that
 as final rather than retrying, and tell the user which peer is missing.
 
@@ -62,7 +63,7 @@ You may also pass `target: "claude-code"` to consult your own CLI in a fresh ses
 your own lineage removes what this session has accumulated — history, sunk cost, drift toward your own framing
 — but keeps what the lineage shares: training-data blind spots, the same reflexes toward the brief's wording.
 So it is a clean-context re-read, not an independent opinion, and the server marks the result accordingly.
-Reach for the other two when the risk is your model's blind spot; reach for this when the risk is your
+Reach for the other peers when the risk is your model's blind spot; reach for this when the risk is your
 session's drift — or when the user wants a **different model of your own lineage** on the question (an Opus
 lead asking Fable, or the reverse, `target: "claude-code:<model>"`). That is a different model, not a
 second lineage; the caveat stays, and it says which model answered.
@@ -176,7 +177,7 @@ Then `consult_get({ job_id, wait_ms: 45000 })` until `status` is no longer `runn
 independent while it runs; do not sit in a tight polling loop. `consult_cancel({ job_id })` stops it and kills
 the consultant process.
 
-## Asking two or three at once
+## Asking several at once
 
 Replace `target` with `targets: [...]` when the user names more than one peer, or when the decision is heavy
 enough that you want two genuinely independent readings of it:
@@ -190,22 +191,22 @@ consult_start({ request: {
 ```
 
 When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, "ask everyone" — that is every
-consultant this host can reach: both peers **and your own CLI** on a fresh session, three members in one
+consultant this host can reach: all three peers **and your own CLI** on a fresh session, four members in one
 call.
 
 ```
 consult_start({ request: {
-  targets: ["codex", "antigravity", "claude-code"],
+  targets: ["codex", "antigravity", "opencode", "claude-code"],
   mode: "review",
   ...
 }})
 ```
 
 Your own CLI is included because the user asked for everyone, not because it adds a lineage: it is a
-fresh-context re-read rather than a third lineage, and the server says so in its `quality.caveat`. Pass
+fresh-context re-read rather than a fourth lineage, and the server says so in its `quality.caveat`. Pass
 `caller_model` so that caveat can name which model answered. 「両方に相談して」 and "ask both" name two, so
-those stay the two peers. Three members is the **whole concurrency cap**, so let anything else finish or
-cancel it first, and expect three consultants' worth of quota. Send **one** `targets` call and poll the
+those stay the two peers. Four members is the **whole concurrency cap**, so let anything else finish or
+cancel it first, and expect four consultants' worth of quota. Send **one** `targets` call and poll the
 single `group_id`; separate consultations would give each one a slightly different brief and leave you
 nothing comparable.
 

@@ -7,9 +7,9 @@ import { JobManager } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
 const SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
-Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
-search and browse the web, it cannot edit files, run commands, load MCP tools, or consult anyone else, and it
-never sees your session -- only the brief you send.
+Codex, Claude Code, Antigravity (Gemini) or OpenCode (GLM). Each consultation runs in a fresh child session of
+that CLI: it can search and browse the web, it cannot edit files, run commands, load MCP tools, or consult
+anyone else, and it never sees your session -- only the brief you send.
 
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
@@ -22,11 +22,13 @@ check the grounds behind a point before you adopt it, and record what you adopte
 const startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
 
 target: which consultant to ask. This machine can reach: ${availableTargets().join(', ') || '(none -- no consultant CLI is installed)'}.
-        The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. A consultant that
-        is not in that list is refused up front, so do not retry it -- say which ones are available instead.
+        The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google, glm/opencode. A
+        consultant that is not in that list is refused up front, so do not retry it -- say which ones are
+        available instead.
         Consulting your own CLI is allowed but is a fresh-context check rather than an independent opinion,
         and the result says so.
-targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
+targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates,
+        up to one per supported consultant).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
         A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
@@ -34,8 +36,8 @@ targets: ask up to 3 consultants the same question at once (mutually exclusive w
 ${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].allowedModels.join(', ')}`).join('\n')}
         Only pass a model when the user asked for one; a name outside the list is refused before the
         consultation starts, and a name matching two of them is refused rather than guessed.
-caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
-        annotate a same-vendor consultation.
+caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
+        server can annotate a same-vendor consultation.
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
         With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
         whom; it never changes which model the consultant runs.

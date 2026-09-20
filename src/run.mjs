@@ -50,9 +50,16 @@ const DROP_PREFIX = ['CLAUDE_CODE_', 'SEVERALLY_', 'MCP_'];
 // probed behaviourally, so read the AGY_* line as "no evidence of a
 // config-dir override under that prefix", not as proof that none exists.
 const TARGET_DROP_PREFIX = {
-  codex: ['ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_'],
-  'claude-code': ['OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_'],
-  antigravity: ['ANTHROPIC_', 'OPENAI_', 'CODEX_', 'AGY_', 'ANTIGRAVITY_'],
+  codex: ['ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
+  'claude-code': ['OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
+  antigravity: ['ANTHROPIC_', 'OPENAI_', 'CODEX_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
+  // OPENCODE_ is dropped on purpose even though it is this consultant's own
+  // prefix: whatever the hosting session exported (OPENCODE_CONFIG,
+  // OPENCODE_CONFIG_CONTENT, OPENCODE_PERMISSION...) must not reach the
+  // child, or it could override the sandbox's config. The sandbox re-adds
+  // the two variables the consultant needs, after the drop. ZAI_ stays: it
+  // is where the zai-coding-plan provider's API key travels.
+  opencode: ['ANTHROPIC_', 'OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'OPENCODE_'],
 };
 
 // Exact names dropped for one target only (see the note above). Kept separate

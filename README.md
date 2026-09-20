@@ -3,8 +3,8 @@
 *Independent opinions, returned severally. The verdict is yours.*
 
 An MCP server and Skill for the moment a coding agent asks you "can I go ahead with this plan?". The agent asks
-another CLI (Codex, Claude Code, or Antigravity running Gemini) for its opinion, checks the findings that come
-back in its own repository, and only then asks you for a decision again.
+another CLI (Codex, Claude Code, Antigravity running Gemini, or OpenCode running GLM) for its opinion, checks
+the findings that come back in its own repository, and only then asks you for a decision again.
 
 The name comes from the legal phrase *jointly and severally* — each party bound on its own. Ask several
 consultants and their answers are not merged: each comes back separately, and the reader decides which to take.
@@ -53,23 +53,25 @@ You can get something similar by pasting a brief into another terminal. severall
 - **Checked results can be written back next to each finding.** For each finding, record "confirmed / not
   applicable / unverifiable / unverified" and its effect on the decision, then export it as Markdown
 
-Whichever of Codex, Claude Code, or Antigravity you use, you can ask the other two.
+Whichever of Codex, Claude Code, Antigravity, or OpenCode you use, you can ask the other three.
 
 ## How it works
 
 Every consultation starts a dedicated child session; it never attaches to an existing one. The consultant
 receives only the brief you wrote, never your conversation history. One request can send the identical brief to
-up to three consultants and collect the answers under one `group_id`. What consultants may and may not do is
+up to four consultants and collect the answers under one `group_id`. What consultants may and may not do is
 listed under "Before you use it".
 
 ```
-Claude Code ──(skill: severally)──> mcp: severally ──> codex exec | agy      (Codex / Antigravity)
-Codex       ──(skill: severally)──> mcp: severally ──> claude -p  | agy      (Claude Code / Antigravity)
-Antigravity ──(skill: severally)──> mcp: severally ──> codex exec | claude -p (Codex / Claude Code)
+Claude Code ──(skill: severally)──> mcp: severally ──> codex exec | agy | opencode run
+Codex       ──(skill: severally)──> mcp: severally ──> claude -p  | agy | opencode run
+Antigravity ──(skill: severally)──> mcp: severally ──> codex exec | claude -p | opencode run
+OpenCode    ──(skill: severally)──> mcp: severally ──> codex exec | claude -p | agy
 ```
 
-Claude Code and Codex get it as a plugin; for Antigravity the installer registers it directly. Neither needs a
-public marketplace.
+Claude Code and Codex get it as a plugin; Antigravity and OpenCode are registered directly by the installer
+(Antigravity has no verified plugin path, OpenCode has no plugin mechanism). Neither needs a public
+marketplace.
 
 ## Install
 
@@ -89,6 +91,7 @@ Verify:
 claude plugin details severally      # Skills (1) / MCP servers (1)
 codex  plugin list                   # severally@severally-local  installed, enabled
 agy    mcp list                      # severally  stdio  enabled
+opencode mcp list                    # severally  connected
 ```
 
 **Restart the clients** (a running session does not reload plugins).
@@ -103,7 +106,7 @@ npm.cmd run build
 node scripts/install.mjs
 ```
 
-On Windows the installer defaults to **manual mode** for all three clients. It copies the
+On Windows the installer defaults to **manual mode** for all four clients. It copies the
 standalone server (including its dependencies) to `~/.severally/runtime/severally-mcp.mjs`,
 registers that file with the absolute path to `node.exe`, and copies each client's Skill.
 After successful registration, the source checkout can be moved or deleted. Node.js must remain
@@ -117,8 +120,8 @@ after checking the new bundle's syntax and backing up the previous file. To upda
 a new checkout, run `npm.cmd install`, `npm.cmd run build`, and the installer again, then restart
 the clients. The temporary checkout is no longer needed after registration succeeds.
 
-Verify with `claude mcp get severally`, `codex mcp get severally`, and `agy mcp list`, then restart
-the clients. Tool names in this mode are `mcp__severally__*`.
+Verify with `claude mcp get severally`, `codex mcp get severally`, `agy mcp list`, and `opencode mcp list`,
+then restart the clients. Tool names in this mode are `mcp__severally__*`.
 
 CLI detection supports `.exe`, `.cmd`, and `.bat` through `PATH`/`PATHEXT`, including paths with
 spaces. For a custom executable path in `config.json`, use forward slashes
@@ -134,7 +137,9 @@ After a successful installation, the source checkout can be moved or deleted on 
 - The standalone server lives in `~/.severally/runtime/severally-mcp.mjs`.
 - Codex launches the global `severally-mcp` command, installed from that persistent runtime.
   Its marketplace and plugin files are copied into `~/.severally/marketplace/`.
-- Antigravity (and all clients in `--manual` mode) launches Node.js with the copied runtime directly.
+- Antigravity and OpenCode (and all clients in `--manual` mode) launch Node.js with the copied runtime
+  directly; OpenCode is registered into `~/.config/opencode/opencode.json` and its Skill is copied to
+  `~/.config/opencode/skills/severally/`.
 
 To migrate an existing installation, run:
 
@@ -160,6 +165,7 @@ rejected. In `--manual` mode no global install is needed and `--skip-global` is 
 | Claude Code | places the plugin in `~/.claude/skills/severally/` (`severally@skills-dir`) | `claude mcp add --scope user` + copy the Skill on its own |
 | Codex | `codex plugin add` from the copied marketplace | `codex mcp add` + copy the Skill on its own |
 | Antigravity | `agy mcp add` + copy the Skill on its own (there is no plugin route, so both modes are the same) | same |
+| OpenCode | `opencode mcp add severally -- …` + copy the Skill on its own (no plugin mechanism, so both modes are the same) | same |
 | MCP tool names | `mcp__plugin_severally_severally__*` | `mcp__severally__*` |
 
 The installer does not break existing settings. It changes client settings only through each CLI's own commands
@@ -180,7 +186,7 @@ these situations:
 - options that stay neck and neck however long you think about them
 - two or more failed attempts at the same bug with no new information
 
-For "ask everyone" or "consult all of them", the same brief goes out at once to the other two CLIs and to a fresh
+For "ask everyone" or "consult all of them", the same brief goes out at once to the other three CLIs and to a fresh
 session of your own CLI. Answers from your own CLI carry a "same lineage" note.
 
 When the agent asks you to approve a hard-to-reverse change, it offers "consult first?" as one of the choices.
@@ -202,9 +208,10 @@ read the results.
 
 ## Configuration
 
-**No configuration needed by default.** At startup the server checks whether `codex` / `claude` / `agy` are on
-PATH and drops the ones that are missing. To disable a consultant, change a model, or point at a specific
-executable, put a single `~/.severally/config.json` in place. A template can be generated for your machine:
+**No configuration needed by default.** At startup the server checks whether `codex` / `claude` / `agy` /
+`opencode` are on PATH and drops the ones that are missing. To disable a consultant, change a model, or point
+at a specific executable, put a single `~/.severally/config.json` in place. A template can be generated for
+your machine:
 
 ```bash
 npm run init-config            # writes ~/.severally/config.json (never overwrites an existing one)
@@ -238,6 +245,7 @@ not a key in `config.json`. The server reports the active budget in `rounds_rema
 | Codex | yes | read-only | no |
 | Claude Code | yes (`Read` / `Glob` / `Grep`) | none | no |
 | Antigravity | yes (`read_file`) | none | no |
+| OpenCode | yes (`read` / `glob` / `grep`) | none | no |
 
 Every consultant starts in an empty working directory, and the server does not tell it where your repository
 is. Paste whatever it should see into the brief — or, when a consultant needs to explore rather than read what
@@ -270,9 +278,12 @@ Windows (the default manual installation):
 claude mcp remove severally -s user
 codex mcp remove severally
 agy mcp remove severally
+# opencode has no `mcp remove`; delete the "severally" entry from
+# the "mcp" object in $HOME/.config/opencode/opencode.json
 Remove-Item -LiteralPath "$HOME/.claude/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.codex/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.gemini/config/skills/severally" -Recurse -Force
+Remove-Item -LiteralPath "$HOME/.config/opencode/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.severally/runtime" -Recurse -Force
 # Only if you previously installed the global command:
 npm.cmd uninstall -g severally-mcp
@@ -290,6 +301,10 @@ codex plugin remove severally --marketplace severally-local
 codex plugin marketplace remove severally-local
 agy   mcp remove severally                              # Antigravity (registered directly in both modes)
 rm -rf ~/.gemini/config/skills/severally
+# OpenCode (registered directly in both modes; opencode has no `mcp remove`,
+# so delete the "severally" entry from the "mcp" object by hand):
+#   edit ~/.config/opencode/opencode.json(c)
+rm -rf ~/.config/opencode/skills/severally
 npm uninstall -g severally-mcp
 rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```
@@ -300,7 +315,10 @@ Manual mode:
 claude mcp remove severally -s user
 codex  mcp remove severally
 agy    mcp remove severally
-rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/skills/severally
+# opencode: delete the "severally" entry from the "mcp" object in
+# ~/.config/opencode/opencode.json(c) by hand
+rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/skills/severally \
+       ~/.config/opencode/skills/severally
 # Only if a global command was previously installed:
 npm uninstall -g severally-mcp
 rm -rf ~/.severally/runtime ~/.severally/marketplace

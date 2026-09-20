@@ -38,12 +38,21 @@ const PEERS = {
     jp: 'Gemini',
     jpVerb: 'と相談して',
   },
+  opencode: {
+    label: 'OpenCode CLI (GLM)',
+    short: 'OpenCode',
+    reach: 'you want another training lineage (GLM) on the question, or a fourth reading when the first three stay neck and neck',
+    en: 'GLM',
+    jp: 'GLM',
+    jpVerb: 'に聞いて',
+  },
 };
 
 const HOSTS = [
   { dir: 'claude', self: 'claude-code' },
   { dir: 'codex', self: 'codex' },
   { dir: 'antigravity', self: 'antigravity' },
+  { dir: 'opencode', self: 'opencode' },
 ];
 
 // Asking for *everyone* names no peer, so these phrases cannot be generated
@@ -100,9 +109,11 @@ export function renderSkills() {
       .replaceAll('{{TRIGGERS}}', [...peers.flatMap(triggersFor), ...EVERYONE_TRIGGERS].join(', '))
       .replaceAll('{{PEER_TABLE}}', table)
       .replaceAll('{{DEFAULT_TARGET}}', peers[0])
-      // The other peer, used by the fan-out example so each host's skill shows
-      // a `targets` array of two consultants that are not itself.
+      // The other peers, used by the fan-out examples so each host's skill
+      // shows a `targets` array of consultants that are not itself: two for a
+      // plain second-reading pair, three plus the host itself for "everyone".
       .replaceAll('{{SECOND_TARGET}}', peers[1])
+      .replaceAll('{{THIRD_TARGET}}', peers[2])
       .replaceAll('{{SELF_TARGET}}', host.self);
     rendered[host.dir] = text;
   }

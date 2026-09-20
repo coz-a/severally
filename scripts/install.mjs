@@ -1,14 +1,16 @@
 #!/usr/bin/env node
-// Installs severally into all three clients: Claude Code, Codex, Antigravity.
+// Installs severally into all four clients: Claude Code, Codex, Antigravity,
+// OpenCode.
 //
 // Two modes:
 //   plugin (default) - installs plugins/severally as a plugin in Claude Code
 //                      (~/.claude/skills/severally, skills-dir plugin, no
 //                      marketplace) and in Codex (a copied local marketplace
 //                      under ~/.severally/marketplace). Antigravity has no verified
-//                      plugin-install path yet, so it is registered directly
-//                      in both modes: `agy mcp add` plus a skill copy, same
-//                      as --manual mode below.
+//                      plugin-install path yet, and OpenCode has no plugin
+//                      mechanism at all, so both are registered directly
+//                      in both modes: `agy mcp add` / `opencode mcp add`
+//                      plus a skill copy, same as --manual mode below.
 //   --manual         - (default on Windows) register the MCP server with each client's own `mcp
 //                      add` (`agy mcp add` for Antigravity) and copy each
 //                      client's skill by hand.
@@ -205,8 +207,8 @@ const claudeSkillsDir = path.join(home, '.claude', 'skills');
 // (through the client's own `mcp add`) and place its skill. This is the one
 // place that knows how severally is installed outside of a bundled
 // plugin: --manual mode installs every row this way, and the default plugin
-// mode falls back to the Antigravity row alone, since agy has no verified
-// plugin-install path yet.
+// mode falls back to the Antigravity and OpenCode rows alone, since those
+// two have no verified plugin-install path.
 const CLIENTS = [
   {
     bin: 'claude',
@@ -246,8 +248,35 @@ const CLIENTS = [
     skillFrom: path.join(PLUGIN, 'skills', 'antigravity', 'severally'),
     skillTo: path.join(home, '.gemini', 'config', 'skills', 'severally'),
   },
+  {
+    bin: 'opencode',
+    label: 'OpenCode',
+    backup: [
+      path.join(home, '.config', 'opencode', 'opencode.json'),
+      path.join(home, '.config', 'opencode', 'opencode.jsonc'),
+    ],
+    // opencode has no `mcp get`; list and look for the name. `mcp list`
+    // prints through the prompt library, but the per-server lines still
+    // reach stdout when stdout is not a TTY.
+    isRegistered: () => {
+      const r = tryRun('opencode', ['mcp', 'list'], { real: true });
+      return r.ok && /severally/.test(r.out);
+    },
+    // opencode has no `mcp remove`; `mcp add` with the same name replaces
+    // the entry, so a --force re-registration needs no removal first.
+    // Uninstall is a hand edit of the global config (see the README).
+    // --global matters: without it opencode 1.18.31 writes the registration
+    // into the current project's opencode.json, and the server would be
+    // reachable only inside whatever directory the installer happened to
+    // run from.
+    remove: () => ({ ok: true, out: 'opencode has no mcp remove; re-adding replaces the entry' }),
+    add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--', ...bin]),
+    skillFrom: path.join(PLUGIN, 'skills', 'opencode', 'severally'),
+    skillTo: path.join(home, '.config', 'opencode', 'skills', 'severally'),
+  },
 ];
 const antigravityClient = CLIENTS.find((c) => c.bin === 'agy');
+const opencodeClient = CLIENTS.find((c) => c.bin === 'opencode');
 
 // Registers one client's MCP server directly (through its own `mcp add`) and
 // copies its skill, backing up everything it touches first. Shared by plugin
@@ -337,11 +366,12 @@ if (mode === 'plugin') {
   }
 
   // Antigravity has no verified plugin-install mechanism (no marketplace or
-  // plugin-add path confirmed against agy 1.1.28), so it is registered
-  // directly here too -- the same `mcp add` + skill copy that --manual mode
-  // uses for every client.
-  log('\nAntigravity has no verified plugin-install path yet; registering it directly.');
+  // plugin-add path confirmed against agy 1.1.28), and OpenCode has no plugin
+  // mechanism at all, so both are registered directly here too -- the same
+  // `mcp add` + skill copy that --manual mode uses for every client.
+  log('\nAntigravity and OpenCode have no plugin-install path; registering them directly.');
   installClientDirectly(antigravityClient, serverCommand);
+  installClientDirectly(opencodeClient, serverCommand);
 } else {
   // ------------------------------------------------------------- manual mode
   // A previous plugin installation would otherwise retain its old checkout
@@ -370,16 +400,18 @@ Verify with:
   claude plugin details severally
   codex  plugin list
   agy    mcp list
+  opencode mcp list
 
 Restart any running client session to pick the plugin up. In Claude Code the tools then appear as
 mcp__plugin_severally_severally__consult_start / _get / _cancel / _list.
 
-Re-run this after "npm run build" to push an updated plugin to both clients (Antigravity is
-registered directly each run, so a re-run always refreshes it too).` : `
+Re-run this after "npm run build" to push an updated plugin to both clients (Antigravity and
+OpenCode are registered directly each run, so a re-run always refreshes them too).` : `
 Verify with:
   claude mcp get severally
   codex  mcp get severally
   agy    mcp list
+  opencode mcp list
 
 In a new Claude Code session the tools appear as mcp__severally__consult_start / _get / _cancel / _list.
 Restart any running client session to pick the server up.`);

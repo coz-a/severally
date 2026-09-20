@@ -110,14 +110,30 @@ test('a group that would exceed the concurrency cap is refused before anything s
   const { JobManager: M } = await import(`../src/jobs.mjs?fanout=${Date.now()}`);
   const mgr = new M();
   const a = mgr.start(reviewRequest());
+  // The default cap is now 4, sized for an "everyone" fan-out (three peers
+  // plus the caller's own CLI), so refusal takes five.
   assert.throws(
-    () => mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code', 'antigravity'] })),
+    () => mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code', 'antigravity', 'opencode'] })),
     (e) => e.code === 'concurrency_limit',
   );
   assert.equal(mgr.running.length, 1, 'a refused group must not leave half its jobs running');
   mgr.shutdown();
   await mgr.jobs.get(a.job_id).promise;
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
+});
+
+test('an everyone fan-out fits the default concurrency cap exactly', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { JobManager: M } = await import(`../src/jobs.mjs?everyone=${Date.now()}`);
+  const mgr = new M();
+  const started = mgr.start(reviewRequest({
+    target: undefined,
+    targets: ['codex', 'claude-code', 'antigravity', 'opencode'],
+  }));
+  assert.deepEqual(started.jobs.map((j) => j.target), ['codex', 'claude-code', 'antigravity', 'opencode']);
+  const view = await finishGroup(mgr, started.group_id);
+  assert.equal(view.members.length, 4);
+  assert.equal(view.status, 'done');
 });
 
 test('a follow-up cannot fan out', async () => {

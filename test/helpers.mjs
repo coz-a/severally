@@ -23,12 +23,18 @@ export function sandboxEnv(overrides = {}) {
   }
 
   // A synthesised credential source, so the suite never reads -- and never
-  // depends on the presence of -- the developer's real ~/.gemini token.
+  // depends on the presence of -- the developer's real ~/.gemini token or
+  // ~/.local/share/opencode/auth.json.
   const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-test-cred-'));
   fs.mkdirSync(path.join(credHome, '.gemini', 'antigravity-cli'), { recursive: true });
   fs.writeFileSync(
     path.join(credHome, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
     'test-token',
+  );
+  fs.mkdirSync(path.join(credHome, '.local', 'share', 'opencode'), { recursive: true });
+  fs.writeFileSync(
+    path.join(credHome, '.local', 'share', 'opencode', 'auth.json'),
+    '{"stub":{"type":"api","key":"test-key"}}',
   );
 
   Object.assign(process.env, {
@@ -36,7 +42,9 @@ export function sandboxEnv(overrides = {}) {
     SEVERALLY_CODEX_BIN: path.join(here, 'fixtures', 'stub-codex.mjs'),
     SEVERALLY_CLAUDE_BIN: path.join(here, 'fixtures', 'stub-claude.mjs'),
     SEVERALLY_AGY_BIN: path.join(here, 'fixtures', 'stub-agy.mjs'),
+    SEVERALLY_OPENCODE_BIN: path.join(here, 'fixtures', 'stub-opencode.mjs'),
     SEVERALLY_AGY_CRED_HOME: credHome,
+    SEVERALLY_OPENCODE_CRED_HOME: credHome,
     SEVERALLY_TIMEOUT_MS: '20000',
     SEVERALLY_KILL_GRACE_MS: '500',
     ...overrides,
@@ -52,6 +60,13 @@ export function sandboxEnv(overrides = {}) {
   delete process.env.CODEX_SANDBOX_NETWORK_DISABLED;
   for (const key of Object.keys(process.env)) {
     if (key.startsWith('AGY_') || key.startsWith('ANTIGRAVITY_')) delete process.env[key];
+  }
+  // OpenCode has no single marker env var (it passes its own environment
+  // through to MCP servers unchanged), so nothing reads OPENCODE_* for
+  // detection -- but a developer's OPENCODE_CONFIG would leak into the stub's
+  // recorded env assertions if left standing. Strip the prefix anyway.
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('OPENCODE_')) delete process.env[key];
   }
   // A test's credential state must come from the test, not from the host: the
   // credential check in jobs.mjs treats any of these as an alternative to the
@@ -109,6 +124,18 @@ export const antigravityRequest = (over = {}) => ({
   context: {
     facts: ['Two app servers write to the same key without coordination.'],
     proposal: 'Invalidate on write and let the next read repopulate, because writes are rare.',
+  },
+  ...over,
+});
+
+export const opencodeRequest = (over = {}) => ({
+  target: 'glm',
+  mode: 'review',
+  question: 'Should the backoff be exponential with jitter instead of fixed?',
+  objective: 'Keep retry storms impossible under a downstream outage.',
+  context: {
+    facts: ['The client retries 5 times with 100ms fixed backoff.'],
+    proposal: 'Keep the count but jitter each delay, because the outage we saw was short.',
   },
   ...over,
 });

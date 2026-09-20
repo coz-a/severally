@@ -87,6 +87,8 @@ test('target accepts vendor aliases and normalises them to canonical ids', () =>
   assert.equal(parseRequest(reviewRequest({ target: 'Gemini' })).target, 'antigravity');
   assert.equal(parseRequest(reviewRequest({ target: 'agy' })).target, 'antigravity');
   assert.equal(parseRequest(reviewRequest({ target: 'antigravity' })).target, 'antigravity');
+  assert.equal(parseRequest(reviewRequest({ target: 'opencode' })).target, 'opencode');
+  assert.equal(parseRequest(reviewRequest({ target: 'GLM' })).target, 'opencode');
 });
 
 test('an unknown target is rejected and the accepted names are listed', () => {

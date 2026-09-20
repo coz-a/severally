@@ -51,7 +51,7 @@ if(cli==='npm') {
 }
 fs.writeFileSync(file,JSON.stringify(state));
 `;
-  for (const cli of ['codex', 'claude', 'agy', 'npm']) fs.writeFileSync(path.join(bin, cli), script, { mode: 0o755 });
+  for (const cli of ['codex', 'claude', 'agy', 'npm', 'opencode']) fs.writeFileSync(path.join(bin, cli), script, { mode: 0o755 });
   // Real npm, with a private prefix/cache and no dependencies to download.
   const npmCli = fs.realpathSync(execFileSync('which', ['npm'], { encoding: 'utf8' }).trim());
   const env = { ...process.env, HOME: dir, CODEX_HOME: path.join(dir, '.codex'),
@@ -76,6 +76,17 @@ test('POSIX plugin installation survives checkout deletion, including npm comman
   const state = JSON.parse(fs.readFileSync(f.registry, 'utf8'));
   assert.equal(state.marketplace, marketplace);
   assert.deepEqual(state.agy, [process.execPath, runtime]);
+  // OpenCode has no plugin route either: it is registered directly, and its
+  // add carries --global (a project-scope write would bind the server to
+  // whatever directory the installer ran from) plus the `--` separator
+  // before the command.
+  assert.deepEqual(state.opencode, [process.execPath, runtime]);
+  assert.ok(
+    fs.readFileSync(f.log, 'utf8').includes(
+      JSON.stringify(['opencode', 'mcp', 'add', 'severally', '--global', '--', process.execPath, runtime]),
+    ),
+    'opencode must be registered through its own mcp add, globally',
+  );
   const manifest = JSON.parse(fs.readFileSync(path.join(marketplace, '.agents', 'plugins', 'marketplace.json'), 'utf8'));
   assert.ok(fs.existsSync(path.resolve(marketplace, manifest.plugins[0].source.path, 'dist', 'severally-mcp.mjs')));
   const command = path.join(f.dir, 'prefix', 'bin', 'severally-mcp');
@@ -110,7 +121,7 @@ test('POSIX manual mode needs no global npm install and registers the copied run
   const saved = fs.readdirSync(backups).map((stamp) => path.join(backups, stamp, 'codex_config.toml'));
   assert.ok(saved.some((file) => fs.existsSync(file) && fs.readFileSync(file, 'utf8') === '# original configuration\n'),
     'later backup calls must preserve the configuration from before migration');
-  for (const cli of ['codex', 'claude', 'agy']) {
+  for (const cli of ['codex', 'claude', 'agy', 'opencode']) {
     assert.deepEqual(state[cli], [process.execPath, path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
   }
 });

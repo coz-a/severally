@@ -80,7 +80,7 @@ function installerFixture(t) {
     if (action === 'remove') delete registry[cli];
     if (action === 'add' || action === 'remove') fs.writeFileSync(file, JSON.stringify(registry));`;
   fs.writeFileSync(path.join(dir, 'cli.mjs'), fake);
-  for (const cli of ['claude', 'codex', 'agy']) {
+  for (const cli of ['claude', 'codex', 'agy', 'opencode']) {
     fs.writeFileSync(path.join(dir, `${cli}.cmd`), `@echo off\r\n"${process.execPath}" "%~dp0cli.mjs" ${cli} %*\r\n`);
   }
   const root = fileURLToPath(new URL('../', import.meta.url));
@@ -108,11 +108,11 @@ test('Windows installation runs independently after deleting the source checkout
   const installed = path.join(dir, '.severally', 'runtime', 'severally-mcp.mjs');
   const registrations = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse)
     .filter((args) => args[1] === 'mcp' && args[2] === 'add');
-  assert.equal(registrations.length, 3);
+  assert.equal(registrations.length, 4);
   for (const args of registrations) {
     assert.deepEqual(args.slice(-2), [process.execPath, installed]);
   }
-  for (const relative of ['.claude/skills/severally', '.codex/skills/severally', '.gemini/config/skills/severally']) {
+  for (const relative of ['.claude/skills/severally', '.codex/skills/severally', '.gemini/config/skills/severally', '.config/opencode/skills/severally']) {
     assert.ok(fs.existsSync(path.join(dir, relative, 'SKILL.md')));
   }
   fs.rmSync(checkout, { recursive: true, force: true });
@@ -156,7 +156,7 @@ test('Windows runtime upgrades back up the previous bundle', { skip: !windows },
 test('Windows migration requires force to replace existing checkout registrations', { skip: !windows }, (t) => {
   const { dir, checkout, install } = installerFixture(t);
   const registryPath = path.join(dir, 'registry.json');
-  const old = Object.fromEntries(['claude', 'codex', 'agy'].map((cli) =>
+  const old = Object.fromEntries(['claude', 'codex', 'agy', 'opencode'].map((cli) =>
     [cli, [process.execPath, path.join(checkout, 'bin', 'severally-mcp.mjs')]]));
   fs.writeFileSync(registryPath, JSON.stringify(old));
   const output = install();
@@ -164,7 +164,7 @@ test('Windows migration requires force to replace existing checkout registration
   assert.match(output, /Rerun with --force before deleting/);
   install('--force');
   const migrated = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  for (const cli of ['claude', 'codex', 'agy']) {
+  for (const cli of ['claude', 'codex', 'agy', 'opencode']) {
     assert.deepEqual(migrated[cli], [process.execPath, path.join(dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
   }
 });

@@ -35,6 +35,7 @@ test('exposes the three protocol tools, the lead\'s record, and a history listin
     'codex', 'gpt', 'chatgpt', 'openai',
     'claude-code', 'claude', 'anthropic',
     'antigravity', 'agy', 'gemini', 'google',
+    'opencode', 'glm',
   ]);
   assert.deepEqual(req.properties.mode.enum, ['explore', 'review', 'debate']);
   assert.equal(req.additionalProperties, false, 'requests must not accept extra fields');

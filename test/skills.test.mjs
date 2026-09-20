@@ -8,12 +8,13 @@ const skillsDir = path.join(here, '..', 'plugins', 'severally', 'skills');
 const read = (host) => fs.readFileSync(path.join(skillsDir, host, 'severally', 'SKILL.md'), 'utf8');
 
 const HOSTS = {
-  claude: { self: 'Claude Code', peers: ['Codex', 'Antigravity'] },
-  codex: { self: 'Codex', peers: ['Claude Code', 'Antigravity'] },
-  antigravity: { self: 'Antigravity', peers: ['Codex', 'Claude Code'] },
+  claude: { self: 'Claude Code', peers: ['Codex', 'Antigravity', 'OpenCode'] },
+  codex: { self: 'Codex', peers: ['Claude Code', 'Antigravity', 'OpenCode'] },
+  antigravity: { self: 'Antigravity', peers: ['Codex', 'Claude Code', 'OpenCode'] },
+  opencode: { self: 'OpenCode', peers: ['Codex', 'Claude Code', 'Antigravity'] },
 };
 
-test('every host has a skill that names its two peers and not itself as the default', () => {
+test('every host has a skill that names its peers and not itself as the default', () => {
   for (const [host, { self, peers }] of Object.entries(HOSTS)) {
     const text = read(host);
     for (const peer of peers) assert.match(text, new RegExp(peer), `${host} skill must offer ${peer}`);
@@ -27,10 +28,12 @@ test('the trigger phrases cover the vendor aliases in both languages', () => {
   for (const host of Object.keys(HOSTS)) {
     const description = read(host).split('\n').find((l) => l.startsWith('description:'));
     const expected = host === 'codex'
-      ? ['Claudeに聞いて', 'Geminiと相談して', 'ask Claude', 'ask Gemini']
+      ? ['Claudeに聞いて', 'Geminiと相談して', 'GLMに聞いて', 'ask Claude', 'ask Gemini', 'ask GLM']
       : host === 'claude'
-        ? ['gptと相談して', 'Geminiと相談して', 'ask GPT', 'ask Gemini']
-        : ['gptと相談して', 'Claudeに聞いて', 'ask GPT', 'ask Claude'];
+        ? ['gptと相談して', 'Geminiと相談して', 'GLMに聞いて', 'ask GPT', 'ask Gemini', 'ask GLM']
+        : host === 'antigravity'
+          ? ['gptと相談して', 'Claudeに聞いて', 'GLMに聞いて', 'ask GPT', 'ask Claude', 'ask GLM']
+          : ['gptと相談して', 'Claudeに聞いて', 'Geminiと相談して', 'ask GPT', 'ask Claude', 'ask Gemini'];
     for (const phrase of expected) {
       assert.ok(description.includes(phrase), `${host} description must contain ${phrase}`);
     }
@@ -80,15 +83,16 @@ test('every skill teaches the fan-out: targets, group_id, and that agreement is 
 });
 
 // "みんなで相談して" means every consultant this host can reach, which is its
-// two peers and its own CLI on a fresh session. The self member is still a
-// fresh-context re-read rather than a third lineage, so the skill has to say
+// three peers and its own CLI on a fresh session. The self member is still a
+// fresh-context re-read rather than another lineage, so the skill has to say
 // so -- but it is asked, because the user asked for everyone.
-test('every skill answers "ask everyone" with its two peers and its own CLI', () => {
-  const SELF_ID = { claude: 'claude-code', codex: 'codex', antigravity: 'antigravity' };
+test('every skill answers "ask everyone" with its three peers and its own CLI', () => {
+  const SELF_ID = { claude: 'claude-code', codex: 'codex', antigravity: 'antigravity', opencode: 'opencode' };
   const PEER_IDS = {
-    claude: ['codex', 'antigravity'],
-    codex: ['claude-code', 'antigravity'],
-    antigravity: ['codex', 'claude-code'],
+    claude: ['codex', 'antigravity', 'opencode'],
+    codex: ['claude-code', 'antigravity', 'opencode'],
+    antigravity: ['codex', 'claude-code', 'opencode'],
+    opencode: ['codex', 'claude-code', 'antigravity'],
   };
   for (const host of Object.keys(HOSTS)) {
     const text = read(host);
@@ -97,22 +101,23 @@ test('every skill answers "ask everyone" with its two peers and its own CLI', ()
       assert.ok(description.includes(phrase), `${host} description must contain ${phrase}`);
     }
     assert.match(text, /everyone/i, `${host} skill must explain what "everyone" resolves to`);
+    const [p0, p1, p2] = PEER_IDS[host];
     assert.match(
       text,
-      new RegExp(`targets: \\["${PEER_IDS[host][0]}", "${PEER_IDS[host][1]}", "${SELF_ID[host]}"\\]`),
-      `${host} skill must show the everyone call as both peers plus itself`,
+      new RegExp(`targets: \\["${p0}", "${p1}", "${p2}", "${SELF_ID[host]}"\\]`),
+      `${host} skill must show the everyone call as all three peers plus itself`,
     );
-    // The plain two-reading fan-out is still the two peers: self is added
+    // The plain two-reading fan-out is still a pair of peers: self is added
     // because the user asked for everyone, not on the skill's own judgement.
     assert.match(
       text,
-      new RegExp(`targets: \\["${PEER_IDS[host][0]}", "${PEER_IDS[host][1]}"\\]`),
+      new RegExp(`targets: \\["${p0}", "${p1}"\\]`),
       `${host} skill must keep a two-peer fan-out for "two independent readings"`,
     );
-    assert.match(text, /re-read rather than a third lineage|not a third lineage/i,
+    assert.match(text, /re-read rather than a fourth lineage|not a fourth lineage|not a third lineage/i,
       `${host} skill must keep the self member's caveat`);
     assert.match(text, /whole concurrency cap|concurrency cap/i,
-      `${host} skill must say a three-member fan-out uses the whole cap`);
+      `${host} skill must say a four-member fan-out uses the whole cap`);
   }
 });
 

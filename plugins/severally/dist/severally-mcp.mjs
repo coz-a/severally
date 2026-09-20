@@ -3269,8 +3269,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path10) {
-      let input2 = path10;
+    function removeDotSegments(path11) {
+      let input2 = path11;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3679,8 +3679,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path10 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path10 && path10 !== "/" ? path10 : void 0;
+        const path11 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path11 && path11 !== "/" ? path11 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7192,12 +7192,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list2, fs8, exportName) {
+    function addFormats(ajv, list2, fs9, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list2)
-        ajv.addFormat(f, fs8[f]);
+        ajv.addFormat(f, fs9[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7210,8 +7210,8 @@ var require_windows = __commonJS({
   "node_modules/isexe/windows.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs8 = __require("fs");
-    function checkPathExt(path10, options) {
+    var fs9 = __require("fs");
+    function checkPathExt(path11, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -7222,25 +7222,25 @@ var require_windows = __commonJS({
       }
       for (var i = 0; i < pathext.length; i++) {
         var p = pathext[i].toLowerCase();
-        if (p && path10.substr(-p.length).toLowerCase() === p) {
+        if (p && path11.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat, path10, options) {
+    function checkStat(stat, path11, options) {
       if (!stat.isSymbolicLink() && !stat.isFile()) {
         return false;
       }
-      return checkPathExt(path10, options);
+      return checkPathExt(path11, options);
     }
-    function isexe(path10, options, cb) {
-      fs8.stat(path10, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path10, options));
+    function isexe(path11, options, cb) {
+      fs9.stat(path11, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path11, options));
       });
     }
-    function sync(path10, options) {
-      return checkStat(fs8.statSync(path10), path10, options);
+    function sync(path11, options) {
+      return checkStat(fs9.statSync(path11), path11, options);
     }
   }
 });
@@ -7250,14 +7250,14 @@ var require_mode = __commonJS({
   "node_modules/isexe/mode.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs8 = __require("fs");
-    function isexe(path10, options, cb) {
-      fs8.stat(path10, function(er, stat) {
+    var fs9 = __require("fs");
+    function isexe(path11, options, cb) {
+      fs9.stat(path11, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
       });
     }
-    function sync(path10, options) {
-      return checkStat(fs8.statSync(path10), options);
+    function sync(path11, options) {
+      return checkStat(fs9.statSync(path11), options);
     }
     function checkStat(stat, options) {
       return stat.isFile() && checkMode(stat, options);
@@ -7281,7 +7281,7 @@ var require_mode = __commonJS({
 // node_modules/isexe/index.js
 var require_isexe = __commonJS({
   "node_modules/isexe/index.js"(exports, module) {
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var core;
     if (process.platform === "win32" || global.TESTING_WINDOWS) {
       core = require_windows();
@@ -7290,7 +7290,7 @@ var require_isexe = __commonJS({
     }
     module.exports = isexe;
     isexe.sync = sync;
-    function isexe(path10, options, cb) {
+    function isexe(path11, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -7300,7 +7300,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve, reject) {
-          isexe(path10, options || {}, function(er, is) {
+          isexe(path11, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -7309,7 +7309,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path10, options || {}, function(er, is) {
+      core(path11, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -7319,9 +7319,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path10, options) {
+    function sync(path11, options) {
       try {
-        return core.sync(path10, options || {});
+        return core.sync(path11, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -7337,7 +7337,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "node_modules/which/which.js"(exports, module) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path10 = __require("path");
+    var path11 = __require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -7375,7 +7375,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path10.join(pathPart, cmd);
+        const pCmd = path11.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve(subStep(p, i, 0));
       });
@@ -7402,7 +7402,7 @@ var require_which = __commonJS({
       for (let i = 0; i < pathEnv.length; i++) {
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path10.join(pathPart, cmd);
+        const pCmd = path11.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -7450,7 +7450,7 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
     "use strict";
-    var path10 = __require("path");
+    var path11 = __require("path");
     var which2 = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -7468,7 +7468,7 @@ var require_resolveCommand = __commonJS({
       try {
         resolved = which2.sync(parsed.command, {
           path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path10.delimiter : void 0
+          pathExt: withoutPathExt ? path11.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -7477,7 +7477,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path10.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path11.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -7531,8 +7531,8 @@ var require_shebang_command = __commonJS({
       if (!match) {
         return null;
       }
-      const [path10, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path10.split("/").pop();
+      const [path11, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path11.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -7545,16 +7545,16 @@ var require_shebang_command = __commonJS({
 var require_readShebang = __commonJS({
   "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
     "use strict";
-    var fs8 = __require("fs");
+    var fs9 = __require("fs");
     var shebangCommand = require_shebang_command();
     function readShebang(command) {
       const size = 150;
       const buffer = Buffer.alloc(size);
       let fd;
       try {
-        fd = fs8.openSync(command, "r");
-        fs8.readSync(fd, buffer, 0, size, 0);
-        fs8.closeSync(fd);
+        fd = fs9.openSync(command, "r");
+        fs9.readSync(fd, buffer, 0, size, 0);
+        fs9.closeSync(fd);
       } catch (e) {
       }
       return shebangCommand(buffer.toString());
@@ -7567,7 +7567,7 @@ var require_readShebang = __commonJS({
 var require_parse = __commonJS({
   "node_modules/cross-spawn/lib/parse.js"(exports, module) {
     "use strict";
-    var path10 = __require("path");
+    var path11 = __require("path");
     var resolveCommand = require_resolveCommand();
     var escape3 = require_escape();
     var readShebang = require_readShebang();
@@ -7592,7 +7592,7 @@ var require_parse = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path10.normalize(parsed.command);
+        parsed.command = path11.normalize(parsed.command);
         parsed.command = escape3.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -8446,10 +8446,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path10) {
-  if (!path10)
+function getElementAtPath(obj2, path11) {
+  if (!path11)
     return obj2;
-  return path10.reduce((acc, key) => acc?.[key], obj2);
+  return path11.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -8861,11 +8861,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path10, issues) {
+function prefixIssues(path11, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path10);
+    iss.path.unshift(path11);
     return iss;
   });
 }
@@ -9298,16 +9298,16 @@ function flattenError(error61, mapper = (issue2) => issue2.message) {
 }
 function formatError(error61, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error62, path10 = []) => {
+  const processError = (error62, path11 = []) => {
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -9346,17 +9346,17 @@ function formatError(error61, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error61, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error62, path10 = []) => {
+  const processError = (error62, path11 = []) => {
     var _a3;
     for (const issue2 of error62.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path10, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path11, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path10, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path11, ...issue2.path]);
       } else {
-        const fullpath = [...path10, ...issue2.path];
+        const fullpath = [...path11, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -9395,8 +9395,8 @@ function treeifyError(error61, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path10 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path10) {
+  const path11 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path11) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -25906,13 +25906,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path10 = ref.slice(1).split("/").filter(Boolean);
-  if (path10.length === 0) {
+  const path11 = ref.slice(1).split("/").filter(Boolean);
+  if (path11.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path10[0] === defsKey) {
-    const key = path10[1] === void 0 ? void 0 : decodeJSONPointerSegment(path10[1]);
+  if (path11[0] === defsKey) {
+    const key = path11[1] === void 0 ? void 0 : decodeJSONPointerSegment(path11[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -26942,8 +26942,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path10, errorMaps, issueData } = params;
-  const fullPath = [...path10, ...issueData.path || []];
+  const { data, path: path11, errorMaps, issueData } = params;
+  const fullPath = [...path11, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -26955,15 +26955,15 @@ var makeIssue = (params) => {
       message: issueData.message
     };
   }
-  let errorMessage = "";
+  let errorMessage2 = "";
   const maps = errorMaps.filter((m) => !!m).slice().reverse();
   for (const map2 of maps) {
-    errorMessage = map2(fullIssue, { data, defaultError: errorMessage }).message;
+    errorMessage2 = map2(fullIssue, { data, defaultError: errorMessage2 }).message;
   }
   return {
     ...issueData,
     path: fullPath,
-    message: errorMessage
+    message: errorMessage2
   };
 };
 function addIssueToContext(ctx, issueData) {
@@ -27058,11 +27058,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path10, key) {
+  constructor(parent, value, path11, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path10;
+    this._path = path11;
     this._key = key;
   }
   get path() {
@@ -30613,11 +30613,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path10) {
-  if (path10.length === 0) {
+function getDotPath(path11) {
+  if (path11.length === 0) {
     return "object root";
   }
-  return path10.reduce((acc, seg, index) => {
+  return path11.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -32281,19 +32281,19 @@ var getRefs = (options) => {
 };
 
 // node_modules/zod-to-json-schema/dist/esm/errorMessages.js
-function addErrorMessage(res, key, errorMessage, refs) {
+function addErrorMessage(res, key, errorMessage2, refs) {
   if (!refs?.errorMessages)
     return;
-  if (errorMessage) {
+  if (errorMessage2) {
     res.errorMessage = {
       ...res.errorMessage,
-      [key]: errorMessage
+      [key]: errorMessage2
     };
   }
 }
-function setResponseValueAndErrors(res, key, value, errorMessage, refs) {
+function setResponseValueAndErrors(res, key, value, errorMessage2, refs) {
   res[key] = value;
-  addErrorMessage(res, key, errorMessage, refs);
+  addErrorMessage(res, key, errorMessage2, refs);
 }
 
 // node_modules/zod-to-json-schema/dist/esm/getRelativePath.js
@@ -33604,8 +33604,8 @@ var Protocol = class {
                   if (queuedMessage.type === "response") {
                     resolver(message);
                   } else {
-                    const errorMessage = message;
-                    const error61 = new McpError(errorMessage.error.code, errorMessage.error.message, errorMessage.error.data);
+                    const errorMessage2 = message;
+                    const error61 = new McpError(errorMessage2.error.code, errorMessage2.error.message, errorMessage2.error.data);
                     resolver(error61);
                   }
                 } else {
@@ -34896,23 +34896,23 @@ var Server = class extends Protocol {
       const wrappedHandler = async (request, extra) => {
         const validatedRequest = safeParse3(CallToolRequestSchema, request);
         if (!validatedRequest.success) {
-          const errorMessage = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call request: ${errorMessage}`);
+          const errorMessage2 = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call request: ${errorMessage2}`);
         }
         const { params } = validatedRequest.data;
         const result = await Promise.resolve(handler(request, extra));
         if (params.task) {
           const taskValidationResult = safeParse3(CreateTaskResultSchema, result);
           if (!taskValidationResult.success) {
-            const errorMessage = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
-            throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage}`);
+            const errorMessage2 = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
+            throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage2}`);
           }
           return taskValidationResult.data;
         }
         const validationResult = safeParse3(CallToolResultSchema, result);
         if (!validationResult.success) {
-          const errorMessage = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call result: ${errorMessage}`);
+          const errorMessage2 = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call result: ${errorMessage2}`);
         }
         return validationResult.data;
       };
@@ -35406,12 +35406,12 @@ var McpServer = class {
    * @param errorMessage - The error message.
    * @returns The tool error result.
    */
-  createToolError(errorMessage) {
+  createToolError(errorMessage2) {
     return {
       content: [
         {
           type: "text",
-          text: errorMessage
+          text: errorMessage2
         }
       ],
       isError: true
@@ -35429,8 +35429,8 @@ var McpServer = class {
     const parseResult = await safeParseAsync3(schemaToParse, args);
     if (!parseResult.success) {
       const error61 = "error" in parseResult ? parseResult.error : "Unknown error";
-      const errorMessage = getParseErrorMessage(error61);
-      throw new McpError(ErrorCode.InvalidParams, `Input validation error: Invalid arguments for tool ${toolName}: ${errorMessage}`);
+      const errorMessage2 = getParseErrorMessage(error61);
+      throw new McpError(ErrorCode.InvalidParams, `Input validation error: Invalid arguments for tool ${toolName}: ${errorMessage2}`);
     }
     return parseResult.data;
   }
@@ -35454,8 +35454,8 @@ var McpServer = class {
     const parseResult = await safeParseAsync3(outputObj, result.structuredContent);
     if (!parseResult.success) {
       const error61 = "error" in parseResult ? parseResult.error : "Unknown error";
-      const errorMessage = getParseErrorMessage(error61);
-      throw new McpError(ErrorCode.InvalidParams, `Output validation error: Invalid structured content for tool ${toolName}: ${errorMessage}`);
+      const errorMessage2 = getParseErrorMessage(error61);
+      throw new McpError(ErrorCode.InvalidParams, `Output validation error: Invalid structured content for tool ${toolName}: ${errorMessage2}`);
     }
   }
   /**
@@ -35667,8 +35667,8 @@ var McpServer = class {
         const parseResult = await safeParseAsync3(argsObj, request.params.arguments);
         if (!parseResult.success) {
           const error61 = "error" in parseResult ? parseResult.error : "Unknown error";
-          const errorMessage = getParseErrorMessage(error61);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for prompt ${request.params.name}: ${errorMessage}`);
+          const errorMessage2 = getParseErrorMessage(error61);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for prompt ${request.params.name}: ${errorMessage2}`);
         }
         const args = parseResult.data;
         const cb = prompt.callback;
@@ -36324,7 +36324,7 @@ var str = (name, dflt) => {
   const raw = process.env[name];
   return raw === void 0 || raw === "" ? dflt : raw;
 };
-var TARGETS = ["codex", "claude-code", "antigravity"];
+var TARGETS = ["codex", "claude-code", "antigravity", "opencode"];
 var TARGET_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
   codex: "codex",
   gpt: "codex",
@@ -36336,7 +36336,9 @@ var TARGET_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(n
   antigravity: "antigravity",
   agy: "antigravity",
   gemini: "antigravity",
-  google: "antigravity"
+  google: "antigravity",
+  opencode: "opencode",
+  glm: "opencode"
 }));
 var TARGET_INPUTS = Object.freeze(Object.keys(TARGET_ALIASES));
 function normalizeTargetInput(raw) {
@@ -36418,9 +36420,11 @@ var isEnabled = (id2, cli) => {
 var CODEX_BIN = expandHome(knob("codex", "SEVERALLY_CODEX_BIN", "bin", "codex"));
 var CLAUDE_BIN = expandHome(knob("claude-code", "SEVERALLY_CLAUDE_BIN", "bin", "claude"));
 var AGY_BIN = expandHome(knob("antigravity", "SEVERALLY_AGY_BIN", "bin", "agy"));
+var OPENCODE_BIN = expandHome(knob("opencode", "SEVERALLY_OPENCODE_BIN", "bin", "opencode"));
 var CODEX_MODEL = knob("codex", "SEVERALLY_CODEX_MODEL", "default_model", "gpt-6-astra");
 var CLAUDE_MODEL = knob("claude-code", "SEVERALLY_CLAUDE_MODEL", "default_model", "claude-fable-5-1");
 var AGY_MODEL = knob("antigravity", "SEVERALLY_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
+var OPENCODE_MODEL = knob("opencode", "SEVERALLY_OPENCODE_MODEL", "default_model", "zai-coding-plan/glm-5.3");
 var POLICY = Object.freeze({
   home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
   targets: Object.freeze({
@@ -36459,13 +36463,31 @@ var POLICY = Object.freeze({
       // Where the real credentials live is credentialsHome() below, not a
       // field here: the sandbox has to read it per job rather than have it
       // frozen at import (see the note on timeoutMs()).
+    }),
+    opencode: Object.freeze({
+      cli: OPENCODE_BIN,
+      available: isEnabled("opencode", OPENCODE_BIN),
+      note: disabledNote("opencode"),
+      model: OPENCODE_MODEL,
+      allowedModels: allowedFor("opencode", OPENCODE_MODEL, "SEVERALLY_OPENCODE_ALLOWED_MODELS"),
+      allowedModelsEnv: "SEVERALLY_OPENCODE_ALLOWED_MODELS",
+      label: "OpenCode CLI",
+      // The vendor of the default model's lineage, exactly as antigravity's
+      // "google" describes Gemini. opencode itself can run any provider's
+      // models; if the operator repoints default_model at another vendor's
+      // model, this field lags -- it only feeds the same-vendor caveat, which
+      // is annotation, never a permission or a limit.
+      vendor: "zai"
     })
   }),
   // Grace period between SIGTERM and SIGKILL of the child process group.
   killGraceMs: num("SEVERALLY_KILL_GRACE_MS", 5e3, 500, 6e4),
   // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
   maxRounds: num("SEVERALLY_MAX_ROUNDS", 5, 1, 20),
-  maxConcurrent: num("SEVERALLY_MAX_CONCURRENT", 3, 1, 4),
+  // Default 4 so a "consult everyone" fan-out (the three peers plus a fresh
+  // session of the caller's own CLI) fits the default cap. The ceiling matches
+  // TARGETS.length: a fan-out can never name more members than that anyway.
+  maxConcurrent: num("SEVERALLY_MAX_CONCURRENT", 4, 1, 4),
   maxJobsRetained: num("SEVERALLY_MAX_JOBS_RETAINED", 200, 20, 2e3),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
@@ -36505,7 +36527,8 @@ var POLICY = Object.freeze({
 var TIMEOUT_ENV = {
   codex: "SEVERALLY_CODEX_TIMEOUT_MS",
   "claude-code": "SEVERALLY_CLAUDE_TIMEOUT_MS",
-  antigravity: "SEVERALLY_AGY_TIMEOUT_MS"
+  antigravity: "SEVERALLY_AGY_TIMEOUT_MS",
+  opencode: "SEVERALLY_OPENCODE_TIMEOUT_MS"
 };
 function timeoutMs(target) {
   const shared = num("SEVERALLY_TIMEOUT_MS", 6e5, 1e3, 18e5);
@@ -36520,6 +36543,9 @@ function timeoutMs(target) {
 }
 function credentialsHome() {
   return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
+}
+function opencodeCredentialsHome() {
+  return str("SEVERALLY_OPENCODE_CRED_HOME", os.homedir());
 }
 var artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
 function unavailableReason(id2) {
@@ -36776,7 +36802,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
 
 // src/jobs.mjs
 import crypto from "node:crypto";
-import fs6 from "node:fs";
+import fs7 from "node:fs";
 
 // src/result-schema.mjs
 var s = (desc) => ({ type: "string", description: desc });
@@ -37378,9 +37404,16 @@ var DROP_EXACT = /* @__PURE__ */ new Set([
 ]);
 var DROP_PREFIX = ["CLAUDE_CODE_", "SEVERALLY_", "MCP_"];
 var TARGET_DROP_PREFIX = {
-  codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
-  "claude-code": ["OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_"],
-  antigravity: ["ANTHROPIC_", "OPENAI_", "CODEX_", "AGY_", "ANTIGRAVITY_"]
+  codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_", "ZAI_"],
+  "claude-code": ["OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_", "ZAI_"],
+  antigravity: ["ANTHROPIC_", "OPENAI_", "CODEX_", "AGY_", "ANTIGRAVITY_", "ZAI_"],
+  // OPENCODE_ is dropped on purpose even though it is this consultant's own
+  // prefix: whatever the hosting session exported (OPENCODE_CONFIG,
+  // OPENCODE_CONFIG_CONTENT, OPENCODE_PERMISSION...) must not reach the
+  // child, or it could override the sandbox's config. The sandbox re-adds
+  // the two variables the consultant needs, after the drop. ZAI_ stays: it
+  // is where the zai-coding-plan provider's API key travels.
+  opencode: ["ANTHROPIC_", "OPENAI_", "CODEX_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_", "OPENCODE_"]
 };
 var TARGET_DROP_EXACT = {
   antigravity: ["XDG_CONFIG_HOME"]
@@ -37692,22 +37725,22 @@ function walkUsage(node2, acc) {
   for (const v of Object.values(node2)) if (v && typeof v === "object") walkUsage(v, acc);
 }
 function interpret({ stdout, stderr, code, lastMessageText }) {
-  const events2 = [];
+  const events3 = [];
   for (const line of (stdout || "").split("\n")) {
     const t = line.trim();
     if (!t.startsWith("{")) continue;
     try {
-      events2.push(JSON.parse(t));
+      events3.push(JSON.parse(t));
     } catch {
     }
   }
-  const errorEvents = events2.filter((e) => e.type === "error" || e.type === "turn.failed");
+  const errorEvents = events3.filter((e) => e.type === "error" || e.type === "turn.failed");
   const usage = {};
-  for (const e of events2) walkUsage(e, usage);
+  for (const e of events3) walkUsage(e, usage);
   let text2 = (lastMessageText || "").trim();
   if (!text2) {
-    for (let i = events2.length - 1; i >= 0 && !text2; i--) {
-      const e = events2[i];
+    for (let i = events3.length - 1; i >= 0 && !text2; i--) {
+      const e = events3[i];
       const item = e.item ?? e;
       const candidate = item && item.type && String(item.type).includes("agent_message") && (item.text ?? item.message) || e.type === "item.completed" && item && (item.text ?? item.message) || null;
       if (typeof candidate === "string" && candidate.trim()) text2 = candidate.trim();
@@ -37715,7 +37748,7 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
   }
   if (errorEvents.length) {
     const msg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events2.length };
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events3.length };
   }
   if (!text2) {
     const msg = (stderr || "").trim() || `codex exited with code ${code} and produced no final message`;
@@ -37724,10 +37757,10 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       failureKind: code === 0 ? "invalid_output" : classifyMessage(msg),
       message: msg,
       usageRaw: usage,
-      events: events2.length
+      events: events3.length
     };
   }
-  return { ok: true, text: text2, usageRaw: usage, events: events2.length };
+  return { ok: true, text: text2, usageRaw: usage, events: events3.length };
 }
 function progress({ stdout }) {
   const items = [];
@@ -38042,14 +38075,240 @@ function usageRecord3(payload) {
   };
 }
 
+// src/adapters/opencode.mjs
+var opencode_exports = {};
+__export(opencode_exports, {
+  FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS4,
+  buildInvocation: () => buildInvocation4,
+  events: () => events2,
+  interpret: () => interpret4,
+  prepareSandbox: () => prepareSandbox2,
+  progress: () => progress3,
+  usageRecord: () => usageRecord4
+});
+
+// src/adapters/opencode-sandbox.mjs
+import fs6 from "node:fs";
+import path9 from "node:path";
+var SANDBOX_DENY2 = Object.freeze([
+  "edit",
+  "bash",
+  "task",
+  "skill",
+  "lsp",
+  "todowrite",
+  // `opencode run` denies these three itself for fresh sessions; pinned here
+  // so the consultant's isolation does not rest on the CLI's incidental
+  // print-mode behaviour.
+  "question",
+  "plan_enter",
+  "plan_exit"
+]);
+var SANDBOX_ALLOW2 = Object.freeze(["read", "glob", "grep", "webfetch", "websearch"]);
+var SANDBOX_TOOLS_OFF = Object.freeze({ edit: false, write: false, patch: false, bash: false });
+var AUTH_REL = path9.join(".local", "share", "opencode", "auth.json");
+function prepareSandbox2({ workdir }) {
+  const root = path9.join(path9.dirname(workdir), "home");
+  const configDir = path9.join(root, ".config", "opencode");
+  const dataDir = path9.join(root, ".local", "share", "opencode");
+  const cacheDir = path9.join(root, ".cache", "opencode");
+  const stateDir = path9.join(root, ".local", "state", "opencode");
+  for (const dir of [configDir, dataDir, cacheDir, stateDir]) {
+    fs6.mkdirSync(dir, { recursive: true, mode: 448 });
+  }
+  fs6.chmodSync(root, 448);
+  fs6.writeFileSync(
+    path9.join(configDir, "opencode.json"),
+    `${JSON.stringify(
+      {
+        permission: {
+          ...Object.fromEntries(SANDBOX_DENY2.map((name) => [name, "deny"])),
+          ...Object.fromEntries(SANDBOX_ALLOW2.map((name) => [name, "allow"]))
+        },
+        tools: { ...SANDBOX_TOOLS_OFF },
+        // The recursion barrier proper is the empty HOME: no user config
+        // survives it. This key documents the posture in the one config the
+        // child does read, and holds even if a future version widens where
+        // project-level config may come from.
+        mcp: {},
+        share: "disabled",
+        snapshot: false,
+        autoupdate: false
+      },
+      null,
+      2
+    )}
+`,
+    { mode: 384 }
+  );
+  const source = path9.join(opencodeCredentialsHome(), AUTH_REL);
+  const link = path9.join(dataDir, "auth.json");
+  let credentials = "missing";
+  if (fs6.existsSync(source)) {
+    try {
+      fs6.symlinkSync(source, link);
+      credentials = "symlink";
+    } catch {
+      fs6.copyFileSync(source, link);
+      fs6.chmodSync(link, 384);
+      credentials = "copy";
+    }
+  }
+  return {
+    root,
+    credentials,
+    // The exact path searched, so a caller that has to report `credentials:
+    // "missing"` can say where it looked instead of leaving the operator to
+    // guess which HOME severally read.
+    credentialsSource: source,
+    env: {
+      HOME: root,
+      XDG_CONFIG_HOME: path9.join(root, ".config"),
+      XDG_DATA_HOME: path9.join(root, ".local", "share"),
+      XDG_CACHE_HOME: path9.join(root, ".cache"),
+      XDG_STATE_HOME: path9.join(root, ".local", "state"),
+      // Belt and braces: no update checks, no project-config pickup from the
+      // parent directories of the (empty) working directory.
+      OPENCODE_DISABLE_AUTOUPDATE: "1",
+      OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+      ...process.platform === "win32" ? {
+        USERPROFILE: root,
+        HOMEDRIVE: path9.parse(root).root.replace(/[\\/]$/, ""),
+        HOMEPATH: root.slice(path9.parse(root).root.length - 1),
+        APPDATA: path9.join(root, "AppData", "Roaming"),
+        LOCALAPPDATA: path9.join(root, "AppData", "Local")
+      } : {}
+    },
+    cleanup() {
+      try {
+        fs6.rmSync(root, { recursive: true, force: true });
+      } catch {
+      }
+    }
+  };
+}
+
+// src/adapters/opencode.mjs
+var FORBIDDEN_FLAGS4 = [
+  "--auto",
+  "--yolo",
+  "--dangerously-skip-permissions",
+  "--attach",
+  "--continue",
+  "-c",
+  "--session",
+  "-s",
+  "--fork",
+  "--share",
+  "--agent",
+  "--command",
+  "--file",
+  "-f",
+  "--interactive",
+  "-i",
+  "--mini",
+  "--demo"
+];
+function buildInvocation4({ model }) {
+  const t = POLICY.targets.opencode;
+  const chosen = model ?? t.model;
+  const args = [
+    "run",
+    "--format",
+    "json",
+    "--pure",
+    "-m",
+    chosen,
+    "--title",
+    "severally"
+  ];
+  return { command: t.cli, args, model: chosen };
+}
+function events2(stdout) {
+  const out = [];
+  for (const line of (stdout || "").split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed && typeof parsed === "object") out.push(parsed);
+    } catch {
+    }
+  }
+  return out;
+}
+function errorMessage(error61) {
+  if (!error61 || typeof error61 !== "object") return JSON.stringify(error61);
+  const detail = error61.data && typeof error61.data === "object" && error61.data.message ? String(error61.data.message) : "";
+  return [error61.name, detail].filter(Boolean).join(": ") || JSON.stringify(error61);
+}
+function interpret4({ stdout, stderr, code }) {
+  const all = events2(stdout);
+  let text2 = null;
+  let tokens = null;
+  let cost = null;
+  let steps = 0;
+  const errors = [];
+  for (const e of all) {
+    const part = e.part;
+    if (e.type === "text" && part?.type === "text" && part.time?.end && typeof part.text === "string" && part.text.trim()) {
+      text2 = part.text.trim();
+    } else if (e.type === "step_finish" && part?.type === "step-finish") {
+      steps += 1;
+      if (part.tokens && typeof part.tokens === "object") tokens = part.tokens;
+      if (typeof part.cost === "number") cost = part.cost;
+    } else if (e.type === "error" && e.error) {
+      errors.push(errorMessage(e.error));
+    }
+  }
+  const usageRaw = { tokens, cost, steps, events: all.length };
+  if (!text2) {
+    const msg = errors.join(" | ") || (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `opencode exited with code ${code} and produced no answer`;
+    return {
+      ok: false,
+      failureKind: errors.length || code !== 0 ? classifyMessage(msg) : "invalid_output",
+      message: msg,
+      usageRaw
+    };
+  }
+  if (errors.length) {
+    return { ok: true, text: text2, usageRaw: { ...usageRaw, errors } };
+  }
+  return { ok: true, text: text2, usageRaw };
+}
+function progress3({ stdout }) {
+  const seen = events2(stdout).filter((e) => ["step_start", "step_finish", "text", "tool_use"].includes(e.type));
+  if (!seen.length) return null;
+  const last = seen[seen.length - 1];
+  const what = last.type === "tool_use" && last.part?.tool ? `tool ${last.part.tool}` : last.type;
+  return `${seen.length} event(s), last was ${what}`;
+}
+function usageRecord4(raw) {
+  const r = raw ?? {};
+  const t = r.tokens && typeof r.tokens === "object" ? r.tokens : {};
+  const num2 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  const cache = t.cache && typeof t.cache === "object" ? t.cache : {};
+  return {
+    input_tokens: num2(t.input),
+    cached_input_tokens: num2(t.cache_read) ?? num2(cache.read),
+    output_tokens: num2(t.output),
+    total_tokens: num2(t.total),
+    cost_usd: num2(r.cost),
+    web_search_requests: null,
+    // opencode does not report a per-tool count; do not guess one.
+    reasoning_tokens: num2(t.reasoning),
+    turns: num2(r.steps)
+  };
+}
+
 // src/jobs.mjs
-var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports };
+var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports, opencode: opencode_exports };
 var API_KEY_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY"];
 var CREDENTIAL_FILE_VARS = ["GOOGLE_APPLICATION_CREDENTIALS"];
 var ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
 function hasApiCredential(env) {
   if (API_KEY_VARS.some((name) => env[name])) return true;
-  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs6.existsSync(env[name]));
+  return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs7.existsSync(env[name]));
 }
 var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 var JobManager = class {
@@ -38346,7 +38605,7 @@ var JobManager = class {
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
       const env = childEnv(req.target, sandbox?.env ?? {});
-      if (sandbox && sandbox.credentials === "missing" && !hasApiCredential(env)) {
+      if (req.target === "antigravity" && sandbox && sandbox.credentials === "missing" && !hasApiCredential(env)) {
         return this.#fail(
           job,
           "auth",
@@ -38745,8 +39004,8 @@ function assertNoForbiddenFlags(target, args) {
 }
 
 // src/export.mjs
-import fs7 from "node:fs";
-import path9 from "node:path";
+import fs8 from "node:fs";
+import path10 from "node:path";
 var ExportError = class extends Error {
   constructor(message, code) {
     super(message);
@@ -38754,30 +39013,30 @@ var ExportError = class extends Error {
     this.code = code;
   }
 };
-var historyDir = () => path9.join(POLICY.home, "history");
+var historyDir = () => path10.join(POLICY.home, "history");
 function readJson(p) {
   try {
-    return JSON.parse(fs7.readFileSync(p, "utf8"));
+    return JSON.parse(fs8.readFileSync(p, "utf8"));
   } catch {
     return null;
   }
 }
 function roundsOf(chainId) {
-  const dir = path9.join(historyDir(), chainId);
+  const dir = path10.join(historyDir(), chainId);
   let names = [];
   try {
-    names = fs7.readdirSync(dir);
+    names = fs8.readdirSync(dir);
   } catch {
     return [];
   }
-  return names.filter((n) => /^round-\d+\.json$/.test(n)).sort().map((n) => readJson(path9.join(dir, n))).filter(Boolean);
+  return names.filter((n) => /^round-\d+\.json$/.test(n)).sort().map((n) => readJson(path10.join(dir, n))).filter(Boolean);
 }
 function chainsOfGroup(groupId) {
-  const group = readJson(path9.join(historyDir(), "groups", `${groupId}.json`));
+  const group = readJson(path10.join(historyDir(), "groups", `${groupId}.json`));
   if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.severally/history`, "unknown_group");
   const byJob = /* @__PURE__ */ new Map();
   try {
-    for (const line of fs7.readFileSync(path9.join(historyDir(), "index.jsonl"), "utf8").split("\n")) {
+    for (const line of fs8.readFileSync(path10.join(historyDir(), "index.jsonl"), "utf8").split("\n")) {
       if (!line.trim()) continue;
       const row = JSON.parse(line);
       byJob.set(row.job_id, row.chain_id);
@@ -38983,9 +39242,9 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 
 // src/server.mjs
 var SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
-Codex, Claude Code or Antigravity (Gemini). Each consultation runs in a fresh child session of that CLI: it can
-search and browse the web, it cannot edit files, run commands, load MCP tools, or consult anyone else, and it
-never sees your session -- only the brief you send.
+Codex, Claude Code, Antigravity (Gemini) or OpenCode (GLM). Each consultation runs in a fresh child session of
+that CLI: it can search and browse the web, it cannot edit files, run commands, load MCP tools, or consult
+anyone else, and it never sees your session -- only the brief you send.
 
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
@@ -38997,11 +39256,13 @@ check the grounds behind a point before you adopt it, and record what you adopte
 var startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
 
 target: which consultant to ask. This machine can reach: ${availableTargets().join(", ") || "(none -- no consultant CLI is installed)"}.
-        The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google. A consultant that
-        is not in that list is refused up front, so do not retry it -- say which ones are available instead.
+        The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google, glm/opencode. A
+        consultant that is not in that list is refused up front, so do not retry it -- say which ones are
+        available instead.
         Consulting your own CLI is allowed but is a fresh-context check rather than an independent opinion,
         and the result says so.
-targets: ask up to 3 consultants the same question at once (mutually exclusive with target, no duplicates).
+targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates,
+        up to one per supported consultant).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
         A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
         A consultant may name the model to run it on as a suffix: "claude:claude-opus-5". What each
@@ -39009,8 +39270,8 @@ targets: ask up to 3 consultants the same question at once (mutually exclusive w
 ${availableTargets().map((t) => `          ${t}: ${POLICY.targets[t].allowedModels.join(", ")}`).join("\n")}
         Only pass a model when the user asked for one; a name outside the list is refused before the
         consultation starts, and a name matching two of them is refused rather than guessed.
-caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity"), so the server can
-        annotate a same-vendor consultation.
+caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
+        server can annotate a same-vendor consultation.
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
         With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
         whom; it never changes which model the consultant runs.
