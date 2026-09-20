@@ -47,8 +47,16 @@ if(cli==='npm') {
   if(args[2]!=='list') fs.writeFileSync(path.join(process.env.CODEX_HOME,'config.toml'),'# changed configuration\\n');
 } else if(args[0]==='mcp') {
   if(args[1]==='get') process.exitCode=1;
-  if(args[1]==='list') console.log(process.env.STUB_MCP_LIST ?? '');
-  if(args[1]==='add') state[cli]=args.slice(-2);
+  // Faithful registration emulation: 'mcp list' shows the servers that were
+  // actually added (recorded in the registry state), so a post-add
+  // registration check has something real to find. STUB_MCP_LIST prepends
+  // fixture-set lines; STUB_ADD_SILENT makes 'mcp add' exit 0 while recording
+  // nothing -- the opencode failure mode where flags print usage instead.
+  if(args[1]==='list') {
+    const registered = state[cli] ? [cli + ': severally connected'] : [];
+    console.log([process.env.STUB_MCP_LIST ?? '', ...registered].filter(Boolean).join('\\n'));
+  }
+  if(args[1]==='add' && !process.env.STUB_ADD_SILENT) state[cli]=args.slice(-2);
 }
 fs.writeFileSync(file,JSON.stringify(state));
 `;
@@ -162,6 +170,20 @@ test('POSIX opencode registration follows XDG_CONFIG_HOME and matches the exact 
     .split('\n').filter(Boolean).map(JSON.parse)
     .some((args) => args[0] === 'opencode' && args[1] === 'mcp' && args[2] === 'add');
   assert.equal(added, false, 'the exact server name must be recognised as already registered');
+});
+
+// opencode prints usage and exits 0 on flags a future version renames, so a
+// zero exit from `mcp add` proves nothing: the installer must confirm the
+// server is actually listed afterwards instead of trusting the exit code.
+test('POSIX opencode add that did not register is reported as a failure', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  f.env.STUB_ADD_SILENT = '1';
+  assert.throws(() => f.install('--manual', '--force'), (err) => /not listed/.test(err.stdout));
+  const calls = fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(
+    calls.some((args) => args[0] === 'opencode' && args[1] === 'mcp' && args[2] === 'add'),
+    'the add must still have been attempted',
+  );
 });
 
 test('POSIX dry-run leaves runtime, marketplace and client configuration untouched', { skip: !posix }, (t) => {

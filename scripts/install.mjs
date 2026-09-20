@@ -279,6 +279,9 @@ const CLIENTS = [
     // run from.
     remove: () => ({ ok: true, out: 'opencode has no mcp remove; re-adding replaces the entry' }),
     add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--', ...bin]),
+    // A zero exit from `mcp add` can be a usage dump in disguise (see above),
+    // so this client's registration is verified by listing after adding.
+    verifyAdd: true,
     skillFrom: path.join(PLUGIN, 'skills', 'opencode', 'severally'),
     skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
@@ -302,8 +305,18 @@ function installClientDirectly(client, bin) {
   } else {
     if (client.isRegistered()) client.remove();
     const r = client.add(bin);
-    log(r.ok ? '   registered' : `   failed: ${r.out}`);
-    if (!r.ok) process.exitCode = 1;
+    if (!r.ok) {
+      log(`   failed: ${r.out}`);
+      process.exitCode = 1;
+    } else if (!dryRun && client.verifyAdd && !client.isRegistered()) {
+      // opencode prints usage and exits 0 on flags a future version renames,
+      // so a zero exit from `mcp add` proves nothing: confirm the entry is
+      // actually listed, or the server silently never reaches the client.
+      log('   add exited 0 but the server is not listed; registration failed');
+      process.exitCode = 1;
+    } else {
+      log('   registered');
+    }
   }
 
   const parent = path.dirname(client.skillTo);
