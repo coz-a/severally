@@ -425,6 +425,53 @@ test('opencode consultation: alias target, last text part wins, usage recorded',
   assert.equal(view.usage.cost_usd, 0.02);
 });
 
+test('opencode: an epilogue after the contract falls back to the earlier part', async () => {
+  process.env.STUB_BEHAVIOR = 'answer_then_epilogue';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'completed', 'the epilogue must not void the answer that preceded it');
+    assert.match(view.result.summary, /Stub opencode summary/);
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
+});
+
+// opencode 2.x reads credentials from the session database, not auth.json,
+// so a sandbox that only copies auth.json fails its first run with a
+// no-route error -- having created the database schema on the way down.
+// severally seeds the credential row into that database and retries once.
+test('opencode: a 2.x no-route failure is seeded from auth.json and retried once', async () => {
+  process.env.STUB_BEHAVIOR = 'no_route_then_ok';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'completed', 'the seeded retry must produce the answer');
+    assert.match(view.result.summary, /Stub opencode summary/);
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
+});
+
+// The recovery may never extend the job's wall-clock budget: when the failed
+// first attempt leaves less than the minimum retry window, no respawn
+// happens and the job keeps its original classified failure.
+test('opencode: the recovery respawn never extends the budget', async () => {
+  process.env.STUB_BEHAVIOR = 'no_route_after_delay';
+  process.env.SEVERALLY_OPENCODE_TIMEOUT_MS = '6000';
+  process.env.STUB_DELAY_MS = '2500';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'failed');
+    assert.equal(view.failure.kind, 'model_unavailable', 'the original failure stands; no late respawn');
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+    delete process.env.STUB_DELAY_MS;
+    delete process.env.SEVERALLY_OPENCODE_TIMEOUT_MS;
+  }
+});
+
 test('opencode: the synthesised home is handed over as HOME and removed afterwards', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'oc-env.json');

@@ -36801,7 +36801,7 @@ function parseRequest(raw, { isFollowup = false } = {}) {
 }
 
 // src/jobs.mjs
-import crypto from "node:crypto";
+import crypto2 from "node:crypto";
 import fs7 from "node:fs";
 
 // src/result-schema.mjs
@@ -37381,7 +37381,7 @@ function normalizeResult(raw) {
 var RULES = [
   [/\b(usage limit|quota exceeded|rate limit|out of credits|reached your .* limit|insufficient_quota|429)\b/i, "usage_limit"],
   [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
-  [/\b(unrecognized_model|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|404)\b/i, "model_unavailable"]
+  [/\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|404)\b/i, "model_unavailable"]
 ];
 function classifyMessage(text2, fallback = "cli_error") {
   if (!text2) return fallback;
@@ -38082,18 +38082,30 @@ __export(opencode_exports, {
   buildInvocation: () => buildInvocation4,
   events: () => events2,
   interpret: () => interpret4,
+  prepare: () => prepare,
   prepareSandbox: () => prepareSandbox2,
   progress: () => progress3,
+  recoverAuthFailure: () => recoverAuthFailure,
+  resetProbe: () => resetProbe,
   usageRecord: () => usageRecord4
 });
 
 // src/adapters/opencode-sandbox.mjs
 import fs6 from "node:fs";
 import path9 from "node:path";
+import crypto from "node:crypto";
+import { createRequire as sqliteRequire } from "node:module";
+var DatabaseSync = null;
+try {
+  ({ DatabaseSync } = sqliteRequire(import.meta.url)("node:sqlite"));
+} catch {
+}
 var SANDBOX_DENY2 = Object.freeze([
   "edit",
   "bash",
+  "shell",
   "task",
+  "subagent",
   "skill",
   "lsp",
   "todowrite",
@@ -38145,16 +38157,11 @@ function prepareSandbox2({ workdir }) {
   const link = path9.join(dataDir, "auth.json");
   let credentials = "missing";
   if (fs6.existsSync(source)) {
-    try {
-      fs6.symlinkSync(source, link);
-      credentials = "symlink";
-    } catch {
-      fs6.copyFileSync(source, link);
-      fs6.chmodSync(link, 384);
-      credentials = "copy";
-    }
+    fs6.copyFileSync(source, link);
+    fs6.chmodSync(link, 384);
+    credentials = "copy";
   }
-  return {
+  const sandbox = {
     root,
     credentials,
     // The exact path searched, so a caller that has to report `credentials:
@@ -38186,6 +38193,57 @@ function prepareSandbox2({ workdir }) {
       }
     }
   };
+  sandbox.seed = (provider) => seedCredentialFromAuth(sandbox, provider);
+  return sandbox;
+}
+function seedCredentialFromAuth(sandbox, provider) {
+  if (!DatabaseSync || typeof provider !== "string" || !provider) return false;
+  const dataDir = path9.join(sandbox.root, ".local", "share", "opencode");
+  const authPath = path9.join(dataDir, "auth.json");
+  const dbPath = path9.join(dataDir, "opencode.db");
+  if (!fs6.existsSync(dbPath)) return false;
+  let row = null;
+  if (fs6.existsSync(authPath)) {
+    try {
+      const entry = JSON.parse(fs6.readFileSync(authPath, "utf8"))[provider];
+      if (entry && typeof entry === "object" && typeof entry.key === "string" && entry.key && (!entry.type || entry.type === "api")) {
+        row = { label: "API key", value: JSON.stringify({ type: "key", key: entry.key }) };
+      }
+    } catch {
+    }
+  }
+  if (!row) {
+    const operatorDb = path9.join(opencodeCredentialsHome(), ".local", "share", "opencode", "opencode.db");
+    if (fs6.existsSync(operatorDb)) {
+      try {
+        const db = new DatabaseSync(operatorDb, { readOnly: true });
+        try {
+          const found = db.prepare("SELECT label, value FROM credential WHERE integration_id = ?").get(provider);
+          if (found && typeof found.value === "string") {
+            const parsed = JSON.parse(found.value);
+            if (parsed && typeof parsed === "object" && typeof parsed.key === "string" && parsed.key) {
+              row = { label: found.label ?? "API key", value: found.value };
+            }
+          }
+        } finally {
+          db.close();
+        }
+      } catch {
+      }
+    }
+  }
+  if (!row) return false;
+  try {
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare("INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)").run(`cred_${crypto.randomBytes(18).toString("base64url")}`, provider, row.label, row.value, Date.now(), Date.now());
+    } finally {
+      db.close();
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // src/adapters/opencode.mjs
@@ -38194,6 +38252,7 @@ var FORBIDDEN_FLAGS4 = [
   "--yolo",
   "--dangerously-skip-permissions",
   "--attach",
+  "--server",
   "--continue",
   "-c",
   "--session",
@@ -38209,6 +38268,57 @@ var FORBIDDEN_FLAGS4 = [
   "--mini",
   "--demo"
 ];
+var standaloneSupport = null;
+var probePromise = null;
+async function prepare() {
+  if (standaloneSupport !== null) return;
+  if (!probePromise) {
+    probePromise = new Promise((resolve) => {
+      let settled = false;
+      const done = (v) => {
+        if (!settled) {
+          settled = true;
+          standaloneSupport = Boolean(v);
+          resolve();
+        }
+      };
+      try {
+        const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP"));
+        const child = spawnCommand(POLICY.targets.opencode.cli, ["run", "--help"], { env, stdio: ["ignore", "pipe", "pipe"] });
+        let out = "";
+        child.stdout.on("data", (c) => {
+          out += c;
+        });
+        child.stderr.on("data", (c) => {
+          out += c;
+        });
+        child.on("error", () => done(false));
+        child.on("close", () => done(out.includes("--standalone")));
+        setTimeout(() => {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+          }
+          done(false);
+        }, 1e4).unref();
+      } catch {
+        done(false);
+      }
+    });
+  }
+  await probePromise;
+}
+async function resetProbe() {
+  standaloneSupport = null;
+  probePromise = null;
+}
+function recoverAuthFailure({ interpreted, sandbox, model }) {
+  if (!interpreted || interpreted.ok !== false || interpreted.failureKind !== "model_unavailable") return false;
+  if (typeof model !== "string" || !model.includes("/")) return false;
+  const provider = model.slice(0, model.indexOf("/"));
+  if (!provider) return false;
+  return typeof sandbox?.seed === "function" ? sandbox.seed(provider) : false;
+}
 function buildInvocation4({ model }) {
   const t = POLICY.targets.opencode;
   const chosen = model ?? t.model;
@@ -38216,7 +38326,7 @@ function buildInvocation4({ model }) {
     "run",
     "--format",
     "json",
-    "--pure",
+    ...standaloneSupport ? ["--standalone"] : [],
     "-m",
     chosen,
     "--title",
@@ -38239,29 +38349,40 @@ function events2(stdout) {
 }
 function errorMessage(error61) {
   if (!error61 || typeof error61 !== "object") return JSON.stringify(error61);
+  if (typeof error61.message === "string" && error61.message) return error61.message;
   const detail = error61.data && typeof error61.data === "object" && error61.data.message ? String(error61.data.message) : "";
   return [error61.name, detail].filter(Boolean).join(": ") || JSON.stringify(error61);
 }
-function interpret4({ stdout, stderr, code }) {
+function interpret4({ stdout, stderr, code, truncated = false }) {
   const all = events2(stdout);
   let text2 = null;
+  let textIndex = -1;
+  let lastErrorIndex = -1;
+  let finishedAfterText = false;
   let tokens = null;
   let cost = null;
   let steps = 0;
   const errors = [];
-  for (const e of all) {
+  const earlierTextParts = [];
+  for (let i = 0; i < all.length; i++) {
+    const e = all[i];
     const part = e.part;
     if (e.type === "text" && part?.type === "text" && part.time?.end && typeof part.text === "string" && part.text.trim()) {
+      if (text2 !== null) earlierTextParts.push(text2);
       text2 = part.text.trim();
+      textIndex = i;
+      finishedAfterText = false;
     } else if (e.type === "step_finish" && part?.type === "step-finish") {
       steps += 1;
+      if (textIndex !== -1 && i > textIndex) finishedAfterText = true;
       if (part.tokens && typeof part.tokens === "object") tokens = part.tokens;
       if (typeof part.cost === "number") cost = part.cost;
     } else if (e.type === "error" && e.error) {
       errors.push(errorMessage(e.error));
+      lastErrorIndex = i;
     }
   }
-  const usageRaw = { tokens, cost, steps, events: all.length };
+  const usageRaw = { tokens, cost, steps, events: all.length, truncated: Boolean(truncated) };
   if (!text2) {
     const msg = errors.join(" | ") || (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `opencode exited with code ${code} and produced no answer`;
     return {
@@ -38271,10 +38392,26 @@ function interpret4({ stdout, stderr, code }) {
       usageRaw
     };
   }
-  if (errors.length) {
-    return { ok: true, text: text2, usageRaw: { ...usageRaw, errors } };
+  if (lastErrorIndex > textIndex) {
+    const msg = errors[errors.length - 1];
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
   }
-  return { ok: true, text: text2, usageRaw };
+  if (code !== 0) {
+    const msg = errors.join(" | ") || (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `opencode exited with code ${code} after producing an answer`;
+    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
+  }
+  if (truncated && !finishedAfterText) {
+    return {
+      ok: false,
+      failureKind: "invalid_output",
+      message: "opencode output was truncated before the consultation finished; no complete answer arrived",
+      usageRaw
+    };
+  }
+  if (errors.length) {
+    return { ok: true, text: text2, earlierTextParts, usageRaw: { ...usageRaw, errors } };
+  }
+  return { ok: true, text: text2, earlierTextParts, usageRaw };
 }
 function progress3({ stdout }) {
   const seen = events2(stdout).filter((e) => ["step_start", "step_finish", "text", "tool_use"].includes(e.type));
@@ -38303,6 +38440,7 @@ function usageRecord4(raw) {
 
 // src/jobs.mjs
 var ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports, opencode: opencode_exports };
+var MIN_RETRY_MS = 5e3;
 var API_KEY_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY"];
 var CREDENTIAL_FILE_VARS = ["GOOGLE_APPLICATION_CREDENTIALS"];
 var ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
@@ -38310,7 +38448,7 @@ function hasApiCredential(env) {
   if (API_KEY_VARS.some((name) => env[name])) return true;
   return CREDENTIAL_FILE_VARS.some((name) => env[name] && fs7.existsSync(env[name]));
 }
-var id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+var id = (prefix) => `${prefix}_${crypto2.randomBytes(6).toString("hex")}`;
 var JobManager = class {
   constructor() {
     this.jobs = /* @__PURE__ */ new Map();
@@ -38612,6 +38750,7 @@ var JobManager = class {
           `no ${POLICY.targets[req.target].label} credential to hand the consultant: nothing at ${sandbox.credentialsSource}, and none of ${ALL_API_CREDENTIAL_VARS.join(" / ")} names a usable credential. Log in with that CLI, point SEVERALLY_AGY_CRED_HOME at the home directory that holds the token, or set one of those variables to authenticate with an API key instead.`
         );
       }
+      if (adapter.prepare) await adapter.prepare();
       const invocation = adapter.buildInvocation({
         workdir,
         schemaPath,
@@ -38655,7 +38794,41 @@ var JobManager = class {
         );
       }
       const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
-      const interpreted = adapter.interpret({ ...run, lastMessageText });
+      let interpreted = adapter.interpret({ ...run, lastMessageText });
+      if (!interpreted.ok && adapter.recoverAuthFailure && sandbox) {
+        const seeded = adapter.recoverAuthFailure({ interpreted, sandbox, model: job.model });
+        const remaining = budgetMs - (Date.now() - t0);
+        if (seeded && remaining >= MIN_RETRY_MS) {
+          const retry = runChild({
+            command: invocation.command,
+            args: invocation.args,
+            cwd: workdir,
+            env,
+            input: text2,
+            timeoutMs: remaining,
+            onCancelSignal: (fn) => job._cancelFns.push(fn)
+          });
+          job._handle = retry.handle;
+          if (job.cancelRequested) retry.handle.stop();
+          const rerun = await retry.done;
+          if (rerun.spawnError) {
+            return this.#fail(job, "spawn_error", `could not start ${invocation.command}: ${rerun.spawnError}`);
+          }
+          if (job.cancelRequested || rerun.cancelled) {
+            return this.#fail(job, "cancelled", "consultation cancelled by the lead");
+          }
+          if (rerun.timedOut) {
+            const trail = adapter.progress?.(rerun) ?? null;
+            return this.#fail(
+              job,
+              "timeout",
+              `consultant exceeded the ${budgetMs} ms budget and was stopped`,
+              trail ? `no answer was produced; it was still working when the budget ran out: ${trail}` : null
+            );
+          }
+          interpreted = adapter.interpret({ ...rerun, lastMessageText });
+        }
+      }
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
         return this.#fail(job, interpreted.failureKind, interpreted.message);
@@ -38665,10 +38838,22 @@ var JobManager = class {
         normalized = normalizeResult(interpreted.text);
       } catch (err) {
         if (err instanceof OutputError) {
-          job.usage = adapter.usageRecord(interpreted.usageRaw);
-          return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
+          const fallbacks = (interpreted.earlierTextParts ?? []).slice().reverse();
+          for (const candidate of fallbacks) {
+            try {
+              normalized = normalizeResult(candidate);
+              break;
+            } catch (retryErr) {
+              if (!(retryErr instanceof OutputError)) throw retryErr;
+            }
+          }
+          if (!normalized) {
+            job.usage = adapter.usageRecord(interpreted.usageRaw);
+            return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
       job.result = normalized.result;
       const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, req.target, job.caller_model, job.model)].filter(Boolean);

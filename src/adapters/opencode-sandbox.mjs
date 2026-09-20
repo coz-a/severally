@@ -13,7 +13,10 @@
 //   .config/opencode/opencode.json   -> permissions: deny write/bash/task,
 //                                       allow read tools and web; mcp: {},
 //                                       share off, snapshots off, no autoupdate
-//   .local/share/opencode/auth.json  -> symlink to the real provider keys
+//   .local/share/opencode/auth.json  -> a copy of the real provider keys, so
+//                                       a CLI-side credential refresh can
+//                                       never write through to the operator's
+//                                       store (2.x rewrites the file in place)
 //
 // Anything not in that tree cannot be inherited: no user MCP servers (the
 // recursion barrier), no plugins, no skills, no agents, no instructions.
@@ -34,17 +37,33 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+// Aliased because the esbuild banner in the shipped bundle already declares
+// `createRequire` in the same module scope, and a second plain import would
+// be a redeclaration.
+import { createRequire as sqliteRequire } from 'node:module';
 import { opencodeCredentialsHome } from '../policy.mjs';
+
+// node:sqlite ships unflagged from Node 23 (and late 22.x); the engines field
+// allows older runtimes, where credential seeding degrades to a no-op and the
+// job fails with the CLI's own auth error instead.
+let DatabaseSync = null;
+try { ({ DatabaseSync } = sqliteRequire(import.meta.url)('node:sqlite')); } catch { /* unavailable */ }
 
 // Reading is allowed, not denied: every consultant is an equal reader (Codex
 // runs a read-only shell; Claude Code and Antigravity can read the whole
 // disk). Everything that changes state or reaches another agent is denied
 // outright -- opencode's own default posture is the opposite of what a
-// consultation needs, so nothing here may be left unspecified.
+// consultation needs, so nothing here may be left unspecified. Both name
+// generations are pinned: opencode 2.x renamed bash -> shell and
+// task -> subagent (1.18.31 still accepts the old names, and `debug config`
+// normalises them), but nothing promises the aliases survive.
 export const SANDBOX_DENY = Object.freeze([
   'edit',
   'bash',
+  'shell',
   'task',
+  'subagent',
   'skill',
   'lsp',
   'todowrite',
@@ -107,19 +126,17 @@ export function prepareSandbox({ workdir }) {
   const link = path.join(dataDir, 'auth.json');
   let credentials = 'missing';
   if (fs.existsSync(source)) {
-    try {
-      fs.symlinkSync(source, link);
-      credentials = 'symlink';
-    } catch {
-      // Some filesystems refuse symlinks; a copy still authenticates, but a
-      // key refreshed by the child would be discarded with the sandbox.
-      fs.copyFileSync(source, link);
-      fs.chmodSync(link, 0o600);
-      credentials = 'copy';
-    }
+    // Always a copy, never a symlink: opencode 2.x refreshes some provider
+    // credentials by rewriting auth.json in place, and a write through a
+    // symlink would land in the operator's real store -- the one file here
+    // that outlives the job. A stale copy is discarded with the sandbox,
+    // which is exactly the right lifetime for a refreshed key.
+    fs.copyFileSync(source, link);
+    fs.chmodSync(link, 0o600);
+    credentials = 'copy';
   }
 
-  return {
+  const sandbox = {
     root,
     credentials,
     // The exact path searched, so a caller that has to report `credentials:
@@ -148,4 +165,79 @@ export function prepareSandbox({ workdir }) {
       try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* best effort */ }
     },
   };
+  sandbox.seed = (provider) => seedCredentialFromAuth(sandbox, provider);
+  return sandbox;
+}
+
+/**
+ * opencode 2.x authenticates providers from the `credential` table of the
+ * session database (auth.json is the 1.x mechanism and is ignored). A run
+ * that fails for lack of a credential has still created and migrated that
+ * database, so the row the CLI's own `auth login` would have written can be
+ * inserted from the copied auth.json and a retry will authenticate.
+ *
+ * The value shape was read off a live 2.0.11 login row: {"type":"key","key":…}
+ * -- note "key" (the method), not the "api" auth.json uses. Only api-key
+ * entries are seeded; OAuth tokens have a different shape and lifecycle.
+ *
+ * @returns {boolean} true when a row was written and a retry is worth it.
+ */
+export function seedCredentialFromAuth(sandbox, provider) {
+  if (!DatabaseSync || typeof provider !== 'string' || !provider) return false;
+  const dataDir = path.join(sandbox.root, '.local', 'share', 'opencode');
+  const authPath = path.join(dataDir, 'auth.json');
+  const dbPath = path.join(dataDir, 'opencode.db');
+  // The database must already exist: creating one ourselves would race the
+  // CLI's own migrations, so an unbootstrapped sandbox is simply not seedable.
+  if (!fs.existsSync(dbPath)) return false;
+
+  let row = null;
+  if (fs.existsSync(authPath)) {
+    try {
+      const entry = JSON.parse(fs.readFileSync(authPath, 'utf8'))[provider];
+      if (entry && typeof entry === 'object' && typeof entry.key === 'string' && entry.key
+        && (!entry.type || entry.type === 'api')) {
+        row = { label: 'API key', value: JSON.stringify({ type: 'key', key: entry.key }) };
+      }
+    } catch { /* unreadable auth.json: fall through to the database source */ }
+  }
+  if (!row) {
+    // A fresh 2.x installation may hold its credentials only in the
+    // operator's session database, with no auth.json at all. Read that one
+    // provider's row -- read-only, never a copy of the whole store, whose
+    // sessions must not cross into the sandbox -- and carry it verbatim,
+    // because it is already the CLI's own format.
+    const operatorDb = path.join(opencodeCredentialsHome(), '.local', 'share', 'opencode', 'opencode.db');
+    if (fs.existsSync(operatorDb)) {
+      try {
+        const db = new DatabaseSync(operatorDb, { readOnly: true });
+        try {
+          const found = db.prepare('SELECT label, value FROM credential WHERE integration_id = ?').get(provider);
+          if (found && typeof found.value === 'string') {
+            const parsed = JSON.parse(found.value);
+            if (parsed && typeof parsed === 'object' && typeof parsed.key === 'string' && parsed.key) {
+              row = { label: found.label ?? 'API key', value: found.value };
+            }
+          }
+        } finally {
+          db.close();
+        }
+      } catch { /* unreadable or reshaped: not seedable from here */ }
+    }
+  }
+  if (!row) return false;
+  try {
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare('INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(`cred_${crypto.randomBytes(18).toString('base64url')}`, provider, row.label, row.value, Date.now(), Date.now());
+    } finally {
+      db.close();
+    }
+    return true;
+  } catch {
+    // Schema moved or table missing: the job fails with the CLI's own error,
+    // exactly as it would without this recovery.
+    return false;
+  }
 }

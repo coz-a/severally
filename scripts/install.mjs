@@ -46,6 +46,12 @@ const force = argv.has('--force');
 const mode = argv.has('--manual') || process.platform === 'win32' ? 'manual' : 'plugin';
 
 const home = os.homedir();
+// opencode resolves its global paths through xdg-basedir: XDG_CONFIG_HOME, when
+// set, decides where opencode.json and its skills live. The installer must read
+// and write the same place the CLI resolves, or it would back up and edit a
+// file opencode never looks at. The other clients keep their own conventions
+// (~/.claude, ~/.codex/CODEX_HOME, ~/.gemini), which no XDG variable redirects.
+const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const backupDir = path.join(home, '.severally', 'backups', stamp);
 let keptRegistrations = false;
@@ -252,15 +258,17 @@ const CLIENTS = [
     bin: 'opencode',
     label: 'OpenCode',
     backup: [
-      path.join(home, '.config', 'opencode', 'opencode.json'),
-      path.join(home, '.config', 'opencode', 'opencode.jsonc'),
+      path.join(xdgConfig, 'opencode', 'opencode.json'),
+      path.join(xdgConfig, 'opencode', 'opencode.jsonc'),
     ],
-    // opencode has no `mcp get`; list and look for the name. `mcp list`
-    // prints through the prompt library, but the per-server lines still
-    // reach stdout when stdout is not a TTY.
+    // opencode has no `mcp get`; list and look for the exact server name.
+    // `mcp list` prints through the prompt library, but the per-server lines
+    // still reach stdout when stdout is not a TTY ("✓ severally  connected").
+    // The name must stand alone: a substring match would accept a lookalike
+    // server such as "severally-old" as this one.
     isRegistered: () => {
       const r = tryRun('opencode', ['mcp', 'list'], { real: true });
-      return r.ok && /severally/.test(r.out);
+      return r.ok && /(^|\s)severally(\s|$)/.test(r.out);
     },
     // opencode has no `mcp remove`; `mcp add` with the same name replaces
     // the entry, so a --force re-registration needs no removal first.
@@ -272,7 +280,7 @@ const CLIENTS = [
     remove: () => ({ ok: true, out: 'opencode has no mcp remove; re-adding replaces the entry' }),
     add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--', ...bin]),
     skillFrom: path.join(PLUGIN, 'skills', 'opencode', 'severally'),
-    skillTo: path.join(home, '.config', 'opencode', 'skills', 'severally'),
+    skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
 ];
 const antigravityClient = CLIENTS.find((c) => c.bin === 'agy');

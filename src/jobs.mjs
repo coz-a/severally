@@ -21,6 +21,11 @@ import * as opencode from './adapters/opencode.mjs';
 
 const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity, opencode };
 
+// The recovery respawn runs only while this much of the original budget is
+// still left: below it a retry cannot produce a real answer, and granting it
+// anyway would silently extend the job's advertised wall-clock deadline.
+const MIN_RETRY_MS = 5_000;
+
 // The second way a consultant can be authenticated. A linked token file and an
 // API key / ADC file are alternatives, not both required, so the presence of
 // either has to satisfy the credential check below. These are the names
@@ -432,6 +437,9 @@ export class JobManager {
         );
       }
 
+      // One-time per-process capability probe (e.g. the opencode adapter
+      // discovering 2.x-only flags through `run --help`).
+      if (adapter.prepare) await adapter.prepare();
       const invocation = adapter.buildInvocation({
         workdir,
         schemaPath,
@@ -485,7 +493,48 @@ export class JobManager {
       }
 
       const lastMessageText = invocation.lastMessagePath ? store.readIfExists(invocation.lastMessagePath) : '';
-      const interpreted = adapter.interpret({ ...run, lastMessageText });
+      let interpreted = adapter.interpret({ ...run, lastMessageText });
+
+      // The one recovery any adapter may offer: a failure that a sandbox-side
+      // fix can repair (opencode 2.x ignores auth.json and reads credentials
+      // from its session database, which the failed run has just created).
+      // Strictly one respawn, on the failure kind the adapter names -- and it
+      // may never extend the job's wall-clock budget: the respawn runs only
+      // while at least MIN_RETRY_MS of the original budget remains.
+      if (!interpreted.ok && adapter.recoverAuthFailure && sandbox) {
+        const seeded = adapter.recoverAuthFailure({ interpreted, sandbox, model: job.model });
+        const remaining = budgetMs - (Date.now() - t0);
+        if (seeded && remaining >= MIN_RETRY_MS) {
+          const retry = runChild({
+            command: invocation.command,
+            args: invocation.args,
+            cwd: workdir,
+            env,
+            input: text,
+            timeoutMs: remaining,
+            onCancelSignal: (fn) => job._cancelFns.push(fn),
+          });
+          job._handle = retry.handle;
+          if (job.cancelRequested) retry.handle.stop();
+          const rerun = await retry.done;
+          if (rerun.spawnError) {
+            return this.#fail(job, 'spawn_error', `could not start ${invocation.command}: ${rerun.spawnError}`);
+          }
+          if (job.cancelRequested || rerun.cancelled) {
+            return this.#fail(job, 'cancelled', 'consultation cancelled by the lead');
+          }
+          if (rerun.timedOut) {
+            const trail = adapter.progress?.(rerun) ?? null;
+            return this.#fail(
+              job,
+              'timeout',
+              `consultant exceeded the ${budgetMs} ms budget and was stopped`,
+              trail ? `no answer was produced; it was still working when the budget ran out: ${trail}` : null,
+            );
+          }
+          interpreted = adapter.interpret({ ...rerun, lastMessageText });
+        }
+      }
 
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
@@ -497,10 +546,26 @@ export class JobManager {
         normalized = normalizeResult(interpreted.text);
       } catch (err) {
         if (err instanceof OutputError) {
-          job.usage = adapter.usageRecord(interpreted.usageRaw);
-          return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
+          // The last text part carried no contract JSON -- but an opencode
+          // answer can be split across completed parts (a contract followed
+          // by a prose epilogue wins as "last", yet holds no JSON). Walk the
+          // earlier parts newest-first before giving up.
+          const fallbacks = (interpreted.earlierTextParts ?? []).slice().reverse();
+          for (const candidate of fallbacks) {
+            try {
+              normalized = normalizeResult(candidate);
+              break;
+            } catch (retryErr) {
+              if (!(retryErr instanceof OutputError)) throw retryErr;
+            }
+          }
+          if (!normalized) {
+            job.usage = adapter.usageRecord(interpreted.usageRaw);
+            return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
 
       job.result = normalized.result;

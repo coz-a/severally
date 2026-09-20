@@ -47,6 +47,7 @@ if(cli==='npm') {
   if(args[2]!=='list') fs.writeFileSync(path.join(process.env.CODEX_HOME,'config.toml'),'# changed configuration\\n');
 } else if(args[0]==='mcp') {
   if(args[1]==='get') process.exitCode=1;
+  if(args[1]==='list') console.log(process.env.STUB_MCP_LIST ?? '');
   if(args[1]==='add') state[cli]=args.slice(-2);
 }
 fs.writeFileSync(file,JSON.stringify(state));
@@ -59,6 +60,8 @@ fs.writeFileSync(file,JSON.stringify(state));
     INSTALL_LOG: log, INSTALL_REGISTRY: registry, INSTALL_PREFIX: path.join(dir, 'prefix'),
     INSTALL_NPM_CLI: npmCli, npm_config_cache: path.join(dir, 'npm-cache'),
     NPM_CONFIG_USERCONFIG: path.join(dir, 'npmrc'), NPM_CONFIG_GLOBALCONFIG: path.join(dir, 'global-npmrc') };
+  // The operator's own XDG override must not decide where the test writes.
+  delete env.XDG_CONFIG_HOME;
   const install = (...args) => execFileSync(process.execPath, [path.join(checkout, 'scripts', 'install.mjs'), ...args],
     { cwd: checkout, env, encoding: 'utf8', stdio: 'pipe' });
   return { dir, checkout, registry, log, env, install };
@@ -124,6 +127,41 @@ test('POSIX manual mode needs no global npm install and registers the copied run
   for (const cli of ['codex', 'claude', 'agy', 'opencode']) {
     assert.deepEqual(state[cli], [process.execPath, path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
   }
+});
+
+// opencode resolves its global config from XDG_CONFIG_HOME when set (its own
+// xdg-basedir), and a registration check that merely greps for "severally"
+// would accept a lookalike server like "severally-old" as ours.
+test('POSIX opencode registration follows XDG_CONFIG_HOME and matches the exact server name', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const xdg = path.join(f.dir, 'xdg-config');
+  f.env.XDG_CONFIG_HOME = xdg;
+  f.env.STUB_MCP_LIST = '✓ severally-old  connected';
+  f.install('--manual');
+  const calls = fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(
+    calls.some((args) => args[0] === 'opencode' && args[1] === 'mcp' && args[2] === 'add'),
+    'a lookalike server name must not satisfy isRegistered',
+  );
+  assert.ok(
+    fs.existsSync(path.join(xdg, 'opencode', 'skills', 'severally', 'SKILL.md')),
+    'the skill must land under XDG_CONFIG_HOME when the CLI resolves config there',
+  );
+  assert.equal(
+    fs.existsSync(path.join(f.dir, '.config', 'opencode', 'skills', 'severally')),
+    false,
+    'nothing may be written to the ~/.config fallback when XDG_CONFIG_HOME is set',
+  );
+
+  // The exact name DOES satisfy isRegistered: a second run without --force
+  // keeps the registration (no further mcp add call).
+  f.env.STUB_MCP_LIST = '✓ severally  connected';
+  const logBefore = fs.readFileSync(f.log, 'utf8');
+  f.install('--manual');
+  const added = fs.readFileSync(f.log, 'utf8').slice(logBefore.length)
+    .split('\n').filter(Boolean).map(JSON.parse)
+    .some((args) => args[0] === 'opencode' && args[1] === 'mcp' && args[2] === 'add');
+  assert.equal(added, false, 'the exact server name must be recognised as already registered');
 });
 
 test('POSIX dry-run leaves runtime, marketplace and client configuration untouched', { skip: !posix }, (t) => {

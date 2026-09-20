@@ -32,9 +32,11 @@ export function sandboxEnv(overrides = {}) {
     'test-token',
   );
   fs.mkdirSync(path.join(credHome, '.local', 'share', 'opencode'), { recursive: true });
+  // The provider the shipped default model runs on, so the credential seed
+  // finds an entry for it exactly as an operator's real auth.json would.
   fs.writeFileSync(
     path.join(credHome, '.local', 'share', 'opencode', 'auth.json'),
-    '{"stub":{"type":"api","key":"test-key"}}',
+    '{"zai-coding-plan":{"type":"api","key":"test-key"}}',
   );
 
   Object.assign(process.env, {

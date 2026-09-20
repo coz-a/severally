@@ -16,7 +16,7 @@ export const FAILURE_KINDS = [
 const RULES = [
   [/\b(usage limit|quota exceeded|rate limit|out of credits|reached your .* limit|insufficient_quota|429)\b/i, 'usage_limit'],
   [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, 'auth'],
-  [/\b(unrecognized_model|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|404)\b/i, 'model_unavailable'],
+  [/\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|404)\b/i, 'model_unavailable'],
 ];
 
 export function classifyMessage(text, fallback = 'cli_error') {
