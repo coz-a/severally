@@ -217,9 +217,9 @@ your machine:
 npm run init-config            # writes ~/.severally/config.json (never overwrites an existing one)
 ```
 
-The available keys are in [config.example.json](config.example.json). Precedence is environment variables >
-config file > auto-detection > defaults. The config is read once at server startup, so restart the client after
-changing it.
+Every key is explained in [CONFIG.md](CONFIG.md); [config.example.json](config.example.json) is a working
+example that exercises each one. Precedence is environment variables > config file > auto-detection > defaults.
+The config is read once at server startup, so restart the client after changing it.
 
 ## Before you use it
 

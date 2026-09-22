@@ -98,9 +98,10 @@ function main() {
       : `   ${id.padEnd(12)} ${t.cli} not found -- excluded automatically, no config needed`);
   }
   console.log('');
-  console.log('per target: enabled  note  bin  default_model  allowed_models');
+  console.log('per target: enabled  note  bin  default_model  allowed_models  timeout_ms');
   console.log('   e.g.  "codex": { "enabled": false, "note": "rate-limited until 15:00" }');
-  console.log('   more: config.example.json. Restart the client after editing.');
+  console.log('   more: CONFIG.md (what each key does), config.example.json (a working example).');
+  console.log('   Restart the client after editing.');
   console.log('   comments and trailing commas are fine; name it config.jsonc if your editor prefers that');
 }
 
