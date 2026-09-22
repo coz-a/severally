@@ -42,6 +42,18 @@ test('exposes the three protocol tools, the lead\'s record, and a history listin
   await close();
 });
 
+test('consult_record says where job_id comes from, so it is passed instead of dropped', async () => {
+  const { client, close } = await connect();
+  const { tools } = await client.listTools();
+  const record = tools.find((t) => t.name === 'consult_record');
+  assert.match(
+    record.inputSchema.properties.job_id.description ?? '',
+    /consult_get/,
+    'job_id is the field most often dropped when recording; its description must name where the id comes from',
+  );
+  await close();
+});
+
 test('start -> get -> structured result, over MCP', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const { client, close } = await connect();

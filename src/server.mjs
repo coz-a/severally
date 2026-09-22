@@ -171,7 +171,7 @@ export function createServer(manager = new JobManager()) {
         + 'consultation was started with a `prediction`. A prediction itself cannot be written here: it goes '
         + 'in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
       inputSchema: {
-        job_id: z.string().min(1),
+        job_id: z.string().min(1).describe('the consultation to record against -- the job_id consult_get returned for it'),
         entries: z.array(z.object({
           id: z.string().min(1).describe('the point this verdict is about: f1, u1, c1 ... as returned in the result'),
           verdict: z.enum(VERDICTS),
