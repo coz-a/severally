@@ -13,6 +13,11 @@ const skillsDir = path.join(root, 'plugins', 'severally', 'skills');
 // `en`/`jp` are the everyday name a user would actually type when asking for
 // this peer by alias ("ask GPT", "gptと相談して") -- English keeps the
 // acronym capitalised, casual Japanese usually doesn't.
+// tierName/tierModel describe this peer's own default (= top-tier) model, for
+// when it is the *self* target rather than a peer: they must track that
+// target's default_model in src/policy.mjs, since nothing here imports it
+// (policy.mjs reads the operator's local config/env at import time, which a
+// static generator must not pick up).
 const PEERS = {
   codex: {
     label: 'Codex CLI',
@@ -21,6 +26,8 @@ const PEERS = {
     en: 'GPT',
     jp: 'gpt',
     jpVerb: 'と相談して',
+    tierName: 'your default model',
+    tierModel: 'gpt-6-astra',
   },
   'claude-code': {
     label: 'Claude Code CLI',
@@ -29,6 +36,8 @@ const PEERS = {
     en: 'Claude',
     jp: 'Claude',
     jpVerb: 'に聞いて',
+    tierName: 'Fable',
+    tierModel: 'claude-fable-5-1',
   },
   antigravity: {
     label: 'Antigravity CLI (Gemini)',
@@ -37,6 +46,8 @@ const PEERS = {
     en: 'Gemini',
     jp: 'Gemini',
     jpVerb: 'と相談して',
+    tierName: 'your default model',
+    tierModel: 'gemini-3.8-flash-high',
   },
   opencode: {
     label: 'OpenCode CLI (GLM)',
@@ -45,6 +56,8 @@ const PEERS = {
     en: 'GLM',
     jp: 'GLM',
     jpVerb: 'に聞いて',
+    tierName: 'your default model',
+    tierModel: 'zai-coding-plan/glm-5.3',
   },
 };
 
@@ -114,7 +127,9 @@ export function renderSkills() {
       // plain second-reading pair, three plus the host itself for "everyone".
       .replaceAll('{{SECOND_TARGET}}', peers[1])
       .replaceAll('{{THIRD_TARGET}}', peers[2])
-      .replaceAll('{{SELF_TARGET}}', host.self);
+      .replaceAll('{{SELF_TARGET}}', host.self)
+      .replaceAll('{{SELF_TIER_NAME}}', PEERS[host.self].tierName)
+      .replaceAll('{{SELF_TIER_MODEL}}', PEERS[host.self].tierModel);
     rendered[host.dir] = text;
   }
   return rendered;

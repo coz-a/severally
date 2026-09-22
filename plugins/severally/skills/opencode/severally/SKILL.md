@@ -25,7 +25,17 @@ directory. The Codex consultant additionally has a read-only shell, so it can ru
 
 `target` also accepts the everyday names: `gpt` / `chatgpt` / `openai` -> Codex, `claude` / `anthropic` ->
 Claude Code, `gemini` / `agy` / `google` -> Antigravity, `glm` / `opencode` -> OpenCode. When the user names
-one, use that one. When they just ask for a second opinion, default to `codex`.
+one, use that one.
+
+**When they just ask for a second opinion, with no target named:** default to every other tool's top tier —
+`targets: ["codex", "claude-code", "antigravity"]` — not just one. Then check your own
+tier: if you are not yourself running as your default model (`zai-coding-plan/glm-5.3`), your own lineage's top
+tier, add `"opencode"` to that same fan-out so it gets a peer too — a stronger model of your own
+lineage is still a different mind from the one asking. If you are already running as your default model, leave
+the fan-out at the three peers; asking it to consult itself would just be a clean-context re-read of yourself,
+not a second opinion. This is the same "everyone" fan-out described under **Asking several at once** below —
+a default second-opinion request now costs three or four consultants' worth of quota, not one. Narrow to
+`target` (singular) when the user names a specific peer, or when the decision does not warrant that much.
 
 Not every machine has every peer installed. `consult_start`'s description lists the consultants this one can
 actually reach, and naming a missing one comes back as `target_unavailable` with the available list — take that
@@ -192,7 +202,9 @@ consult_start({ request: {
 
 When the user asks for *everyone* — 「みんなで相談して」, 「全員に聞いて」, "ask everyone" — that is every
 consultant this host can reach: all three peers **and your own CLI** on a fresh session, four members in one
-call.
+call, regardless of which model you are running as. This is the same fan-out the default second-opinion rule
+above reaches for automatically — the only difference is that an explicit "everyone" always includes your own
+CLI, while the default rule above drops it when you are already running as your default model.
 
 ```
 consult_start({ request: {
@@ -202,9 +214,9 @@ consult_start({ request: {
 }})
 ```
 
-Your own CLI is included because the user asked for everyone, not because it adds a lineage: it is a
-fresh-context re-read rather than a fourth lineage, and the server says so in its `quality.caveat`. Pass
-`caller_model` so that caveat can name which model answered. 「両方に相談して」 and "ask both" name two, so
+Your own CLI is included either because the user asked for everyone, or because the default rule above added
+it: either way it is a fresh-context re-read rather than a fourth lineage, and the server says so in its
+`quality.caveat`. Pass `caller_model` so that caveat can name which model answered. 「両方に相談して」 and "ask both" name two, so
 those stay the two peers. Four members is the **whole concurrency cap**, so let anything else finish or
 cancel it first, and expect four consultants' worth of quota. Send **one** `targets` call and poll the
 single `group_id`; separate consultations would give each one a slightly different brief and leave you
