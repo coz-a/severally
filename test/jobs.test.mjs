@@ -317,7 +317,7 @@ test('concurrency is capped server-side', async () => {
   process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?cc=${Date.now()}`);
   const mgr = new M();
-  const started = [1, 2, 3, 4].map(() => mgr.start(reviewRequest()));
+  const started = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(() => mgr.start(reviewRequest()));
   assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'concurrency_limit');
   mgr.shutdown();
   await Promise.all(started.map((s) => finish(mgr, s.job_id)));

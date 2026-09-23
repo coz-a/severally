@@ -51,7 +51,7 @@ These are server-wide, not per-target, so they are environment-only — there is
 | Env var | Default | Range |
 |---|---|---|
 | `SEVERALLY_MAX_ROUNDS` | 5 (1 initial + 4 follow-ups) | 1–20 |
-| `SEVERALLY_MAX_CONCURRENT` | 4 | 1–4 |
+| `SEVERALLY_MAX_CONCURRENT` | 9 | 1–9 |
 | `SEVERALLY_MAX_JOBS_RETAINED` | 200 | 20–2000 |
 | `SEVERALLY_CLAUDE_MAX_BUDGET_USD` | 10 | 0.05–20 |
 | `SEVERALLY_MAX_WAIT_MS` | 45000 | 0–600000 |

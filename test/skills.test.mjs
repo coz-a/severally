@@ -116,8 +116,8 @@ test('every skill answers "ask everyone" with its three peers and its own CLI', 
     );
     assert.match(text, /re-read rather than a fourth lineage|not a fourth lineage|not a third lineage/i,
       `${host} skill must keep the self member's caveat`);
-    assert.match(text, /whole concurrency cap|concurrency cap/i,
-      `${host} skill must say a four-member fan-out uses the whole cap`);
+    assert.match(text, /concurrency cap/i,
+      `${host} skill must tell the lead how a fan-out relates to the concurrency cap`);
   }
 });
 

@@ -109,16 +109,16 @@ test('a group that would exceed the concurrency cap is refused before anything s
   process.env.SEVERALLY_TIMEOUT_MS = '1200';
   const { JobManager: M } = await import(`../src/jobs.mjs?fanout=${Date.now()}`);
   const mgr = new M();
-  const a = mgr.start(reviewRequest());
-  // The default cap is now 4, sized for an "everyone" fan-out (three peers
-  // plus the caller's own CLI), so refusal takes five.
+  const started = [1, 2, 3, 4, 5, 6].map(() => mgr.start(reviewRequest()));
+  // The default cap is 9; an "everyone" fan-out adds four members, so refusal
+  // takes a group that would push the total to ten.
   assert.throws(
     () => mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code', 'antigravity', 'opencode'] })),
     (e) => e.code === 'concurrency_limit',
   );
-  assert.equal(mgr.running.length, 1, 'a refused group must not leave half its jobs running');
+  assert.equal(mgr.running.length, 6, 'a refused group must not leave half its jobs running');
   mgr.shutdown();
-  await mgr.jobs.get(a.job_id).promise;
+  await Promise.all(started.map((s) => mgr.jobs.get(s.job_id).promise));
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 

@@ -304,10 +304,11 @@ export const POLICY = Object.freeze({
   killGraceMs: num('SEVERALLY_KILL_GRACE_MS', 5_000, 500, 60_000),
   // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
   maxRounds: num('SEVERALLY_MAX_ROUNDS', 5, 1, 20),
-  // Default 4 so a "consult everyone" fan-out (the three peers plus a fresh
-  // session of the caller's own CLI) fits the default cap. The ceiling matches
-  // TARGETS.length: a fan-out can never name more members than that anyway.
-  maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 4, 1, 4),
+  // Default 9 so several independent consultations can run at once; a
+  // "consult everyone" fan-out (the three peers plus a fresh session of the
+  // caller's own CLI) fits well inside it. The ceiling equals the default:
+  // going beyond that is an operator decision with quota to match.
+  maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 9, 1, 9),
   maxJobsRetained: num('SEVERALLY_MAX_JOBS_RETAINED', 200, 20, 2000),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as

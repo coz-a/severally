@@ -217,8 +217,8 @@ consult_start({ request: {
 Your own CLI is included either because the user asked for everyone, or because the default rule above added
 it: either way it is a fresh-context re-read rather than a fourth lineage, and the server says so in its
 `quality.caveat`. Pass `caller_model` so that caveat can name which model answered. 「両方に相談して」 and "ask both" name two, so
-those stay the two peers. Four members is the **whole concurrency cap**, so let anything else finish or
-cancel it first, and expect four consultants' worth of quota. Send **one** `targets` call and poll the
+those stay the two peers. Four members is a whole fan-out; the default concurrency cap (nine) has room to
+run it alongside other consultations, but expect four consultants' worth of quota. Send **one** `targets` call and poll the
 single `group_id`; separate consultations would give each one a slightly different brief and leave you
 nothing comparable.
 
