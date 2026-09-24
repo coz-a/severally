@@ -239,7 +239,7 @@ const AGY_BIN = expandHome(knob('antigravity', 'SEVERALLY_AGY_BIN', 'bin', 'agy'
 const OPENCODE_BIN = expandHome(knob('opencode', 'SEVERALLY_OPENCODE_BIN', 'bin', 'opencode'));
 
 const CODEX_MODEL = knob('codex', 'SEVERALLY_CODEX_MODEL', 'default_model', 'gpt-6-astra');
-const CLAUDE_MODEL = knob('claude-code', 'SEVERALLY_CLAUDE_MODEL', 'default_model', 'claude-fable-5-1');
+const CLAUDE_MODEL = knob('claude-code', 'SEVERALLY_CLAUDE_MODEL', 'default_model', 'claude-opus-5-5');
 const AGY_MODEL = knob('antigravity', 'SEVERALLY_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
 const OPENCODE_MODEL = knob('opencode', 'SEVERALLY_OPENCODE_MODEL', 'default_model', 'zai-coding-plan/glm-5.3');
 

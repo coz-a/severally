@@ -29,9 +29,9 @@ one, use that one.
 
 **When they just ask for a second opinion, with no target named:** default to every other tool's top tier —
 `targets: ["codex", "antigravity", "opencode"]` — not just one. Then check your own
-tier: if you are not yourself running as Fable (`claude-fable-5-1`), your own lineage's top
+tier: if you are not yourself running as Opus (`claude-opus-5-5`), your own lineage's top
 tier, add `"claude-code"` to that same fan-out so it gets a peer too — a stronger model of your own
-lineage is still a different mind from the one asking. If you are already running as Fable, leave
+lineage is still a different mind from the one asking. If you are already running as Opus, leave
 the fan-out at the three peers; asking it to consult itself would just be a clean-context re-read of yourself,
 not a second opinion. This is the same "everyone" fan-out described under **Asking several at once** below —
 a default second-opinion request now costs three or four consultants' worth of quota, not one. Narrow to
@@ -204,7 +204,7 @@ When the user asks for *everyone* — 「みんなで相談して」, 「全員�
 consultant this host can reach: all three peers **and your own CLI** on a fresh session, four members in one
 call, regardless of which model you are running as. This is the same fan-out the default second-opinion rule
 above reaches for automatically — the only difference is that an explicit "everyone" always includes your own
-CLI, while the default rule above drops it when you are already running as Fable.
+CLI, while the default rule above drops it when you are already running as Opus.
 
 ```
 consult_start({ request: {

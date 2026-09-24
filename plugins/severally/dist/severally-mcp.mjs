@@ -36422,7 +36422,7 @@ var CLAUDE_BIN = expandHome(knob("claude-code", "SEVERALLY_CLAUDE_BIN", "bin", "
 var AGY_BIN = expandHome(knob("antigravity", "SEVERALLY_AGY_BIN", "bin", "agy"));
 var OPENCODE_BIN = expandHome(knob("opencode", "SEVERALLY_OPENCODE_BIN", "bin", "opencode"));
 var CODEX_MODEL = knob("codex", "SEVERALLY_CODEX_MODEL", "default_model", "gpt-6-astra");
-var CLAUDE_MODEL = knob("claude-code", "SEVERALLY_CLAUDE_MODEL", "default_model", "claude-fable-5-1");
+var CLAUDE_MODEL = knob("claude-code", "SEVERALLY_CLAUDE_MODEL", "default_model", "claude-opus-5-5");
 var AGY_MODEL = knob("antigravity", "SEVERALLY_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
 var OPENCODE_MODEL = knob("opencode", "SEVERALLY_OPENCODE_MODEL", "default_model", "zai-coding-plan/glm-5.3");
 var POLICY = Object.freeze({
@@ -36633,8 +36633,8 @@ var requestSchema = external_exports.object({
   caller: external_exports.preprocess(normalizeTargetLike, external_exports.enum(TARGET_INPUTS)).nullish(),
   // The model the host CLI is running on, if it says. Self-declared like
   // `caller`, unverifiable by the server, and used for one thing: so a
-  // same-vendor caveat can say "same lineage, different model" (an Opus
-  // lead asking Fable) instead of treating every same-vendor call as the
+  // same-vendor caveat can say "same lineage, different model" (a Fable
+  // lead asking Opus) instead of treating every same-vendor call as the
   // same head. Never gates the model launched, which comes from `target`.
   caller_model: trimmed(120, "caller_model").regex(/^[^\p{Cc}\p{Cf}]+$/u, "caller_model must be a single line of printable characters").nullish(),
   // Who asked for this consultation, as the lead reports it: the user

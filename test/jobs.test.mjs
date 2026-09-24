@@ -829,23 +829,23 @@ test('the delivered result carries no verdict from the server', async () => {
   assert.equal(typeof view.quality.findings_without_grounds, 'number', 'a count, not an opinion');
 });
 
-// Opus lead, Fable consultant: same vendor, different model. The caveat has to
-// say that -- a stronger model of the same lineage adds capability and drops
-// the session's drift, but not the lineage's blind spots -- and the record has
-// to keep both model names, since nothing else in the payload says what the
-// lead was running.
+// Opus 5.5 consultant, a lead on another Claude model: same vendor. The caveat
+// has to say what that is and is not -- a stronger model of the same lineage
+// adds capability and drops the session's drift, but not the lineage's blind
+// spots -- and the record has to keep both model names, since nothing else in
+// the payload says what the lead was running.
 test('a same-vendor consultation on a different model names both models in the caveat and the record', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   // The host's model is usually not on the consultant's allowlist (that list
   // says what the consultant may run), so the common case is a name the
   // server cannot place: relay both names, assert neither same nor different.
-  const started = mgr.start(reviewRequest({ target: 'claude:claude-fable-5-1', caller: 'claude-code', caller_model: 'claude-opus-5' }));
+  const started = mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'claude-sonnet-5' }));
   const view = await finish(mgr, started.job_id);
-  assert.equal(view.caller_model, 'claude-opus-5');
-  assert.equal(view.model, 'claude-fable-5-1');
+  assert.equal(view.caller_model, 'claude-sonnet-5');
+  assert.equal(view.model, 'claude-opus-5-5');
   assert.match(view.quality.caveat, /same vendor/i);
-  assert.match(view.quality.caveat, /You declared claude-opus-5; it ran claude-fable-5-1/, 'both names, side by side');
+  assert.match(view.quality.caveat, /You declared claude-sonnet-5; it ran claude-opus-5-5/, 'both names, side by side');
   assert.doesNotMatch(view.quality.caveat, /different model/i, 'the server cannot establish that and must not say it');
   assert.doesNotMatch(view.quality.caveat, /and the same model/i);
   assert.match(view.quality.caveat, /lineage|blind spots/i);
@@ -859,7 +859,7 @@ test('a same-vendor consultation on a different model names both models in the c
 test('a same-vendor consultation on the same model says so', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
-  const started = mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'claude-fable-5-1' }));
+  const started = mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'claude-opus-5-5' }));
   const view = await finish(mgr, started.job_id);
   assert.match(view.quality.caveat, /same model/i);
   assert.doesNotMatch(view.quality.caveat, /different model/i);
@@ -875,14 +875,14 @@ test('caller_model is recorded on a cross-vendor consultation without adding a c
 
 // Live check 2026-09-11 (job_519387850a7c, claude-code consultant): the
 // consultant's own f1 -- a host reports its model in whatever spelling it has
-// ("Claude Fable 5.1"), the consultant side is the operator's config string,
+// ("Claude Opus 5.5"), the consultant side is the operator's config string,
 // and plain equality would print a false "different model", which is less
 // cautious than saying nothing. Resolve the declared name the way a target
 // suffix is resolved; a name the server cannot place is said to be unknown.
 test('a same-vendor caveat resolves the declared caller model before comparing', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
-  const spelled = await finish(mgr, mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'Claude Fable 5.1' })).job_id);
+  const spelled = await finish(mgr, mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'Claude Opus 5.5' })).job_id);
   assert.match(spelled.quality.caveat, /same model/i, 'a spelling variant of the launched model is the same model');
   assert.doesNotMatch(spelled.quality.caveat, /different model/i);
   const unknown = await finish(mgr, mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'claude-opus-9' })).job_id);

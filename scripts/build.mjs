@@ -36,8 +36,8 @@ const PEERS = {
     en: 'Claude',
     jp: 'Claude',
     jpVerb: 'に聞いて',
-    tierName: 'Fable',
-    tierModel: 'claude-fable-5-1',
+    tierName: 'Opus',
+    tierModel: 'claude-opus-5-5',
   },
   antigravity: {
     label: 'Antigravity CLI (Gemini)',

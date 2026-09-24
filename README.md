@@ -262,7 +262,7 @@ read scope is dropped for a consultation that uses it.
   consultant's answer, and the verdicts the lead wrote per finding (with `consult_record`). `consult_export` turns
   it into Markdown for the repository. Verdicts can be added later, from another session
 - Credentials are masked in the brief that is sent and in the results that come back
-- You can also consult a different model of your own CLI (from Opus to Fable, `target: "claude:fable"`). The
+- You can also consult a different model of your own CLI (a Fable lead asking Opus, `target: "claude:opus"`). The
   answer carries a "same lineage" note. Declare your own model with `caller_model` and the record keeps who asked
   whom
 - The record also keeps whether you asked for the consultation or accepted the agent's offer (self-declared).

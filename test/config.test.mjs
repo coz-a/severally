@@ -106,7 +106,7 @@ test('the config file supplies the bin and the model allowlist when no env does'
   const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'fromfile', ['SEVERALLY_CLAUDE_BIN']);
 
   assert.equal(policy.POLICY.targets['claude-code'].cli, '/usr/local/bin/claude-x');
-  assert.deepEqual(policy.POLICY.targets['claude-code'].allowedModels, ['claude-fable-5-1', 'claude-opus-5']);
+  assert.deepEqual(policy.POLICY.targets['claude-code'].allowedModels, ['claude-opus-5-5', 'claude-opus-5']);
   assert.equal(policy.POLICY.targets['claude-code'].available, false, 'that bin does not exist here');
 });
 

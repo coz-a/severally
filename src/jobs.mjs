@@ -913,7 +913,7 @@ function adviceCaveat(normalized) {
 // session with no shared context is still a useful clean-context re-read.
 // But it is not an independent opinion -- the answer comes from the same
 // vendor's model family -- so flag it rather than let it pass as one.
-// "Claude Fable 5.1" and "claude-fable-5-1" are one model: lower-case, and
+// "Claude Opus 5.5" and "claude-opus-5-5" are one model: lower-case, and
 // runs of spaces, underscores and dots become one dash. Display only; the
 // model that gets launched is resolved elsewhere and never through this.
 function slug(name) {
@@ -929,15 +929,15 @@ function sameVendorCaveat(caller, target, callerModel = null, consultantModel = 
   // Rejected without checking their grounds.
   const vendor = POLICY.targets[target].vendor;
   // When the lead declared its model, say whether this is the same head or a
-  // different model of the same lineage -- an Opus lead asking Fable gets
+  // different model of the same lineage -- a Fable lead asking Opus gets
   // capability it does not have, but not a different training lineage. The
   // lead's model is its own declaration; the consultant's is what was launched.
-  // The declaration arrives in whatever spelling the host has ("Claude Fable
-  // 5.1"); resolve it the way a target suffix is resolved before comparing,
+  // The declaration arrives in whatever spelling the host has ("Claude Opus
+  // 5.5"); resolve it the way a target suffix is resolved before comparing,
   // and never call an unplaceable name "a different model" -- a false
   // "different" reads as more independence than there is.
-  // A host model is usually *not* on the consultant's allowlist (an Opus
-  // lead, a Fable consultant), so an unplaceable name is the common case and
+  // A host model is usually *not* on the consultant's allowlist (a Fable
+  // lead, an Opus 5.5 consultant), so an unplaceable name is the common case and
   // is relayed as declared -- both names side by side, no same/different
   // verdict the server cannot back.
   const declared = callerModel ? (resolveModel(target, callerModel)?.model ?? (slug(callerModel) === slug(consultantModel) ? consultantModel : null)) : null;

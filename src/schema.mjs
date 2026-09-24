@@ -95,8 +95,8 @@ export const requestSchema = z
     caller: z.preprocess(normalizeTargetLike, z.enum(TARGET_INPUTS)).nullish(),
     // The model the host CLI is running on, if it says. Self-declared like
     // `caller`, unverifiable by the server, and used for one thing: so a
-    // same-vendor caveat can say "same lineage, different model" (an Opus
-    // lead asking Fable) instead of treating every same-vendor call as the
+    // same-vendor caveat can say "same lineage, different model" (a Fable
+    // lead asking Opus) instead of treating every same-vendor call as the
     // same head. Never gates the model launched, which comes from `target`.
     caller_model: trimmed(120, 'caller_model')
       .regex(/^[^\p{Cc}\p{Cf}]+$/u, 'caller_model must be a single line of printable characters')

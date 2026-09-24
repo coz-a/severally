@@ -41,7 +41,7 @@ read once at server startup, so restart the MCP client after changing it.
 | `allowed_models` | array of strings | `[default_model]` | `SEVERALLY_CODEX_ALLOWED_MODELS` / `SEVERALLY_CLAUDE_ALLOWED_MODELS` / `SEVERALLY_AGY_ALLOWED_MODELS` / `SEVERALLY_OPENCODE_ALLOWED_MODELS` (comma-separated) | Models a caller may request by name, e.g. `target: "codex:<model>"`. A name outside this list is refused before the consultant starts. |
 | `timeout_ms` | number, 1000–1800000 | the shared timeout (`SEVERALLY_TIMEOUT_MS`, 600000 by default) | `SEVERALLY_CODEX_TIMEOUT_MS` / `SEVERALLY_CLAUDE_TIMEOUT_MS` / `SEVERALLY_AGY_TIMEOUT_MS` / `SEVERALLY_OPENCODE_TIMEOUT_MS` | Per-consultant wall-clock budget, for the one target that reliably needs longer (or shorter) than the rest — e.g. Gemini on an involved request. |
 
-Current built-in `default_model` per target: `codex` → `gpt-6-astra`, `claude-code` → `claude-fable-5-1`,
+Current built-in `default_model` per target: `codex` → `gpt-6-astra`, `claude-code` → `claude-opus-5-5`,
 `antigravity` → `gemini-3.8-flash-high`, `opencode` → `zai-coding-plan/glm-5.3`.
 
 ## Not configurable in `config.json`
