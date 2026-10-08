@@ -32,6 +32,16 @@ export const FORBIDDEN_FLAGS = [
   '--approve-for-me',
 ];
 
+// Refused in the operator's config `args` on top of FORBIDDEN_FLAGS and every
+// flag buildInvocation already sets: long aliases of those (so `--sandbox`
+// cannot undo `-s read-only`, nor `--config` any `-c` above), a profile or
+// feature switch that could re-enable what --ignore-user-config drops, and
+// the modes that leave the read-only sandbox.
+export const RESERVED_FLAGS = [
+  '--sandbox', '--config', '--cd', '--model', '--output-last-message',
+  '--profile', '-p', '--enable', '--full-auto', '--worktree', '--cyber-access-program',
+];
+
 export function buildInvocation({ workdir, schemaPath, model }) {
   const t = POLICY.targets.codex;
   // The request may name a model the operator allowed; default otherwise.

@@ -40,6 +40,8 @@ export function renderConfig() {
     '  //   default_model    the model this consultant runs unless a request names another',
     '  //   allowed_models   the models a request MAY name; the default above is always allowed',
     '  //   timeout_ms       this consultant\'s own budget in ms (default 600000, max 1800000)',
+    '  //   args             extra CLI arguments, e.g. ["--effort", "high"]; isolation flags are refused',
+    '  //   env              extra environment variables, e.g. {"HTTPS_PROXY": "..."}; isolation variables are refused',
     '  "targets": {',
   ];
   TARGETS.forEach((id, i) => {
@@ -98,7 +100,7 @@ function main() {
       : `   ${id.padEnd(12)} ${t.cli} not found -- excluded automatically, no config needed`);
   }
   console.log('');
-  console.log('per target: enabled  note  bin  default_model  allowed_models  timeout_ms');
+  console.log('per target: enabled  note  bin  default_model  allowed_models  timeout_ms  args  env');
   console.log('   e.g.  "codex": { "enabled": false, "note": "rate-limited until 15:00" }');
   console.log('   more: CONFIG.md (what each key does), config.example.json (a working example).');
   console.log('   Restart the client after editing.');

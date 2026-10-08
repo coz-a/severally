@@ -40,9 +40,15 @@ read once at server startup, so restart the MCP client after changing it.
 | `default_model` | string | see table below | `SEVERALLY_CODEX_MODEL` / `SEVERALLY_CLAUDE_MODEL` / `SEVERALLY_AGY_MODEL` / `SEVERALLY_OPENCODE_MODEL` | The model a consultation runs when the caller doesn't name one. Always implicitly allowed, even if left out of `allowed_models`. |
 | `allowed_models` | array of strings | `[default_model]` | `SEVERALLY_CODEX_ALLOWED_MODELS` / `SEVERALLY_CLAUDE_ALLOWED_MODELS` / `SEVERALLY_AGY_ALLOWED_MODELS` / `SEVERALLY_OPENCODE_ALLOWED_MODELS` (comma-separated) | Models a caller may request by name, e.g. `target: "codex:<model>"`. A name outside this list is refused before the consultant starts. |
 | `timeout_ms` | number, 1000–1800000 | the shared timeout (`SEVERALLY_TIMEOUT_MS`, 600000 by default) | `SEVERALLY_CODEX_TIMEOUT_MS` / `SEVERALLY_CLAUDE_TIMEOUT_MS` / `SEVERALLY_AGY_TIMEOUT_MS` / `SEVERALLY_OPENCODE_TIMEOUT_MS` | Per-consultant wall-clock budget, for the one target that reliably needs longer (or shorter) than the rest — e.g. Gemini on an involved request. |
+| `args` | array of strings | `[]` | – (config-only) | Extra CLI arguments appended to the consultant's command line, e.g. `["--effort", "high"]`. Any flag severally already sets for this consultant (and its aliases), or that would undo its isolation, is refused: the consultation fails with `spawn_error` naming the flag, before the CLI starts. |
+| `env` | object of strings | `{}` | – (config-only) | Extra environment variables for the consultant, e.g. `{"HTTPS_PROXY": "http://proxy:3128"}`. Applied on top of the server's own environment. A variable severally strips or sets for isolation (session markers, `SEVERALLY_*`, another vendor's credentials, the sandbox's `HOME`/`XDG_*`, `OPENCODE_*` for OpenCode, …) is refused the same way. |
 
 Current built-in `default_model` per target: `codex` → `gpt-6-astra`, `claude-code` → `claude-opus-5-5`,
 `antigravity` → `gemini-3.8-flash-high`, `opencode` → `zai-coding-plan/glm-5.3`.
+
+`args` and `env` are the operator's, like `bin`: no request can set them, and the refusals above guard
+against undoing the isolation by accident, not against a deliberate wrapper. They are fixed per target, not
+per consultation.
 
 ## Not configurable in `config.json`
 

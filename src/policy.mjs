@@ -238,6 +238,11 @@ const CLAUDE_BIN = expandHome(knob('claude-code', 'SEVERALLY_CLAUDE_BIN', 'bin',
 const AGY_BIN = expandHome(knob('antigravity', 'SEVERALLY_AGY_BIN', 'bin', 'agy'));
 const OPENCODE_BIN = expandHome(knob('opencode', 'SEVERALLY_OPENCODE_BIN', 'bin', 'opencode'));
 
+// Operator-only extras for the child process (config: args, env). Config-only,
+// never from a request, and validated at launch (jobs.mjs) where the isolation
+// flags and variables they must not undo are known.
+const extras = (id) => ({ extraArgs: cfgTarget(id).args ?? [], extraEnv: cfgTarget(id).env ?? {} });
+
 const CODEX_MODEL = knob('codex', 'SEVERALLY_CODEX_MODEL', 'default_model', 'gpt-6-astra');
 const CLAUDE_MODEL = knob('claude-code', 'SEVERALLY_CLAUDE_MODEL', 'default_model', 'claude-opus-5-5');
 const AGY_MODEL = knob('antigravity', 'SEVERALLY_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
@@ -257,6 +262,7 @@ export const POLICY = Object.freeze({
       reasoningEffort: str('SEVERALLY_CODEX_EFFORT', 'medium'),
       label: 'Codex CLI',
       vendor: 'openai',
+      ...extras('codex'),
     }),
     'claude-code': Object.freeze({
       cli: CLAUDE_BIN,
@@ -268,6 +274,7 @@ export const POLICY = Object.freeze({
       label: 'Claude Code CLI',
       vendor: 'anthropic',
       maxBudgetUsd: num('SEVERALLY_CLAUDE_MAX_BUDGET_USD', 10, 0.05, 20),
+      ...extras('claude-code'),
     }),
     antigravity: Object.freeze({
       cli: AGY_BIN,
@@ -279,6 +286,7 @@ export const POLICY = Object.freeze({
       allowedModelsEnv: 'SEVERALLY_AGY_ALLOWED_MODELS',
       label: 'Antigravity CLI',
       vendor: 'google',
+      ...extras('antigravity'),
       // Where the real credentials live is credentialsHome() below, not a
       // field here: the sandbox has to read it per job rather than have it
       // frozen at import (see the note on timeoutMs()).
@@ -297,6 +305,7 @@ export const POLICY = Object.freeze({
       // model, this field lags -- it only feeds the same-vendor caveat, which
       // is annotation, never a permission or a limit.
       vendor: 'zai',
+      ...extras('opencode'),
     }),
   }),
 

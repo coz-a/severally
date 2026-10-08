@@ -159,6 +159,11 @@ export function recoverAuthFailure({ interpreted, sandbox, model }) {
   return typeof sandbox?.seed === 'function' ? sandbox.seed(provider) : false;
 }
 
+// Refused in the operator's config `args` on top of FORBIDDEN_FLAGS and every
+// flag buildInvocation sets: the long form of -m, and --standalone, which the
+// adapter adds or leaves out by capability probe.
+export const RESERVED_FLAGS = ['--model', '--standalone', '--wizard'];
+
 export function buildInvocation({ model }) {
   const t = POLICY.targets.opencode;
   // The request may name a model the operator allowed; default otherwise.

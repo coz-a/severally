@@ -11,7 +11,7 @@ import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
 import { normalizeResult, OutputError } from './parse-result.mjs';
 import { redact } from './redact.mjs';
 import { isRetriable } from './failures.mjs';
-import { childEnv, runChild } from './run.mjs';
+import { childEnv, operatorEnvProblem, runChild } from './run.mjs';
 import * as store from './store.mjs';
 import { previewExposePaths, materializeExposedPaths } from './expose-paths.mjs';
 import * as codex from './adapters/codex.mjs';
@@ -398,7 +398,10 @@ export class JobManager {
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
 
     try {
-      const env = childEnv(req.target, sandbox?.env ?? {});
+      const t = POLICY.targets[req.target];
+      const envProblem = operatorEnvProblem(req.target, t.extraEnv, Object.keys(sandbox?.env ?? {}));
+      if (envProblem) return this.#fail(job, 'spawn_error', `config targets.${req.target}.env: ${envProblem}`);
+      const env = childEnv(req.target, sandbox?.env ?? {}, t.extraEnv);
 
       // A sandbox that found no credential to link would otherwise reach the
       // child, which reports whatever generic "not logged in" its vendor
@@ -456,6 +459,9 @@ export class JobManager {
         hasExposedPaths: req.context.expose_paths.length > 0,
       });
 
+      const argsProblem = extraArgsProblem(req.target, invocation.args, t.extraArgs);
+      if (argsProblem) return this.#fail(job, 'spawn_error', `config targets.${req.target}.args: ${argsProblem}`);
+      invocation.args = withExtraArgs(invocation.args, t.extraArgs);
       assertNoForbiddenFlags(req.target, invocation.args);
 
       const { handle, done } = runChild({
@@ -1008,6 +1014,40 @@ function nextStep(job) {
   if (job.failure?.kind === 'usage_limit' || job.failure?.kind === 'auth') return 'not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first';
   if (job.failure?.kind === 'invalid_output') return 'the consultant answered but not in the required shape; retry once with a shorter brief before giving up';
   return 'proceed on your own judgement and note that no peer input was obtained';
+}
+
+// Every spelling a token could name a flag by: `--name[=v]` as written, and for
+// a single dash both a short flag with its value attached (`-sdanger-full-access`
+// in clap) and a Go-style long flag (`-dangerously-skip-permissions`).
+const flagNames = (a) => {
+  if (!a.startsWith('-') || a === '-') return [];
+  const name = a.split('=')[0];
+  return a.startsWith('--') ? [name] : [name, a.slice(0, 2), `-${name}`];
+};
+
+/**
+ * Why the operator's per-target `args` (config.json) cannot be added to this
+ * invocation, or null. Any flag the adapter already sets is refused -- a
+ * repeat would override it, and those flags are the isolation -- as are the
+ * adapter's FORBIDDEN_FLAGS and RESERVED_FLAGS (aliases and other flags that
+ * undo it). Values (tokens without a leading dash) are not inspected.
+ */
+export function extraArgsProblem(target, adapterArgs, extra) {
+  if (!Array.isArray(extra) || !extra.every((a) => typeof a === 'string')) return 'must be an array of strings';
+  const adapter = ADAPTERS[target];
+  const taken = new Set([
+    ...adapterArgs.filter((a) => a.startsWith('-')),
+    ...adapter.FORBIDDEN_FLAGS,
+    ...(adapter.RESERVED_FLAGS ?? []),
+  ]);
+  const hit = extra.find((a) => flagNames(a).some((f) => taken.has(f)));
+  return hit ? `${hit} is set or refused by severally for this consultant's isolation` : null;
+}
+
+/** Extra args go before a trailing `-` (Codex's read-the-prompt-from-stdin marker), else at the end. */
+export function withExtraArgs(args, extra) {
+  if (extra.length === 0) return args;
+  return args.at(-1) === '-' ? [...args.slice(0, -1), ...extra, '-'] : [...args, ...extra];
 }
 
 export function assertNoForbiddenFlags(target, args) {

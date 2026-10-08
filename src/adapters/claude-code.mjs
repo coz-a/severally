@@ -44,6 +44,19 @@ export const FORBIDDEN_FLAGS = [
   '--plugin-url',
 ];
 
+// Refused in the operator's config `args` on top of FORBIDDEN_FLAGS and every
+// flag buildInvocation already sets: long/short aliases of those, and flags
+// that would bring back what --restricted and --setting-sources keep out
+// (settings, agents, a replaced system prompt, an old session, an IDE or
+// browser link, a remote session).
+export const RESERVED_FLAGS = [
+  '--print', '--allowed-tools', '--settings', '--agent', '--agents',
+  '--system-prompt', '--system-prompt-file', '--append-system-prompt-file',
+  '--continue', '-c', '--resume', '-r', '--session-id', '--fork-session', '--from-pr', '--teleport',
+  '--input-format', '--file', '--worktree', '-w', '--tmux', '--background', '--bg',
+  '--chrome', '--ide', '--remote-control', '--cloud', '--environment', '--desktop',
+];
+
 export function buildInvocation({ workdir, guardrails, model, hasExposedPaths = false }) {
   const t = POLICY.targets['claude-code'];
   const chosen = model ?? t.model;

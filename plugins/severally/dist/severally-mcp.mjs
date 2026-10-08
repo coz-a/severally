@@ -36421,6 +36421,7 @@ var CODEX_BIN = expandHome(knob("codex", "SEVERALLY_CODEX_BIN", "bin", "codex"))
 var CLAUDE_BIN = expandHome(knob("claude-code", "SEVERALLY_CLAUDE_BIN", "bin", "claude"));
 var AGY_BIN = expandHome(knob("antigravity", "SEVERALLY_AGY_BIN", "bin", "agy"));
 var OPENCODE_BIN = expandHome(knob("opencode", "SEVERALLY_OPENCODE_BIN", "bin", "opencode"));
+var extras = (id2) => ({ extraArgs: cfgTarget(id2).args ?? [], extraEnv: cfgTarget(id2).env ?? {} });
 var CODEX_MODEL = knob("codex", "SEVERALLY_CODEX_MODEL", "default_model", "gpt-6-astra");
 var CLAUDE_MODEL = knob("claude-code", "SEVERALLY_CLAUDE_MODEL", "default_model", "claude-opus-5-5");
 var AGY_MODEL = knob("antigravity", "SEVERALLY_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
@@ -36437,7 +36438,8 @@ var POLICY = Object.freeze({
       allowedModelsEnv: "SEVERALLY_CODEX_ALLOWED_MODELS",
       reasoningEffort: str("SEVERALLY_CODEX_EFFORT", "medium"),
       label: "Codex CLI",
-      vendor: "openai"
+      vendor: "openai",
+      ...extras("codex")
     }),
     "claude-code": Object.freeze({
       cli: CLAUDE_BIN,
@@ -36448,7 +36450,8 @@ var POLICY = Object.freeze({
       allowedModelsEnv: "SEVERALLY_CLAUDE_ALLOWED_MODELS",
       label: "Claude Code CLI",
       vendor: "anthropic",
-      maxBudgetUsd: num("SEVERALLY_CLAUDE_MAX_BUDGET_USD", 10, 0.05, 20)
+      maxBudgetUsd: num("SEVERALLY_CLAUDE_MAX_BUDGET_USD", 10, 0.05, 20),
+      ...extras("claude-code")
     }),
     antigravity: Object.freeze({
       cli: AGY_BIN,
@@ -36459,7 +36462,8 @@ var POLICY = Object.freeze({
       allowedModels: allowedFor("antigravity", AGY_MODEL, "SEVERALLY_AGY_ALLOWED_MODELS"),
       allowedModelsEnv: "SEVERALLY_AGY_ALLOWED_MODELS",
       label: "Antigravity CLI",
-      vendor: "google"
+      vendor: "google",
+      ...extras("antigravity")
       // Where the real credentials live is credentialsHome() below, not a
       // field here: the sandbox has to read it per job rather than have it
       // frozen at import (see the note on timeoutMs()).
@@ -36477,7 +36481,8 @@ var POLICY = Object.freeze({
       // models; if the operator repoints default_model at another vendor's
       // model, this field lags -- it only feeds the same-vendor caveat, which
       // is annotation, never a permission or a limit.
-      vendor: "zai"
+      vendor: "zai",
+      ...extras("opencode")
     })
   }),
   // Grace period between SIGTERM and SIGKILL of the child process group.
@@ -37419,9 +37424,8 @@ var TARGET_DROP_PREFIX = {
 var TARGET_DROP_EXACT = {
   antigravity: ["XDG_CONFIG_HOME"]
 };
-function childEnv(target, extra = {}) {
-  const dropPrefixes = [...DROP_PREFIX, ...TARGET_DROP_PREFIX[target] ?? []];
-  const dropExact = /* @__PURE__ */ new Set([...DROP_EXACT, ...TARGET_DROP_EXACT[target] ?? []]);
+function childEnv(target, extra = {}, operator = {}) {
+  const { dropPrefixes, dropExact } = dropRules(target);
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === void 0) continue;
@@ -37430,10 +37434,31 @@ function childEnv(target, extra = {}) {
     if (dropPrefixes.some((p) => key.startsWith(p))) continue;
     env[key] = v;
   }
+  for (const [k, v] of Object.entries(operator)) env[process.platform === "win32" ? k.toUpperCase() : k] = v;
   env.SEVERALLY_ACTIVE = "1";
   env.SEVERALLY_ROLE = "consultant";
   env.SEVERALLY_TARGET = target;
   return { ...env, ...extra };
+}
+function dropRules(target) {
+  return {
+    dropPrefixes: [...DROP_PREFIX, ...TARGET_DROP_PREFIX[target] ?? []],
+    dropExact: /* @__PURE__ */ new Set([...DROP_EXACT, ...TARGET_DROP_EXACT[target] ?? []])
+  };
+}
+function operatorEnvProblem(target, env, sandboxKeys = []) {
+  if (env === null || typeof env !== "object" || Array.isArray(env)) return "must be an object of string values";
+  const { dropPrefixes, dropExact } = dropRules(target);
+  const fold = (k) => process.platform === "win32" ? k.toUpperCase() : k;
+  const reserved = new Set(sandboxKeys.map(fold));
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v !== "string") return `${k} must be a string`;
+    const key = fold(k);
+    if (dropExact.has(key) || dropPrefixes.some((p) => key.startsWith(p)) || reserved.has(key)) {
+      return `${k} is controlled by severally for this consultant's isolation and cannot be set`;
+    }
+  }
+  return null;
 }
 var ProcHandle = class {
   constructor(child, readStdout = () => "") {
@@ -37666,6 +37691,7 @@ function cleanupJobDir(jobId) {
 var codex_exports = {};
 __export(codex_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS,
+  RESERVED_FLAGS: () => RESERVED_FLAGS,
   buildInvocation: () => buildInvocation,
   interpret: () => interpret,
   progress: () => progress,
@@ -37677,6 +37703,19 @@ var FORBIDDEN_FLAGS = [
   "--dangerously-bypass-hook-trust",
   "--add-dir",
   "--approve-for-me"
+];
+var RESERVED_FLAGS = [
+  "--sandbox",
+  "--config",
+  "--cd",
+  "--model",
+  "--output-last-message",
+  "--profile",
+  "-p",
+  "--enable",
+  "--full-auto",
+  "--worktree",
+  "--cyber-access-program"
 ];
 function buildInvocation({ workdir, schemaPath, model }) {
   const t = POLICY.targets.codex;
@@ -37800,6 +37839,7 @@ function usageRecord(raw) {
 var claude_code_exports = {};
 __export(claude_code_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS2,
+  RESERVED_FLAGS: () => RESERVED_FLAGS2,
   buildInvocation: () => buildInvocation2,
   interpret: () => interpret2,
   usageRecord: () => usageRecord2
@@ -37810,6 +37850,37 @@ var FORBIDDEN_FLAGS2 = [
   "--mcp-config",
   "--plugin-dir",
   "--plugin-url"
+];
+var RESERVED_FLAGS2 = [
+  "--print",
+  "--allowed-tools",
+  "--settings",
+  "--agent",
+  "--agents",
+  "--system-prompt",
+  "--system-prompt-file",
+  "--append-system-prompt-file",
+  "--continue",
+  "-c",
+  "--resume",
+  "-r",
+  "--session-id",
+  "--fork-session",
+  "--from-pr",
+  "--teleport",
+  "--input-format",
+  "--file",
+  "--worktree",
+  "-w",
+  "--tmux",
+  "--background",
+  "--bg",
+  "--chrome",
+  "--ide",
+  "--remote-control",
+  "--cloud",
+  "--environment",
+  "--desktop"
 ];
 function buildInvocation2({ workdir, guardrails, model, hasExposedPaths = false }) {
   const t = POLICY.targets["claude-code"];
@@ -37899,6 +37970,7 @@ function usageRecord2(payload) {
 var antigravity_exports = {};
 __export(antigravity_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS3,
+  RESERVED_FLAGS: () => RESERVED_FLAGS3,
   buildInvocation: () => buildInvocation3,
   interpret: () => interpret3,
   prepareSandbox: () => prepareSandbox,
@@ -37992,6 +38064,7 @@ var FORBIDDEN_FLAGS3 = [
   "--prompt-interactive",
   "-i"
 ];
+var RESERVED_FLAGS3 = ["--print", "-p", "--prompt", "--project", "--remote-control"];
 function buildInvocation3({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;
   const chosen = model ?? t.model;
@@ -38080,6 +38153,7 @@ function usageRecord3(payload) {
 var opencode_exports = {};
 __export(opencode_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS4,
+  RESERVED_FLAGS: () => RESERVED_FLAGS4,
   buildInvocation: () => buildInvocation4,
   events: () => events2,
   interpret: () => interpret4,
@@ -38324,6 +38398,7 @@ function recoverAuthFailure({ interpreted, sandbox, model }) {
   if (!provider) return false;
   return typeof sandbox?.seed === "function" ? sandbox.seed(provider) : false;
 }
+var RESERVED_FLAGS4 = ["--model", "--standalone", "--wizard"];
 function buildInvocation4({ model }) {
   const t = POLICY.targets.opencode;
   const chosen = model ?? t.model;
@@ -38747,7 +38822,10 @@ var JobManager = class {
     const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir }) : null;
     try {
-      const env = childEnv(req.target, sandbox?.env ?? {});
+      const t = POLICY.targets[req.target];
+      const envProblem = operatorEnvProblem(req.target, t.extraEnv, Object.keys(sandbox?.env ?? {}));
+      if (envProblem) return this.#fail(job, "spawn_error", `config targets.${req.target}.env: ${envProblem}`);
+      const env = childEnv(req.target, sandbox?.env ?? {}, t.extraEnv);
       if (req.target === "antigravity" && sandbox && sandbox.credentials === "missing" && !hasApiCredential(env)) {
         return this.#fail(
           job,
@@ -38768,6 +38846,9 @@ var JobManager = class {
         model: job.model,
         hasExposedPaths: req.context.expose_paths.length > 0
       });
+      const argsProblem = extraArgsProblem(req.target, invocation.args, t.extraArgs);
+      if (argsProblem) return this.#fail(job, "spawn_error", `config targets.${req.target}.args: ${argsProblem}`);
+      invocation.args = withExtraArgs(invocation.args, t.extraArgs);
       assertNoForbiddenFlags(req.target, invocation.args);
       const { handle, done } = runChild({
         command: invocation.command,
@@ -39184,6 +39265,26 @@ function nextStep(job) {
   if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth") return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
   if (job.failure?.kind === "invalid_output") return "the consultant answered but not in the required shape; retry once with a shorter brief before giving up";
   return "proceed on your own judgement and note that no peer input was obtained";
+}
+var flagNames = (a) => {
+  if (!a.startsWith("-") || a === "-") return [];
+  const name = a.split("=")[0];
+  return a.startsWith("--") ? [name] : [name, a.slice(0, 2), `-${name}`];
+};
+function extraArgsProblem(target, adapterArgs, extra) {
+  if (!Array.isArray(extra) || !extra.every((a) => typeof a === "string")) return "must be an array of strings";
+  const adapter = ADAPTERS[target];
+  const taken = /* @__PURE__ */ new Set([
+    ...adapterArgs.filter((a) => a.startsWith("-")),
+    ...adapter.FORBIDDEN_FLAGS,
+    ...adapter.RESERVED_FLAGS ?? []
+  ]);
+  const hit = extra.find((a) => flagNames(a).some((f) => taken.has(f)));
+  return hit ? `${hit} is set or refused by severally for this consultant's isolation` : null;
+}
+function withExtraArgs(args, extra) {
+  if (extra.length === 0) return args;
+  return args.at(-1) === "-" ? [...args.slice(0, -1), ...extra, "-"] : [...args, ...extra];
 }
 function assertNoForbiddenFlags(target, args) {
   const forbidden = ADAPTERS[target].FORBIDDEN_FLAGS;

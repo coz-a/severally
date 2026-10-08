@@ -75,9 +75,8 @@ const TARGET_DROP_EXACT = {
  * vendors' credentials -- each consultant keeps only its own; and a recursion
  * marker is added.
  */
-export function childEnv(target, extra = {}) {
-  const dropPrefixes = [...DROP_PREFIX, ...(TARGET_DROP_PREFIX[target] ?? [])];
-  const dropExact = new Set([...DROP_EXACT, ...(TARGET_DROP_EXACT[target] ?? [])]);
+export function childEnv(target, extra = {}, operator = {}) {
+  const { dropPrefixes, dropExact } = dropRules(target);
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
@@ -86,10 +85,42 @@ export function childEnv(target, extra = {}) {
     if (dropPrefixes.some((p) => key.startsWith(p))) continue;
     env[key] = v;
   }
+  for (const [k, v] of Object.entries(operator)) env[process.platform === 'win32' ? k.toUpperCase() : k] = v;
   env.SEVERALLY_ACTIVE = '1';
   env.SEVERALLY_ROLE = 'consultant';
   env.SEVERALLY_TARGET = target;
   return { ...env, ...extra };
+}
+
+function dropRules(target) {
+  return {
+    dropPrefixes: [...DROP_PREFIX, ...(TARGET_DROP_PREFIX[target] ?? [])],
+    dropExact: new Set([...DROP_EXACT, ...(TARGET_DROP_EXACT[target] ?? [])]),
+  };
+}
+
+/**
+ * Why the operator's per-target `env` (config.json) cannot be handed to this
+ * consultant, or null. A variable the rules above strip -- session wiring,
+ * severally's own markers, another vendor's credentials, a name that redirects
+ * this CLI's configuration -- is stripped for isolation, so setting it back
+ * by config is refused rather than honoured; so is any name the per-job
+ * sandbox sets (HOME and friends), which would otherwise be silently
+ * overwritten.
+ */
+export function operatorEnvProblem(target, env, sandboxKeys = []) {
+  if (env === null || typeof env !== 'object' || Array.isArray(env)) return 'must be an object of string values';
+  const { dropPrefixes, dropExact } = dropRules(target);
+  const fold = (k) => (process.platform === 'win32' ? k.toUpperCase() : k);
+  const reserved = new Set(sandboxKeys.map(fold));
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v !== 'string') return `${k} must be a string`;
+    const key = fold(k);
+    if (dropExact.has(key) || dropPrefixes.some((p) => key.startsWith(p)) || reserved.has(key)) {
+      return `${k} is controlled by severally for this consultant's isolation and cannot be set`;
+    }
+  }
+  return null;
 }
 
 export class ProcHandle {
