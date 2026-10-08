@@ -1,11 +1,11 @@
-<h1>
+<h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/images/logo-dark.png">
     <img src="assets/images/logo.png" alt="severally" width="480">
   </picture>
 </h1>
 
-*Independent opinions, returned severally. The verdict is yours.*
+<p align="center"><em>Independent opinions, returned severally. The verdict is yours.</em></p>
 
 An MCP server and Skill for the moment a coding agent asks you "can I go ahead with this plan?". The agent asks
 another CLI (Codex, Claude Code, Antigravity running Gemini, or OpenCode running GLM) for its opinion, checks
