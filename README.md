@@ -7,6 +7,8 @@
   <em>Independent opinions, returned severally. The verdict is yours.</em>
 </p>
 
+<br>
+
 An MCP server and Skill for the moment a coding agent asks you "can I go ahead with this plan?". The agent asks
 another CLI (Codex, Claude Code, Antigravity running Gemini, or OpenCode running GLM) for its opinion, checks
 the findings that come back in its own repository, and only then asks you for a decision again.
