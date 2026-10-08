@@ -1,9 +1,9 @@
-<h1 align="center">
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/images/logo-dark.png">
     <img src="assets/images/logo.png" alt="severally" width="480">
   </picture>
-</h1>
+</p>
 
 <p align="center"><em>Independent opinions, returned severally. The verdict is yours.</em></p>
 
