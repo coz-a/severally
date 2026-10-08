@@ -1,4 +1,9 @@
-# severally
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/images/logo-dark.png">
+    <img src="assets/images/logo.png" alt="severally" width="480">
+  </picture>
+</h1>
 
 *Independent opinions, returned severally. The verdict is yours.*
 
