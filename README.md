@@ -16,36 +16,39 @@ the findings that come back in its own repository, and only then asks you for a 
 The name comes from the legal phrase *jointly and severally* — each party bound on its own. Ask several
 consultants and their answers are not merged: each comes back separately, and the reader decides which to take.
 
-## Example: before publishing a tool
+## Example: before adding a cache
 
-I had written a small tool that rewrites AI CLI conversation histories when a project folder moves. Before
-putting it on GitHub and PyPI, I asked three consultants at once "what must be fixed before this is published?".
-About two minutes later their answers came back side by side (excerpt):
+A small shop API has a slow product page: `GET /products/:id` takes about 800 ms. The agent proposes the
+obvious fix, "keep each response in an in-memory Map for 5 minutes", and is about to ask "can I go ahead?".
+First it asks three consultants the same question, and their answers come back side by side (excerpt from a
+real run against a sample API):
 
 ```
-codex        do_not_proceed  no handling for a failure partway through moving the folder and updating several config files
-antigravity  do_not_proceed  no LICENSE; --force means both "ignore the running-session check" and "merge folders"
-claude-code  proceed         fine to publish, once 5 items such as adding a LICENSE and removing the author's local paths are done
+codex        do_not_proceed  the price in the response depends on who is asking; the first visitor's price is served to everyone
+claude-code  do_not_proceed  same price problem; also 4 worker processes keep separate caches, so stock stays stale after orders
+antigravity  alternative     fix the SQL instead: joining inventory and reviews inflates stock and is likely why it is slow
 ```
 
-The blockers the three raised overlap heavily, yet the bottom lines split. The difference is "fix it, then
-publish" versus "publish once it is fixed". Merge the answers into one and that difference disappears.
+All three spotted the same two problems, but their bottom lines differ: "not like this" versus "maybe no
+cache at all". If the answers were merged into one, that difference would be lost.
 
 The agent that asked (the *lead*) does not stop at reading the findings. It checks them in its own repository.
 
 ```
-codex finding        needs handling for a failure partway through
-  checked            if the destination is inside the source, it crashes with a traceback.
-                     it also turned up a bug: after rolling back partway, the tool still exits 0
-  decision           added a fix to the pre-publication work: count failures, exit non-zero, tell the user to re-run
+finding   the query joins inventory and reviews together, so stock is multiplied by the number of reviews
+  checked   ran the query on a test table: 5 units in stock, 4 reviews -> the API reports 20
+  decision  fix the query first. this bug was there before any cache, and caching would have hidden it
 
-antigravity finding  reads large history files entirely into memory, so it runs out of memory
-  checked            the largest file on this machine is 43.8 MB. the reading will be fixed, but the severity was lowered
+finding   a gold member's 10% discount would be served to guests
+  checked   no login middleware is registered yet, so today everyone gets the base price.
+            the leak starts the day login is added
+  decision  cache only the user-independent product row and compute the price on each request
 ```
 
-What comes back to you is not a vote of "1 for, 2 against". It is what was checked, the recommendation, and a
-list of what has not been checked yet. The checked results stay next to the findings and can be exported as
-Markdown into your repository.
+What comes back to you is not a vote of "2 against, 1 alternative". It is what was checked, the
+recommendation, and what has not been checked yet (here: whether the fixed query is fast enough without a
+cache, which needs production-like data). The checked results stay next to the findings and can be exported
+as Markdown into your repository.
 
 ## Compared with pasting into another terminal
 
