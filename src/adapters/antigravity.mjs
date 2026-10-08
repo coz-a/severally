@@ -45,7 +45,8 @@ export const FORBIDDEN_FLAGS = [
 // Refused in the operator's config `args` on top of FORBIDDEN_FLAGS and every
 // flag buildInvocation already sets: the print-mode aliases, a project that
 // brings its own configuration, and a remote connection.
-export const RESERVED_FLAGS = ['--print', '-p', '--prompt', '--project', '--remote-control'];
+// --effort too: the effort is chosen through the model name, in one place.
+export const RESERVED_FLAGS = ['--print', '-p', '--prompt', '--project', '--remote-control', '--effort'];
 
 export function buildInvocation({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;

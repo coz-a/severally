@@ -36422,6 +36422,7 @@ var CLAUDE_BIN = expandHome(knob("claude-code", "SEVERALLY_CLAUDE_BIN", "bin", "
 var AGY_BIN = expandHome(knob("antigravity", "SEVERALLY_AGY_BIN", "bin", "agy"));
 var OPENCODE_BIN = expandHome(knob("opencode", "SEVERALLY_OPENCODE_BIN", "bin", "opencode"));
 var extras = (id2) => ({ extraArgs: cfgTarget(id2).args ?? [], extraEnv: cfgTarget(id2).env ?? {} });
+var effort = (id2, envName) => knob(id2, envName, "effort", "high");
 var CODEX_MODEL = knob("codex", "SEVERALLY_CODEX_MODEL", "default_model", "gpt-6-astra");
 var CLAUDE_MODEL = knob("claude-code", "SEVERALLY_CLAUDE_MODEL", "default_model", "claude-opus-5-5");
 var AGY_MODEL = knob("antigravity", "SEVERALLY_AGY_MODEL", "default_model", "gemini-3.8-flash-high");
@@ -36436,7 +36437,7 @@ var POLICY = Object.freeze({
       model: CODEX_MODEL,
       allowedModels: allowedFor("codex", CODEX_MODEL, "SEVERALLY_CODEX_ALLOWED_MODELS"),
       allowedModelsEnv: "SEVERALLY_CODEX_ALLOWED_MODELS",
-      reasoningEffort: str("SEVERALLY_CODEX_EFFORT", "medium"),
+      effort: effort("codex", "SEVERALLY_CODEX_EFFORT"),
       label: "Codex CLI",
       vendor: "openai",
       ...extras("codex")
@@ -36451,6 +36452,7 @@ var POLICY = Object.freeze({
       label: "Claude Code CLI",
       vendor: "anthropic",
       maxBudgetUsd: num("SEVERALLY_CLAUDE_MAX_BUDGET_USD", 10, 0.05, 20),
+      effort: effort("claude-code", "SEVERALLY_CLAUDE_EFFORT"),
       ...extras("claude-code")
     }),
     antigravity: Object.freeze({
@@ -36459,6 +36461,7 @@ var POLICY = Object.freeze({
       note: disabledNote("antigravity"),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
+      effort: knob("antigravity", "SEVERALLY_AGY_EFFORT", "effort", null),
       allowedModels: allowedFor("antigravity", AGY_MODEL, "SEVERALLY_AGY_ALLOWED_MODELS"),
       allowedModelsEnv: "SEVERALLY_AGY_ALLOWED_MODELS",
       label: "Antigravity CLI",
@@ -36482,6 +36485,7 @@ var POLICY = Object.freeze({
       // model, this field lags -- it only feeds the same-vendor caveat, which
       // is annotation, never a permission or a limit.
       vendor: "zai",
+      effort: effort("opencode", "SEVERALLY_OPENCODE_EFFORT"),
       ...extras("opencode")
     })
   }),
@@ -37729,7 +37733,7 @@ function buildInvocation({ workdir, schemaPath, model }) {
     "-m",
     chosen,
     "-c",
-    `model_reasoning_effort="${t.reasoningEffort}"`,
+    `model_reasoning_effort="${t.effort}"`,
     "-c",
     "tools.web_search=true",
     "-c",
@@ -37889,6 +37893,8 @@ function buildInvocation2({ workdir, guardrails, model, hasExposedPaths = false 
     "-p",
     "--model",
     chosen,
+    "--effort",
+    t.effort,
     "--restricted",
     "--strict-mcp-config",
     "--setting-sources",
@@ -38064,7 +38070,7 @@ var FORBIDDEN_FLAGS3 = [
   "--prompt-interactive",
   "-i"
 ];
-var RESERVED_FLAGS3 = ["--print", "-p", "--prompt", "--project", "--remote-control"];
+var RESERVED_FLAGS3 = ["--print", "-p", "--prompt", "--project", "--remote-control", "--effort"];
 function buildInvocation3({ schemaPath, model }) {
   const t = POLICY.targets.antigravity;
   const chosen = model ?? t.model;
@@ -38407,8 +38413,9 @@ function buildInvocation4({ model }) {
     "--format",
     "json",
     ...standaloneSupport ? ["--standalone"] : [],
+    // opencode takes the effort as a model variant: provider/model#high.
     "-m",
-    chosen,
+    chosen.includes("#") ? chosen : `${chosen}#${t.effort}`,
     "--title",
     "severally"
   ];
@@ -38825,6 +38832,9 @@ var JobManager = class {
       const t = POLICY.targets[req.target];
       const envProblem = operatorEnvProblem(req.target, t.extraEnv, Object.keys(sandbox?.env ?? {}));
       if (envProblem) return this.#fail(job, "spawn_error", `config targets.${req.target}.env: ${envProblem}`);
+      if (req.target === "antigravity" && t.effort) {
+        return this.#fail(job, "spawn_error", "config targets.antigravity.effort: agy takes the effort from the model name -- set default_model to e.g. gemini-3.8-flash-low instead");
+      }
       const env = childEnv(req.target, sandbox?.env ?? {}, t.extraEnv);
       if (req.target === "antigravity" && sandbox && sandbox.credentials === "missing" && !hasApiCredential(env)) {
         return this.#fail(

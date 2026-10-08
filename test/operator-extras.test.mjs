@@ -11,8 +11,9 @@ const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-extras-'));
 const cfgFile = path.join(cfgDir, 'config.json');
 fs.writeFileSync(cfgFile, JSON.stringify({
   targets: {
-    'claude-code': { args: ['--effort', 'high'], env: { HTTPS_PROXY: 'http://proxy:3128' } },
-    codex: { args: ['--sandbox', 'danger-full-access'] },
+    'claude-code': { args: ['--disallowedTools', 'WebFetch'], env: { HTTPS_PROXY: 'http://proxy:3128' }, effort: 'max' },
+    codex: { args: ['--sandbox', 'danger-full-access'], effort: 'low' },
+    antigravity: { effort: 'low' },
     opencode: { env: { HOME: '/tmp/elsewhere' } },
   },
 }));
@@ -36,7 +37,8 @@ test('configured args and env reach the consultant', async () => {
     const view = await finish(mgr, mgr.start(exploreRequest()).job_id);
     assert.equal(view.status, 'completed');
     const argv = JSON.parse(fs.readFileSync(argvOut, 'utf8'));
-    assert.deepEqual(argv.slice(-2), ['--effort', 'high']);
+    assert.deepEqual(argv.slice(-2), ['--disallowedTools', 'WebFetch']);
+    assert.equal(argv[argv.indexOf('--effort') + 1], 'max', 'the effort key reaches claude as --effort');
     assert.ok(argv.includes('--restricted'), 'the isolation flags stay');
     const env = JSON.parse(fs.readFileSync(envOut, 'utf8'));
     assert.equal(env.HTTPS_PROXY, 'http://proxy:3128');
@@ -62,6 +64,23 @@ test('an env var the sandbox controls fails the job before launch', async () => 
   assert.match(view.failure.message, /targets\.opencode\.env: HOME/);
 });
 
+test('effort on antigravity fails the job before launch', async () => {
+  const mgr = new JobManager();
+  const view = await finish(mgr, mgr.start({ ...exploreRequest(), target: 'antigravity' }).job_id);
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'spawn_error');
+  assert.match(view.failure.message, /targets\.antigravity\.effort: .*model name/);
+});
+
+test('every consultant defaults to high effort, and the effort key overrides it', async () => {
+  const { POLICY } = await import('../src/policy.mjs');
+  assert.equal(POLICY.targets.codex.effort, 'low');
+  assert.equal(POLICY.targets['claude-code'].effort, 'max');
+  assert.equal(POLICY.targets.opencode.effort, 'high');
+  const codex = await import('../src/adapters/codex.mjs');
+  assert.ok(codex.buildInvocation({ workdir: '/tmp/w', schemaPath: '/tmp/s' }).args.includes('model_reasoning_effort="low"'));
+});
+
 test('extraArgsProblem refuses every spelling of a taken flag and passes the rest', () => {
   const codexArgs = ['exec', '-s', 'read-only', '-c', 'hooks.enabled=false', '-'];
   for (const bad of [['-s', 'x'], ['--sandbox=x'], ['-sdanger-full-access'], ['-c', 'k=v'], ['--config', 'k=v'],
@@ -70,7 +89,9 @@ test('extraArgsProblem refuses every spelling of a taken flag and passes the res
   }
   assert.ok(extraArgsProblem('antigravity', ['--model', 'm'], ['-dangerously-skip-permissions']), 'Go-style single dash');
   assert.ok(extraArgsProblem('claude-code', ['-p', '--tools', 'Read'], ['--settings', '{}']));
-  assert.equal(extraArgsProblem('claude-code', ['-p', '--tools', 'Read'], ['--effort', 'high', '--disallowedTools', 'WebFetch']), null);
+  assert.equal(extraArgsProblem('claude-code', ['-p', '--tools', 'Read'], ['--disallowedTools', 'WebFetch']), null);
+  assert.ok(extraArgsProblem('claude-code', ['-p', '--effort', 'high'], ['--effort', 'max']), 'effort has one place: the effort key');
+  assert.ok(extraArgsProblem('antigravity', ['--model', 'm'], ['--effort', 'low']), 'agy takes effort from the model name');
   assert.equal(extraArgsProblem('codex', codexArgs, ['--oss']), null);
   assert.ok(extraArgsProblem('codex', codexArgs, '--oss'), 'a string is not an array');
   assert.ok(extraArgsProblem('codex', codexArgs, [1]));

@@ -52,7 +52,7 @@ export function buildInvocation({ workdir, schemaPath, model }) {
     '--json',
     '--color', 'never',
     '-m', chosen,
-    '-c', `model_reasoning_effort="${t.reasoningEffort}"`,
+    '-c', `model_reasoning_effort="${t.effort}"`,
     '-c', 'tools.web_search=true',
     '-c', 'hooks.enabled=false',
     '-c', 'shell_environment_policy.inherit="none"',

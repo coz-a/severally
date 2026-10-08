@@ -63,6 +63,7 @@ export function buildInvocation({ workdir, guardrails, model, hasExposedPaths = 
   const args = [
     '-p',
     '--model', chosen,
+    '--effort', t.effort,
     '--restricted',
     '--strict-mcp-config',
     '--setting-sources', '',

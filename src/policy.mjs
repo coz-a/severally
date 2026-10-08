@@ -243,6 +243,11 @@ const OPENCODE_BIN = expandHome(knob('opencode', 'SEVERALLY_OPENCODE_BIN', 'bin'
 // flags and variables they must not undo are known.
 const extras = (id) => ({ extraArgs: cfgTarget(id).args ?? [], extraEnv: cfgTarget(id).env ?? {} });
 
+// One reasoning-effort knob (config: effort), which each adapter spells the way
+// its CLI wants. Antigravity has none: agy carries the effort in the model name
+// and rejects --effort, so a configured value there fails the job at launch.
+const effort = (id, envName) => knob(id, envName, 'effort', 'high');
+
 const CODEX_MODEL = knob('codex', 'SEVERALLY_CODEX_MODEL', 'default_model', 'gpt-6-astra');
 const CLAUDE_MODEL = knob('claude-code', 'SEVERALLY_CLAUDE_MODEL', 'default_model', 'claude-opus-5-5');
 const AGY_MODEL = knob('antigravity', 'SEVERALLY_AGY_MODEL', 'default_model', 'gemini-3.8-flash-high');
@@ -259,7 +264,7 @@ export const POLICY = Object.freeze({
       model: CODEX_MODEL,
       allowedModels: allowedFor('codex', CODEX_MODEL, 'SEVERALLY_CODEX_ALLOWED_MODELS'),
       allowedModelsEnv: 'SEVERALLY_CODEX_ALLOWED_MODELS',
-      reasoningEffort: str('SEVERALLY_CODEX_EFFORT', 'medium'),
+      effort: effort('codex', 'SEVERALLY_CODEX_EFFORT'),
       label: 'Codex CLI',
       vendor: 'openai',
       ...extras('codex'),
@@ -274,6 +279,7 @@ export const POLICY = Object.freeze({
       label: 'Claude Code CLI',
       vendor: 'anthropic',
       maxBudgetUsd: num('SEVERALLY_CLAUDE_MAX_BUDGET_USD', 10, 0.05, 20),
+      effort: effort('claude-code', 'SEVERALLY_CLAUDE_EFFORT'),
       ...extras('claude-code'),
     }),
     antigravity: Object.freeze({
@@ -282,6 +288,7 @@ export const POLICY = Object.freeze({
       note: disabledNote('antigravity'),
       // The model name carries the reasoning effort; agy rejects --effort for it.
       model: AGY_MODEL,
+      effort: knob('antigravity', 'SEVERALLY_AGY_EFFORT', 'effort', null),
       allowedModels: allowedFor('antigravity', AGY_MODEL, 'SEVERALLY_AGY_ALLOWED_MODELS'),
       allowedModelsEnv: 'SEVERALLY_AGY_ALLOWED_MODELS',
       label: 'Antigravity CLI',
@@ -305,6 +312,7 @@ export const POLICY = Object.freeze({
       // model, this field lags -- it only feeds the same-vendor caveat, which
       // is annotation, never a permission or a limit.
       vendor: 'zai',
+      effort: effort('opencode', 'SEVERALLY_OPENCODE_EFFORT'),
       ...extras('opencode'),
     }),
   }),

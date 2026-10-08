@@ -172,7 +172,8 @@ export function buildInvocation({ model }) {
     'run',
     '--format', 'json',
     ...(standaloneSupport ? ['--standalone'] : []),
-    '-m', chosen,
+    // opencode takes the effort as a model variant: provider/model#high.
+    '-m', chosen.includes('#') ? chosen : `${chosen}#${t.effort}`,
     '--title', 'severally',
   ];
   return { command: t.cli, args, model: chosen };

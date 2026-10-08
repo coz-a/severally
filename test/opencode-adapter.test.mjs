@@ -45,7 +45,7 @@ test('the invocation pins print mode, the event stream and the model', () => {
   assert.equal(inv.args.includes('--pure'), false, 'opencode 2.x rejects --pure with a usage dump');
   assert.equal(inv.args.indexOf('-m'), inv.args.length - 4, 'the model flag carries the chosen model');
   assert.equal(POLICY.targets.opencode.model, 'zai-coding-plan/glm-5.3');
-  assert.equal(inv.args[inv.args.indexOf('-m') + 1], POLICY.targets.opencode.model);
+  assert.equal(inv.args[inv.args.indexOf('-m') + 1], `${POLICY.targets.opencode.model}#high`, 'effort rides as the variant');
   // The shipped default is still worth pinning somewhere -- sandboxEnv() clears
   // SEVERALLY_OPENCODE_MODEL, so this reads the default and not the host's knob.
   assert.equal(POLICY.targets.opencode.model, 'zai-coding-plan/glm-5.3');

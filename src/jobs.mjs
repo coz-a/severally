@@ -401,6 +401,10 @@ export class JobManager {
       const t = POLICY.targets[req.target];
       const envProblem = operatorEnvProblem(req.target, t.extraEnv, Object.keys(sandbox?.env ?? {}));
       if (envProblem) return this.#fail(job, 'spawn_error', `config targets.${req.target}.env: ${envProblem}`);
+      if (req.target === 'antigravity' && t.effort) {
+        return this.#fail(job, 'spawn_error', 'config targets.antigravity.effort: agy takes the effort from the '
+          + 'model name -- set default_model to e.g. gemini-3.8-flash-low instead');
+      }
       const env = childEnv(req.target, sandbox?.env ?? {}, t.extraEnv);
 
       // A sandbox that found no credential to link would otherwise reach the

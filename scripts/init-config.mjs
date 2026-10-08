@@ -40,7 +40,8 @@ export function renderConfig() {
     '  //   default_model    the model this consultant runs unless a request names another',
     '  //   allowed_models   the models a request MAY name; the default above is always allowed',
     '  //   timeout_ms       this consultant\'s own budget in ms (default 600000, max 1800000)',
-    '  //   args             extra CLI arguments, e.g. ["--effort", "high"]; isolation flags are refused',
+    '  //   effort           reasoning effort (default high); antigravity takes it from the model name instead',
+    '  //   args             extra CLI arguments, e.g. ["--disallowedTools", "WebFetch"]; isolation flags are refused',
     '  //   env              extra environment variables, e.g. {"HTTPS_PROXY": "..."}; isolation variables are refused',
     '  "targets": {',
   ];
