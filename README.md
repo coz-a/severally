@@ -3,9 +3,9 @@
     <source media="(prefers-color-scheme: dark)" srcset="assets/images/logo-dark.png">
     <img src="assets/images/logo.png" alt="severally" width="480">
   </picture>
+  <br>
+  <em>Independent opinions, returned severally. The verdict is yours.</em>
 </p>
-
-<p align="center"><em>Independent opinions, returned severally. The verdict is yours.</em></p>
 
 An MCP server and Skill for the moment a coding agent asks you "can I go ahead with this plan?". The agent asks
 another CLI (Codex, Claude Code, Antigravity running Gemini, or OpenCode running GLM) for its opinion, checks
