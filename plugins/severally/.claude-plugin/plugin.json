@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "severally",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Ask Codex or Antigravity (Gemini) for an independent opinion, review or structured debate, in a sandboxed child session that can search the web but cannot edit files or run commands.",
   "author": {
     "name": "coz.a",
