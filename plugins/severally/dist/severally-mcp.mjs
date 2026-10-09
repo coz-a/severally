@@ -36306,7 +36306,7 @@ var ProcHandle = class {
     }, POLICY.killGraceMs).unref();
   }
 };
-function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs2, onCancelSignal }) {
+function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs2, onCancelSignal, compactLine: compactLine2 = null }) {
   const child = spawnCommand(command, args, {
     cwd,
     env,
@@ -36340,7 +36340,24 @@ function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs
       if (stderr.length >= cap) truncated = true;
     }
   };
-  child.stdout.on("data", (c) => append("out", c));
+  let pending = "";
+  const flushLines = () => {
+    const lines = pending.split("\n");
+    pending = lines.pop();
+    for (const l of lines) append("out", `${compactLine2(l)}
+`);
+    if (pending.length > cap) {
+      append("out", pending);
+      pending = "";
+    }
+  };
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (c) => {
+    if (!compactLine2) return append("out", c);
+    pending += c;
+    flushLines();
+  });
   child.stderr.on("data", (c) => append("err", c));
   const timer = setTimeout(() => {
     timedOut = true;
@@ -36361,7 +36378,13 @@ function runChild({ command, args, cwd, env, input: input2, timeoutMs: timeoutMs
       resolve({ stdout, stderr, truncated, timedOut, cancelled, ...payload });
     };
     child.on("error", (err) => finish({ code: null, signal: null, spawnError: err.message }));
-    child.on("close", (code, signal) => finish({ code, signal }));
+    child.on("close", (code, signal) => {
+      if (compactLine2 && pending) {
+        append("out", compactLine2(pending));
+        pending = "";
+      }
+      finish({ code, signal });
+    });
   });
   if (input2 !== void 0 && input2 !== null) {
     child.stdin.on("error", () => {
@@ -36957,6 +36980,7 @@ __export(opencode_exports, {
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS4,
   RESERVED_FLAGS: () => RESERVED_FLAGS4,
   buildInvocation: () => buildInvocation4,
+  compactLine: () => compactLine,
   events: () => events2,
   interpret: () => interpret4,
   prepare: () => prepare,
@@ -37229,6 +37253,16 @@ function events2(stdout) {
     }
   }
   return out;
+}
+function compactLine(line) {
+  if (!line.includes('"tool_use"')) return line;
+  try {
+    const e = JSON.parse(line);
+    if (e?.type !== "tool_use") return line;
+    return JSON.stringify({ type: e.type, part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } } });
+  } catch {
+    return line;
+  }
 }
 function errorMessage(error62) {
   if (!error62 || typeof error62 !== "object") return JSON.stringify(error62);
@@ -37663,7 +37697,8 @@ var JobManager = class {
         env,
         input: text2,
         timeoutMs: budgetMs,
-        onCancelSignal: (fn) => job._cancelFns.push(fn)
+        onCancelSignal: (fn) => job._cancelFns.push(fn),
+        compactLine: adapter.compactLine
       });
       job._handle = handle;
       if (job.cancelRequested) handle.stop();
@@ -37698,7 +37733,8 @@ var JobManager = class {
             env,
             input: text2,
             timeoutMs: remaining,
-            onCancelSignal: (fn) => job._cancelFns.push(fn)
+            onCancelSignal: (fn) => job._cancelFns.push(fn),
+            compactLine: adapter.compactLine
           });
           job._handle = retry.handle;
           if (job.cancelRequested) retry.handle.stop();
@@ -38358,8 +38394,8 @@ target: which consultant to ask. This machine can reach: ${availableTargets().jo
         The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google, glm/opencode. A
         consultant that is not in that list is refused up front, so do not retry it -- say which ones are
         available instead.
-        Consulting your own CLI is allowed but is a fresh-context check rather than an independent opinion,
-        and the result says so.
+        Consulting your own CLI on a fresh session is encouraged -- it sheds this session's history and
+        drift -- and the result is marked as same lineage.
 targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates,
         up to one per supported consultant).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
@@ -38401,7 +38437,7 @@ prediction: optional -- { expected, worry }: the bottom line you expect back and
         beforehand; consult_record takes the other half (reflection) once you have read the answer.`;
 function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: "severally", version: "1.2.0" },
+    { name: "severally", version: "1.3.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
   const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
