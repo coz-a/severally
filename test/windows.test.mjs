@@ -68,7 +68,7 @@ function installerFixture(t) {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-install 日本語 ')));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const log = path.join(dir, 'calls.jsonl');
-  const fake = `import fs from 'node:fs';
+  const fake = `import fs from 'node:fs'; import path from 'node:path';
     const args = process.argv.slice(2);
     fs.appendFileSync(process.env.INSTALL_TEST_LOG, JSON.stringify(args) + '\\n');
     const file = process.env.INSTALL_TEST_REGISTRY;
@@ -77,6 +77,12 @@ function installerFixture(t) {
     if (action === 'get') process.exitCode = registry[cli] ? 0 : 1;
     if (action === 'list' && registry[cli]) console.log('severally');
     if (action === 'add') registry[cli] = args.slice(-2);
+    // The installer checks opencode's recorded command, as the real CLI keeps it.
+    if (action === 'add' && cli === 'opencode') {
+      const cfgDir = path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME, '.config'), 'opencode');
+      fs.mkdirSync(cfgDir, { recursive: true });
+      fs.writeFileSync(path.join(cfgDir, 'opencode.json'), JSON.stringify({ mcp: { servers: { severally: { command: args.slice(-2) } } } }));
+    }
     if (action === 'remove') delete registry[cli];
     if (action === 'add' || action === 'remove') fs.writeFileSync(file, JSON.stringify(registry));`;
   fs.writeFileSync(path.join(dir, 'cli.mjs'), fake);

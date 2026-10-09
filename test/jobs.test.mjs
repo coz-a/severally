@@ -12,6 +12,12 @@ const home = sandboxEnv({ SEVERALLY_CODEX_ALLOWED_MODELS: 'gpt-6-astra-mini' });
 const { JobManager } = await import('../src/jobs.mjs');
 const { POLICY } = await import('../src/policy.mjs');
 
+// node:sqlite ships unflagged from Node 23 (and late 22.x); without it the
+// credential seeding behind the opencode retry is a no-op, and so are the
+// tests that rely on it.
+let sqlite = null;
+try { sqlite = await import('node:sqlite'); } catch { sqlite = null; }
+
 const finish = async (mgr, jobId) => {
   const job = mgr.jobs.get(jobId);
   await job.promise;
@@ -441,7 +447,7 @@ test('opencode: an epilogue after the contract falls back to the earlier part', 
 // so a sandbox that only copies auth.json fails its first run with a
 // no-route error -- having created the database schema on the way down.
 // severally seeds the credential row into that database and retries once.
-test('opencode: a 2.x no-route failure is seeded from auth.json and retried once', async () => {
+test('opencode: a 2.x no-route failure is seeded from auth.json and retried once', { skip: !sqlite }, async () => {
   process.env.STUB_BEHAVIOR = 'no_route_then_ok';
   try {
     const mgr = new JobManager();
@@ -475,7 +481,7 @@ test('opencode: the recovery respawn never extends the budget', async () => {
 // duration_ms and finished_at must describe the job as a whole: a respawned
 // consultation that succeeds reports the total time of both attempts plus
 // the seeding, not the timestamp of the first failure.
-test('opencode: a job that needed its retry reports the full duration', async () => {
+test('opencode: a job that needed its retry reports the full duration', { skip: !sqlite }, async () => {
   process.env.STUB_BEHAVIOR = 'no_route_after_delay';
   process.env.STUB_DELAY_MS = '2500';
   process.env.STUB_RETRY_DELAY_MS = '2000';
