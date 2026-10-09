@@ -237,7 +237,7 @@ The lead picks the mode; you can also ask for one ("debate this with Codex"). Th
 - `debate` shows your plan together with the opposing claims and asks the consultant to weigh them.
 
 After the first answer the lead can send follow-ups to the same consultant, spent on the points where they
-disagree: up to four by default, five rounds in total. The limit is set with an environment variable
+disagree: up to four by default, five rounds in total. The limit can be changed in the config file
 (see [Configuration](#configuration)).
 
 ### History and records
@@ -265,13 +265,13 @@ npm run init-config            # writes ~/.severally/config.json (never overwrit
 ```
 
 Every key is explained in [CONFIG.md](CONFIG.md); [config.example.json](config.example.json) is a working
-example that exercises each one. Precedence is environment variables > config file > auto-detection > defaults.
+example to copy from. Precedence is environment variables > config file > auto-detection > defaults.
 The config is read once at server startup, so restart the client after changing it. On Windows, write an
 executable path with forward slashes (`"bin": "C:/Tools/claude.exe"`) or escaped backslashes
 (`"bin": "C:\\Tools\\claude.exe"`).
 
-Server-wide limits, such as the follow-up round limit, are environment variables only, with no key in
-`config.json`. They are listed in [CONFIG.md](CONFIG.md#not-configurable-in-configjson).
+Server-wide limits go under `server` in the same file, for example `{"server": {"max_rounds": 10}}` for the
+follow-up round limit; the full list is in [CONFIG.md](CONFIG.md#server-wide-keys).
 
 ## What a consultant can see and do
 

@@ -27776,11 +27776,11 @@ var require_resolve = /* @__PURE__ */ __commonJSMin(((exports) => {
     "enum",
     "const"
   ]);
-  function inlineRef(schema, limit = true) {
+  function inlineRef(schema, limit2 = true) {
     if (typeof schema == "boolean") return true;
-    if (limit === true) return !hasRef(schema);
-    if (!limit) return false;
-    return countKeys(schema) <= limit;
+    if (limit2 === true) return !hasRef(schema);
+    if (!limit2) return false;
+    return countKeys(schema) <= limit2;
   }
   exports.inlineRef = inlineRef;
   const REF_KEYWORDS = /* @__PURE__ */ new Set([
@@ -35106,6 +35106,7 @@ function configProblem() {
   return configError;
 }
 var cfgTarget = (id2) => CONFIG.targets && typeof CONFIG.targets === "object" ? CONFIG.targets[id2] ?? {} : {};
+var cfgServer = CONFIG.server && typeof CONFIG.server === "object" ? CONFIG.server : {};
 function isInstalled(command) {
   return findCommand(command) !== null;
 }
@@ -35115,6 +35116,12 @@ var num = (name, dflt, min, max) => {
   const v = Number(raw);
   if (!Number.isFinite(v)) return dflt;
   return Math.min(max, Math.max(min, v));
+};
+var limit = (name, fromCfg, dflt, min, max) => {
+  const fromEnv = num(name, null, min, max);
+  if (fromEnv !== null) return fromEnv;
+  if (typeof fromCfg === "number" && Number.isFinite(fromCfg)) return Math.min(max, Math.max(min, fromCfg));
+  return dflt;
 };
 var str = (name, dflt) => {
   const raw = process.env[name];
@@ -35247,7 +35254,7 @@ var POLICY = Object.freeze({
       allowedModelsEnv: "SEVERALLY_CLAUDE_ALLOWED_MODELS",
       label: "Claude Code CLI",
       vendor: "anthropic",
-      maxBudgetUsd: num("SEVERALLY_CLAUDE_MAX_BUDGET_USD", 10, 0.05, 20),
+      maxBudgetUsd: limit("SEVERALLY_CLAUDE_MAX_BUDGET_USD", cfgTarget("claude-code").max_budget_usd, 10, 0.05, 20),
       effort: effort("claude-code", "SEVERALLY_CLAUDE_EFFORT"),
       ...extras("claude-code")
     }),
@@ -35286,19 +35293,19 @@ var POLICY = Object.freeze({
     })
   }),
   // Grace period between SIGTERM and SIGKILL of the child process group.
-  killGraceMs: num("SEVERALLY_KILL_GRACE_MS", 5e3, 500, 6e4),
+  killGraceMs: limit("SEVERALLY_KILL_GRACE_MS", cfgServer.kill_grace_ms, 5e3, 500, 6e4),
   // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
-  maxRounds: num("SEVERALLY_MAX_ROUNDS", 5, 1, 20),
+  maxRounds: limit("SEVERALLY_MAX_ROUNDS", cfgServer.max_rounds, 5, 1, 20),
   // Default 9 so several independent consultations can run at once; a
   // "consult everyone" fan-out (the three peers plus a fresh session of the
   // caller's own CLI) fits well inside it. The ceiling equals the default:
   // going beyond that is an operator decision with quota to match.
-  maxConcurrent: num("SEVERALLY_MAX_CONCURRENT", 9, 1, 9),
-  maxJobsRetained: num("SEVERALLY_MAX_JOBS_RETAINED", 200, 20, 2e3),
+  maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
+  maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
   // a client-side timeout while the consultation is still healthy.
-  maxWaitMs: num("SEVERALLY_MAX_WAIT_MS", 45e3, 0, 6e5),
+  maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
   input: Object.freeze({
     questionMax: 4e3,
     objectiveMax: 4e3,
@@ -35337,7 +35344,7 @@ var TIMEOUT_ENV = {
   opencode: "SEVERALLY_OPENCODE_TIMEOUT_MS"
 };
 function timeoutMs(target) {
-  const shared = num("SEVERALLY_TIMEOUT_MS", 6e5, 1e3, 18e5);
+  const shared = limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 6e5, 1e3, 18e5);
   if (!target || !TIMEOUT_ENV[target]) return shared;
   const fromEnv = num(TIMEOUT_ENV[target], null, 1e3, 18e5);
   if (fromEnv !== null) return fromEnv;
@@ -37425,8 +37432,8 @@ var JobManager = class {
     rec.next_step = nextStep(job);
     return rec;
   }
-  list({ limit = 20 } = {}) {
-    return this.order.slice(-limit).reverse().map((jid) => {
+  list({ limit: limit2 = 20 } = {}) {
+    return this.order.slice(-limit2).reverse().map((jid) => {
       const j = this.jobs.get(jid);
       return {
         job_id: j.job_id,
@@ -38583,8 +38590,8 @@ function createServer(manager = new JobManager()) {
       description: "Recent consultations from this session, newest first, with their status, one-line summary and who asked for them (initiator), plus how many offered consultations have been declined in total.",
       inputSchema: external_exports.object({ limit: external_exports.number().int().min(1).max(100).optional() })
     },
-    async ({ limit }) => ok({
-      jobs: manager.list({ limit: limit ?? 20 }),
+    async ({ limit: limit2 }) => ok({
+      jobs: manager.list({ limit: limit2 ?? 20 }),
       offers_declined: manager.offersDeclined(),
       limits: limitsSummary()
     })

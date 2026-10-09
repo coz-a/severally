@@ -97,6 +97,23 @@ test('the environment overrides the config file, target by target', async () => 
   assert.deepEqual(policy.POLICY.targets.codex.allowedModels, ['from-env', 'from-config', 'also-config']);
 });
 
+test('server-wide limits come from the config file, clamped, and the env still wins', async () => {
+  const config = writeConfig({
+    server: { max_rounds: 12, max_concurrent: 99, max_wait_ms: 10_000, timeout_ms: 900_000 },
+    targets: { 'claude-code': { max_budget_usd: 3 } },
+  });
+  const fromFile = await loadPolicy({ SEVERALLY_CONFIG: config }, 'server-file', ['SEVERALLY_TIMEOUT_MS']);
+  assert.equal(fromFile.POLICY.maxRounds, 12);
+  assert.equal(fromFile.POLICY.maxConcurrent, 9, 'clamped to the same ceiling as the env');
+  assert.equal(fromFile.POLICY.maxWaitMs, 10_000);
+  assert.equal(fromFile.POLICY.maxJobsRetained, 200, 'unset keys keep their default');
+  assert.equal(fromFile.timeoutMs('codex'), 900_000);
+  assert.equal(fromFile.POLICY.targets['claude-code'].maxBudgetUsd, 3);
+
+  const fromEnv = await loadPolicy({ SEVERALLY_CONFIG: config, SEVERALLY_MAX_ROUNDS: '3' }, 'server-env');
+  assert.equal(fromEnv.POLICY.maxRounds, 3, 'env wins over the config file');
+});
+
 test('the config file supplies the bin and the model allowlist when no env does', async () => {
   const config = writeConfig({
     targets: {
@@ -175,9 +192,10 @@ test('the generated template is valid config the server can read back', async ()
       `${id} availability must still come from detection`);
   }
   // Nothing is overridden by a freshly generated file: the comments carry the
-  // documentation, so the data is only the empty targets.
+  // documentation, so the data is only an empty server block and empty targets.
   const parsed = (await import('../src/jsonc.mjs')).parseJsonc(rendered);
-  assert.deepEqual(Object.keys(parsed), ['targets']);
+  assert.deepEqual(Object.keys(parsed), ['server', 'targets']);
+  assert.deepEqual(parsed.server, {});
   for (const id of policy.TARGETS) assert.deepEqual(parsed.targets[id], {});
 });
 

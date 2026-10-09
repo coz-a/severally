@@ -40,6 +40,7 @@ export function configProblem() {
 }
 
 const cfgTarget = (id) => (CONFIG.targets && typeof CONFIG.targets === 'object' ? CONFIG.targets[id] ?? {} : {});
+const cfgServer = CONFIG.server && typeof CONFIG.server === 'object' ? CONFIG.server : {};
 
 /**
  * Is this command runnable here? Absolute/relative paths are checked as given.
@@ -56,6 +57,17 @@ const num = (name, dflt, min, max) => {
   const v = Number(raw);
   if (!Number.isFinite(v)) return dflt;
   return Math.min(max, Math.max(min, v));
+};
+
+// A number the env or the config file may set: env > file > default, clamped to
+// the same range whichever one supplied it. Codex and OpenCode do not pass the
+// user's shell environment to an MCP server, so for them the file is the only
+// place an operator can reach without editing the client's registration.
+const limit = (name, fromCfg, dflt, min, max) => {
+  const fromEnv = num(name, null, min, max);
+  if (fromEnv !== null) return fromEnv;
+  if (typeof fromCfg === 'number' && Number.isFinite(fromCfg)) return Math.min(max, Math.max(min, fromCfg));
+  return dflt;
 };
 
 const str = (name, dflt) => {
@@ -278,7 +290,7 @@ export const POLICY = Object.freeze({
       allowedModelsEnv: 'SEVERALLY_CLAUDE_ALLOWED_MODELS',
       label: 'Claude Code CLI',
       vendor: 'anthropic',
-      maxBudgetUsd: num('SEVERALLY_CLAUDE_MAX_BUDGET_USD', 10, 0.05, 20),
+      maxBudgetUsd: limit('SEVERALLY_CLAUDE_MAX_BUDGET_USD', cfgTarget('claude-code').max_budget_usd, 10, 0.05, 20),
       effort: effort('claude-code', 'SEVERALLY_CLAUDE_EFFORT'),
       ...extras('claude-code'),
     }),
@@ -318,19 +330,19 @@ export const POLICY = Object.freeze({
   }),
 
   // Grace period between SIGTERM and SIGKILL of the child process group.
-  killGraceMs: num('SEVERALLY_KILL_GRACE_MS', 5_000, 500, 60_000),
+  killGraceMs: limit('SEVERALLY_KILL_GRACE_MS', cfgServer.kill_grace_ms, 5_000, 500, 60_000),
   // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
-  maxRounds: num('SEVERALLY_MAX_ROUNDS', 5, 1, 20),
+  maxRounds: limit('SEVERALLY_MAX_ROUNDS', cfgServer.max_rounds, 5, 1, 20),
   // Default 9 so several independent consultations can run at once; a
   // "consult everyone" fan-out (the three peers plus a fresh session of the
   // caller's own CLI) fits well inside it. The ceiling equals the default:
   // going beyond that is an operator decision with quota to match.
-  maxConcurrent: num('SEVERALLY_MAX_CONCURRENT', 9, 1, 9),
-  maxJobsRetained: num('SEVERALLY_MAX_JOBS_RETAINED', 200, 20, 2000),
+  maxConcurrent: limit('SEVERALLY_MAX_CONCURRENT', cfgServer.max_concurrent, 9, 1, 9),
+  maxJobsRetained: limit('SEVERALLY_MAX_JOBS_RETAINED', cfgServer.max_jobs_retained, 200, 20, 2000),
   // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
   // request timeout that MCP clients apply, so a long wait does not blow up as
   // a client-side timeout while the consultation is still healthy.
-  maxWaitMs: num('SEVERALLY_MAX_WAIT_MS', 45_000, 0, 600_000),
+  maxWaitMs: limit('SEVERALLY_MAX_WAIT_MS', cfgServer.max_wait_ms, 45_000, 0, 600_000),
 
   input: Object.freeze({
     questionMax: 4_000,
@@ -381,7 +393,7 @@ const TIMEOUT_ENV = {
  * not a slower one.
  */
 export function timeoutMs(target) {
-  const shared = num('SEVERALLY_TIMEOUT_MS', 600_000, 1_000, 1_800_000);
+  const shared = limit('SEVERALLY_TIMEOUT_MS', cfgServer.timeout_ms, 600_000, 1_000, 1_800_000);
   if (!target || !TIMEOUT_ENV[target]) return shared;
   const fromEnv = num(TIMEOUT_ENV[target], null, 1_000, 1_800_000);
   if (fromEnv !== null) return fromEnv;

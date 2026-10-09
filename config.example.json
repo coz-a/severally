@@ -1,7 +1,8 @@
 // Full key reference, and what each one does: CONFIG.md
-// This file exercises every per-target key at least once; you do not need to
+// This file exercises every per-target key and some server keys; you do not need to
 // set them all -- most operators need only one or two overrides.
 {
+  "server": { "max_rounds": 10, "timeout_ms": 900000 },
   "targets": {
     "codex": { "enabled": false, "note": "rate-limited until 15:00" },
     "claude-code": {
@@ -10,6 +11,7 @@
       "allowed_models": ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5"],
       "timeout_ms": 900000,
       "effort": "max",
+      "max_budget_usd": 5,
       "args": ["--disallowedTools", "WebFetch"],
       "env": { "HTTPS_PROXY": "http://proxy.internal:3128" }
     },

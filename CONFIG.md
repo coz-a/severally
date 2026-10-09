@@ -22,13 +22,15 @@ read once at server startup, so restart the MCP client after changing it.
 
 ```json
 {
+  "server": { },
   "targets": {
     "<codex | claude-code | antigravity | opencode>": { }
   }
 }
 ```
 
-`targets` is the only top-level key the server reads. Every setting lives under one of the four target ids.
+`server` holds the limits that apply to the whole server; `targets` holds the settings for each consultant. Both
+are optional, and the server reads no other top-level key.
 
 ## Per-target keys
 
@@ -42,6 +44,7 @@ read once at server startup, so restart the MCP client after changing it.
 | `timeout_ms` | number, 1000–1800000 | the shared timeout (`SEVERALLY_TIMEOUT_MS`, 600000 by default) | `SEVERALLY_CODEX_TIMEOUT_MS` / `SEVERALLY_CLAUDE_TIMEOUT_MS` / `SEVERALLY_AGY_TIMEOUT_MS` / `SEVERALLY_OPENCODE_TIMEOUT_MS` | Per-consultant wall-clock budget, for the one target that reliably needs longer (or shorter) than the rest — e.g. Gemini on an involved request. |
 | `effort` | string | `high` (none for `antigravity`) | `SEVERALLY_CODEX_EFFORT` / `SEVERALLY_CLAUDE_EFFORT` / `SEVERALLY_OPENCODE_EFFORT` | Reasoning effort, translated per CLI: Codex `-c model_reasoning_effort=…`, Claude Code `--effort …`, OpenCode the model variant `provider/model#…`. A value the CLI or model does not support fails the consultation (e.g. glm-5.2 has `high`/`max` only). Antigravity takes the effort from the model name instead (`gemini-3.8-flash-low` / `-medium` / `-high`), so setting `effort` there fails with `spawn_error`. |
 | `args` | array of strings | `[]` | – (config-only) | Extra CLI arguments appended to the consultant's command line, e.g. `["--disallowedTools", "WebFetch"]`. `--effort` is refused here; use the `effort` key. Any flag severally already sets for this consultant (and its aliases), or that would undo its isolation, is refused: the consultation fails with `spawn_error` naming the flag, before the CLI starts. |
+| `max_budget_usd` | number, 0.05–20 | `10` | `SEVERALLY_CLAUDE_MAX_BUDGET_USD` | `claude-code` only: the spending cap passed to the Claude Code consultant for one consultation. |
 | `env` | object of strings | `{}` | – (config-only) | Extra environment variables for the consultant, e.g. `{"HTTPS_PROXY": "http://proxy:3128"}`. Applied on top of the server's own environment. A variable severally strips or sets for isolation (session markers, `SEVERALLY_*`, another vendor's credentials, the sandbox's `HOME`/`XDG_*`, `OPENCODE_*` for OpenCode, …) is refused the same way. |
 
 Current built-in `default_model` per target: `codex` → `gpt-6-astra`, `claude-code` → `claude-opus-5-5`,
@@ -51,23 +54,35 @@ Current built-in `default_model` per target: `codex` → `gpt-6-astra`, `claude-
 against undoing the isolation by accident, not against a deliberate wrapper. They are fixed per target, not
 per consultation.
 
-## Not configurable in `config.json`
+## Server-wide keys
 
-These are server-wide, not per-target, so they are environment-only — there is no config-file key for them:
+Under `server`. Each one can also be set by its environment variable, which wins over the file. Use the file:
+Codex and OpenCode do not pass your shell's environment to the MCP server, so an exported variable reaches the
+server only from Claude Code and Antigravity.
 
-| Env var | Default | Range |
+| Key | Default | Range | Overriding env var | What it does |
+|---|---|---|---|---|
+| `max_rounds` | 5 (1 initial + 4 follow-ups) | 1–20 | `SEVERALLY_MAX_ROUNDS` | Rounds per consultation chain, the first one included. |
+| `max_concurrent` | 9 | 1–9 | `SEVERALLY_MAX_CONCURRENT` | Consultations running at once; a request that would go over it is refused. A "consult everyone" fan-out takes four. |
+| `max_jobs_retained` | 200 | 20–2000 | `SEVERALLY_MAX_JOBS_RETAINED` | Jobs the running server keeps in memory; older finished ones are dropped from memory, never from the history on disk. |
+| `max_wait_ms` | 45000 | 0–600000 | `SEVERALLY_MAX_WAIT_MS` | Longest `wait_ms` a single `consult_get` may block for. Keep it under your client's tool-call timeout. |
+| `timeout_ms` | 600000 | 1000–1800000 | `SEVERALLY_TIMEOUT_MS` | Wall-clock budget per consultation, for every consultant without its own `timeout_ms`. |
+| `kill_grace_ms` | 5000 | 500–60000 | `SEVERALLY_KILL_GRACE_MS` | Time between asking a stopped consultant to exit and killing it. |
+
+A value outside the range is clamped to it.
+
+## Environment only
+
+These decide where the config file and the credentials are, so they cannot live in the file, or name the
+enabled set as a whole:
+
+| Env var | Default | What it does |
 |---|---|---|
-| `SEVERALLY_MAX_ROUNDS` | 5 (1 initial + 4 follow-ups) | 1–20 |
-| `SEVERALLY_MAX_CONCURRENT` | 9 | 1–9 |
-| `SEVERALLY_MAX_JOBS_RETAINED` | 200 | 20–2000 |
-| `SEVERALLY_CLAUDE_MAX_BUDGET_USD` | 10 | 0.05–20 |
-| `SEVERALLY_MAX_WAIT_MS` | 45000 | 0–600000 |
-| `SEVERALLY_KILL_GRACE_MS` | 5000 | 500–60000 |
-| `SEVERALLY_HOME` | `~/.severally` | – |
-| `SEVERALLY_AGY_CRED_HOME` | `$HOME` | – |
-| `SEVERALLY_OPENCODE_CRED_HOME` | `$HOME` | – |
-| `SEVERALLY_TARGETS` | – (auto-detected) | comma-separated target ids |
-| `SEVERALLY_CONFIG` | `~/.severally/config.json` / `.jsonc`, whichever exists | any path |
+| `SEVERALLY_HOME` | `~/.severally` | Where history and the config file live. |
+| `SEVERALLY_CONFIG` | `~/.severally/config.json` / `.jsonc`, whichever exists | The config file itself. |
+| `SEVERALLY_AGY_CRED_HOME` | `$HOME` | Where the Antigravity consultant's real credentials are read from. |
+| `SEVERALLY_OPENCODE_CRED_HOME` | `$HOME` | Same for OpenCode. |
+| `SEVERALLY_TARGETS` | – (auto-detected) | Comma-separated target ids: the whole enabled set at once, overriding every `enabled`. |
 
 ## Example
 

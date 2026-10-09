@@ -20,7 +20,7 @@ import { TARGETS, POLICY, isInstalled } from '../src/policy.mjs';
 // Documentation as a flat list of strings, kept apart from the settings by its
 // shape as much as its position: an example written as a nested object looks
 // exactly like a live setting, which is what made the earlier template hard to
-// read. The server reads only `targets`.
+// read. The server reads only `server` and `targets`.
 /**
  * The config template for this machine, as JSONC: the server strips comments
  * before parsing, so the documentation can be documentation instead of fake
@@ -43,6 +43,15 @@ export function renderConfig() {
     '  //   effort           reasoning effort (default high); antigravity takes it from the model name instead',
     '  //   args             extra CLI arguments, e.g. ["--disallowedTools", "WebFetch"]; isolation flags are refused',
     '  //   env              extra environment variables, e.g. {"HTTPS_PROXY": "..."}; isolation variables are refused',
+    '  //   max_budget_usd   claude-code only: spending cap per consultation (default 10, 0.05-20)',
+    '  //',
+    '  // Server-wide, all optional:',
+    '  //   max_rounds       rounds per consultation chain, the first included (default 5, 1-20)',
+    '  //   max_concurrent   consultations running at once (default 9, 1-9)',
+    '  //   timeout_ms       budget per consultation in ms for consultants without their own (default 600000)',
+    '  //   max_wait_ms      longest single consult_get wait (default 45000)',
+    '  //   max_jobs_retained, kill_grace_ms: see CONFIG.md',
+    '  "server": {},',
     '  "targets": {',
   ];
   TARGETS.forEach((id, i) => {
