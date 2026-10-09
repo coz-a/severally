@@ -476,6 +476,7 @@ export class JobManager {
         input: text,
         timeoutMs: budgetMs,
         onCancelSignal: (fn) => job._cancelFns.push(fn),
+        compactLine: adapter.compactLine,
       });
       job._handle = handle;
       if (job.cancelRequested) handle.stop();
@@ -525,6 +526,7 @@ export class JobManager {
             input: text,
             timeoutMs: remaining,
             onCancelSignal: (fn) => job._cancelFns.push(fn),
+            compactLine: adapter.compactLine,
           });
           job._handle = retry.handle;
           if (job.cancelRequested) retry.handle.stop();

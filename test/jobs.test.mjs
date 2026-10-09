@@ -443,6 +443,20 @@ test('opencode: an epilogue after the contract falls back to the earlier part', 
   }
 });
 
+// Tool results ride inside the event stream; a few large reads used to fill
+// the stdout capture and cut off the final answer (invalid_output).
+test('opencode: large tool results do not crowd the answer out of the capture', async () => {
+  process.env.STUB_BEHAVIOR = 'big_reads';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
+    assert.equal(view.status, 'completed', view.failure?.message?.slice(0, 200));
+    assert.match(view.result.summary, /Stub opencode summary/);
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
+});
+
 // opencode 2.x reads credentials from the session database, not auth.json,
 // so a sandbox that only copies auth.json fails its first run with a
 // no-route error -- having created the database schema on the way down.

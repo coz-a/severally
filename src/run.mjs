@@ -158,7 +158,7 @@ export class ProcHandle {
 /**
  * @returns {{handle: ProcHandle, done: Promise<{code, signal, stdout, stderr, timedOut, cancelled, truncated}>}}
  */
-export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSignal }) {
+export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSignal, compactLine = null }) {
   const child = spawn(command, args, {
     cwd,
     env,
@@ -188,7 +188,25 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
     }
   };
 
-  child.stdout.on('data', (c) => append('out', c));
+  // With compactLine, stdout is captured a whole line at a time so the adapter
+  // can shrink each event before it counts against the cap. The pending
+  // partial line is bounded by the cap too; past it, the line is kept as is.
+  let pending = '';
+  const flushLines = () => {
+    const lines = pending.split('\n');
+    pending = lines.pop();
+    for (const l of lines) append('out', `${compactLine(l)}\n`);
+    if (pending.length > cap) { append('out', pending); pending = ''; }
+  };
+  // Decode as a stream: a multibyte character split across two chunks would
+  // otherwise turn into replacement characters inside the answer text.
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (c) => {
+    if (!compactLine) return append('out', c);
+    pending += c;
+    flushLines();
+  });
   child.stderr.on('data', (c) => append('err', c));
 
   const timer = setTimeout(() => {
@@ -212,7 +230,10 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
       resolve({ stdout, stderr, truncated, timedOut, cancelled, ...payload });
     };
     child.on('error', (err) => finish({ code: null, signal: null, spawnError: err.message }));
-    child.on('close', (code, signal) => finish({ code, signal }));
+    child.on('close', (code, signal) => {
+      if (compactLine && pending) { append('out', compactLine(pending)); pending = ''; }
+      finish({ code, signal });
+    });
   });
 
   if (input !== undefined && input !== null) {

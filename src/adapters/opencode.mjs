@@ -193,6 +193,25 @@ export function events(stdout) {
   return out;
 }
 
+/**
+ * Shrink one stdout line before it is captured. A completed tool_use event
+ * carries the tool's whole result -- a 2.x `read` holds the file twice
+ * (state.output plus a metadata preview), ~95 KB a read -- so a few reads
+ * filled rawCaptureMax and cut the final answer off the stream. Nothing here
+ * reads tool results: interpret wants text/step_finish/error, and progress
+ * only the tool name.
+ */
+export function compactLine(line) {
+  if (!line.includes('"tool_use"')) return line;
+  try {
+    const e = JSON.parse(line);
+    if (e?.type !== 'tool_use') return line;
+    return JSON.stringify({ type: e.type, part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } } });
+  } catch {
+    return line;
+  }
+}
+
 /** One line naming the error opencode reported, in classifyMessage's terms. */
 function errorMessage(error) {
   if (!error || typeof error !== 'object') return JSON.stringify(error);

@@ -98,6 +98,21 @@ async function run() {
     stepFinish();
     process.exit(0);
   }
+  if (behavior === 'big_reads') {
+    // Live 2.x streams carry each read's full result twice (state.output and
+    // a metadata preview), ~95 KB per read: ten of them overrun the 400 KB
+    // capture before the answer arrives.
+    const blob = 'x'.repeat(60_000);
+    emit('step_start', { part: { type: 'step-start' } });
+    for (let i = 0; i < 10; i++) {
+      emit('tool_use', { part: { type: 'tool', tool: 'read', state: { status: 'completed', input: { filePath: `f${i}` }, output: blob, metadata: { preview: blob } } } });
+    }
+    emit('text', { part: { type: 'text', text: JSON.stringify(answer()), time: { start: 1, end: 2 } } });
+    stepFinish();
+    // Pipe writes are async: exit only once ~1 MB has drained.
+    process.stdout.write('', () => process.exit(0));
+    return;
+  }
   if (behavior === 'hang') {
     // Same idea as the codex stub: leave a trail before wedging.
     emit('step_start', { part: { type: 'step-start' } });

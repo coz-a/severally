@@ -416,3 +416,12 @@ test('recoverAuthFailure seeds and reports readiness only for a no-route failure
   const refusing = { seed: () => false };
   assert.equal(adapter.recoverAuthFailure({ interpreted: noRoute, sandbox: refusing, model: 'zai-coding-plan/glm-5.3' }), false);
 });
+
+test('compactLine strips tool results but keeps what progress reads', () => {
+  const big = JSON.stringify({ type: 'tool_use', part: { type: 'tool', tool: 'read', state: { status: 'completed', output: 'x'.repeat(1000), metadata: { preview: 'y' } } } });
+  const out = JSON.parse(adapter.compactLine(big));
+  assert.deepEqual(out, { type: 'tool_use', part: { type: 'tool', tool: 'read', state: { status: 'completed' } } });
+  const text = JSON.stringify({ type: 'text', part: { type: 'text', text: 'hi' } });
+  assert.equal(adapter.compactLine(text), text);
+  assert.equal(adapter.compactLine('{partial'), '{partial');
+});
