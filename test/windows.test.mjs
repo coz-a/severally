@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { sandboxEnv, waitFor, reviewRequest } from './helpers.mjs';
 
 sandboxEnv();
@@ -181,8 +181,8 @@ test('invalid Windows bundle leaves the previous runtime and registrations intac
   assert.deepEqual(fs.readdirSync(path.dirname(installed)), ['severally-mcp.mjs']);
 });
 
-test('shipped bundle starts over stdio and completes a consultation', async (t) => {
-  const client = new Client({ name: 'bundle-test', version: '1' });
+for (const [era, version, mode] of [['2025', '2025-11-25', 'legacy'], ['2026', '2026-07-28', { pin: '2026-07-28' }]]) test(`shipped bundle starts over stdio and completes a consultation (${era} protocol)`, async (t) => {
+  const client = new Client({ name: 'bundle-test', version: '1' }, { versionNegotiation: { mode } });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [fileURLToPath(new URL('../plugins/severally/dist/severally-mcp.mjs', import.meta.url))],
@@ -190,6 +190,7 @@ test('shipped bundle starts over stdio and completes a consultation', async (t) 
   });
   t.after(() => client.close());
   await client.connect(transport);
+  assert.equal(client.getNegotiatedProtocolVersion(), version);
   const { reviewRequest } = await import('./helpers.mjs');
   const start = await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } });
   const started = JSON.parse(start.content[0].text);

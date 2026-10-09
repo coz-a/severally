@@ -5,8 +5,8 @@
 //
 //   node scripts/live-mcp-check.mjs
 //   SEVERALLY_CLAUDE_MODEL=claude-haiku-4-5-20251001 node scripts/live-mcp-check.mjs
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { execFileSync } from 'node:child_process';
 
 // The globally installed server, unless another path is given.
