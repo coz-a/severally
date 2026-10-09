@@ -83,9 +83,9 @@ test('every skill teaches the fan-out: targets, group_id, and that agreement is 
 });
 
 // "みんなで相談して" means every consultant this host can reach, which is its
-// three peers and its own CLI on a fresh session. The self member is still a
-// fresh-context re-read rather than another lineage, so the skill has to say
-// so -- but it is asked, because the user asked for everyone.
+// three peers and its own CLI on a fresh session. The self member is not
+// another lineage, so the skill has to say so -- but it is asked, whatever
+// model the lead runs as: a fresh session sheds the lead's drift.
 test('every skill answers "ask everyone" with its three peers and its own CLI', () => {
   const SELF_ID = { claude: 'claude-code', codex: 'codex', antigravity: 'antigravity', opencode: 'opencode' };
   const PEER_IDS = {
@@ -107,8 +107,11 @@ test('every skill answers "ask everyone" with its three peers and its own CLI', 
       new RegExp(`targets: \\["${p0}", "${p1}", "${p2}", "${SELF_ID[host]}"\\]`),
       `${host} skill must show the everyone call as all three peers plus itself`,
     );
-    // The plain two-reading fan-out is still a pair of peers: self is added
-    // because the user asked for everyone, not on the skill's own judgement.
+    // The default second-opinion rule asks a fresh self session too, and no
+    // longer drops it when the lead already runs its lineage's top tier.
+    assert.doesNotMatch(text, /leave\s+the\s+fan-out\s+at\s+the\s+three\s+peers|drops it when you are already running/i,
+      `${host} skill must not drop its own CLI from the default fan-out`);
+    // The plain two-reading fan-out is still a pair of peers.
     assert.match(
       text,
       new RegExp(`targets: \\["${p0}", "${p1}"\\]`),

@@ -25,8 +25,8 @@ target: which consultant to ask. This machine can reach: ${availableTargets().jo
         The everyday names work too: gpt/chatgpt/openai, claude/anthropic, gemini/agy/google, glm/opencode. A
         consultant that is not in that list is refused up front, so do not retry it -- say which ones are
         available instead.
-        Consulting your own CLI is allowed but is a fresh-context check rather than an independent opinion,
-        and the result says so.
+        Consulting your own CLI on a fresh session is encouraged -- it sheds this session's history and
+        drift -- and the result is marked as same lineage.
 targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates,
         up to one per supported consultant).
         Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
