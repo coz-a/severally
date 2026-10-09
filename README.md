@@ -50,26 +50,12 @@ recommendation, and what has not been checked yet (here: whether the fixed query
 cache, which needs production-like data). The checked results stay next to the findings and can be exported
 as Markdown into your repository.
 
-## Compared with pasting into another terminal
-
-You can get something similar by pasting a brief into another terminal. severally adds three things:
-
-- **Only the brief goes across.** Each consultant starts in a fresh child session and never sees your
-  conversation history. In `explore` mode, which asks without showing your plan, the field for the plan
-  (`proposal`) cannot be used
-- **Every answer has the same shape.** Bottom line, findings with grounds, missing information, conditions that
-  would change the judgement, and how to check. If no answer arrives, the reason (rate limit, auth failure,
-  timeout). Ask several and nothing is summarised
-- **Checked results can be written back next to each finding.** For each finding, record "confirmed / not
-  applicable / unverifiable / unverified" and its effect on the decision, then export it as Markdown
-
-Whichever of Codex, Claude Code, Antigravity, or OpenCode you use, you can ask the other three.
-
 ## How it works
 
 Every consultation starts a dedicated child session; it never attaches to an existing one. The consultant
 receives only the brief you wrote, never your conversation history. One request can send the identical brief to
-up to four consultants and collect the answers under one `group_id`. What consultants may and may not do is
+up to four consultants and collect the answers under one `group_id`. In `explore` mode, which asks without
+showing your plan, the field for the plan (`proposal`) cannot be used. What consultants may and may not do is
 listed under "Before you use it".
 
 ```
