@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from '@modelcontextprotocol/server';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { POLICY, VERDICTS, availableTargets, configProblem, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager } from './jobs.mjs';
@@ -82,7 +82,7 @@ export function createServer(manager = new JobManager()) {
       title: 'Start a peer consultation',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       description: startDescription,
-      inputSchema: { request: requestSchema },
+      inputSchema: z.object({ request: requestSchema }),
     },
     async ({ request }) => {
       try {
@@ -110,11 +110,11 @@ export function createServer(manager = new JobManager()) {
         'cli_error, spawn_error) — that is "no advice was obtained", which is different from advice that arrived ' +
         'with thin evidence (see quality.evidence_basis). ' +
         'Pass group_id instead of job_id to fetch a fan-out; wait_ms then waits for every consultant in it.',
-      inputSchema: {
+      inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
         wait_ms: z.number().int().min(0).max(POLICY.maxWaitMs).optional(),
-      },
+      }),
     },
     async ({ job_id, group_id, wait_ms }) => {
       if (Boolean(job_id) === Boolean(group_id)) {
@@ -138,10 +138,10 @@ export function createServer(manager = new JobManager()) {
       description:
         'Stop a running consultation and kill the consultant process and everything it spawned. ' +
         'Pass group_id instead of job_id to stop every consultant in a fan-out.',
-      inputSchema: {
+      inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
-      },
+      }),
     },
     async ({ job_id, group_id }) => {
       if (Boolean(job_id) === Boolean(group_id)) {
@@ -174,7 +174,7 @@ export function createServer(manager = new JobManager()) {
         + 'Pass `reflection` to record what the answer added over what you already expected, when the '
         + 'consultation was started with a `prediction`. A prediction itself cannot be written here: it goes '
         + 'in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
-      inputSchema: {
+      inputSchema: z.object({
         job_id: z.string().min(1).describe('the consultation to record against -- the job_id consult_get returned for it'),
         entries: z.array(z.object({
           id: z.string().min(1).describe('the point this verdict is about: f1, u1, c1 ... as returned in the result'),
@@ -186,7 +186,7 @@ export function createServer(manager = new JobManager()) {
           delta: z.string().min(1).max(4000).describe('what the answer added over what you already expected -- including "nothing new", which is a real outcome'),
           related_item_ids: z.array(z.string().min(1)).max(50).optional().describe('the points this is about: f1, u1, c1 ...'),
         }).optional().describe('written after you have read the answer. There is deliberately no hit/miss label: a point you predicted can still arrive with the evidence that settles it, and a surprise can still be wrong.'),
-      },
+      }),
     },
     async ({ job_id, entries, reflection }) => {
       try {
@@ -216,10 +216,10 @@ export function createServer(manager = new JobManager()) {
         + 'scored. The text is returned, not written: put it wherever the decision belongs in the repository '
         + '(a decision record next to the code it is about), which is the only place a teammate will find it. '
         + 'Reads the on-disk history, so a consultation from an earlier session can still be exported.',
-      inputSchema: {
+      inputSchema: z.object({
         chain_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
-      },
+      }),
     },
     async ({ chain_id, group_id }) => {
       try {
@@ -242,11 +242,11 @@ export function createServer(manager = new JobManager()) {
         + 'initiator: "offer_accepted" to consult_start instead. Together the two show whether offering a '
         + 'consultation when asking for approval is working -- without this, the history only holds the offers '
         + 'that were taken. Self-declared and never checked; it gates nothing.',
-      inputSchema: {
+      inputSchema: z.object({
         question: z.string().trim().min(1).max(4000).describe('what you would have asked, in one sentence'),
         would_ask: z.string().trim().min(1).max(200).optional().describe('whom you offered to ask, e.g. "codex" or "codex, antigravity"'),
         reason: z.string().trim().min(1).max(1000).optional().describe('what the user said, if they gave a reason'),
-      },
+      }),
     },
     async ({ question, would_ask, reason }) => ok(manager.declineOffer({ question, would_ask, reason })),
   );
@@ -259,7 +259,7 @@ export function createServer(manager = new JobManager()) {
       description:
         'Recent consultations from this session, newest first, with their status, one-line summary and who '
         + 'asked for them (initiator), plus how many offered consultations have been declined in total.',
-      inputSchema: { limit: z.number().int().min(1).max(100).optional() },
+      inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional() }),
     },
     async ({ limit }) => ok({
       jobs: manager.list({ limit: limit ?? 20 }),
@@ -287,8 +287,9 @@ export async function main() {
     );
     process.exit(2);
   }
-  const { server, manager } = createServer();
-  const transport = new StdioServerTransport();
+  // One manager for the process; serveStdio builds the server once the client's
+  // opening message has picked the protocol era (2025-era initialize, or 2026-07-28).
+  const manager = new JobManager();
 
   const bye = (signal) => {
     manager.shutdown();
@@ -298,5 +299,5 @@ export async function main() {
   process.on('SIGTERM', () => bye('SIGTERM'));
   process.on('exit', () => manager.shutdown());
 
-  await server.connect(transport);
+  serveStdio(() => createServer(manager).server);
 }
