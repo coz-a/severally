@@ -69,7 +69,7 @@ prediction: optional -- { expected, worry }: the bottom line you expect back and
 
 export function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: 'severally', version: '1.1.0' },
+    { name: 'severally', version: '1.2.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
 
