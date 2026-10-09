@@ -39614,6 +39614,7 @@ function createServer(manager = new JobManager()) {
     "consult_start",
     {
       title: "Start a peer consultation",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       description: startDescription,
       inputSchema: { request: requestSchema }
     },
@@ -39632,6 +39633,7 @@ function createServer(manager = new JobManager()) {
     "consult_get",
     {
       title: "Get consultation status or result",
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description: `Fetch the state of a consultation. Pass wait_ms to block until it finishes (capped at ${POLICY.maxWaitMs} ms, which stays under the request timeout MCP clients apply) instead of polling in a tight loop; a typical consultation takes one to five minutes, so expect to call this several times, and do something else in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, model_unavailable, invalid_output, cli_error, spawn_error) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; wait_ms then waits for every consultant in it.`,
       inputSchema: {
         job_id: external_exports.string().min(1).optional(),
@@ -39654,6 +39656,7 @@ function createServer(manager = new JobManager()) {
     "consult_cancel",
     {
       title: "Cancel a running consultation",
+      annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       description: "Stop a running consultation and kill the consultant process and everything it spawned. Pass group_id instead of job_id to stop every consultant in a fan-out.",
       inputSchema: {
         job_id: external_exports.string().min(1).optional(),
@@ -39675,6 +39678,7 @@ function createServer(manager = new JobManager()) {
     "consult_record",
     {
       title: "Record what checking a point showed",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction.',
       inputSchema: {
         job_id: external_exports.string().min(1).describe("the consultation to record against -- the job_id consult_get returned for it"),
@@ -39709,6 +39713,7 @@ function createServer(manager = new JobManager()) {
     "consult_export",
     {
       title: "Export a consultation as a record to commit",
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description: "Render one consultation (chain_id) or one fan-out (group_id) as Markdown: the brief as it was sent, each consultant's answer as it came back, and the verdicts recorded against each point -- with the ones nobody checked marked as unchecked. Nothing is summarised across consultants and nothing is scored. The text is returned, not written: put it wherever the decision belongs in the repository (a decision record next to the code it is about), which is the only place a teammate will find it. Reads the on-disk history, so a consultation from an earlier session can still be exported.",
       inputSchema: {
         chain_id: external_exports.string().min(1).optional(),
@@ -39728,6 +39733,7 @@ function createServer(manager = new JobManager()) {
     "consult_offer_declined",
     {
       title: "Record that an offered consultation was declined",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       description: 'Call this once when you offered the user a consultation and they said no. It writes one line to ~/.severally/history/offers.jsonl and starts nothing. An accepted offer needs no call here: pass initiator: "offer_accepted" to consult_start instead. Together the two show whether offering a consultation when asking for approval is working -- without this, the history only holds the offers that were taken. Self-declared and never checked; it gates nothing.',
       inputSchema: {
         question: external_exports.string().trim().min(1).max(4e3).describe("what you would have asked, in one sentence"),
@@ -39741,6 +39747,7 @@ function createServer(manager = new JobManager()) {
     "consult_list",
     {
       title: "List recent consultations",
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description: "Recent consultations from this session, newest first, with their status, one-line summary and who asked for them (initiator), plus how many offered consultations have been declined in total.",
       inputSchema: { limit: external_exports.number().int().min(1).max(100).optional() }
     },

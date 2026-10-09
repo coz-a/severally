@@ -42,6 +42,16 @@ test('exposes the three protocol tools, the lead\'s record, and a history listin
   await close();
 });
 
+test('only the tools that change nothing are annotated read-only', async () => {
+  // Codex's auto mode reads readOnlyHint to decide whether a call needs approval.
+  const { client, close } = await connect();
+  const { tools } = await client.listTools();
+  const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort();
+  assert.deepEqual(readOnly, ['consult_export', 'consult_get', 'consult_list']);
+  for (const t of tools) assert.equal(typeof t.annotations?.readOnlyHint, 'boolean', `${t.name} declares readOnlyHint`);
+  await close();
+});
+
 test('consult_record says where job_id comes from, so it is passed instead of dropped', async () => {
   const { client, close } = await connect();
   const { tools } = await client.listTools();

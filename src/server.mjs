@@ -80,6 +80,7 @@ export function createServer(manager = new JobManager()) {
     'consult_start',
     {
       title: 'Start a peer consultation',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       description: startDescription,
       inputSchema: { request: requestSchema },
     },
@@ -99,6 +100,7 @@ export function createServer(manager = new JobManager()) {
     'consult_get',
     {
       title: 'Get consultation status or result',
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         'Fetch the state of a consultation. Pass wait_ms to block until it finishes (capped at ' +
         `${POLICY.maxWaitMs} ms, which stays under the request timeout MCP clients apply) instead of polling ` +
@@ -132,6 +134,7 @@ export function createServer(manager = new JobManager()) {
     'consult_cancel',
     {
       title: 'Cancel a running consultation',
+      annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'Stop a running consultation and kill the consultant process and everything it spawned. ' +
         'Pass group_id instead of job_id to stop every consultant in a fan-out.',
@@ -156,6 +159,7 @@ export function createServer(manager = new JobManager()) {
     'consult_record',
     {
       title: 'Record what checking a point showed',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'Write your own verdict against one or more points of an answer, after you have checked them in the '
         + 'repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . '
@@ -204,6 +208,7 @@ export function createServer(manager = new JobManager()) {
     'consult_export',
     {
       title: 'Export a consultation as a record to commit',
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         'Render one consultation (chain_id) or one fan-out (group_id) as Markdown: the brief as it was sent, '
         + 'each consultant\'s answer as it came back, and the verdicts recorded against each point -- with the '
@@ -230,6 +235,7 @@ export function createServer(manager = new JobManager()) {
     'consult_offer_declined',
     {
       title: 'Record that an offered consultation was declined',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       description:
         'Call this once when you offered the user a consultation and they said no. It writes one line to '
         + '~/.severally/history/offers.jsonl and starts nothing. An accepted offer needs no call here: pass '
@@ -249,6 +255,7 @@ export function createServer(manager = new JobManager()) {
     'consult_list',
     {
       title: 'List recent consultations',
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         'Recent consultations from this session, newest first, with their status, one-line summary and who '
         + 'asked for them (initiator), plus how many offered consultations have been declined in total.',
