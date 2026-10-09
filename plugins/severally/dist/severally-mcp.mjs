@@ -38401,7 +38401,7 @@ prediction: optional -- { expected, worry }: the bottom line you expect back and
         beforehand; consult_record takes the other half (reflection) once you have read the answer.`;
 function createServer(manager = new JobManager()) {
   const server = new McpServer(
-    { name: "severally", version: "1.1.0" },
+    { name: "severally", version: "1.2.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
   const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
