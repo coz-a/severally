@@ -37240,6 +37240,13 @@ function buildInvocation4({ model }) {
     "--format",
     "json",
     ...standaloneSupport ? ["--standalone"] : [],
+    // A failing 2.x run can exit nonzero with no error event and an empty
+    // stderr (observed on GLM after ~5 min), leaving nothing to say why. Its
+    // own warnings and errors on stderr are what the failure message reads.
+    // The level is lowercase-only in 2.x and uppercase-only in 1.x; the
+    // --standalone probe is the 2.x marker, and 1.x keeps its default level.
+    "--print-logs",
+    ...standaloneSupport ? ["--log-level", "warn"] : [],
     // opencode takes the effort as a model variant: provider/model#high.
     "-m",
     chosen.includes("#") ? chosen : `${chosen}#${t.effort}`,
@@ -37277,7 +37284,17 @@ function errorMessage(error62) {
   const detail = error62.data && typeof error62.data === "object" && error62.data.message ? String(error62.data.message) : "";
   return [error62.name, detail].filter(Boolean).join(": ") || JSON.stringify(error62);
 }
-function interpret4({ stdout, stderr, code, truncated = false }) {
+function failureMessage({ errors, stderr, stdout, code, signal, what }) {
+  if (errors.length) {
+    const msg = errors.join(" | ");
+    return { msg, kind: classifyMessage(msg) };
+  }
+  const tail = (stderr || "").trim().slice(-2e3);
+  const where = progress3({ stdout });
+  const status = `opencode exited with ${signal ? `signal ${signal}` : `code ${code}`} ${what}${where ? `; ${where}` : ""}`;
+  return { msg: tail ? `${status}: ${tail}` : status, kind: classifyMessage(tail) };
+}
+function interpret4({ stdout, stderr, code, signal = null, truncated = false }) {
   const all = events2(stdout);
   let text2 = null;
   let textIndex = -1;
@@ -37308,10 +37325,10 @@ function interpret4({ stdout, stderr, code, truncated = false }) {
   }
   const usageRaw = { tokens, cost, steps, events: all.length, truncated: Boolean(truncated) };
   if (!text2) {
-    const msg = errors.join(" | ") || (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `opencode exited with code ${code} and produced no answer`;
+    const { msg, kind } = failureMessage({ errors, stderr, stdout, code, signal, what: "and produced no answer" });
     return {
       ok: false,
-      failureKind: errors.length || code !== 0 ? classifyMessage(msg) : "invalid_output",
+      failureKind: errors.length || code !== 0 ? kind : "invalid_output",
       message: msg,
       usageRaw
     };
@@ -37321,8 +37338,8 @@ function interpret4({ stdout, stderr, code, truncated = false }) {
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
   }
   if (code !== 0) {
-    const msg = errors.join(" | ") || (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `opencode exited with code ${code} after producing an answer`;
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
+    const { msg, kind } = failureMessage({ errors, stderr, stdout, code, signal, what: "after producing an answer" });
+    return { ok: false, failureKind: kind, message: msg, usageRaw };
   }
   if (truncated && !(finishedAfterText && all.length > 0 && all[all.length - 1].type === "step_finish")) {
     return {

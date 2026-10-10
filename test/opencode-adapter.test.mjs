@@ -425,3 +425,41 @@ test('compactLine strips tool results but keeps what progress reads', () => {
   assert.equal(adapter.compactLine(text), text);
   assert.equal(adapter.compactLine('{partial'), '{partial');
 });
+
+// A GLM run was seen exiting nonzero mid-work with no error event and an empty
+// stderr. The message used to be the head of stdout, which hid how the run
+// ended and let a token count ("reasoning":403) classify as auth.
+test('a silent nonzero exit reports status and progress, never raw stdout', () => {
+  const stdout = line({ type: 'step_start', part: { type: 'step-start' } })
+    + line({ type: 'step_finish', part: { type: 'step-finish', tokens: { input: 5846, output: 46, reasoning: 403 } } })
+    + line({ type: 'tool_use', part: { type: 'tool', tool: 'glob', state: { status: 'completed' } } });
+  const out = adapter.interpret({ stdout, stderr: '', code: 1 });
+  assert.equal(out.ok, false);
+  assert.equal(out.failureKind, 'cli_error');
+  assert.equal(out.message, 'opencode exited with code 1 and produced no answer; 3 event(s), last was tool glob');
+
+  const killed = adapter.interpret({ stdout, stderr: 'WARN aborted\n', code: null, signal: 'SIGKILL' });
+  assert.match(killed.message, /^opencode exited with signal SIGKILL .*: WARN aborted$/);
+});
+
+test('the invocation sends opencode logs to stderr, at a level each CLI accepts', async () => {
+  await adapter.resetProbe();
+  const prev = process.env.STUB_HELP;
+  try {
+    delete process.env.STUB_HELP;
+    await adapter.prepare();
+    const v1 = adapter.buildInvocation({}).args;
+    assert.ok(v1.includes('--print-logs'));
+    assert.equal(v1.includes('--log-level'), false, '1.x only accepts uppercase levels');
+
+    await adapter.resetProbe();
+    process.env.STUB_HELP = 'standalone';
+    await adapter.prepare();
+    const v2 = adapter.buildInvocation({}).args;
+    assert.deepEqual(v2.slice(v2.indexOf('--log-level'), v2.indexOf('--log-level') + 2), ['--log-level', 'warn'],
+      '2.x rejects "WARN"; only lowercase levels parse');
+  } finally {
+    if (prev === undefined) delete process.env.STUB_HELP; else process.env.STUB_HELP = prev;
+    await adapter.resetProbe();
+  }
+});
