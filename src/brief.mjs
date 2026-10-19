@@ -184,6 +184,8 @@ function renderExposeManifest(manifest) {
   const skipped = [
     count('symlink') ? `${count('symlink')} symlink(s), or path(s) through one, were skipped, not followed.` : null,
     count('protected') ? `${count('protected')} credential or history path(s) were left out on purpose.` : null,
+    count('ignored') ? `${count('ignored')} path(s) (.git, node_modules, whatever .gitignore excludes) were left out as not source.` : null,
+    count('submodule') ? `${count('submodule')} submodule(s) or nested repositor(ies) were left out; their files are not copied.` : null,
     count('gone') ? `No longer there, so not copied again: ${named('gone')}.` : null,
     count('masked') ? `Not copied again, because the record of the earlier round masked the path: ${named('masked')}.` : null,
     count('replaced') ? `The earlier round's change is replaced by the diff given in this round: ${named('replaced')}.` : null,

@@ -36075,6 +36075,10 @@ function walkDir(root, dir, onFile, totals, skipped) {
   }
   for (const item of items) {
     const child = path4.join(dir, item.name);
+    if (item.name === ".git" || item.name === "node_modules") {
+      skipped.push({ source: child, reason: "ignored" });
+      continue;
+    }
     if (item.isSymbolicLink()) {
       skipped.push({ source: child, reason: "symlink" });
       continue;
@@ -36091,12 +36095,66 @@ function walkDir(root, dir, onFile, totals, skipped) {
     }
   }
 }
+function byPathParts(a, b) {
+  const x = a.split("/");
+  const y = b.split("/");
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return x.length - y.length;
+}
+function walkGit(dir, exposedAs, onFile, totals, skipped) {
+  let listed;
+  let ignored;
+  try {
+    listed = [...new Set(nulSplit(git(dir, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])))];
+    ignored = nulSplit(git(dir, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]));
+  } catch {
+    return false;
+  }
+  if (listed.length === 0) return false;
+  for (const p of ignored) skipped.push({ source: path4.join(dir, p), reason: "ignored" });
+  if (fs3.existsSync(path4.join(dir, ".git"))) skipped.push({ source: path4.join(dir, ".git"), reason: "ignored" });
+  const realDir = fs3.realpathSync(dir);
+  for (const rel of listed.sort(byPathParts)) {
+    const abs = path4.join(dir, rel);
+    if (isProtectedPath(abs)) {
+      skipped.push({ source: abs, reason: "protected" });
+      continue;
+    }
+    let stat;
+    try {
+      stat = fs3.lstatSync(abs);
+    } catch {
+      skipped.push({ source: abs, reason: "gone", exposed_as: `${exposedAs}/${rel}` });
+      continue;
+    }
+    if (stat.isDirectory()) {
+      skipped.push({ source: abs, reason: "submodule" });
+      continue;
+    }
+    const inside = (() => {
+      try {
+        return fs3.realpathSync(abs).startsWith(realDir + path4.sep);
+      } catch {
+        return false;
+      }
+    })();
+    if (stat.isSymbolicLink() || !inside) {
+      skipped.push({ source: abs, reason: "symlink" });
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    onFile(abs, path4.normalize(rel));
+    checkBudget(totals);
+  }
+  return true;
+}
 function walkEntries(exposePaths, onFile) {
   const totals = { files: 0, bytes: 0 };
   const skipped = [];
   const entries = exposePaths.map((p, i) => {
     const { source, index } = typeof p === "string" ? { source: p, index: i } : p;
     const stat = statEntry(source);
+    const exposedAs = `workspace/${index}-${path4.basename(source)}`;
     const before = { files: totals.files, bytes: totals.bytes };
     const paths = [];
     if (isProtectedPath(source)) {
@@ -36105,18 +36163,17 @@ function walkEntries(exposePaths, onFile) {
       onFile(source, "", index, source, totals);
       checkBudget(totals);
     } else {
-      walkDir(source, source, (abs, rel) => {
+      const add = (abs, rel) => {
         paths.push(rel.split(path4.sep).join("/"));
         onFile(abs, rel, index, source, totals);
-      }, totals, skipped);
+      };
+      walkGit(source, exposedAs, add, totals, skipped) || walkDir(source, source, add, totals, skipped);
     }
     return {
       index,
       source,
       kind: stat.isDirectory() ? "directory" : "file",
-      // Indexed, so two entries whose basenames collide (two different
-      // util.mjs) stay apart, and the brief can name each one exactly.
-      exposedAs: `workspace/${index}-${path4.basename(source)}`,
+      exposedAs,
       files: totals.files - before.files,
       bytes: totals.bytes - before.bytes,
       paths: paths.sort()
@@ -36509,6 +36566,8 @@ function renderExposeManifest(manifest) {
   const skipped = [
     count("symlink") ? `${count("symlink")} symlink(s), or path(s) through one, were skipped, not followed.` : null,
     count("protected") ? `${count("protected")} credential or history path(s) were left out on purpose.` : null,
+    count("ignored") ? `${count("ignored")} path(s) (.git, node_modules, whatever .gitignore excludes) were left out as not source.` : null,
+    count("submodule") ? `${count("submodule")} submodule(s) or nested repositor(ies) were left out; their files are not copied.` : null,
     count("gone") ? `No longer there, so not copied again: ${named("gone")}.` : null,
     count("masked") ? `Not copied again, because the record of the earlier round masked the path: ${named("masked")}.` : null,
     count("replaced") ? `The earlier round's change is replaced by the diff given in this round: ${named("replaced")}.` : null
