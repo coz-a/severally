@@ -36584,6 +36584,25 @@ function renderExposeManifest(manifest) {
   ].join("\n");
 }
 var clip = (s2, max = 400) => s2.length > max ? `${s2.slice(0, max)}...` : s2;
+var HISTORY_CHARS = 4e4;
+function renderRound(p) {
+  const tag = (id2) => `r${p.round}.${id2}`;
+  const verdict = (x) => x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ""}` : "";
+  const list = (title, items, line) => items?.length ? [title, ...items.map(line)].join("\n") : null;
+  return [
+    `### Round ${p.round} (${p.mode})`,
+    `Question asked: ${p.question}`,
+    `Your answer, summarised: ${p.summary}`,
+    list(
+      "Points you raised:",
+      p.findings,
+      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `
+  grounds: ${clip(f.grounds)}` : ""}`
+    ),
+    list("Unknowns you named:", p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`),
+    list("Checks you proposed:", p.next_checks, (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}`)
+  ].filter(Boolean).join("\n");
+}
 function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
   parts.push(renderGuardrails(Boolean(exposeManifest), req.network));
@@ -36612,19 +36631,19 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
   if (chain.priorRounds && chain.priorRounds.length) {
     parts.push("");
     parts.push("## Earlier rounds of this same consultation");
-    for (const p of chain.priorRounds) {
-      parts.push(
-        [
-          `### Round ${p.round} (${p.mode})`,
-          `Question asked: ${p.question}`,
-          `Your answer, summarised: ${p.summary}`,
-          p.findings && p.findings.length ? [
-            "Points you raised, with what the lead's own check found -- confirmed: it held; not_applicable: checked, and it does not apply here; unverifiable: could not be checked; no verdict: not checked yet:",
-            ...p.findings.map((f) => `- ${f.id}: ${clip(f.point)}${f.verdict ? ` -- lead's verdict: ${f.verdict}${f.effect ? ` (${clip(f.effect)})` : ""}` : ""}`)
-          ].join("\n") : null
-        ].filter(Boolean).join("\n")
-      );
+    parts.push(
+      "Each point carries the lead's own check where there is one -- confirmed: it held; not_applicable: checked, and it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet."
+    );
+    const blocks = chain.priorRounds.map(renderRound);
+    let kept = 0;
+    let used = 0;
+    for (let i = blocks.length - 1; i >= 0 && (kept === 0 || used + blocks[i].length <= HISTORY_CHARS); i--) {
+      used += blocks[i].length;
+      kept += 1;
     }
+    const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
+    if (left.length) parts.push(`(Round${left.length > 1 ? "s" : ""} ${left.join(", ")} left out to keep this brief within its size.)`);
+    parts.push(...blocks.slice(blocks.length - kept));
     parts.push("");
     parts.push(
       "This round is a follow-up. The lead has narrowed the exchange to the divergences above. Do not restate your earlier answer; address what is new, and say plainly if the new information changes or does not change your position."
@@ -38931,9 +38950,8 @@ var JobManager = class {
   }
   // The rounds before a follow-up, from the history on disk and from memory
   // (memory wins: it can hold a verdict written since the round was saved).
-  // Each finding goes with the lead's verdict on it, so the consultant answers
-  // knowing which of its points were checked and how they came out. Every
-  // finding that carries a verdict is passed; of the rest, the first five.
+  // Each point goes with the lead's verdict on it, so the consultant answers
+  // knowing which of its points were checked and how they came out.
   #chainRounds(chainId) {
     const byRound = new Map(loadChain(chainId).map((j) => [j.round, j]));
     for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
@@ -38942,9 +38960,22 @@ var JobManager = class {
   #chainHistory(chainId) {
     return this.#chainRounds(chainId).filter((j) => j.status === "completed" && j.result).sort((a, b) => a.round - b.round).map((j) => {
       const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
-      let unchecked = 0;
-      const findings = j.result.findings.filter((f) => verdicts.has(f.id) || unchecked++ < 5).map((f) => ({ id: f.id, point: f.point, verdict: verdicts.get(f.id)?.verdict ?? null, effect: verdicts.get(f.id)?.effect ?? null }));
-      return { round: j.round, mode: j.mode, question: j.question, summary: j.result.summary, findings };
+      const ordered = (items, shape) => [
+        ...items.filter((x) => verdicts.has(x.id)),
+        ...items.filter((x) => !verdicts.has(x.id))
+      ].map((x) => ({ id: x.id, ...shape(x), verdict: verdicts.get(x.id)?.verdict ?? null, effect: verdicts.get(x.id)?.effect ?? null }));
+      const checked = (x) => x.verdict !== null;
+      const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
+      return {
+        round: j.round,
+        mode: j.mode,
+        question: j.question,
+        summary: j.result.summary,
+        // Every checked finding; of the rest, the first five.
+        findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
+        unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
+        next_checks: ordered(j.result.next_checks, (c) => ({ point: c.check })).slice(0, 5)
+      };
     });
   }
   #evict() {
@@ -40286,7 +40317,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Record what checking a point showed",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. A follow-up to this job shows the consultant each finding\'s verdict and effect (credential-masked, like the brief), never the note. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction. For a fan-out, record every member in one call: records: [{ job_id, entries, reflection? }, ...] in place of job_id/entries/reflection. Every record is checked first; if any job or id is wrong, nothing is written and each bad one is named. A job whose write fails is listed under results with its error, not counted as saved.',
+      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. A follow-up to this job shows the consultant each point\'s verdict and effect (credential-masked, like the brief), never the note. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction. For a fan-out, record every member in one call: records: [{ job_id, entries, reflection? }, ...] in place of job_id/entries/reflection. Every record is checked first; if any job or id is wrong, nothing is written and each bad one is named. A job whose write fails is listed under results with its error, not counted as saved.',
       inputSchema: external_exports.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),

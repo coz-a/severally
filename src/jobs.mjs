@@ -558,9 +558,8 @@ export class JobManager {
 
   // The rounds before a follow-up, from the history on disk and from memory
   // (memory wins: it can hold a verdict written since the round was saved).
-  // Each finding goes with the lead's verdict on it, so the consultant answers
-  // knowing which of its points were checked and how they came out. Every
-  // finding that carries a verdict is passed; of the rest, the first five.
+  // Each point goes with the lead's verdict on it, so the consultant answers
+  // knowing which of its points were checked and how they came out.
   #chainRounds(chainId) {
     const byRound = new Map(store.loadChain(chainId).map((j) => [j.round, j]));
     for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
@@ -573,11 +572,24 @@ export class JobManager {
       .sort((a, b) => a.round - b.round)
       .map((j) => {
         const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
-        let unchecked = 0;
-        const findings = j.result.findings
-          .filter((f) => verdicts.has(f.id) || unchecked++ < 5)
-          .map((f) => ({ id: f.id, point: f.point, verdict: verdicts.get(f.id)?.verdict ?? null, effect: verdicts.get(f.id)?.effect ?? null }));
-        return { round: j.round, mode: j.mode, question: j.question, summary: j.result.summary, findings };
+        // The checked points first, then the unchecked ones, each with the
+        // lead's verdict and effect when there is one.
+        const ordered = (items, shape) => [
+          ...items.filter((x) => verdicts.has(x.id)),
+          ...items.filter((x) => !verdicts.has(x.id)),
+        ].map((x) => ({ id: x.id, ...shape(x), verdict: verdicts.get(x.id)?.verdict ?? null, effect: verdicts.get(x.id)?.effect ?? null }));
+        const checked = (x) => x.verdict !== null;
+        const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
+        return {
+          round: j.round,
+          mode: j.mode,
+          question: j.question,
+          summary: j.result.summary,
+          // Every checked finding; of the rest, the first five.
+          findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
+          unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
+          next_checks: ordered(j.result.next_checks, (c) => ({ point: c.check })).slice(0, 5),
+        };
       });
   }
 

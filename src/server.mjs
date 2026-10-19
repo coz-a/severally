@@ -267,7 +267,7 @@ export function createServer(manager = new JobManager()) {
         + 'not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not '
         + 'checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what '
         + 'it changed about your decision; note is the evidence you used. A follow-up to this job shows the '
-        + 'consultant each finding\'s verdict and effect (credential-masked, like the brief), never the note. '
+        + 'consultant each point\'s verdict and effect (credential-masked, like the brief), never the note. '
         + 'Recording the same id again replaces '
         + 'that entry. This server stores what you write and counts the verdicts; it never infers one, and never '
         + 'decides a consultation was worth it. The entry is saved beside the answer and the brief in '
