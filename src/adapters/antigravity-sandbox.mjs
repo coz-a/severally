@@ -55,7 +55,11 @@ const WEB_TOOLS = new Set(['search_web', 'read_url_content']);
 // call through. So the hook always answers, allow included, and anything it
 // cannot read or check -- broken JSON, a stdin error, arguments nested past
 // what it walks, an exception of its own -- is denied. A hook that never runs
-// or is killed answers nothing, and that stays agy's call. For the file-reading tool
+// or is killed answers nothing, and that stays agy's call: agy 1.4.2 fails such
+// a call rather than running it ("JSON hook ... failed: command failed: ..."),
+// checked live on 2026-10-20 with invoke_subagent against a hook that exited 1,
+// exited 2, outlived the 10 s timeout, and whose script was missing -- each
+// time the step ended in ERROR and no child agent started. For the file-reading tool
 // and for a file: URL, every path-like parameter is also checked against the
 // protected roots and file names, before and after resolving links, with ~
 // expanded: a consultant that can browse must not read a credential and
