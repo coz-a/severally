@@ -24336,7 +24336,7 @@ var LADDER_ERROR_HTTP_STATUS = {
   [ProtocolErrorCode.MissingRequiredClientCapability]: 400,
   [HEADER_MISMATCH_ERROR_CODE]: 400
 };
-function rejection(rung, cell, httpStatus, error62, settled) {
+function rejection(rung, cell, httpStatus, error62, settled2) {
   return {
     kind: "reject",
     rung,
@@ -24345,7 +24345,7 @@ function rejection(rung, cell, httpStatus, error62, settled) {
     code: error62.code,
     message: error62.message,
     ...error62.data !== void 0 && { data: error62.data },
-    settled
+    settled: settled2
   };
 }
 function carriesValidModernEnvelopeClaim(params) {
@@ -34560,28 +34560,28 @@ var StdioServerTransport = class {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
     return new Promise((resolve, reject) => {
       const json2 = serializeMessage(message);
-      let settled = false;
+      let settled2 = false;
       const onError = (error62) => {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
         reject(error62);
       };
       const onDrain = () => {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
         resolve();
       };
       this._stdout.once("error", onError);
       if (this._stdout.write(json2)) {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         this._stdout.off("error", onError);
         resolve();
-      } else if (!settled) this._stdout.once("drain", onDrain);
+      } else if (!settled2) this._stdout.once("drain", onDrain);
     });
   }
 };
@@ -35484,9 +35484,10 @@ var POLICY = Object.freeze({
   // going beyond that is an operator decision with quota to match.
   maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
   maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
-  // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
-  // request timeout that MCP clients apply, so a long wait does not blow up as
-  // a client-side timeout while the consultation is still healthy.
+  // Upper bound for consult_get(wait_ms), and its default. 45 s stays under the
+  // 60 s some MCP clients allow a tool call, so a long wait does not blow up as
+  // a client-side timeout while the consultation is still healthy; a client
+  // registration that is known to wait longer raises it (scripts/install.mjs).
   maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
   input: Object.freeze({
     questionMax: 4e3,
@@ -37067,10 +37068,10 @@ function runChild({
     });
   }
   const done = new Promise((resolve) => {
-    let settled = false;
+    let settled2 = false;
     const finish = (payload) => {
-      if (settled) return;
-      settled = true;
+      if (settled2) return;
+      settled2 = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
       resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, ...payload });
@@ -38278,11 +38279,11 @@ async function prepare() {
   if (standaloneSupport !== null) return;
   if (!probePromise) {
     probePromise = new Promise((resolve) => {
-      let settled = false;
+      let settled2 = false;
       let timer = null;
       const finishProbe = (supported, cache) => {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         if (timer) clearTimeout(timer);
         if (cache) standaloneSupport = Boolean(supported);
         else probePromise = null;
@@ -39424,23 +39425,23 @@ var JobManager = class {
       reflection_saved: job.reflection != null
     };
   }
-  async wait(jobId, waitMs, opts) {
+  async wait(jobId, waitMs, opts, signal) {
     const job = this.jobs.get(jobId);
-    if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs);
+    if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs, signal);
     const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     if (budget === 0 || job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
       return this.view(jobId, opts);
     }
-    await Promise.race([job.promise, new Promise((r) => setTimeout(r, budget).unref?.())]);
+    await settled(job.promise, budget, signal);
     return this.view(jobId, opts);
   }
   // A consultation another process runs has no promise here, so its history
   // is re-read once a second until it is no longer running or the wait is up.
-  async #waitOnDisk(read, waitMs) {
+  async #waitOnDisk(read, waitMs, signal) {
     const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     let view = read();
-    while (view && ["running", "queued"].includes(view.status) && Date.now() < until) {
-      await new Promise((r) => setTimeout(r, Math.min(1e3, until - Date.now())));
+    while (view && ["running", "queued"].includes(view.status) && Date.now() < until && !signal?.aborted) {
+      await settled(null, Math.min(1e3, until - Date.now()), signal);
       view = read();
     }
     return view;
@@ -39523,16 +39524,13 @@ var JobManager = class {
     if (!group) return null;
     return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean), opts);
   }
-  async waitGroup(groupId, waitMs, opts) {
+  async waitGroup(groupId, waitMs, opts, signal) {
     const group = this.groups.get(groupId);
-    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs);
+    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
     const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     if (budget > 0) {
       const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
-      await Promise.race([
-        Promise.all(promises),
-        new Promise((r) => setTimeout(r, budget).unref?.())
-      ]);
+      await settled(Promise.all(promises), budget, signal);
     }
     return this.groupView(groupId, opts);
   }
@@ -39571,11 +39569,11 @@ var JobManager = class {
         job._handle.stop();
       }
     }
-    const settled = Promise.all(live.map((j) => j.promise).filter(Boolean));
-    await Promise.race([settled, new Promise((r) => setTimeout(r, graceMs).unref?.())]);
+    const settled2 = Promise.all(live.map((j) => j.promise).filter(Boolean));
+    await Promise.race([settled2, new Promise((r) => setTimeout(r, graceMs).unref?.())]);
     for (const job of live) if (job._handle) handles.push(job._handle);
     for (const h of new Set(handles)) h.forceKill();
-    await Promise.race([settled, new Promise((r) => setTimeout(r, 1e3).unref?.())]);
+    await Promise.race([settled2, new Promise((r) => setTimeout(r, 1e3).unref?.())]);
   }
   /** The synchronous last resort for process exit: no waiting is possible there. */
   killNow() {
@@ -39616,6 +39614,22 @@ function partialOutput(run) {
     stopped_at: (/* @__PURE__ */ new Date()).toISOString(),
     note: "raw output stream of a consultant that was stopped at its time budget; unparsed and unverified, not an answer"
   };
+}
+async function settled(promise2, ms, signal) {
+  let timer;
+  let stop;
+  const until = new Promise((resolve) => {
+    stop = resolve;
+    timer = setTimeout(resolve, ms);
+    if (signal?.aborted) resolve();
+    else signal?.addEventListener("abort", resolve, { once: true });
+  });
+  try {
+    await (promise2 ? Promise.race([promise2, until]) : until);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", stop);
+  }
 }
 function recordableIds(result) {
   return [
@@ -40159,7 +40173,8 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 
 // src/server.mjs
 var SEVERALLY_VERSION = "2.0.0";
-var DEFAULT_WAIT_MS = Math.min(POLICY.maxWaitMs, 45e3);
+var DEFAULT_WAIT_MS = POLICY.maxWaitMs;
+var PROGRESS_EVERY_MS = 15e3;
 var semver = (v) => String(v).split(".").map(Number);
 var older = (a, b) => {
   const [x, y] = [semver(a), semver(b)];
@@ -40320,7 +40335,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before answering, which stays under the request timeout MCP clients apply; wait_ms sets another wait, and wait_ms: 0 answers at once. A typical consultation takes one to ten minutes, so expect to call this several times, and do something else in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; the wait then covers every consultant in it. A fan-out comes back sized to read in one go: each member is its status, failure and job_id, and \`comparison.by_target\` holds every consultant's stance, summary and findings (with their ids) side by side, cut to fixed lengths where \`truncated\` says so. consult_get({ job_id, ids: ["f2", "u1"] }) on a member returns just those points, each whole with its grounds and your verdict (\`recorded\`): fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes -- not only where they diverge. consult_get({ job_id }) returns the whole answer. A finished consultation names its brief (size, sha256, round file) rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
+      description: `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before answering, a limit set to stay under this client's tool-call timeout; wait_ms sets another wait, and wait_ms: 0 answers at once. A typical consultation takes one to ten minutes; call this again while it runs, and pass a shorter wait_ms when you have independent work to do in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; the wait then covers every consultant in it. A fan-out comes back sized to read in one go: each member is its status, failure and job_id, and \`comparison.by_target\` holds every consultant's stance, summary and findings (with their ids) side by side, cut to fixed lengths where \`truncated\` says so. consult_get({ job_id, ids: ["f2", "u1"] }) on a member returns just those points, each whole with its grounds and your verdict (\`recorded\`): fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes -- not only where they diverge. consult_get({ job_id }) returns the whole answer. A finished consultation names its brief (size, sha256, round file) rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -40329,14 +40344,27 @@ function createServer(manager = new JobManager()) {
         ids: external_exports.array(external_exports.string().min(1)).min(1).max(100).optional().describe("with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote")
       })
     },
-    async ({ job_id, group_id, wait_ms, detail, ids }) => {
+    async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
       }
       if (ids && (group_id || detail)) {
         return fail({ error: "invalid_request", message: "ids goes with job_id alone: a point id belongs to one consultant's answer" });
       }
-      const view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }) : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail });
+      const req = ctx?.mcpReq;
+      const token = req?._meta?.progressToken;
+      let beats = 0;
+      const timer = token === void 0 ? null : setInterval(() => {
+        beats += 1;
+        req.notify({ method: "notifications/progress", params: { progressToken: token, progress: beats, message: "the consultation is still running" } }).catch(() => {
+        });
+      }, PROGRESS_EVERY_MS);
+      let view;
+      try {
+        view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal) : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+      } finally {
+        clearInterval(timer);
+      }
       if (!view) {
         return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
       }

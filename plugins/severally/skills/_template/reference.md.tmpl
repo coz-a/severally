@@ -76,6 +76,9 @@ shared by every severally session on this machine; the group starts only if ever
 consultation's quota per consultant. To ask every member again, follow up the group: `followup_to: "<group_id>"`
 with no `target` or `targets` (see Follow-ups).
 
+While you wait, `consult_get` blocks for up to its limit (ten minutes where the client allows it). To work on
+something independent in between, pass a shorter `wait_ms` and come back.
+
 `comparison.by_target` holds, per consultant: stance, summary, confidence, evidence basis, finding points (each
 with its `id` and severity), `severity_counts`, `decision_changers`, alternatives, unknowns (`u1` …),
 next_checks (`c1` …), remaining disagreements, its `caveat`, and how many of its points carry no verdict yet.

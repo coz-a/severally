@@ -1148,24 +1148,24 @@ export class JobManager {
     };
   }
 
-  async wait(jobId, waitMs, opts) {
+  async wait(jobId, waitMs, opts, signal) {
     const job = this.jobs.get(jobId);
-    if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs);
+    if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs, signal);
     const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     if (budget === 0 || job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
       return this.view(jobId, opts);
     }
-    await Promise.race([job.promise, new Promise((r) => setTimeout(r, budget).unref?.())]);
+    await settled(job.promise, budget, signal);
     return this.view(jobId, opts);
   }
 
   // A consultation another process runs has no promise here, so its history
   // is re-read once a second until it is no longer running or the wait is up.
-  async #waitOnDisk(read, waitMs) {
+  async #waitOnDisk(read, waitMs, signal) {
     const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     let view = read();
-    while (view && ['running', 'queued'].includes(view.status) && Date.now() < until) {
-      await new Promise((r) => setTimeout(r, Math.min(1000, until - Date.now())));
+    while (view && ['running', 'queued'].includes(view.status) && Date.now() < until && !signal?.aborted) {
+      await settled(null, Math.min(1000, until - Date.now()), signal);
       view = read();
     }
     return view;
@@ -1279,18 +1279,15 @@ export class JobManager {
     return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean), opts);
   }
 
-  async waitGroup(groupId, waitMs, opts) {
+  async waitGroup(groupId, waitMs, opts, signal) {
     const group = this.groups.get(groupId);
     // A fan-out from another process or an earlier session: nothing here to
     // wait on, so report what the history holds.
-    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs);
+    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
     const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     if (budget > 0) {
       const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
-      await Promise.race([
-        Promise.all(promises),
-        new Promise((r) => setTimeout(r, budget).unref?.()),
-      ]);
+      await settled(Promise.all(promises), budget, signal);
     }
     return this.groupView(groupId, opts);
   }
@@ -1406,6 +1403,26 @@ function partialOutput(run) {
     stopped_at: new Date().toISOString(),
     note: 'raw output stream of a consultant that was stopped at its time budget; unparsed and unverified, not an answer',
   };
+}
+
+// Waits for `promise` (null: for nothing), at most `ms`, and no longer than
+// `signal` stays unaborted. The timer goes with the wait: a ten-minute wait
+// cut short leaves nothing behind.
+async function settled(promise, ms, signal) {
+  let timer;
+  let stop;
+  const until = new Promise((resolve) => {
+    stop = resolve;
+    timer = setTimeout(resolve, ms);
+    if (signal?.aborted) resolve();
+    else signal?.addEventListener('abort', resolve, { once: true });
+  });
+  try {
+    await (promise ? Promise.race([promise, until]) : until);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', stop);
+  }
 }
 
 function recordableIds(result) {

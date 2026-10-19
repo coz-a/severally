@@ -153,6 +153,11 @@ test('POSIX manual mode needs no global npm install and registers the copied run
   for (const cli of ['codex', 'claude', 'agy', 'opencode']) {
     assert.deepEqual(state[cli], [process.execPath, path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
   }
+  // Only a client known to outwait ten minutes gets the long consult_get wait.
+  const adds = calls.filter((args) => args[1] === 'mcp' && args[2] === 'add');
+  const longWait = (cli) => adds.find((args) => args[0] === cli).includes('SEVERALLY_MAX_WAIT_MS=600000');
+  assert.equal(longWait('claude'), true);
+  for (const cli of ['agy', 'opencode']) assert.equal(longWait(cli), false, cli);
 });
 
 // opencode resolves its global config from XDG_CONFIG_HOME when set (its own

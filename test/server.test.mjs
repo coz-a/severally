@@ -105,6 +105,38 @@ test('protocol violations come back as guidance, not as a crash', async () => {
   await close();
 });
 
+test('a waiting consult_get sends progress, and a request the client cancels stops the wait', async (t) => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
+  const { client, manager, close } = await connect();
+  const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
+
+  // The interval is 15 s; mocked, so the test does not sit through it.
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const progress = [];
+  const pending = client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 1500 } },
+    { onprogress: (p) => progress.push(p) });
+  await new Promise((r) => setTimeout(r, 100));
+  t.mock.timers.tick(15_000);
+  assert.equal(payload(await pending).status, 'running');
+  assert.equal(progress.length, 1);
+  assert.match(progress[0].message, /still running/);
+  t.mock.timers.reset();
+
+  // The wait itself ends with the signal, not when its budget runs out.
+  const ac = new AbortController();
+  const t0 = Date.now();
+  const waiting = manager.wait(started.job_id, 10_000, {}, ac.signal);
+  setTimeout(() => ac.abort(), 50);
+  assert.equal((await waiting).status, 'running');
+  assert.ok(Date.now() - t0 < 2_000, `waited ${Date.now() - t0} ms after the abort`);
+
+  manager.cancel(started.job_id);
+  await manager.jobs.get(started.job_id).promise;
+  process.env.STUB_BEHAVIOR = 'ok';
+  await close();
+});
+
 test('cancel over MCP reports the effect; unknown ids are handled', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
   process.env.SEVERALLY_TIMEOUT_MS = '2000';

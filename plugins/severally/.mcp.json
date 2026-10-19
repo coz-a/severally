@@ -3,7 +3,8 @@
     "severally": {
       "type": "stdio",
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/severally-mcp.mjs"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/severally-mcp.mjs"],
+      "env": { "SEVERALLY_MAX_WAIT_MS": "600000" }
     }
   }
 }

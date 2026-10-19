@@ -12,9 +12,12 @@ import { exportChain, ExportError } from './export.mjs';
 export const SEVERALLY_VERSION = '2.0.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
-// would otherwise return at once and be repeated. Never above 45 s, whatever
-// max_wait_ms allows, so the default stays under a 60 s client timeout.
-const DEFAULT_WAIT_MS = Math.min(POLICY.maxWaitMs, 45_000);
+// would otherwise return at once and be repeated. It is max_wait_ms itself,
+// 45 s unless the registration of a client known to wait longer raised it.
+const DEFAULT_WAIT_MS = POLICY.maxWaitMs;
+// While consult_get waits, the client hears from it this often: a client that
+// counts silence against the call keeps it open.
+const PROGRESS_EVERY_MS = 15_000;
 
 const semver = (v) => String(v).split('.').map(Number);
 const older = (a, b) => { const [x, y] = [semver(a), semver(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
@@ -185,9 +188,9 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before ` +
-        'answering, which stays under the request timeout MCP clients apply; wait_ms sets another wait, and ' +
-        'wait_ms: 0 answers at once. A typical consultation takes one to ten minutes, so expect to call this ' +
-        'several times, and do something else in between. A completed job carries the structured ' +
+        'answering, a limit set to stay under this client\'s tool-call timeout; wait_ms sets another wait, and ' +
+        'wait_ms: 0 answers at once. A typical consultation takes one to ten minutes; call this again while it ' +
+        'runs, and pass a shorter wait_ms when you have independent work to do in between. A completed job carries the structured ' +
         'answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, ' +
         'invalid_output, cli_error, spawn_error, interrupted) — that is "no advice was obtained", which is different from advice that arrived ' +
         'with thin evidence (see quality.evidence_basis). ' +
@@ -209,16 +212,30 @@ export function createServer(manager = new JobManager()) {
           .describe('with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote'),
       }),
     },
-    async ({ job_id, group_id, wait_ms, detail, ids }) => {
+    async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
       }
       if (ids && (group_id || detail)) {
         return fail({ error: 'invalid_request', message: 'ids goes with job_id alone: a point id belongs to one consultant\'s answer' });
       }
-      const view = group_id
-        ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail })
-        : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail });
+      const req = ctx?.mcpReq;
+      const token = req?._meta?.progressToken;
+      let beats = 0;
+      const timer = token === undefined ? null : setInterval(() => {
+        beats += 1;
+        req.notify({ method: 'notifications/progress', params: { progressToken: token, progress: beats, message: 'the consultation is still running' } })
+          .catch(() => {});
+      }, PROGRESS_EVERY_MS);
+      let view;
+      try {
+        // A request the client cancels stops the wait with it.
+        view = group_id
+          ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal)
+          : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+      } finally {
+        clearInterval(timer);
+      }
       if (!view) {
         return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
       }
