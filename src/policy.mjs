@@ -261,7 +261,7 @@ export const POLICY = Object.freeze({
  * different request, not a slower one.
  */
 export function timeoutMs(consultant) {
-  return consultant?.timeoutMs ?? limit('SEVERALLY_TIMEOUT_MS', cfgServer.timeout_ms, 3_600_000, 1_000, 7_200_000);
+  return consultant?.timeoutMs ?? limit('SEVERALLY_TIMEOUT_MS', cfgServer.timeout_ms, 1_800_000, 1_000, 7_200_000);
 }
 
 /**

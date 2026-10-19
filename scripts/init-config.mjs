@@ -53,7 +53,7 @@ export function renderConfig() {
     '  // ranking: optional, higher first -- which consultant a name that fits several goes to,',
     '  // before the built-in rules (opus over sonnet, newer version). e.g. "ranking": ["sol", "opus"]',
     '  //',
-    '  // server: optional -- max_rounds (5, 1-20), max_concurrent (9, 1-9), timeout_ms (3600000),',
+    '  // server: optional -- max_rounds (5, 1-20), max_concurrent (9, 1-9), timeout_ms (1800000),',
     '  //   max_wait_ms (45000), max_jobs_retained, kill_grace_ms: see CONFIG.md',
     '  "clis": {},',
     '  "consultants": {',

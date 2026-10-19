@@ -35520,7 +35520,7 @@ var POLICY = Object.freeze({
   })
 });
 function timeoutMs(consultant) {
-  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 36e5, 1e3, 72e5);
+  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 18e5, 1e3, 72e5);
 }
 function agyExitGraceMs() {
   return {
