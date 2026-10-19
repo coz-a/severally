@@ -169,12 +169,14 @@ test('cancelling a group stops every member', async () => {
   assert.equal(cancelled.members.every((m) => m.status === 'cancelling' || m.status === 'cancelled'), true);
   assert.equal(cancelled.status, 'cancelling');
   assert.match(cancelled.cancel_effect, /every consultant process group/);
-  // One payload must not report two different statuses for the same job: a
-  // member's status is said once, in members.
-  for (const t of cancelled.comparison.by_target) assert.equal('status' in t, false);
+  // Nobody has finished yet, so there is no side-by-side to carry.
+  assert.equal(cancelled.comparison, null);
   await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
   const after = mgr.groupView(started.group_id);
   assert.equal(after.members.every((m) => m.status === 'cancelled'), true);
+  // One payload must not report two different statuses for the same job: a
+  // member's status is said once, in members.
+  for (const t of after.comparison.by_target) assert.equal('status' in t, false);
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 

@@ -70,8 +70,10 @@ test('the lead\'s verdict on a finding is stored as written and reaches the roun
     ],
   });
   assert.equal(out.job_id, view.job_id);
-  assert.equal(out.record.entries.length, 2);
+  // The answer counts what was saved; it does not echo the entries back.
+  assert.equal(out.record.entries, undefined);
   assert.deepEqual(out.record.verdicts, { confirmed: 1, unverified: 1 });
+  assert.deepEqual(out.record.coverage, { recordable: 3, recorded: 2 });
 
   const stored = roundFile(view).record;
   assert.equal(stored.entries[0].id, 'f1');
@@ -86,7 +88,7 @@ test('coverage is counted, never inferred: unrecorded points stay unrecorded', a
   const { mgr, view } = await completed();
   const out = mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'not_applicable' }] });
   assert.deepEqual(out.record.coverage, { recordable: 3, recorded: 1 });
-  assert.deepEqual(out.record.unrecorded, ['u1', 'c1']);
+  assert.deepEqual(mgr.view(view.job_id).record.unrecorded, ['u1', 'c1']);
 });
 
 test('a verdict must name a point the consultant actually made', async () => {
@@ -111,12 +113,13 @@ test('recording the same id again replaces that verdict and leaves the others al
     { id: 'f1', verdict: 'unverified' },
     { id: 'u1', verdict: 'unverifiable', effect: 'No dashboard access.' },
   ] });
-  const out = mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Measured.' }] });
-  assert.equal(out.record.entries.length, 2);
-  const f1 = out.record.entries.find((e) => e.id === 'f1');
+  mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Measured.' }] });
+  const { record } = mgr.view(view.job_id);
+  assert.equal(record.entries.length, 2);
+  const f1 = record.entries.find((e) => e.id === 'f1');
   assert.equal(f1.verdict, 'confirmed');
   assert.equal(f1.effect, 'Measured.');
-  assert.equal(out.record.entries.find((e) => e.id === 'u1').verdict, 'unverifiable');
+  assert.equal(record.entries.find((e) => e.id === 'u1').verdict, 'unverifiable');
 });
 
 test('there is nothing to record against a consultation that produced no advice', async () => {
@@ -259,8 +262,8 @@ test('what the answer added is recorded in the lead\'s own words, not as a hit o
     job_id: view.job_id,
     reflection: { delta: 'The retry cap was expected; the autovacuum angle was not.', related_item_ids: ['f1', 'c1'] },
   });
-  assert.equal(out.reflection.delta, 'The retry cap was expected; the autovacuum angle was not.');
-  assert.deepEqual(out.reflection.related_item_ids, ['f1', 'c1']);
+  assert.equal(out.reflection_saved, true);
+  assert.deepEqual(mgr.view(view.job_id).reflection.related_item_ids, ['f1', 'c1']);
   const stored = roundFile(view).reflection;
   assert.equal(stored.delta, 'The retry cap was expected; the autovacuum angle was not.');
   assert.ok(stored.recorded_at);

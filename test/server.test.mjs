@@ -203,7 +203,7 @@ test('a verdict written over MCP lands on the consultation and comes back in the
     arguments: { job_id: started.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Capped the retries.' }] },
   }));
   assert.deepEqual(recorded.record.verdicts, { confirmed: 1 });
-  assert.deepEqual(recorded.record.unrecorded, ['u1', 'c1']);
+  assert.deepEqual(recorded.record.coverage, { recordable: 3, recorded: 1 });
 
   const listed = payload(await client.callTool({ name: 'consult_list', arguments: {} })).jobs
     .find((j) => j.job_id === started.job_id);
@@ -267,8 +267,10 @@ test('a prediction goes in with the request and a reflection comes back with the
     name: 'consult_record',
     arguments: { job_id: started.job_id, reflection: { delta: 'Expected the cap; the vacuum cost was new.', related_item_ids: ['f1'] } },
   }));
-  assert.equal(out.prediction.expected, 'proceed');
-  assert.equal(out.reflection.delta, 'Expected the cap; the vacuum cost was new.');
+  assert.equal(out.reflection_saved, true);
+  const view = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 0 } }));
+  assert.equal(view.prediction.expected, 'proceed');
+  assert.equal(view.reflection.delta, 'Expected the cap; the vacuum cost was new.');
   await close();
 });
 

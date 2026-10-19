@@ -1062,13 +1062,15 @@ export class JobManager {
         message: `the verdict for "${job.job_id}" could not be written to the history (${e.message}); record it again`,
       };
     }
+    // Counts only: the entries are what the lead just wrote, and
+    // consult_get({ job_id, ids }) reads any of them back with its verdict.
+    const summary = job.record && recordSummary(job);
     return {
       job_id: job.job_id,
       chain_id: job.chain_id,
       round: job.round,
-      record: job.record ? recordSummary(job) : null,
-      prediction: job.prediction ?? null,
-      reflection: job.reflection ?? null,
+      record: summary ? { updated_at: summary.updated_at, verdicts: summary.verdicts, coverage: summary.coverage } : null,
+      reflection_saved: job.reflection != null,
     };
   }
 
@@ -1190,7 +1192,10 @@ export class JobManager {
       limits: live || !full ? null : limitsSummary(),
     };
     // The side-by-side gets what the rest of the response leaves of GROUP_CHARS.
-    view.comparison = comparison(members, full ? Infinity : GROUP_CHARS - printed(view));
+    // While no one has finished there is nothing to set side by side, and an
+    // empty column per consultant is only context spent on every poll.
+    const anyFinished = members.some((m) => ['completed', 'failed', 'cancelled'].includes(m.status));
+    if (anyFinished) view.comparison = comparison(members, full ? Infinity : GROUP_CHARS - printed(view));
     return view;
   }
 
