@@ -106,7 +106,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 
 ## 外に何も送らないツールの許可の確認を省く
 
-`consult_start` 以外の 5 つのツールは手元で完結します。`consult_get`（1 回の相談で何度も呼ぶ）、`consult_list`、
+`consult_start` 以外の 5 つのツールは手元で完結します。`consult_get`（相談が動いている間、繰り返し呼ぶ）、`consult_list`、
 `consult_cancel`、`consult_record`、`consult_export` です。どのクライアントにも許可リストに
 ツールを足すコマンドが無いので、インストーラは触りません。手で足してください。`consult_start` は確認を残します。
 ほかのベンダーに材料を送るのはこの呼び出しだからです。
@@ -138,7 +138,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 確認を残すと、エージェントが始める相談のたびに 1 回あなたの確認を待ちます。この確認は、材料が手元を離れる前の
 唯一の歯止めなので、既定では残します。省くときは、上のツールと同じ書き方で `consult_start` も足します。
 Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_start` を、Codex なら `config.toml` に
-`[mcp_servers.severally.tools.consult_start]` の表を書きます。
+`[mcp_servers.severally.tools.consult_start]` の表を書きます（`--manual` で登録した場合。プラグイン方式では確かめていません）。
 
 そうすると、どの相談でも次のものが、あなたに訊かずに各相談相手のモデルへ送られます。ブリーフ、渡したファイル、
 相談相手が実行中に読んだものです（[相談相手が読めるものとできること](../README.ja.md#相談相手が読めるものとできること)）。

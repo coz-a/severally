@@ -32,7 +32,7 @@ copied read-only into its working directory. The Codex consultant additionally h
 
 2. **`consult_get({ group_id })`** (`consult_get({ job_id })` for one consultant). It waits for the answer by itself,
    up to a limit the server sets (45 seconds, or ten minutes where the client allows it); call it again while
-   `status` is `running`.
+   `status` is `running`. To work on something independent meanwhile, ask for a shorter wait (`reference.md`).
 3. **Check one point, report, and record it once** (see **Before you hand the decision back**).
 
 That is the whole routine. The rest of the record — more verdicts, a prediction and reflection, follow-ups,

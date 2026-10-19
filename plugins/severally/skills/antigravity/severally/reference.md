@@ -97,7 +97,7 @@ Reading them against each other:
 4. **Read `decision_changers` before spending a follow-up**: a consultant that named the condition under which
    it would change its mind has told you what evidence to go get.
 5. **Spend a follow-up only on a divergence that would change your decision**, sent only to the consultant
-   whose reading it belongs to.
+   whose reading it belongs to, or to the whole group (`followup_to: "<group_id>"`) when it concerns all of them.
 6. **A stance every consultant shares is not evidence that the plan was checked.** Look for a premise they all
    rely on and none could verify; name it only if you can actually identify one.
 

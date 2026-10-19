@@ -155,4 +155,4 @@ rather than a new diff. Nothing is copied again unless the lead asks for it in t
 
 A follow-up to a fan-out (`followup_to` its `group_id`) asks every member the same new question, each continuing
 its own chain from its latest answered round, so each brief carries that consultant's own earlier rounds. A member
-that is still running, never answered or has used its rounds is not asked, and the answer lists it with the reason.
+that is still running, never answered or has used its rounds is not asked, and the `consult_start` response lists it under `skipped` with the reason.

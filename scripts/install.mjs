@@ -392,7 +392,7 @@ function installClientDirectly(client, bin) {  step(`Registering with ${client.l
       // so a zero exit from `mcp add` proves nothing: confirm the entry is
       // actually listed, or the server silently never reaches the client.
       // Its list has also come back empty with the server in its config
-      // (backlog 17, twice, on the first run after an upgrade), so a config
+      // (twice, on the first run after an upgrade), so a config
       // holding exactly this install's command is a registration, noted.
       const said = `   the list said: ${lastListOutput.slice(0, 500) || '(nothing)'}`;
       if (registrationCommandMatches(client, bin)) {

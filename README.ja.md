@@ -270,7 +270,7 @@ CLI ごとにどう守らせているかは [docs/how-it-works.ja.md](docs/how-i
 `consult_start` の主な引数は次のとおりです。
 
 - `context.expose_paths`: 相談相手に読み取り専用で写すファイルとディレクトリ（絶対パス）。git のリポジトリの中の
-  ディレクトリは、git が管理するファイルだけを写す（`.gitignore` で外したものは写さない）
+  ディレクトリは、git が一覧するファイル（追跡中のものと、`.gitignore` で外していない未追跡のもの）だけを写す
 - `context.expose_diff`: `{ repo, base? }`。変更中の差分をブリーフに入れ、差分が触るファイルを写す
 - `network`: `"off"` にすると、その回のどの相談相手も Web の検索と閲覧ができない
 - `followup_to`: 追加の質問のもとになる答えの `job_id`。全員に聞いた相談の `group_id` を渡すと、全員にもう一度聞く
