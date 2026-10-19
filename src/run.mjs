@@ -1,0 +1,313 @@
+// Child-process plumbing: sanitised environment, own process group, hard
+// wall-clock timeout, cancellation, and output caps.
+
+import { spawnCommand as spawn } from './platform.mjs';
+import path from 'node:path';
+import { POLICY } from './policy.mjs';
+
+const DROP_EXACT = new Set([
+  'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'AI_AGENT',
+  'ANTHROPIC_LOG', 'NODE_OPTIONS',
+]);
+const DROP_PREFIX = ['CLAUDE_CODE_', 'SEVERALLY_', 'MCP_'];
+
+// Each consultant sees only its own vendor's credentials.
+//
+// The antigravity row is also the consultant's *only* isolation boundary
+// besides the synthesised HOME: Codex and Claude Code hold theirs in flags
+// (--ignore-user-config, --restricted --strict-mcp-config) that the
+// environment cannot undo, while agy has no such flag -- everything comes
+// from ~/.gemini, so a variable that redirected that lookup would silently
+// bypass the empty mcp_config.json and the deny rules while the job still
+// succeeded. What was checked against agy 1.1.28 on Linux, and concluded:
+//
+//   XDG_CONFIG_HOME  Appears in the binary (5 times), but does not redirect
+//     config discovery. Probed directly: with HOME=<sandbox> holding an
+//     mcp_config.json that declares a sentinel server, `agy mcp list` reports
+//     that sentinel both with and without XDG_CONFIG_HOME pointed at an empty
+//     directory; and with the real HOME plus XDG_CONFIG_HOME pointed at the
+//     sandbox's .gemini, agy reports "No MCP servers configured". HOME alone
+//     decides. Dropped regardless: it costs nothing, and the whole isolation
+//     hangs on one variable.
+//   AGY_*  Mostly feature flags and telemetry event names (AGY_CLI_HIDE_LOGO,
+//     AGY_CLI_DISABLE_LATEX, AGY_ONBOARDING_*, AGY_BUSINESS_PAYGO_TIER), none
+//     of which names a config or data directory -- but the prefix is not
+//     credential-free: AGY_ADC_AUTH reads as an auth-mode toggle for the same
+//     ADC path GOOGLE_APPLICATION_CREDENTIALS is kept for. Dropped as a class
+//     anyway, since the ADC credential itself travels under GOOGLE_*; an
+//     operator who turns out to need that toggle will see `kind: auth`, not a
+//     silently widened consultant.
+//   ANTIGRAVITY_*  Does include names that point at state --
+//     ANTIGRAVITY_EXECUTABLE_DATA_DIR, ANTIGRAVITY_PROJECT_ID,
+//     ANTIGRAVITY_SIDECAR_*. Dropped as a class.
+//   GEMINI_* / GOOGLE_*  Kept: this is where an API-key credential lives
+//     (GEMINI_API_KEY, GOOGLE_API_KEY and GOOGLE_APPLICATION_CREDENTIALS all
+//     appear in the binary), and dropping them would break an operator who
+//     authenticates that way rather than with the OAuth token the sandbox
+//     links.
+//
+// The names came out of the binary with `strings`; only XDG_CONFIG_HOME was
+// probed behaviourally, so read the AGY_* line as "no evidence of a
+// config-dir override under that prefix", not as proof that none exists.
+const TARGET_DROP_PREFIX = {
+  codex: ['ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
+  'claude-code': ['OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
+  antigravity: ['ANTHROPIC_', 'OPENAI_', 'CODEX_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
+  // OPENCODE_ is dropped on purpose even though it is this consultant's own
+  // prefix: whatever the hosting session exported (OPENCODE_CONFIG,
+  // OPENCODE_CONFIG_CONTENT, OPENCODE_PERMISSION...) must not reach the
+  // child, or it could override the sandbox's config. The sandbox re-adds
+  // the two variables the consultant needs, after the drop. ZAI_ stays: it
+  // is where the zai-coding-plan provider's API key travels.
+  opencode: ['ANTHROPIC_', 'OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'OPENCODE_'],
+};
+
+// Exact names dropped for one target only (see the note above). Kept separate
+// from DROP_EXACT so the two other consultants, whose isolation has been
+// verified with these variables present, are not changed.
+const TARGET_DROP_EXACT = {
+  antigravity: ['XDG_CONFIG_HOME'],
+};
+
+/**
+ * Build the child environment. The parent's agent-session wiring (messaging
+ * sockets, session ids, entrypoint markers) is removed, as are the other two
+ * vendors' credentials -- each consultant keeps only its own; and a recursion
+ * marker is added.
+ */
+export function childEnv(target, extra = {}, operator = {}) {
+  const { dropPrefixes, dropExact } = dropRules(target);
+  const keep = providerEnvNames(target);
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v === undefined) continue;
+    const key = process.platform === 'win32' ? k.toUpperCase() : k;
+    if (dropExact.has(key)) continue;
+    if (dropPrefixes.some((p) => key.startsWith(p))) continue;
+    if (foreignSecret(target, key, keep)) continue;
+    env[key] = v;
+  }
+  for (const [k, v] of Object.entries(operator)) env[process.platform === 'win32' ? k.toUpperCase() : k] = v;
+  env.SEVERALLY_ACTIVE = '1';
+  env.SEVERALLY_ROLE = 'consultant';
+  env.SEVERALLY_TARGET = target;
+  return { ...env, ...extra };
+}
+
+// Other services' credentials: no consultant needs them, and the Codex
+// consultant's shell could read its own environment. Dropped for every
+// consultant by shape -- cloud, VCS and registry prefixes, and any name that
+// ends like a secret -- except names under the consultant's own vendor
+// prefix, which is where its CLI's key travels. Unlike the rules above this is
+// a default, not isolation: a name the operator sets in clis.<cli>.env (an
+// OpenCode provider's {env:...} key, say) still reaches the consultant.
+const SECRET_PREFIX = ['AWS_', 'AZURE_', 'GITHUB_', 'GH_', 'GITLAB_', 'NPM_', 'DOCKER_', 'HF_', 'SLACK_', 'STRIPE_', 'OP_'];
+const SECRET_SUFFIX = /(TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|API_?KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIALS?)$/i;
+const SECRET_EXACT = new Set(['SSH_AUTH_SOCK', 'KUBECONFIG', 'DATABASE_URL']);
+const OWN_PREFIX = {
+  codex: ['OPENAI_', 'CODEX_'],
+  'claude-code': ['ANTHROPIC_'],
+  antigravity: ['GEMINI_', 'GOOGLE_'],
+  opencode: ['ZAI_'],
+};
+
+// Names the operator's OpenCode provider definitions read as "{env:NAME}":
+// the consultant needs them, wherever they were exported.
+function providerEnvNames(target) {
+  const provider = JSON.stringify(POLICY.clis?.[target]?.provider ?? {});
+  return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
+}
+
+function foreignSecret(target, key, keep) {
+  if (keep.has(key) || (OWN_PREFIX[target] ?? []).some((p) => key.startsWith(p))) return false;
+  const upper = key.toUpperCase();
+  return SECRET_EXACT.has(upper) || SECRET_PREFIX.some((p) => upper.startsWith(p)) || SECRET_SUFFIX.test(key);
+}
+
+function dropRules(target) {
+  return {
+    dropPrefixes: [...DROP_PREFIX, ...(TARGET_DROP_PREFIX[target] ?? [])],
+    dropExact: new Set([...DROP_EXACT, ...(TARGET_DROP_EXACT[target] ?? [])]),
+  };
+}
+
+/**
+ * Why the operator's per-target `env` (config.json) cannot be handed to this
+ * consultant, or null. A variable the rules above strip -- session wiring,
+ * severally's own markers, another vendor's credentials, a name that redirects
+ * this CLI's configuration -- is stripped for isolation, so setting it back
+ * by config is refused rather than honoured; so is any name the per-job
+ * sandbox sets (HOME and friends), which would otherwise be silently
+ * overwritten.
+ */
+export function operatorEnvProblem(target, env, sandboxKeys = []) {
+  if (env === null || typeof env !== 'object' || Array.isArray(env)) return 'must be an object of string values';
+  const { dropPrefixes, dropExact } = dropRules(target);
+  const fold = (k) => (process.platform === 'win32' ? k.toUpperCase() : k);
+  const reserved = new Set(sandboxKeys.map(fold));
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v !== 'string') return `${k} must be a string`;
+    const key = fold(k);
+    if (dropExact.has(key) || dropPrefixes.some((p) => key.startsWith(p)) || reserved.has(key)) {
+      return `${k} is controlled by severally for this consultant's isolation and cannot be set`;
+    }
+  }
+  return null;
+}
+
+export class ProcHandle {
+  constructor(child, readStdout = () => '') {
+    this.child = child;
+    this.killed = false;
+    // What the child has written so far. A consultation runs for minutes, and
+    // without this the only honest answer to "how is it going" is "running".
+    this.stdoutSoFar = readStdout;
+  }
+
+  /** Kill the child and every descendant it spawned. */
+  stop(signal = 'SIGTERM') {
+    if (this.killed || !this.child || this.child.exitCode !== null) return;
+    this.killed = true;
+    const pid = this.child.pid;
+    if (!pid) return;
+    if (process.platform === 'win32') {
+      // Negative PIDs/process groups are POSIX-only. Kill the Windows tree
+      // before its parent exits and its descendants become unreachable.
+      const killer = spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+        ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+      const fallback = () => { try { this.child.kill('SIGKILL'); } catch { /* gone */ } };
+      killer.on('error', fallback);
+      killer.on('exit', (code) => { if (code !== 0) fallback(); });
+      return;
+    }
+    try { process.kill(-pid, signal); } catch { try { this.child.kill(signal); } catch { /* gone */ } }
+    setTimeout(() => this.forceKill(), POLICY.killGraceMs).unref();
+  }
+
+  /**
+   * SIGKILL the whole process group now, whether or not stop() already ran
+   * and whether or not the leader has exited: a descendant that ignored
+   * SIGTERM outlives its parent. The unref'd timer above never fires once the
+   * server exits, so shutdown calls this itself. On Windows stop() already
+   * ran taskkill /T /F, which is as forceful as it gets there.
+   */
+  forceKill() {
+    const pid = this.child?.pid;
+    if (!pid || process.platform === 'win32') return;
+    try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ }
+  }
+}
+
+/**
+ * @returns {{handle: ProcHandle, done: Promise<{code, signal, stdout, stderr, timedOut, cancelled, truncated}>}}
+ */
+export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSignal, compactLine = null,
+  settleAfter = null, stopSignal = 'SIGTERM' }) {
+  const child = spawn(command, args, {
+    cwd,
+    // PWD is the parent's otherwise, and opencode takes its project root from
+    // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
+    // consultant gets its working directory as PWD, never where the server runs.
+    env: env && cwd ? { ...env, PWD: cwd } : env,
+    detached: process.platform !== 'win32', // POSIX process group; Windows uses taskkill /T
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const cap = POLICY.output.rawCaptureMax;
+
+  let stdout = '';
+  const handle = new ProcHandle(child, () => stdout);
+  let stderr = '';
+  let truncated = false;
+  let timedOut = false;
+  let cancelled = false;
+  // settleAfter(line) gives how long the child may stay alive after a line that
+  // says it is done; past that it is stopped and `stalled` set. A later line
+  // can shorten the wait, never lengthen it.
+  let stalled = false;
+  let settleTimer = null;
+  let settleAt = Infinity;
+  const watch = (line) => {
+    const ms = settleAfter(line);
+    if (ms == null || Date.now() + ms >= settleAt) return;
+    settleAt = Date.now() + ms;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { stalled = true; handle.stop(stopSignal); }, ms);
+  };
+
+  const append = (which, chunk) => {
+    const text = chunk.toString('utf8');
+    if (which === 'out') {
+      if (stdout.length >= cap) { truncated = true; return; }
+      stdout += text.slice(0, cap - stdout.length);
+      if (stdout.length >= cap) truncated = true;
+    } else {
+      if (stderr.length >= cap) { truncated = true; return; }
+      stderr += text.slice(0, cap - stderr.length);
+      if (stderr.length >= cap) truncated = true;
+    }
+  };
+
+  // With compactLine, stdout is captured a whole line at a time so the adapter
+  // can shrink each event before it counts against the cap. The pending
+  // partial line is bounded by the cap too; past it, the line is kept as is.
+  let pending = '';
+  const byLine = Boolean(compactLine || settleAfter);
+  const compact = compactLine ?? ((l) => l);
+  const flushLines = () => {
+    const lines = pending.split('\n');
+    pending = lines.pop();
+    for (const l of lines) {
+      if (settleAfter) watch(l);
+      append('out', `${compact(l)}\n`);
+    }
+    if (pending.length > cap) { append('out', pending); pending = ''; }
+  };
+  // Decode as a stream: a multibyte character split across two chunks would
+  // otherwise turn into replacement characters inside the answer text.
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (c) => {
+    if (!byLine) return append('out', c);
+    pending += c;
+    flushLines();
+  });
+  child.stderr.on('data', (c) => append('err', c));
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    handle.stop(stopSignal);
+  }, timeoutMs);
+
+  if (onCancelSignal) {
+    onCancelSignal(() => {
+      cancelled = true;
+      handle.stop(stopSignal);
+    });
+  }
+
+  const done = new Promise((resolve) => {
+    let settled = false;
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(settleTimer);
+      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, ...payload });
+    };
+    child.on('error', (err) => finish({ code: null, signal: null, spawnError: err.message }));
+    child.on('close', (code, signal) => {
+      if (byLine && pending) { append('out', compact(pending)); pending = ''; }
+      finish({ code, signal });
+    });
+  });
+
+  if (input !== undefined && input !== null) {
+    child.stdin.on('error', () => { /* child may exit before draining stdin */ });
+    child.stdin.end(input);
+  } else {
+    child.stdin.end();
+  }
+
+  return { handle, done, pid: child.pid };
+}

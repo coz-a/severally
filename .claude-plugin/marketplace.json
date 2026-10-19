@@ -1,0 +1,15 @@
+{
+  "name": "severally",
+  "owner": {
+    "name": "coz.a",
+    "url": "https://github.com/coz-a"
+  },
+  "description": "severally: ask other coding agents for an independent opinion from inside Claude Code.",
+  "plugins": [
+    {
+      "name": "severally",
+      "source": "./plugins/severally",
+      "description": "Ask Codex, Claude Code, Antigravity or OpenCode for an independent opinion, review or structured debate, in a sandboxed child session that can read files and search the web but cannot edit files, change the system, or start other agents."
+    }
+  ]
+}

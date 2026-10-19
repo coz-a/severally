@@ -1,0 +1,8 @@
+node_modules/
+*.log
+.DS_Store
+.superpowers/
+.worktrees/
+
+# working area: design records, backlog, experiments (kept locally, never published)
+.work/

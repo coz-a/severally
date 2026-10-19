@@ -1,0 +1,31 @@
+{
+  "name": "severally",
+  "version": "2.0.0",
+  "description": "Ask Codex, Claude Code, Antigravity or OpenCode for an independent opinion, review or structured debate, in a sandboxed child session that can read files and search the web but cannot edit files, change the system, or start other agents.",
+  "author": {
+    "name": "coz.a",
+    "url": "https://github.com/coz-a"
+  },
+  "homepage": "https://github.com/coz-a/severally",
+  "repository": "https://github.com/coz-a/severally",
+  "license": "Apache-2.0",
+  "keywords": [
+    "mcp",
+    "second-opinion",
+    "code-review",
+    "claude-code",
+    "consultation"
+  ],
+  "skills": "./skills/codex/",
+  "mcpServers": {
+    "severally": {
+      "type": "stdio",
+      "command": "severally-mcp"
+    }
+  },
+  "interface": {
+    "displayName": "Severally",
+    "shortDescription": "Ask Codex, Claude Code, Antigravity or OpenCode for an independent opinion, review or debate",
+    "longDescription": "Runs a fresh, sandboxed Codex, Claude Code, Antigravity or OpenCode session as a peer consultant: it may read files and search and browse the web, but cannot edit files, change the system, start other agents, or start consultations of its own. Returns a structured answer -- findings with their grounds, alternatives, unknowns, what would change the judgement, and next checks."
+  }
+}

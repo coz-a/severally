@@ -1,0 +1,162 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { DEFAULT_MODELS } from '../src/consultants.mjs';
+
+// A consultant definition as policy.mjs builds one, for calling an adapter
+// directly: the CLI's default model unless a test overrides a field.
+export const asConsultant = (cli, extra = {}) => ({
+  name: cli, cli, model: DEFAULT_MODELS[cli], effort: null, timeoutMs: null, maxBudgetUsd: null, vendor: null, enabled: true, note: null, ...extra,
+});
+
+export const here = path.dirname(fileURLToPath(import.meta.url));
+
+export function sandboxEnv(overrides = {}) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-test-'));
+
+  // Every assertion in this suite is written against the shipped defaults in
+  // policy.mjs, and each of those defaults is an operator knob a developer of
+  // *this* project is exactly the person to have exported. So clear the whole
+  // SEVERALLY_ namespace before pinning what the tests need: leaving it
+  // alone made the results depend on the host shell (measured:
+  // SEVERALLY_MAX_CONCURRENT=1 -> 7 failures,
+  // SEVERALLY_AGY_MODEL=<other slug> -> 1 failure). Anything not pinned
+  // below therefore falls back to the default, which is the single place the
+  // value is defined; a test that needs a different one passes it in
+  // `overrides` rather than exporting it.
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('SEVERALLY_')) delete process.env[key];
+  }
+
+  // A synthesised credential source, so the suite never reads -- and never
+  // depends on the presence of -- the developer's real ~/.gemini token or
+  // ~/.local/share/opencode/auth.json.
+  const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-test-cred-'));
+  fs.mkdirSync(path.join(credHome, '.gemini', 'antigravity-cli'), { recursive: true });
+  fs.writeFileSync(
+    path.join(credHome, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
+    'test-token',
+  );
+  fs.mkdirSync(path.join(credHome, '.local', 'share', 'opencode'), { recursive: true });
+  // The provider the shipped default model runs on, so the credential seed
+  // finds an entry for it exactly as an operator's real auth.json would.
+  fs.writeFileSync(
+    path.join(credHome, '.local', 'share', 'opencode', 'auth.json'),
+    '{"zai-coding-plan":{"type":"api","key":"test-key"}}',
+  );
+
+  Object.assign(process.env, {
+    SEVERALLY_HOME: home,
+    SEVERALLY_CODEX_BIN: path.join(here, 'fixtures', 'stub-codex.mjs'),
+    SEVERALLY_CLAUDE_BIN: path.join(here, 'fixtures', 'stub-claude.mjs'),
+    SEVERALLY_AGY_BIN: path.join(here, 'fixtures', 'stub-agy.mjs'),
+    SEVERALLY_OPENCODE_BIN: path.join(here, 'fixtures', 'stub-opencode.mjs'),
+    SEVERALLY_AGY_CRED_HOME: credHome,
+    SEVERALLY_OPENCODE_CRED_HOME: credHome,
+    SEVERALLY_TIMEOUT_MS: '20000',
+    SEVERALLY_KILL_GRACE_MS: '500',
+    // Automatic re-runs of a transient failure stay on, without the wait.
+    SEVERALLY_RETRY_BACKOFF_MS: '0',
+    ...overrides,
+  });
+  // A test's recorded `caller` must come from the request, not from whichever
+  // CLI happens to be hosting the test suite -- strip every marker
+  // detectCaller() reads so the default is deterministically "no caller
+  // detected" unless a test opts in via an explicit `caller` field.
+  delete process.env.CLAUDECODE;
+  delete process.env.CLAUDE_CODE_ENTRYPOINT;
+  delete process.env.CODEX_HOME;
+  delete process.env.CODEX_SANDBOX;
+  delete process.env.CODEX_SANDBOX_NETWORK_DISABLED;
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('AGY_') || key.startsWith('ANTIGRAVITY_')) delete process.env[key];
+  }
+  // OpenCode has no single marker env var (it passes its own environment
+  // through to MCP servers unchanged), so nothing reads OPENCODE_* for
+  // detection -- but a developer's OPENCODE_CONFIG would leak into the stub's
+  // recorded env assertions if left standing. Strip the prefix anyway.
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith('OPENCODE_')) delete process.env[key];
+  }
+  // A test's credential state must come from the test, not from the host: the
+  // credential check in jobs.mjs treats any of these as an alternative to the
+  // linked OAuth token, so a developer with one exported would turn the
+  // "unauthenticated child is refused" test green by accident. Measured before
+  // this: GOOGLE_APPLICATION_CREDENTIALS=<any path> -> 1 failure.
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  return home;
+}
+
+export const reviewRequest = (over = {}) => ({
+  target: 'codex',
+  mode: 'review',
+  question: 'Does the retry policy hold under a downstream outage?',
+  objective: 'Ship a retry policy that will not amplify an outage.',
+  success_criteria: ['A concrete failure scenario or a clear all-clear'],
+  constraints: ['No new infrastructure', 'Must stay in the existing service'],
+  context: {
+    facts: ['The client retries 5 times with 100ms fixed backoff.'],
+    proposal: 'Keep 5 retries but add jitter, because the outage we saw was short.',
+    artifacts: [{ name: 'retry.ts', kind: 'code', language: 'ts', excerpt: 'for (let i=0;i<5;i++) await call();' }],
+  },
+  ...over,
+});
+
+export const exploreRequest = (over = {}) => ({
+  target: 'claude-code',
+  mode: 'explore',
+  question: 'How should we bound the write path latency?',
+  objective: 'p99 write latency under 200ms at 3x current traffic.',
+  context: { facts: ['Writes currently go straight to Postgres with no batching.'] },
+  ...over,
+});
+
+export const debateRequest = (over = {}) => ({
+  target: 'codex',
+  mode: 'debate',
+  question: 'Should the cache be write-through or write-behind?',
+  objective: 'Pick the cache write strategy for the order service.',
+  context: {
+    facts: ['Order writes are 200/s peak.'],
+    proposal: 'Write-through, because losing an order on a crash is unacceptable.',
+    counterpoints: ['Write-behind with a durable log gives the same guarantee at lower latency.'],
+  },
+  ...over,
+});
+
+export const antigravityRequest = (over = {}) => ({
+  target: 'gemini',
+  mode: 'review',
+  question: 'Is the cache invalidation strategy safe under concurrent writes?',
+  objective: 'Avoid serving stale orders after a write.',
+  context: {
+    facts: ['Two app servers write to the same key without coordination.'],
+    proposal: 'Invalidate on write and let the next read repopulate, because writes are rare.',
+  },
+  ...over,
+});
+
+export const opencodeRequest = (over = {}) => ({
+  target: 'glm',
+  mode: 'review',
+  question: 'Should the backoff be exponential with jitter instead of fixed?',
+  objective: 'Keep retry storms impossible under a downstream outage.',
+  context: {
+    facts: ['The client retries 5 times with 100ms fixed backoff.'],
+    proposal: 'Keep the count but jitter each delay, because the outage we saw was short.',
+  },
+  ...over,
+});
+
+export async function waitFor(fn, { timeoutMs = 15000, intervalMs = 50 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > deadline) throw new Error('waitFor timed out');
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}

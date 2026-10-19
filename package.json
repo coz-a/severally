@@ -1,0 +1,55 @@
+{
+  "name": "severally-mcp",
+  "version": "2.0.0",
+  "description": "A plugin that gives your AI agent consultants: Codex, Claude Code, Antigravity and OpenCode.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "coz.a (https://github.com/coz-a)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coz-a/severally.git"
+  },
+  "homepage": "https://github.com/coz-a/severally#readme",
+  "bugs": {
+    "url": "https://github.com/coz-a/severally/issues"
+  },
+  "private": false,
+  "bin": {
+    "severally-mcp": "bin/severally-mcp.mjs",
+    "severally-install": "scripts/install.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "plugins",
+    "scripts",
+    ".agents",
+    "README.md",
+    "README.ja.md",
+    "CONFIG.md",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=20.10"
+  },
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "live-check": "node scripts/live-check.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "install-all": "node scripts/install.mjs",
+    "live-mcp-check": "node scripts/live-mcp-check.mjs",
+    "build": "node scripts/build.mjs",
+    "init-config": "node scripts/init-config.mjs",
+    "prepack": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
+    "cross-spawn": "^7.0.6",
+    "which": "^2.0.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "esbuild": "^0.28.2"
+  }
+}
