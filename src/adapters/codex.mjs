@@ -167,11 +167,16 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
     }
   }
 
-  if (errorEvents.length) {
-    const msg = errorEvents
-      .map((e) => e.message ?? e.error?.message ?? JSON.stringify(e))
-      .join(' | ');
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events.length };
+  const errorMsg = errorEvents
+    .map((e) => e.message ?? e.error?.message ?? JSON.stringify(e))
+    .join(' | ');
+  // An error the turn recovered from (the stream still ends in
+  // turn.completed, with an answer) does not throw the answer away; the lead
+  // is told about it instead. A turn that ends in turn.failed has failed,
+  // whatever text it left behind.
+  const recovered = errorEvents.length > 0 && Boolean(text) && events.at(-1)?.type === 'turn.completed';
+  if (errorEvents.length && !recovered) {
+    return { ok: false, failureKind: classifyMessage(errorMsg), message: errorMsg, usageRaw: usage, events: events.length };
   }
   if (!text) {
     const msg = (stderr || '').trim() || `codex exited with code ${code} and produced no final message`;
@@ -183,7 +188,13 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
       events: events.length,
     };
   }
-  return { ok: true, text, usageRaw: usage, events: events.length };
+  return {
+    ok: true,
+    text,
+    usageRaw: usage,
+    events: events.length,
+    recoveredError: recovered ? { failureKind: classifyMessage(errorMsg), message: errorMsg } : null,
+  };
 }
 
 /**

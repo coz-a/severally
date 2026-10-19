@@ -221,6 +221,29 @@ test('malformed output is a failure, not a silent success', async () => {
   assert.equal(view.failure.delivered_advice, false);
 });
 
+test('a Codex error the turn recovered from keeps the answer, with a caveat; a failed turn does not', async () => {
+  const run = async (behavior) => {
+    process.env.STUB_BEHAVIOR = behavior;
+    const mgr = new JobManager();
+    return finish(mgr, mgr.start(reviewRequest()).job_id);
+  };
+  let view = await run('recovered_ok');
+  assert.equal(view.status, 'completed');
+  assert.match(view.quality.caveat, /reported an error mid-run.*Rate limit reached/);
+
+  view = await run('recovered_failed');
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'rate_limited');
+
+  // No answer, or one that does not parse: the error stands, with its own kind.
+  for (const behavior of ['recovered_none', 'recovered_invalid']) {
+    view = await run(behavior);
+    assert.equal(view.status, 'failed', behavior);
+    assert.equal(view.failure.kind, 'rate_limited', behavior);
+    assert.equal(view.result, null, behavior);
+  }
+});
+
 test('usage limits and auth failures are classified, not reported as advice', async () => {
   process.env.STUB_BEHAVIOR = 'usage_limit';
   let mgr = new JobManager();

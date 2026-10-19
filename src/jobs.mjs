@@ -826,6 +826,10 @@ export class JobManager {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
+            // An answer that does not parse after a reported error is that
+            // error, not an output problem: it keeps the error's kind.
+            const { recoveredError } = interpreted;
+            if (recoveredError) return this.#fail(job, recoveredError.failureKind, recoveredError.message);
             return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
           }
         } else {
@@ -834,7 +838,11 @@ export class JobManager {
       }
 
       job.result = normalized.result;
-      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, job.caller_model, consultant)].filter(Boolean);
+      const notes = [
+        adviceCaveat(normalized),
+        sameVendorCaveat(job.caller, job.caller_model, consultant),
+        interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
+      ].filter(Boolean);
       // No `advice_usable` verdict here. It was always true, so it carried no
       // information -- and worse, it read as the server vouching for advice it
       // cannot judge. What this server may assert is what it can derive from

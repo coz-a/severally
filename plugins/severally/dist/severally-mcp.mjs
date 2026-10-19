@@ -37371,9 +37371,10 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       if (typeof candidate === "string" && candidate.trim()) text2 = candidate.trim();
     }
   }
-  if (errorEvents.length) {
-    const msg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events3.length };
+  const errorMsg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
+  const recovered = errorEvents.length > 0 && Boolean(text2) && events3.at(-1)?.type === "turn.completed";
+  if (errorEvents.length && !recovered) {
+    return { ok: false, failureKind: classifyMessage(errorMsg), message: errorMsg, usageRaw: usage, events: events3.length };
   }
   if (!text2) {
     const msg = (stderr || "").trim() || `codex exited with code ${code} and produced no final message`;
@@ -37385,7 +37386,13 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       events: events3.length
     };
   }
-  return { ok: true, text: text2, usageRaw: usage, events: events3.length };
+  return {
+    ok: true,
+    text: text2,
+    usageRaw: usage,
+    events: events3.length,
+    recoveredError: recovered ? { failureKind: classifyMessage(errorMsg), message: errorMsg } : null
+  };
 }
 function progress({ stdout }) {
   const items = [];
@@ -39052,6 +39059,8 @@ var JobManager = class {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
+            const { recoveredError } = interpreted;
+            if (recoveredError) return this.#fail(job, recoveredError.failureKind, recoveredError.message);
             return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
           }
         } else {
@@ -39059,7 +39068,11 @@ var JobManager = class {
         }
       }
       job.result = normalized.result;
-      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, job.caller_model, consultant)].filter(Boolean);
+      const notes = [
+        adviceCaveat(normalized),
+        sameVendorCaveat(job.caller, job.caller_model, consultant),
+        interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`
+      ].filter(Boolean);
       job.quality = {
         ...normalized.quality,
         evidence_basis: normalized.result.evidence_basis,

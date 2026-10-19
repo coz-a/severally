@@ -71,6 +71,19 @@ function run() {
     if (lastMessagePath) fs.writeFileSync(lastMessagePath, 'I cannot comply, here is some prose instead.');
     process.exit(0);
   }
+  // A transient error the turn got past, then (or not) an answer.
+  if (behavior.startsWith('recovered_')) {
+    out({ type: 'error', message: 'Rate limit reached (429), retrying in 2s' });
+    if (behavior === 'recovered_failed') {
+      if (lastMessagePath) fs.writeFileSync(lastMessagePath, answer());
+      out({ type: 'turn.failed', error: { message: 'Rate limit reached (429)' } });
+      process.exit(0);
+    }
+    out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
+    const text = { recovered_ok: answer(), recovered_invalid: 'Some prose, no contract.' }[behavior];
+    if (lastMessagePath && text) fs.writeFileSync(lastMessagePath, text);
+    process.exit(0);
+  }
   if (behavior === 'ignore_term') {
     // A consultant that shrugs off SIGTERM: only SIGKILL to its group ends it.
     process.on('SIGTERM', () => {});
