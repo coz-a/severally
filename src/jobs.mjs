@@ -296,7 +296,19 @@ export class JobManager {
       ? rawRequest.followup_to.trim()
       : null;
     let parent = null;
-    if (followupTo) {
+    let fromGroup = null;
+    if (followupTo?.startsWith('group_')) {
+      // A follow-up to a fan-out goes to every member that can take one; the
+      // members are the targets, so the request names none.
+      if ((rawRequest.target ?? null) !== null || rawRequest.targets?.length) {
+        throw new RequestError(
+          'a follow-up to a group goes to every member that can take one, so leave target and targets out; to follow up one member, pass its job_id',
+          'followup_group_targets',
+        );
+      }
+      fromGroup = this.#groupParents(followupTo);
+      rawRequest = { ...rawRequest, targets: fromGroup.links.map((l) => l.parent.target) };
+    } else if (followupTo) {
       // A job from an earlier server session is read back from the history,
       // so a restart does not end a consultation the lead is still checking.
       parent = this.jobs.get(followupTo) ?? store.loadRound(followupTo);
@@ -322,7 +334,11 @@ export class JobManager {
       parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
 
-    const req = parseRequest(rawRequest, { isFollowup: Boolean(parent), parentMode: parent?.mode ?? null });
+    const req = parseRequest(rawRequest, {
+      isFollowup: Boolean(parent || fromGroup),
+      parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+      groupFollowup: Boolean(fromGroup),
+    });
 
     if (parent && parent.target !== req.target) {
       throw new RequestError(
@@ -331,7 +347,7 @@ export class JobManager {
       );
     }
     const round = parent ? parent.nextRound : 1;
-    if (round > POLICY.maxRounds) {
+    if (!fromGroup && round > POLICY.maxRounds) {
       throw new RequestError(
         `this consultation has used its ${POLICY.maxRounds} rounds (1 initial + ${POLICY.maxRounds - 1} follow-ups); decide with what you have, or start a new consultation with a materially different question`,
         'round_limit',
@@ -361,14 +377,53 @@ export class JobManager {
     }
     // A request refused from here on gives its seats back.
     try {
-      return this.#admitted(req, parent, round, seats);
+      // Each target's parent round and the round it opens, in req.targets order.
+      const links = fromGroup?.links ?? req.targets.map(() => ({ parent, round }));
+      return this.#admitted(req, links, seats, fromGroup);
     } catch (err) {
       for (const seat of seats) if (!this.jobs.has(seat.job_id)) store.releaseSeat(seat.job_id);
       throw err;
     }
   }
 
-  #admitted(req, parent, round, seats) {
+  // A follow-up to a fan-out: each member goes on from the newest answered
+  // round of its own chain. A member that is still running, never answered or
+  // has used its rounds is skipped and named; if that is every member, the
+  // request is refused.
+  #groupParents(groupId) {
+    const group = this.groups.get(groupId) ?? store.loadGroup(groupId);
+    if (!group) throw new RequestError(`followup_to references unknown group "${groupId}"`, 'unknown_group');
+    const links = [];
+    const skipped = [];
+    for (const jid of group.job_ids) {
+      const member = this.jobs.get(jid) ?? store.loadRound(jid);
+      if (!member) {
+        skipped.push({ job_id: jid, target: null, reason: 'no longer in the history' });
+        continue;
+      }
+      const rounds = this.#chainRounds(member.chain_id);
+      const latest = rounds.filter((j) => !['failed', 'cancelled'].includes(j.status)).sort((a, b) => b.round - a.round)[0];
+      const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
+      const reason = !latest ? `${member.status}, so there is no answer to follow up`
+        : latest.status !== 'completed' ? `round ${latest.round} is still ${latest.status}`
+          : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds`
+            : null;
+      if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
+      else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
+    }
+    if (!links.length) {
+      throw new RequestError(
+        `no member of group "${groupId}" can take a follow-up: ${skipped.map((x) => `${x.target ?? x.job_id} (${x.reason})`).join(', ')}`,
+        'followup_nothing_to_continue',
+      );
+    }
+    return { group, links, skipped };
+  }
+
+  #admitted(req, links, seats, fromGroup = null) {
+    // What expose_from_parent copies again: for a group, what that fan-out
+    // exposed (one manifest, shared by its members); otherwise the parent's.
+    const parent = links[0].groupMember ?? links[0].parent;
     const groupId = id('group');
     // Copied once for the whole request, before a round is counted or a job
     // exists, into the group's own directory: every member is then handed the
@@ -428,7 +483,8 @@ export class JobManager {
       req._snapshot = path.join(snapshot, 'workspace');
     }
     const members = req.targets.map((target, i) => {
-      const chainId = parent ? parent.chain_id : id('chain');
+      const { parent: from, round } = links[i];
+      const chainId = from ? from.chain_id : id('chain');
       const jobId = seats[i].job_id;
       const job = {
         job_id: jobId,
@@ -462,7 +518,7 @@ export class JobManager {
         retries: [],
         partial_output: null,
         tool_calls: null,
-        followup_to: parent?.job_id ?? null,
+        followup_to: from?.job_id ?? null,
         status: 'queued',
         // What this consultant is: the CLI it runs on, the model and its
         // lineage, as the operator defined it.
@@ -500,14 +556,13 @@ export class JobManager {
     this.groups.set(groupId, group);
     try { store.persistGroup(group); } catch { /* history is best effort */ }
 
-    // One brief, rendered once for the whole group: a fan-out is only comparable
-    // if every consultant answered the same question in the same words. Every
-    // member shares one chain history by construction -- a fan-out is never a
-    // follow-up (parseRequest refuses that), so each member's fresh chain is
-    // empty, and a follow-up is always a group of one on the parent's chain.
-    const chain = { round, priorRounds: this.#chainHistory(members[0].chain_id) };
-    const brief = renderBrief(req, chain, exposeManifest);
+    // A fan-out is only comparable if every consultant answered the same
+    // question in the same words: every member's brief is the same request,
+    // rendered the same way. Only the earlier rounds differ -- each member's
+    // own, on a follow-up to a group; none, on a first round.
     for (const job of members) {
+      const chain = { round: job.round, priorRounds: this.#chainHistory(job.chain_id) };
+      const brief = renderBrief(req, chain, exposeManifest);
       job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
         this.#fail(job, 'cli_error', err?.message ?? String(err));
       });
@@ -517,11 +572,14 @@ export class JobManager {
     // if the process dies mid-consultation. Keep that copy ahead of any await.
     if (req._snapshot) store.cleanupJobDir(groupId);
 
+    // The members of a follow-up to a group can be at different rounds.
+    const { round } = members[0];
+    const sameRound = members.every((m) => m.round === round);
     const common = {
       group_id: groupId,
-      round,
+      ...(sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {}),
+      ...(fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {}),
       ...(parentEntries.length ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {}),
-      rounds_remaining: POLICY.maxRounds - round,
       mode: req.mode,
       // Counted, not refused: a brief of facts alone is a legitimate
       // consultation, but one about code that hands over no file is one the
@@ -550,7 +608,10 @@ export class JobManager {
     return {
       ...common,
       question: group.question, // the redacted text every member was actually sent
-      jobs: members.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, cli: m.cli, model: m.model })),
+      jobs: members.map((m) => ({
+        job_id: m.job_id, chain_id: m.chain_id, target: m.target, cli: m.cli, model: m.model,
+        ...(sameRound ? {} : { round: m.round, rounds_remaining: POLICY.maxRounds - m.round }),
+      })),
       poll_with: `consult_get({ group_id: "${groupId}" })`,
       note: 'Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement.',
     };
@@ -633,8 +694,9 @@ export class JobManager {
         return this.#fail(job, 'spawn_error', `could not copy the exposed files: ${err.message}`);
       }
     }
-    // start() renders the brief once per chain and hands it in, so every member
-    // of a fan-out is sent byte-identical text.
+    // start() renders the brief and hands it in: every member of a fan-out is
+    // sent the same request in the same words, with only its own earlier rounds
+    // added on a follow-up to the group.
     const text = brief ?? renderBrief(req, chain);
     const schemaPath = store.writeJobArtifact(job.job_id, 'response-schema.json', JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir, network: req.network }) : null;

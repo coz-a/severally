@@ -70,10 +70,11 @@ names. Your own CLI is a fresh session but not another lineage, and its `quality
 consultants of one vendor.
 
 Send **one** `targets` call: every consultant receives the byte-identical brief, which is what makes the answers
-comparable. Poll the single group with `consult_get({ group_id })` and stop it with
+comparable (on a follow-up to the group, the same new question, with each one's own earlier rounds). Poll the single group with `consult_get({ group_id })` and stop it with
 `consult_cancel({ group_id })`. A fan-out takes one slot of the concurrency cap per consultant (nine by default,
 shared by every severally session on this machine; the group starts only if every member gets one) and one
-consultation's quota per consultant, and `targets` is refused on a follow-up.
+consultation's quota per consultant. To ask every member again, follow up the group: `followup_to: "<group_id>"`
+with no `target` or `targets` (see Follow-ups).
 
 `comparison.by_target` holds, per consultant: stance, summary, confidence, evidence basis, finding points (each
 with its `id` and severity), `severity_counts`, `decision_changers`, alternatives, unknowns (`u1` …),
@@ -123,7 +124,9 @@ in `failure.detail`, which tells you whether to retry with a longer budget or a 
 
 By default a chain has five rounds: one initial round plus up to four follow-ups
 (`followup_to: "<previous job_id>"`); the operator can configure 1–20 (`server.max_rounds`), and
-`rounds_remaining` says what is left. A follow-up starts in a fresh working directory with no files: pass
+`rounds_remaining` says what is left. `followup_to: "<group_id>"`, with no `target` or `targets`, sends the same new
+question to every member of a fan-out, each continuing from its own latest round with its own history; a member
+that is still running, never answered or has used its rounds is listed under `skipped` and not asked. A follow-up starts in a fresh working directory with no files: pass
 `context.expose_from_parent: true` to copy again, as they are now, the paths the earlier round exposed (a changed
 or vanished entry is marked), and leave it off when the follow-up does not need them.
 

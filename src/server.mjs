@@ -79,8 +79,11 @@ ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
         drift -- and the result is marked as same lineage.
 targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates).
         targets: ["all"] asks every consultant listed above; "all" cannot be mixed with names.
-        Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
-        A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+        Every member gets the byte-identical brief (on a follow-up, plus its own earlier rounds) and one
+        group_id; poll it with consult_get({ group_id }).
+        A follow-up (followup_to) to a job names that one consultant. followup_to a group_id, with no target or
+        targets, asks every member of that fan-out the same new question, each on its own chain from its latest
+        round; a member that is still running, never answered or has used its rounds is skipped and listed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
         server can annotate a same-vendor consultation.
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.

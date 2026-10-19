@@ -35747,7 +35747,7 @@ var RequestError = class extends Error {
     this.details = details;
   }
 };
-function parseRequest(raw, { isFollowup = false, parentMode = null } = {}) {
+function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowup = false } = {}) {
   const parsed = requestSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
@@ -35808,9 +35808,9 @@ function parseRequest(raw, { isFollowup = false, parentMode = null } = {}) {
       "duplicate_targets"
     );
   }
-  if (isFollowup && unique.length > 1) {
+  if (isFollowup && !groupFollowup && unique.length > 1) {
     throw new RequestError(
-      "a follow-up continues the exchange with one consultant; name exactly one target",
+      "a follow-up to a job continues the exchange with one consultant; name exactly one target, or pass followup_to a group_id to ask every member of that fan-out again",
       "followup_fanout_not_allowed"
     );
   }
@@ -38723,7 +38723,17 @@ var JobManager = class {
     if (configProblem()) throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
     const followupTo = typeof rawRequest?.followup_to === "string" && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
     let parent = null;
-    if (followupTo) {
+    let fromGroup = null;
+    if (followupTo?.startsWith("group_")) {
+      if ((rawRequest.target ?? null) !== null || rawRequest.targets?.length) {
+        throw new RequestError(
+          "a follow-up to a group goes to every member that can take one, so leave target and targets out; to follow up one member, pass its job_id",
+          "followup_group_targets"
+        );
+      }
+      fromGroup = this.#groupParents(followupTo);
+      rawRequest = { ...rawRequest, targets: fromGroup.links.map((l) => l.parent.target) };
+    } else if (followupTo) {
       parent = this.jobs.get(followupTo) ?? loadRound(followupTo);
       if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, "unknown_job");
       if (parent.status !== "completed") {
@@ -38742,7 +38752,11 @@ var JobManager = class {
       }
       parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
-    const req = parseRequest(rawRequest, { isFollowup: Boolean(parent), parentMode: parent?.mode ?? null });
+    const req = parseRequest(rawRequest, {
+      isFollowup: Boolean(parent || fromGroup),
+      parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+      groupFollowup: Boolean(fromGroup)
+    });
     if (parent && parent.target !== req.target) {
       throw new RequestError(
         `follow-up must go to the same consultant as job "${parent.job_id}" (${parent.target})`,
@@ -38750,7 +38764,7 @@ var JobManager = class {
       );
     }
     const round = parent ? parent.nextRound : 1;
-    if (round > POLICY.maxRounds) {
+    if (!fromGroup && round > POLICY.maxRounds) {
       throw new RequestError(
         `this consultation has used its ${POLICY.maxRounds} rounds (1 initial + ${POLICY.maxRounds - 1} follow-ups); decide with what you have, or start a new consultation with a materially different question`,
         "round_limit"
@@ -38773,13 +38787,45 @@ var JobManager = class {
       );
     }
     try {
-      return this.#admitted(req, parent, round, seats);
+      const links = fromGroup?.links ?? req.targets.map(() => ({ parent, round }));
+      return this.#admitted(req, links, seats, fromGroup);
     } catch (err) {
       for (const seat of seats) if (!this.jobs.has(seat.job_id)) releaseSeat(seat.job_id);
       throw err;
     }
   }
-  #admitted(req, parent, round, seats) {
+  // A follow-up to a fan-out: each member goes on from the newest answered
+  // round of its own chain. A member that is still running, never answered or
+  // has used its rounds is skipped and named; if that is every member, the
+  // request is refused.
+  #groupParents(groupId) {
+    const group = this.groups.get(groupId) ?? loadGroup(groupId);
+    if (!group) throw new RequestError(`followup_to references unknown group "${groupId}"`, "unknown_group");
+    const links = [];
+    const skipped = [];
+    for (const jid of group.job_ids) {
+      const member = this.jobs.get(jid) ?? loadRound(jid);
+      if (!member) {
+        skipped.push({ job_id: jid, target: null, reason: "no longer in the history" });
+        continue;
+      }
+      const rounds = this.#chainRounds(member.chain_id);
+      const latest = rounds.filter((j) => !["failed", "cancelled"].includes(j.status)).sort((a, b) => b.round - a.round)[0];
+      const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
+      const reason = !latest ? `${member.status}, so there is no answer to follow up` : latest.status !== "completed" ? `round ${latest.round} is still ${latest.status}` : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds` : null;
+      if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
+      else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
+    }
+    if (!links.length) {
+      throw new RequestError(
+        `no member of group "${groupId}" can take a follow-up: ${skipped.map((x) => `${x.target ?? x.job_id} (${x.reason})`).join(", ")}`,
+        "followup_nothing_to_continue"
+      );
+    }
+    return { group, links, skipped };
+  }
+  #admitted(req, links, seats, fromGroup = null) {
+    const parent = links[0].groupMember ?? links[0].parent;
     const groupId = id("group");
     let exposeManifest = null;
     const parentEntries = req.context.expose_from_parent ? parent.brief?.expose_paths?.entries ?? [] : [];
@@ -38830,13 +38876,14 @@ var JobManager = class {
       req._snapshot = path11.join(snapshot, "workspace");
     }
     const members2 = req.targets.map((target, i) => {
-      const chainId = parent ? parent.chain_id : id("chain");
+      const { parent: from, round: round2 } = links[i];
+      const chainId = from ? from.chain_id : id("chain");
       const jobId = seats[i].job_id;
       const job = {
         job_id: jobId,
         chain_id: chainId,
         group_id: groupId,
-        round,
+        round: round2,
         target,
         mode: req.mode,
         // Redacted here, at the one point the request text becomes state:
@@ -38862,7 +38909,7 @@ var JobManager = class {
         retries: [],
         partial_output: null,
         tool_calls: null,
-        followup_to: parent?.job_id ?? null,
+        followup_to: from?.job_id ?? null,
         status: "queued",
         // What this consultant is: the CLI it runs on, the model and its
         // lineage, as the operator defined it.
@@ -38902,19 +38949,21 @@ var JobManager = class {
       persistGroup(group);
     } catch {
     }
-    const chain = { round, priorRounds: this.#chainHistory(members2[0].chain_id) };
-    const brief = renderBrief(req, chain, exposeManifest);
     for (const job of members2) {
+      const chain = { round: job.round, priorRounds: this.#chainHistory(job.chain_id) };
+      const brief = renderBrief(req, chain, exposeManifest);
       job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
         this.#fail(job, "cli_error", err?.message ?? String(err));
       });
     }
     if (req._snapshot) cleanupJobDir(groupId);
+    const { round } = members2[0];
+    const sameRound = members2.every((m) => m.round === round);
     const common = {
       group_id: groupId,
-      round,
+      ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
+      ...fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {},
       ...parentEntries.length ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {},
-      rounds_remaining: POLICY.maxRounds - round,
       mode: req.mode,
       // Counted, not refused: a brief of facts alone is a legitimate
       // consultation, but one about code that hands over no file is one the
@@ -38943,7 +38992,14 @@ var JobManager = class {
       ...common,
       question: group.question,
       // the redacted text every member was actually sent
-      jobs: members2.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, cli: m.cli, model: m.model })),
+      jobs: members2.map((m) => ({
+        job_id: m.job_id,
+        chain_id: m.chain_id,
+        target: m.target,
+        cli: m.cli,
+        model: m.model,
+        ...sameRound ? {} : { round: m.round, rounds_remaining: POLICY.maxRounds - m.round }
+      })),
       poll_with: `consult_get({ group_id: "${groupId}" })`,
       note: "Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement."
     };
@@ -40169,8 +40225,11 @@ ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
         drift -- and the result is marked as same lineage.
 targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates).
         targets: ["all"] asks every consultant listed above; "all" cannot be mixed with names.
-        Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
-        A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+        Every member gets the byte-identical brief (on a follow-up, plus its own earlier rounds) and one
+        group_id; poll it with consult_get({ group_id }).
+        A follow-up (followup_to) to a job names that one consultant. followup_to a group_id, with no target or
+        targets, asks every member of that fan-out the same new question, each on its own chain from its latest
+        round; a member that is still running, never answered or has used its rounds is skipped and listed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
         server can annotate a same-vendor consultation.
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.

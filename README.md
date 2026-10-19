@@ -199,7 +199,7 @@ Codex").
 - `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
 
 After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
-in total.
+in total. A follow-up to a fan-out asks every consultant in it again, each continuing its own exchange.
 
 ### History and records
 
@@ -265,7 +265,7 @@ The arguments of `consult_start` that matter most:
 - `context.expose_paths`: files and directories, by absolute path, copied read-only for the consultant
 - `context.expose_diff`: `{ repo, base? }`, a change in progress: the diff goes in the brief and the files it touches are copied
 - `network`: `"off"` takes web search and browsing away from every consultant in the round
-- `followup_to`: the `job_id` of the answer a follow-up continues
+- `followup_to`: the `job_id` of the answer a follow-up continues, or a fan-out's `group_id` to ask every consultant in it again
 
 ## Contributing
 
