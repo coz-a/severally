@@ -35963,6 +35963,7 @@ var PATTERNS = [
   [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, "[REDACTED:github-token]"],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED:github-token]"],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, "[REDACTED:slack-token]"],
+  [/https:\/\/hooks\.slack\.com\/services\/T[A-Za-z0-9]+\/B[A-Za-z0-9]+\/[A-Za-z0-9]+/g, "[REDACTED:slack-webhook]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
   [/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
   [/\bAIza[0-9A-Za-z_\-]{30,}/g, "[REDACTED:google-api-key]"],
@@ -35980,7 +35981,14 @@ var PATTERNS = [
   [/(:\/\/[^\s:/@]*:)[^\s@/]+(@)/g, "$1[REDACTED]$2"],
   // KEY=value / "token": "value" style assignments
   [
-    /\b((?:[A-Za-z0-9_]*_)?(?:API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|SECRET_KEY|CLIENT_SECRET|AUTH_TOKEN|CREDENTIALS|PASSWORD|PASSWD|SECRET|TOKEN))(["']?\s*[:=]\s*["']?)([^\s"',;)]{8,})/gi,
+    /\b((?:[A-Za-z0-9_]*_)?(?:API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|SECRET_KEY|CLIENT_SECRET|AUTH_TOKEN|CREDENTIALS|ACCOUNTKEY|SHAREDACCESSKEY|SECRET|TOKEN))(["']?\s*[:=]\s*["']?)([^\s"',;)]{8,})/gi,
+    (_m, k, sep, _v) => `${k}${sep}[REDACTED]`
+  ],
+  // Password-type names take shorter values (4+). Not the words true/false/null/
+  // none/undefined or a type name, nor a reference (${X}, $X, process.env.X,
+  // req.body.password, os.environ[...]). Bare PWD is the working directory.
+  [
+    /\b((?:[A-Za-z0-9_]*_)?(?:PASSWORD|PASSWD|PASS|(?<=[A-Za-z_])PWD))(["']?\s*[:=]\s*["']?)(?!(?:true|false|null|none|undefined|string|str|number|boolean|bool|int)(?![^\s"',;)])|\$|[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?=[\s"',;)\[(]|$))([^\s"',;)]{4,})/gi,
     (_m, k, sep, _v) => `${k}${sep}[REDACTED]`
   ],
   // Any environment variable named *_KEY. Upper case only: in code, primary_key,

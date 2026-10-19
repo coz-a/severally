@@ -160,6 +160,25 @@ test('materialize: text is redacted on the way in, binary is copied byte-for-byt
   );
 });
 
+// The same masking decides what code the consultant reads: a short password
+// goes, the references and flags around it stay.
+test('materialize: a short password is masked and the code around it is not', () => {
+  const dir = tmp('severally-expose-');
+  const workdir = tmp('severally-workdir-');
+  const code = [
+    'const password = req.body.password;',
+    'const opts = { password: true, db_pass: "hunter2" };',
+    'process.env.PWD;',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'auth.mjs'), code);
+
+  materializeExposedPaths(workdir, [path.join(dir, 'auth.mjs')]);
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'workspace', '0-auth.mjs'), 'utf8'),
+    code.replace('hunter2', '[REDACTED]'),
+  );
+});
+
 // A non-utf8 text file (no null byte, so isBinary() calls it text) must not
 // be run through redact()'s utf8 decode: that would replace every invalid
 // byte sequence with U+FFFD and hand the consultant a silently corrupted
