@@ -349,6 +349,16 @@ function registrationCommandMatches(client, bin) {
   return false;
 }
 
+// The list right after an add can be briefly empty, so it is asked up to
+// three times, 1.5 s apart, before the add is judged.
+function listedAfterAdd(client) {
+  for (let i = 0; i < 3; i++) {
+    if (i) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+    if (client.isRegistered()) return true;
+  }
+  return false;
+}
+
 // Registers one client's MCP server directly (through its own `mcp add`) and
 // copies its skill, backing up everything it touches first. Shared by plugin
 // mode (Antigravity only) and --manual mode (all three clients).
@@ -367,13 +377,23 @@ function installClientDirectly(client, bin) {  step(`Registering with ${client.l
     if (!r.ok) {
       log(`   failed: ${r.out}`);
       process.exitCode = 1;
-    } else if (!dryRun && client.verifyAdd && !client.isRegistered()) {
+    } else if (!dryRun && client.verifyAdd && !listedAfterAdd(client)) {
       // opencode prints usage and exits 0 on flags a future version renames,
       // so a zero exit from `mcp add` proves nothing: confirm the entry is
       // actually listed, or the server silently never reaches the client.
-      log('   add exited 0 but the server is not listed; registration failed');
-      log(`   the list said: ${lastListOutput.slice(0, 500) || '(nothing)'}`);
-      process.exitCode = 1;
+      // Its list has also come back empty with the server in its config
+      // (backlog 17, twice, on the first run after an upgrade), so a config
+      // holding exactly this install's command is a registration, noted.
+      const said = `   the list said: ${lastListOutput.slice(0, 500) || '(nothing)'}`;
+      if (registrationCommandMatches(client, bin)) {
+        log(`   registered in ${client.label}'s global config, but \`${client.bin} mcp list\` does not show it yet`);
+        log(said);
+        log(`   check with \`${client.bin} mcp list\` after restarting it`);
+      } else {
+        log('   add exited 0 but the server is not listed; registration failed');
+        log(said);
+        process.exitCode = 1;
+      }
     } else if (!dryRun && client.verifyAdd && !registrationCommandMatches(client, bin)) {
       log('   registration not verified: the listed server command does not match this install');
       process.exitCode = 1;

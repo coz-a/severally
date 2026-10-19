@@ -57,7 +57,13 @@ if(cli==='npm') {
   // nothing and writing no config -- the opencode failure mode where flags
   // print usage instead. A real add also writes the global config file, which
   // is what the installer's command verification reads.
-  if(args[1]==='list') {
+  // STUB_LIST_EMPTY_FOR: how many 'mcp list' calls answer "No MCP servers
+  // configured" before the real list -- what opencode did twice on the first
+  // run after an upgrade (backlog 17), with the server in its config all along.
+  if(args[1]==='list' && cli==='opencode' && Number(process.env.STUB_LIST_EMPTY_FOR ?? 0) > (state.emptyLists ?? 0)) {
+    state.emptyLists = (state.emptyLists ?? 0) + 1;
+    console.log('No MCP servers configured');
+  } else if(args[1]==='list') {
     const registered = state[cli] ? [cli + ': severally connected'] : [];
     console.log([process.env.STUB_MCP_LIST ?? '', ...registered].filter(Boolean).join('\\n'));
   }
@@ -196,6 +202,26 @@ test('POSIX opencode add that did not register is reported as a failure', { skip
     calls.some((args) => args[0] === 'opencode' && args[1] === 'mcp' && args[2] === 'add'),
     'the add must still have been attempted',
   );
+});
+
+// opencode's list can come back empty for a moment while the server is in its
+// config (backlog 17): the installer asks again before calling it a failure.
+test('POSIX opencode list that is briefly empty after add is asked again, not reported as a failure', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  f.env.STUB_LIST_EMPTY_FOR = '3'; // the two checks before adding, and the first one after
+  const out = f.install('--manual', '--force');
+  assert.match(out, /Registering with OpenCode\n(?:.*\n)*?   registered\n/);
+});
+
+// If the list never shows it but the config holds exactly this install's
+// command, the registration is in place: say so, with what the list said,
+// and do not fail the install over it.
+test('POSIX opencode registered in its config but missing from the list is a note, not a failure', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  f.env.STUB_LIST_EMPTY_FOR = '99';
+  const out = f.install('--manual', '--force');
+  assert.match(out, /registered in OpenCode's global config, but `opencode mcp list` does not show it yet/);
+  assert.match(out, /No MCP servers configured/);
 });
 
 // --force replaces a registration, and opencode has no `mcp remove`, so a
