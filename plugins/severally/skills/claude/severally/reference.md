@@ -71,9 +71,9 @@ consultants of one vendor.
 
 Send **one** `targets` call: every consultant receives the byte-identical brief, which is what makes the answers
 comparable. Poll the single group with `consult_get({ group_id })` and stop it with
-`consult_cancel({ group_id })`. A fan-out takes one slot of the concurrency cap (nine by default, shared by
-every severally session on this machine) and one consultation's quota per consultant, and `targets` is refused
-on a follow-up.
+`consult_cancel({ group_id })`. A fan-out takes one slot of the concurrency cap per consultant (nine by default,
+shared by every severally session on this machine; the group starts only if every member gets one) and one
+consultation's quota per consultant, and `targets` is refused on a follow-up.
 
 `comparison.by_target` holds, per consultant: stance, summary, confidence, evidence basis, finding points (each
 with its `id` and severity), `severity_counts`, `decision_changers`, alternatives, unknowns (`u1` …),

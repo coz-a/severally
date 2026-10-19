@@ -183,7 +183,7 @@ export function createServer(manager = new JobManager()) {
       description:
         `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before ` +
         'answering, which stays under the request timeout MCP clients apply; wait_ms sets another wait, and ' +
-        'wait_ms: 0 answers at once. A typical consultation takes one to five minutes, so expect to call this ' +
+        'wait_ms: 0 answers at once. A typical consultation takes one to ten minutes, so expect to call this ' +
         'several times, and do something else in between. A completed job carries the structured ' +
         'answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, ' +
         'invalid_output, cli_error, spawn_error, interrupted) — that is "no advice was obtained", which is different from advice that arrived ' +
