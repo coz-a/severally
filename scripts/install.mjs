@@ -246,7 +246,10 @@ const codexHome = process.env.CODEX_HOME ?? path.join(home, '.codex');
 // consult_get waits 45 s by default, under the 60 s that some MCP clients
 // allow a tool call. A client known to wait longer is registered with this,
 // so one consult_get usually covers a whole consultation. The plugin's own
-// .mcp.json carries the same value for Claude Code.
+// .mcp.json carries the same value for Claude Code, and its Codex manifest
+// with tool_timeout_sec 660 (codex 0.163 stops a tool call at 300 s by
+// default, progress notwithstanding). `codex mcp add` cannot set that
+// timeout, so a --manual Codex keeps 45 s.
 const LONG_WAIT = 'SEVERALLY_MAX_WAIT_MS=600000';
 const claudeSkillsDir = path.join(home, '.claude', 'skills');
 

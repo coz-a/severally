@@ -20,7 +20,9 @@
   "mcpServers": {
     "severally": {
       "type": "stdio",
-      "command": "severally-mcp"
+      "command": "severally-mcp",
+      "env": { "SEVERALLY_MAX_WAIT_MS": "600000" },
+      "tool_timeout_sec": 660
     }
   },
   "interface": {
