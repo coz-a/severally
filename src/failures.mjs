@@ -36,13 +36,20 @@ const RULES = [
   ],
 ];
 
+/**
+ * @param {string | null | undefined} text
+ * @param {string} [fallback]
+ */
 export function classifyMessage(text, fallback = 'cli_error') {
   if (!text) return fallback;
   for (const [re, kind] of RULES) if (re.test(text)) return kind;
   return fallback;
 }
 
-/** Whether the lead may reasonably try again (with a longer budget, or later). */
+/**
+ * Whether the lead may reasonably try again (with a longer budget, or later).
+ * @param {string} kind
+ */
 export function isRetriable(kind) {
   return kind === 'timeout' || kind === 'cli_error' || kind === 'rate_limited' || kind === 'interrupted';
 }

@@ -9,6 +9,9 @@ import { parseJsonc } from './jsonc.mjs';
 import { findCommand } from './platform.mjs';
 import { buildConsultants, normalizeName } from './consultants.mjs';
 
+/** @typedef {import('./consultants.mjs').Consultant} Consultant */
+/** @typedef {import('./consultants.mjs').CliId} CliId */
+
 // One file, read once at start, so an operator configures a machine in a
 // single place instead of editing each client's MCP registration. Precedence
 // is env > this file > autodetection > built-in default: the env vars stay the
@@ -22,7 +25,9 @@ const CONFIG_PATH =
   [path.join(CONFIG_HOME, 'config.jsonc'), path.join(CONFIG_HOME, 'config.json')].find((p) => fs.existsSync(p)) ||
   path.join(CONFIG_HOME, 'config.json');
 
+/** @type {string | null} */
 let configError = null;
+/** @type {Record<string, any>} the parsed config file, before validation */
 const CONFIG = (() => {
   try {
     return parseJsonc(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -30,7 +35,8 @@ const CONFIG = (() => {
     // A missing file is the normal case. A malformed one is not: silently
     // ignoring it would run the machine on defaults the operator thinks they
     // overrode, so it is surfaced on stderr when the server starts.
-    if (err.code !== 'ENOENT') configError = `${CONFIG_PATH}: ${err.message}`;
+    const e = /** @type {NodeJS.ErrnoException} */ (err);
+    if (e.code !== 'ENOENT') configError = `${CONFIG_PATH}: ${e.message}`;
     return {};
   }
 })();
@@ -50,7 +56,10 @@ if (!configError && ![undefined, '', 'on', 'off'].includes(process.env.SEVERALLY
 const FROM = configError ? buildConsultants({}) : BUILT;
 const LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
 
-/** What is wrong with the config file as a whole, or null. Reported at startup; while set, nothing can be started. */
+/**
+ * What is wrong with the config file as a whole, or null. Reported at startup; while set, nothing can be started.
+ * @returns {string | null}
+ */
 export function configProblem() {
   return configError;
 }
@@ -65,14 +74,22 @@ export function brokenConsultantNames() {
   return configError ? [] : Object.keys(BUILT.broken);
 }
 
-/** Why the consultant of this name is out of use because of a config mistake, or null. */
+/**
+ * Why the consultant of this name is out of use because of a config mistake, or null.
+ * @param {string} name
+ */
 export function brokenConsultant(name) {
   const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
   return p ? `the config file has a mistake in it: ${p.join('; ')}` : null;
 }
 
+/** @type {Record<string, any>} */
 const usable = configError ? {} : CONFIG;
 // A CLI whose own section has a mistake is off, whatever else the section says.
+/**
+ * @param {string} id
+ * @returns {Record<string, any>}
+ */
 const cfgCli = (id) => {
   if (Object.hasOwn(BUILT.brokenClis, id) && !configError) {
     return {
@@ -82,17 +99,26 @@ const cfgCli = (id) => {
   }
   return usable.clis && typeof usable.clis === 'object' ? (usable.clis[id] ?? {}) : {};
 };
+/** @type {Record<string, any>} */
 const cfgServer = usable.server && typeof usable.server === 'object' ? usable.server : {};
 
 /**
  * Is this command runnable here? Absolute/relative paths are checked as given.
  * Exported so the config generator can report what a machine has without
  * going through POLICY, which already reflects any config file it found.
+ * @param {string} command
  */
 export function isInstalled(command) {
   return findCommand(command) !== null;
 }
 
+/**
+ * @param {string} name
+ * @param {number | null} dflt
+ * @param {number} min
+ * @param {number} max
+ * @returns {number | null}
+ */
 const num = (name, dflt, min, max) => {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return dflt;
@@ -105,6 +131,14 @@ const num = (name, dflt, min, max) => {
 // the same range whichever one supplied it. Codex and OpenCode do not pass the
 // user's shell environment to an MCP server, so for them the file is the only
 // place an operator can reach without editing the client's registration.
+/**
+ * @param {string} name
+ * @param {unknown} fromCfg
+ * @param {number} dflt
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
 const limit = (name, fromCfg, dflt, min, max) => {
   const fromEnv = num(name, null, min, max);
   if (fromEnv !== null) return fromEnv;
@@ -112,6 +146,11 @@ const limit = (name, fromCfg, dflt, min, max) => {
   return dflt;
 };
 
+/**
+ * @param {string} name
+ * @param {string} dflt
+ * @returns {string}
+ */
 const str = (name, dflt) => {
   const raw = process.env[name];
   return raw === undefined || raw === '' ? dflt : raw;
@@ -120,6 +159,7 @@ const str = (name, dflt) => {
 // The CLI a lead runs in, by any everyday name. Only `caller` uses this:
 // which consultant a name reaches is consultants.mjs's resolveConsultant.
 // Object.create(null) so 'constructor' is an unknown name, not a function.
+/** @type {Readonly<Record<string, CliId>>} */
 export const CALLER_ALIASES = Object.freeze(
   Object.assign(Object.create(null), {
     codex: 'codex',
@@ -140,7 +180,11 @@ export const CALLER_ALIASES = Object.freeze(
 
 export const CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
 
-/** The CLI id for any accepted spelling of a caller, or null. */
+/**
+ * The CLI id for any accepted spelling of a caller, or null.
+ * @param {unknown} raw
+ * @returns {CliId | null}
+ */
 export function resolveCaller(raw) {
   const key = normalizeName(raw);
   return typeof key === 'string' && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
@@ -148,6 +192,10 @@ export function resolveCaller(raw) {
 
 // Which CLI is hosting this server. Used only to annotate a consultation that
 // goes to the caller's own vendor; it never affects permissions or limits.
+/**
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {CliId | null}
+ */
 export function detectCaller(env = process.env) {
   if (env.CLAUDECODE === '1' || env.CLAUDE_CODE_ENTRYPOINT) return 'claude-code';
   if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return 'codex';
@@ -173,6 +221,9 @@ export const STANCES = ['proceed', 'do_not_proceed', 'alternative', 'undetermine
  * A leading ~ is a shell courtesy, not a path: nothing expands it here, so
  * "~/.local/bin/claudex" would simply not exist and the consultant would drop
  * out of the available list without saying why. Expand it where a path is read.
+ * @template T
+ * @param {T} value
+ * @returns {T | string}
  */
 function expandHome(value) {
   if (typeof value !== 'string') return value;
@@ -181,6 +232,12 @@ function expandHome(value) {
 }
 
 // env > config file > built-in default, for a CLI's bin.
+/**
+ * @param {string} id
+ * @param {string} envName
+ * @param {string} dflt
+ * @returns {string}
+ */
 const binFor = (id, envName, dflt) => {
   const fromEnv = process.env[envName];
   if (fromEnv !== undefined && fromEnv !== '') return expandHome(fromEnv);
@@ -191,11 +248,16 @@ const binFor = (id, envName, dflt) => {
 // Why a consultant is off, in the operator's words: "quota exhausted until
 // 15:00" is more use to a lead than a bare refusal, and it is the reason a CLI
 // that IS installed gets excluded.
+/** @param {string} id */
 const disabledNote = (id) => {
   const n = cfgCli(id).note;
   return typeof n === 'string' && n.trim() !== '' ? n.trim() : null;
 };
 
+/**
+ * @param {string} id
+ * @param {string} cli
+ */
 const isEnabled = (id, cli) => {
   const flag = cfgCli(id).enabled;
   if (typeof flag === 'boolean') return flag;
@@ -210,6 +272,10 @@ const OPENCODE_BIN = binFor('opencode', 'SEVERALLY_OPENCODE_BIN', 'opencode');
 // Operator-only extras for the child process (config: args, env). Config-only,
 // never from a request, and validated at launch (jobs.mjs) where the isolation
 // flags and variables they must not undo are known.
+/**
+ * @param {string} id
+ * @returns {{ extraArgs: string[], extraEnv: Record<string, string> }}
+ */
 const extras = (id) => ({ extraArgs: cfgCli(id).args ?? [], extraEnv: cfgCli(id).env ?? {} });
 
 export const POLICY = Object.freeze({
@@ -250,7 +316,7 @@ export const POLICY = Object.freeze({
       // opencode.json `provider` definitions copied into the sandbox config:
       // the only way to reach a provider the sandbox's empty HOME would not
       // know, such as a local OpenAI-compatible server.
-      provider: cfgCli('opencode').provider ?? {},
+      provider: /** @type {Record<string, any>} */ (cfgCli('opencode').provider ?? {}),
     }),
   }),
   // Who can be asked, in config order, and how a name that fits several is
@@ -316,6 +382,8 @@ export const POLICY = Object.freeze({
   }),
 });
 
+/** @typedef {typeof POLICY} Policy */
+
 /**
  * Wall-clock budget for one consultation of this consultant. Read at job
  * start (not frozen into the module) so an operator restart is not needed to
@@ -323,6 +391,7 @@ export const POLICY = Object.freeze({
  * same time: a long Gemini answer should not force the same patience on every
  * other consultant. The two hour ceiling stays -- past that the answer is a
  * different request, not a slower one.
+ * @param {Consultant | null} [consultant]
  */
 export function timeoutMs(consultant) {
   return consultant?.timeoutMs ?? limit('SEVERALLY_TIMEOUT_MS', cfgServer.timeout_ms, 1_800_000, 1_000, 7_200_000);
@@ -417,8 +486,12 @@ export const PROTECTED_FILE_NAMES = Object.freeze([
   'id_dsa',
 ]);
 
-/** Absolute protected roots, with forward slashes; `*` stands for one path segment. */
+/**
+ * Absolute protected roots, with forward slashes; `*` stands for one path segment.
+ * @returns {string[]}
+ */
 export function protectedRoots() {
+  /** @param {string} p */
   const fwd = (p) => p.replaceAll('\\', '/');
   return [
     ...PROTECTED_HOME_PATHS.map((rel) => fwd(path.join(os.homedir(), rel))),
@@ -426,10 +499,14 @@ export function protectedRoots() {
   ];
 }
 
+/** @param {string} s */
 const escapeRe = (s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 // Case-insensitive where the default file system is: Windows and macOS.
 export const PATHS_CASE_INSENSITIVE = process.platform === 'win32' || process.platform === 'darwin';
-/** Regex sources: one per protected root, matching it and anything under it. */
+/**
+ * Regex sources: one per protected root, matching it and anything under it.
+ * @param {string[]} [extraRoots]
+ */
 export function protectedRootPatterns(extraRoots = []) {
   return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll('\\', '/'))].map(
     (r) => `^${escapeRe(r.replace(/\/+$/, '')).replaceAll('*', '[^/]+')}(/|$)`,
@@ -440,7 +517,10 @@ export function protectedNamePatterns() {
   return PROTECTED_FILE_NAMES.map((n) => `^${escapeRe(n).replaceAll('*', '.*')}$`);
 }
 
-/** Whether an absolute path, or the file it links to, is protected. */
+/**
+ * Whether an absolute path, or the file it links to, is protected.
+ * @param {string} abs
+ */
 export function isProtectedPath(abs) {
   const flags = PATHS_CASE_INSENSITIVE ? 'i' : '';
   const roots = protectedRootPatterns().map((p) => new RegExp(p, flags));
@@ -459,12 +539,18 @@ export function isProtectedPath(abs) {
 
 export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'test-output', 'config'];
 
-/** The consultant with this exact name, or undefined. */
+/**
+ * The consultant with this exact name, or undefined.
+ * @param {string} name
+ */
 export function consultantByName(name) {
   return POLICY.consultants.find((c) => c.name === name);
 }
 
-/** Can this consultant run here: turned on itself, and its CLI usable. */
+/**
+ * Can this consultant run here: turned on itself, and its CLI usable.
+ * @param {Consultant} c
+ */
 export function consultantAvailable(c) {
   return c.enabled && POLICY.clis[c.cli].available;
 }
@@ -472,6 +558,8 @@ export function consultantAvailable(c) {
 /**
  * Why this consultant cannot be reached, or null when it can. The operator's
  * own note wins: "installed but rate-limited" is a case only they can state.
+ * @param {Consultant | null | undefined} c
+ * @returns {string | null}
  */
 export function unavailableReason(c) {
   if (!c || consultantAvailable(c)) return null;
@@ -489,6 +577,7 @@ export function availableConsultants() {
 
 export function limitsSummary() {
   const list = availableConsultants();
+  /** @param {(c: Consultant) => unknown} f */
   const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
   return {
     available_targets: list.map((c) => c.name),

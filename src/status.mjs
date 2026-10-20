@@ -40,18 +40,21 @@ const CLIENTS = [
 // "registered": the client's own listing names severally (it may still be
 // turned off there). "not registered": the client answered, without it.
 // No answer at all (a timeout, a failure to start): unknown.
+/** @param {{ cmd: string, checks: string[][] }} client */
 function registration({ cmd, checks }) {
   if (!findCommand(cmd)) return 'not installed';
   let ran = false;
   for (const args of checks) {
     try {
-      const out = execCommandSync(cmd, args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
+      const out = /** @type {string} */ (
+        execCommandSync(cmd, args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] })
+      );
       ran = true;
       if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return 'registered (listed by the client)';
     } catch (err) {
       // It ran and said no (`mcp get` of a missing server exits non-zero); a
       // timeout or a failure to start says nothing either way.
-      if (typeof err.status === 'number') ran = true;
+      if (typeof (/** @type {{ status?: unknown }} */ (err).status) === 'number') ran = true;
     }
   }
   return ran ? 'not registered' : `could not tell (${cmd} ${checks.map((a) => a.join(' ')).join(' / ')} failed)`;
@@ -60,6 +63,7 @@ function registration({ cmd, checks }) {
 // Each CLI's own word on its login, read without sending a prompt. Only the
 // verdict is kept: `claude auth status` also prints the account's email.
 // Antigravity has no such command, so it is not checked.
+/** @type {Record<string, { cmd: string, args: string[], read: (out: string, ok: boolean) => boolean | string }>} */
 const LOGIN = {
   'claude-code': { cmd: 'claude', args: ['auth', 'status', '--json'], read: (out) => JSON.parse(out).loggedIn === true },
   // Codex prints its answer on stderr; the exit status carries the verdict.
@@ -76,15 +80,20 @@ const LOGIN = {
   },
 };
 
+/** @param {string} cli */
 function login(cli) {
   const check = LOGIN[cli];
   if (!check) return 'not checked (no login status command)';
   if (!findCommand(check.cmd)) return 'not installed';
+  /** @type {string} */
   let out;
   let ok = true;
   try {
-    out = execCommandSync(check.cmd, check.args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (err) {
+    out = /** @type {string} */ (
+      execCommandSync(check.cmd, check.args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] })
+    );
+  } catch (e) {
+    const err = /** @type {{ status?: unknown, stdout?: unknown }} */ (e);
     if (typeof err.status !== 'number') return `could not tell (${check.cmd} ${check.args.join(' ')} failed)`;
     out = `${err.stdout ?? ''}`;
     ok = false;

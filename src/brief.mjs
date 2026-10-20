@@ -7,6 +7,52 @@ import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
 import { redact } from './redact.mjs';
 import { humanSize } from './expose-paths.mjs';
 
+/**
+ * @typedef {object} BriefArtifact
+ * @property {string} name
+ * @property {string} kind
+ * @property {string} [language]
+ * @property {string} [source]
+ * @property {string} excerpt
+ */
+
+/**
+ * The validated request, as far as the brief reads it.
+ * @typedef {object} BriefRequest
+ * @property {string} question
+ * @property {string} [objective]
+ * @property {string[]} [success_criteria]
+ * @property {string[]} [constraints]
+ * @property {'explore' | 'review' | 'debate'} mode
+ * @property {'on' | 'off'} [network]
+ * @property {{ facts?: string[], proposal?: string | null, counterpoints?: string[], artifacts: BriefArtifact[] }} context
+ */
+
+/** @typedef {import('./expose-paths.mjs').ExposeManifest} ExposeManifest */
+
+/**
+ * A finding, unknown or check from an earlier round, with the lead's verdict on it.
+ * @typedef {object} PriorPoint
+ * @property {string} id
+ * @property {string} point
+ * @property {string | null} [grounds]
+ * @property {string | null} [verdict]
+ * @property {string | null} [effect]
+ */
+
+/**
+ * @typedef {object} PriorRound
+ * @property {number} round
+ * @property {string} mode
+ * @property {string} question
+ * @property {string} summary
+ * @property {PriorPoint[]} [findings]
+ * @property {PriorPoint[]} [unknowns]
+ * @property {PriorPoint[]} [next_checks]
+ */
+
+/** @typedef {{ round: number, priorRounds: PriorRound[] }} BriefChain */
+
 const MODE_BRIEFS = {
   explore: [
     'MODE: explore.',
@@ -70,6 +116,10 @@ const GUARDRAILS_TAIL = [
   'Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not.',
 ];
 
+/**
+ * @param {boolean} [hasExposedPaths]
+ * @param {'on' | 'off'} [network]
+ */
 export function renderGuardrails(hasExposedPaths = false, network = 'on') {
   return [
     ...GUARDRAILS_HEAD,
@@ -85,6 +135,10 @@ export function renderGuardrails(hasExposedPaths = false, network = 'on') {
 // history holds an answer whose premises are gone -- and a finding read a month
 // later is only as good as the facts it was answering. Redacted the same way
 // renderBrief redacts the text itself, so the stored copy is what was sent.
+/**
+ * @param {BriefRequest} req
+ * @param {ExposeManifest | null} [exposeManifest]
+ */
 export function briefRecord(req, exposeManifest = null) {
   return redact({
     objective: req.objective ?? null,
@@ -126,16 +180,22 @@ export function briefRecord(req, exposeManifest = null) {
   });
 }
 
+/**
+ * @param {string} title
+ * @param {string | null | undefined} body
+ */
 function section(title, body) {
   if (!body) return null;
   return `## ${title}\n${body}`;
 }
 
+/** @param {string[] | null | undefined} items */
 function bullets(items) {
   if (!items || items.length === 0) return null;
   return items.map((i) => `- ${i}`).join('\n');
 }
 
+/** @param {BriefArtifact[]} artifacts */
 function renderArtifacts(artifacts) {
   if (!artifacts.length) return null;
   return artifacts
@@ -153,6 +213,7 @@ function renderArtifacts(artifacts) {
 const EXPOSE_LISTING_MAX = 200;
 
 // Deleted files have no copy to open; the brief says which they were.
+/** @param {string[]} [changes] */
 function deletedLines(changes = []) {
   const gone = changes.filter((c) => c.endsWith(' (deleted)')).map((c) => c.slice(0, -' (deleted)'.length));
   if (!gone.length) return [];
@@ -162,6 +223,7 @@ function deletedLines(changes = []) {
   ];
 }
 
+/** @param {ExposeManifest | null} manifest */
 function renderExposeManifest(manifest) {
   if (!manifest || (manifest.entries.length === 0 && manifest.skipped.length === 0)) return null;
   let room = EXPOSE_LISTING_MAX;
@@ -188,7 +250,9 @@ function renderExposeManifest(manifest) {
       ...(e.kind === 'diff' || e.kind === 'change_files' ? deletedLines(e.changes) : []),
     ];
   });
+  /** @param {string} reason */
   const count = (reason) => manifest.skipped.filter((x) => x.reason === reason).length;
+  /** @param {string} reason */
   const named = (reason) =>
     manifest.skipped
       .filter((x) => x.reason === reason)
@@ -222,16 +286,28 @@ function renderExposeManifest(manifest) {
 
 // An earlier round's point, cut to a length that keeps a five-round chain
 // from crowding out the question it is there to inform.
+/**
+ * @param {string} s
+ * @param {number} [max]
+ */
 const clip = (s, max = 400) => (s.length > max ? `${s.slice(0, max)}...` : s);
 
 // The earlier rounds have a budget of their own, beside the request's cap:
 // when they outgrow it, the oldest rounds are left out, and the brief says so.
 const HISTORY_CHARS = 40_000;
 
+/** @param {PriorRound} p */
 function renderRound(p) {
   // Prefixed with the round, so a point from round 1 is not taken for this one's.
+  /** @param {string} id */
   const tag = (id) => `r${p.round}.${id}`;
+  /** @param {PriorPoint} x */
   const verdict = (x) => (x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}` : '');
+  /**
+   * @param {string} title
+   * @param {PriorPoint[] | undefined} items
+   * @param {(x: PriorPoint) => string} line
+   */
   const list = (title, items, line) => (items?.length ? [title, ...items.map(line)].join('\n') : null);
   return [
     `### Round ${p.round} (${p.mode})`,
@@ -250,9 +326,9 @@ function renderRound(p) {
 }
 
 /**
- * @param {object} req validated request
- * @param {object} chain { round, priorRounds: [{question, mode, summary, findings: [{id, point, grounds, verdict, effect}],
- *   unknowns: [{id, point, verdict, effect}], next_checks: [{id, point, verdict, effect}]}] }
+ * @param {BriefRequest} req validated request
+ * @param {BriefChain} [chain] the round number and the earlier rounds of the chain
+ * @param {ExposeManifest | null} [exposeManifest]
  */
 export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];

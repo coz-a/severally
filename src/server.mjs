@@ -9,7 +9,7 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
-export const SEVERALLY_VERSION = '2.4.0';
+export const SEVERALLY_VERSION = '2.4.1';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -21,7 +21,12 @@ const DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : M
 // counts silence against the call keeps it open.
 const PROGRESS_EVERY_MS = 15_000;
 
+/** @param {string} v */
 const semver = (v) => String(v).split('.').map(Number);
+/**
+ * @param {string} a
+ * @param {string} b
+ */
 const older = (a, b) => {
   const [x, y] = [semver(a), semver(b)];
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
@@ -33,8 +38,11 @@ const older = (a, b) => {
  * from this server: a fix reaches a client only through the copy it runs, and
  * an operator who updated one copy cannot see that another is behind. Only
  * version strings are compared. A copy that is missing is not reported.
+ * @param {string} [home]
+ * @param {string} [severallyHome]
  */
 export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
+  /** @param {string} file */
   const read = (file) => {
     try {
       return fs.readFileSync(file, 'utf8');
@@ -51,15 +59,16 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
     runtime: bundle?.match(/(?:SEVERALLY_VERSION = |name: ["']severally["'], version: )["'](\d+\.\d+\.\d+)["']/)?.[1],
     claude_skills_dir: (() => {
       try {
-        return JSON.parse(plugin).version;
+        return JSON.parse(/** @type {string} */ (plugin)).version;
       } catch {
         return undefined;
       }
     })(),
   };
+  /** @type {Record<string, string>} */
   const copies = { this_server: SEVERALLY_VERSION };
   // Only plain x.y.z is compared; anything else is left out rather than guessed at.
-  for (const [name, v] of Object.entries(found)) if (/^\d+\.\d+\.\d+$/.test(v ?? '')) copies[name] = v;
+  for (const [name, v] of Object.entries(found)) if (/^\d+\.\d+\.\d+$/.test(v ?? '')) copies[name] = /** @type {string} */ (v);
   const versions = Object.values(copies);
   if (versions.every((v) => v === SEVERALLY_VERSION)) return null;
   const newest = versions.reduce((a, b) => (older(a, b) ? b : a));
@@ -149,13 +158,18 @@ const recordShape = {
     .describe('written after reading the answer'),
 };
 
+/** @param {unknown} err */
+const errorMessage = (err) => String(/** @type {Error | undefined} */ (err)?.message ?? err);
+
 export function createServer(manager = new JobManager()) {
   // Read once: the copies on disk change only when someone reinstalls, and then
   // this server is the one to restart.
   const stale = staleInstall();
   const server = new McpServer({ name: 'severally', version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
 
+  /** @param {unknown} payload */
   const ok = (payload) => ({ content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }] });
+  /** @param {unknown} payload */
   const fail = (payload) => ({
     content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }],
     isError: true,
@@ -177,7 +191,7 @@ export function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null, limits: limitsSummary() });
         }
-        return fail({ error: 'internal_error', message: String(err?.message ?? err) });
+        return fail({ error: 'internal_error', message: errorMessage(err) });
       }
     },
   );
@@ -244,9 +258,9 @@ export function createServer(manager = new JobManager()) {
         // A request the client cancels stops the wait with it.
         view = group_id
           ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal)
-          : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+          : await manager.wait(/** @type {string} */ (job_id), wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
       } finally {
-        clearInterval(timer);
+        clearInterval(timer ?? undefined);
       }
       if (!view) {
         return fail({
@@ -257,7 +271,8 @@ export function createServer(manager = new JobManager()) {
       // Still running: the poll answer as it is; ids applies once there is an answer.
       if (!ids || ['running', 'queued', 'cancelling'].includes(view.status)) return ok(view);
       try {
-        return ok(pointsOf(view, ids));
+        // ids comes with job_id alone (checked above), so this is one job's view.
+        return ok(pointsOf(/** @type {import('./jobs.mjs').JobView} */ (view), ids));
       } catch (err) {
         if (err instanceof RequestError) return fail({ error: err.code, message: err.message });
         throw err;
@@ -283,7 +298,7 @@ export function createServer(manager = new JobManager()) {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
       }
-      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
+      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(/** @type {string} */ (job_id));
       if (!view) {
         return fail({
           error: 'unknown_job',
@@ -324,6 +339,7 @@ export function createServer(manager = new JobManager()) {
     async ({ job_id, entries, reflection, records }) => {
       try {
         if (records !== undefined) {
+          /** @type {Record<string, any>} */
           const out = manager.record(
             Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== undefined)),
           );
@@ -342,7 +358,7 @@ export function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
         }
-        return fail({ error: 'internal_error', message: String(err?.message ?? err) });
+        return fail({ error: 'internal_error', message: errorMessage(err) });
       }
     },
   );
@@ -367,7 +383,7 @@ export function createServer(manager = new JobManager()) {
         return ok(exportChain({ chain_id, group_id }));
       } catch (err) {
         if (err instanceof ExportError) return fail({ error: err.code, message: err.message });
-        return fail({ error: 'internal_error', message: String(err?.message ?? err) });
+        return fail({ error: 'internal_error', message: errorMessage(err) });
       }
     },
   );
@@ -420,6 +436,7 @@ export async function main() {
   manager.sweepInterrupted();
 
   let closing = false;
+  /** @param {string} signal */
   const bye = async (signal) => {
     if (closing) return;
     closing = true;

@@ -13,7 +13,16 @@ import path from 'node:path';
 import { POLICY } from './policy.mjs';
 import { humanSize } from './expose-paths.mjs';
 
+/**
+ * A stored round or brief: parsed from the history files, so its shape is whatever was written.
+ * @typedef {Record<string, any>} Stored
+ */
+
 export class ExportError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} code
+   */
   constructor(message, code) {
     super(message);
     this.name = 'ExportError';
@@ -23,6 +32,7 @@ export class ExportError extends Error {
 
 const historyDir = () => path.join(POLICY.home, 'history');
 
+/** @param {string} p */
 function readJson(p) {
   try {
     return JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -31,8 +41,13 @@ function readJson(p) {
   }
 }
 
+/**
+ * @param {string} chainId
+ * @returns {Stored[]}
+ */
 function roundsOf(chainId) {
   const dir = path.join(historyDir(), chainId);
+  /** @type {string[]} */
   let names = [];
   try {
     names = fs.readdirSync(dir);
@@ -49,6 +64,10 @@ function roundsOf(chainId) {
 // A fan-out is one question sent to several consultants, and each consultant
 // answers on its own chain. Nothing in the group file records which chain that
 // was, so the index -- one line per consultation -- is what maps them back.
+/**
+ * @param {string} groupId
+ * @returns {string[]}
+ */
 function chainsOfGroup(groupId) {
   const group = readJson(path.join(historyDir(), 'groups', `${groupId}.json`));
   if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.severally/history`, 'unknown_group');
@@ -62,6 +81,7 @@ function chainsOfGroup(groupId) {
   } catch {
     /* an unreadable index leaves the group unresolvable, handled below */
   }
+  /** @type {string[]} */
   const chains = [];
   for (const jobId of group.job_ids ?? []) {
     const chainId = byJob.get(jobId);
@@ -73,16 +93,30 @@ function chainsOfGroup(groupId) {
   return chains;
 }
 
+/**
+ * @param {string[] | null | undefined} items
+ * @param {(item: string) => string} render
+ */
 const bullets = (items, render) => (items ?? []).map(render);
 
+/**
+ * @param {string} text
+ * @param {string | null | undefined} language
+ */
 function fence(text, language) {
   const marker = String(text).includes('```') ? '~~~' : '```';
   return [`${marker}${language ?? ''}`, text, marker];
 }
 
+/** @param {Stored | null | undefined} brief */
 function briefSection(brief) {
   if (!brief) return ['*(the brief was not recorded for this round)*', ''];
+  /** @type {string[]} */
   const out = [];
+  /**
+   * @param {string} title
+   * @param {string | string[] | null | undefined} body
+   */
   const block = (title, body) => {
     if (!body || (Array.isArray(body) && body.length === 0)) return;
     out.push(`**${title}**`, '');
@@ -128,7 +162,8 @@ function briefSection(brief) {
             : ', unchanged since the earlier round';
       out.push(`- ${e.exposed_as} (${e.kind}, ${e.files} file(s), ${humanSize(e.bytes)}${since}) -- from ${e.source}`);
     }
-    const count = (reason) => (exposed.skipped ?? []).filter((x) => x.reason === reason).length;
+    /** @param {string} reason */
+    const count = (reason) => (exposed.skipped ?? []).filter((/** @type {Stored} */ x) => x.reason === reason).length;
     if (count('symlink')) out.push(`- ${count('symlink')} symlink(s) inside those directories were skipped, not followed`);
     if (count('protected')) out.push(`- ${count('protected')} credential or history path(s) were left out on purpose`);
     if (count('gone')) out.push(`- ${count('gone')} path(s) from the earlier round no longer existed and were not copied again`);
@@ -143,13 +178,18 @@ function briefSection(brief) {
 // The lead's own line, printed under the point it belongs to. An id with no
 // entry says so out loud: "nobody looked at this" is the thing a record of a
 // decision most easily loses.
+/**
+ * @param {Stored | null | undefined} record
+ * @param {string} id
+ */
 function verdictLine(record, id) {
-  const entry = (record?.entries ?? []).find((e) => e.id === id);
+  const entry = (record?.entries ?? []).find((/** @type {Stored} */ e) => e.id === id);
   if (!entry) return '  - checked: no verdict recorded';
   const tail = [entry.effect, entry.note ? `(${entry.note})` : null].filter(Boolean).join(' ');
   return `  - checked: ${entry.verdict}${tail ? ` -- ${tail}` : ''}`;
 }
 
+/** @param {Stored} round */
 function answerSection(round) {
   const r = round.result;
   if (!r) {
@@ -160,6 +200,7 @@ function answerSection(round) {
       '',
     ];
   }
+  /** @type {string[]} */
   const out = [];
   const record = round.record;
   out.push('**Summary**', '', r.summary, '');
@@ -227,6 +268,10 @@ function answerSection(round) {
 // A fan-out sends the byte-identical brief to every consultant, so printing it
 // once per consultant buries the answers in repetition. Compared, not judged:
 // identical text is named as identical, anything else is printed in full.
+/**
+ * @param {Stored} round
+ * @param {Stored | null} previousBrief
+ */
 function roundSection(round, previousBrief) {
   const secs = round.duration_ms == null ? null : (round.duration_ms / 1000).toFixed(1);
   const head = [
@@ -276,14 +321,14 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
   if (Boolean(chainId) === Boolean(groupId)) {
     throw new ExportError('pass exactly one of chain_id or group_id', 'export_target_required');
   }
-  const chainIds = groupId ? chainsOfGroup(groupId) : [chainId];
+  const chainIds = groupId ? chainsOfGroup(groupId) : [/** @type {string} */ (chainId)];
   const perChain = chainIds.map((id) => ({ chain_id: id, rounds: roundsOf(id) }));
   const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
   if (total === 0) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, 'unknown_chain');
   }
 
-  const first = perChain.find((c) => c.rounds.length)?.rounds[0];
+  const first = /** @type {Stored} */ (perChain.find((c) => c.rounds.length)?.rounds[0]);
   const lines = [
     `# Consultation record: ${first.question}`,
     '',
@@ -296,6 +341,7 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     'ways, both are printed and the difference is left standing.',
     '',
   ];
+  /** @type {Stored | null} */
   let previousBrief = null;
   for (const chain of perChain) {
     for (const round of chain.rounds) {

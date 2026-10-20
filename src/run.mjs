@@ -46,6 +46,7 @@ const DROP_PREFIX = ['CLAUDE_CODE_', 'SEVERALLY_', 'MCP_'];
 // The names came out of the binary with `strings`; only XDG_CONFIG_HOME was
 // probed behaviourally, so read the AGY_* line as "no evidence of a
 // config-dir override under that prefix", not as proof that none exists.
+/** @type {Record<string, string[]>} */
 const TARGET_DROP_PREFIX = {
   codex: ['ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
   'claude-code': ['OPENAI_', 'CODEX_', 'GEMINI_', 'GOOGLE_', 'AGY_', 'ANTIGRAVITY_', 'ZAI_'],
@@ -62,6 +63,7 @@ const TARGET_DROP_PREFIX = {
 // Exact names dropped for one target only (see the note above). Kept separate
 // from DROP_EXACT so the two other consultants, whose isolation has been
 // verified with these variables present, are not changed.
+/** @type {Record<string, string[]>} */
 const TARGET_DROP_EXACT = {
   antigravity: ['XDG_CONFIG_HOME'],
 };
@@ -71,10 +73,15 @@ const TARGET_DROP_EXACT = {
  * sockets, session ids, entrypoint markers) is removed, as are the other two
  * vendors' credentials -- each consultant keeps only its own; and a recursion
  * marker is added.
+ * @param {string} target
+ * @param {Record<string, string>} [extra]
+ * @param {Record<string, string>} [operator]
+ * @returns {Record<string, string>}
  */
 export function childEnv(target, extra = {}, operator = {}) {
   const { dropPrefixes, dropExact } = dropRules(target);
   const keep = providerEnvNames(target);
+  /** @type {Record<string, string>} */
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
@@ -101,6 +108,7 @@ export function childEnv(target, extra = {}, operator = {}) {
 const SECRET_PREFIX = ['AWS_', 'AZURE_', 'GITHUB_', 'GH_', 'GITLAB_', 'NPM_', 'DOCKER_', 'HF_', 'SLACK_', 'STRIPE_', 'OP_'];
 const SECRET_SUFFIX = /(TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|API_?KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIALS?)$/i;
 const SECRET_EXACT = new Set(['SSH_AUTH_SOCK', 'KUBECONFIG', 'DATABASE_URL']);
+/** @type {Record<string, string[]>} */
 const OWN_PREFIX = {
   codex: ['OPENAI_', 'CODEX_'],
   'claude-code': ['ANTHROPIC_'],
@@ -110,17 +118,26 @@ const OWN_PREFIX = {
 
 // Names the operator's OpenCode provider definitions read as "{env:NAME}":
 // the consultant needs them, wherever they were exported.
+/** @param {string} target */
 function providerEnvNames(target) {
-  const provider = JSON.stringify(POLICY.clis?.[target]?.provider ?? {});
+  const provider = JSON.stringify(
+    /** @type {Record<string, { provider?: unknown } | undefined>} */ (POLICY.clis)?.[target]?.provider ?? {},
+  );
   return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
 }
 
+/**
+ * @param {string} target
+ * @param {string} key
+ * @param {Set<string>} keep
+ */
 function foreignSecret(target, key, keep) {
   if (keep.has(key) || (OWN_PREFIX[target] ?? []).some((p) => key.startsWith(p))) return false;
   const upper = key.toUpperCase();
   return SECRET_EXACT.has(upper) || SECRET_PREFIX.some((p) => upper.startsWith(p)) || SECRET_SUFFIX.test(key);
 }
 
+/** @param {string} target */
 function dropRules(target) {
   return {
     dropPrefixes: [...DROP_PREFIX, ...(TARGET_DROP_PREFIX[target] ?? [])],
@@ -136,11 +153,15 @@ function dropRules(target) {
  * by config is refused rather than honoured; so is any name the per-job
  * sandbox sets (HOME and friends), which would otherwise be silently
  * overwritten.
+ * @param {string} target
+ * @param {unknown} env
+ * @param {string[]} [sandboxKeys]
+ * @returns {string | null}
  */
 export function operatorEnvProblem(target, env, sandboxKeys = []) {
   if (env === null || typeof env !== 'object' || Array.isArray(env)) return 'must be an object of string values';
   const { dropPrefixes, dropExact } = dropRules(target);
-  const fold = (k) => (process.platform === 'win32' ? k.toUpperCase() : k);
+  const fold = (/** @type {string} */ k) => (process.platform === 'win32' ? k.toUpperCase() : k);
   const reserved = new Set(sandboxKeys.map(fold));
   for (const [k, v] of Object.entries(env)) {
     if (typeof v !== 'string') return `${k} must be a string`;
@@ -153,6 +174,10 @@ export function operatorEnvProblem(target, env, sandboxKeys = []) {
 }
 
 export class ProcHandle {
+  /**
+   * @param {import('node:child_process').ChildProcess} child
+   * @param {() => string} [readStdout]
+   */
   constructor(child, readStdout = () => '') {
     this.child = child;
     this.killed = false;
@@ -165,6 +190,7 @@ export class ProcHandle {
    * Kill the child and every descendant it spawned -- also after the child
    * itself has exited: a descendant still holding its pipes keeps the
    * consultation from closing, and on POSIX it is still in the group.
+   * @param {NodeJS.Signals} [signal]
    */
   stop(signal = 'SIGTERM') {
     if (this.killed || !this.child) return;
@@ -225,13 +251,87 @@ export class ProcHandle {
 }
 
 /**
- * @returns {{handle: ProcHandle, done: Promise<{code, signal, stdout, stderr, timedOut, cancelled, truncated}>}}
+ * @typedef {object} ChildResult
+ * @property {number | null} code
+ * @property {NodeJS.Signals | null} signal
+ * @property {string} stdout
+ * @property {string} stderr
+ * @property {boolean} truncated
+ * @property {boolean} timedOut
+ * @property {boolean} cancelled
+ * @property {boolean} stalled
+ * @property {boolean} pipesForced
+ * @property {string} [spawnError]
  */
+
+/**
+ * What an adapter's buildInvocation returns.
+ * @typedef {object} Invocation
+ * @property {string} command
+ * @property {string[]} args
+ * @property {string} model
+ * @property {string} [workdir]
+ * @property {string} [lastMessagePath]
+ */
+
+/**
+ * What jobs.mjs hands buildInvocation; each adapter reads the fields it needs.
+ * @typedef {object} BuildRequest
+ * @property {string} workdir
+ * @property {string} schemaPath
+ * @property {string} guardrails
+ * @property {any} sandbox the adapter's own prepareSandbox result, if it has one
+ * @property {import('./consultants.mjs').Consultant} consultant
+ * @property {boolean} [hasExposedPaths]
+ * @property {'on' | 'off'} [network]
+ */
+
+/**
+ * What an adapter's interpret makes of a finished child: an answer (text is a
+ * JSON object or the raw text to mine one out of), or a classified failure.
+ * @typedef {{ ok: true, text: any, usageRaw: any, payload?: any, events?: number, denials?: any[], recoveredError?: { failureKind: string, message: string } | null, earlierTextParts?: string[] }} InterpretedOk
+ * @typedef {{ ok: false, failureKind: string, message: string, usageRaw: any, payload?: any, events?: number }} InterpretedFail
+ * @typedef {InterpretedOk | InterpretedFail} Interpreted
+ */
+
+/**
+ * The shape every adapter module (codex, claude-code, antigravity, opencode)
+ * exports; the optional members are the ones only some CLIs have.
+ * @typedef {object} Adapter
+ * @property {readonly string[]} FORBIDDEN_FLAGS
+ * @property {readonly string[]} RESERVED_FLAGS
+ * @property {(req: BuildRequest) => Invocation} buildInvocation
+ * @property {(run: Partial<ChildResult> & { lastMessageText?: string }) => Interpreted} interpret
+ * @property {(raw: any) => Record<string, any> | null} usageRecord
+ * @property {(args: { args: string[], sandbox: any, network?: 'on' | 'off', hasExposedPaths?: boolean }) => Record<string, any>} [boundary]
+ * @property {(run: { stdout: string }) => string | null} [progress]
+ * @property {(run: { stdout: string }) => Record<string, number> | null} [toolCalls]
+ * @property {() => Promise<void>} [prepare]
+ * @property {(args: { workdir: string, network?: 'on' | 'off' }) => any} [prepareSandbox]
+ * @property {(args: { run: ChildResult, sandbox: any }) => string} [diagnostics]
+ * @property {(args: { interpreted: Interpreted, sandbox: any, model: string }) => boolean} [recoverAuthFailure]
+ * @property {(line: string) => string} [compactLine]
+ * @property {(line: string) => number | null | undefined} [settleAfter]
+ * @property {NodeJS.Signals} [stopSignal]
+ */
+
 /**
  * `pipesForced` in the result: the child exited but something it started kept
  * stdout or stderr open past the kill grace, so the group was stopped and the
  * pipes closed from this side. A descendant outside the group (setsid, or on
  * Windows once the parent is gone) may still be running.
+ * @param {object} options
+ * @param {string} options.command
+ * @param {readonly string[]} options.args
+ * @param {string} [options.cwd]
+ * @param {NodeJS.ProcessEnv} [options.env]
+ * @param {string | null} [options.input]
+ * @param {number} options.timeoutMs
+ * @param {(cancel: () => void) => void} [options.onCancelSignal]
+ * @param {((line: string) => string) | null} [options.compactLine]
+ * @param {((line: string) => number | null | undefined) | null} [options.settleAfter]
+ * @param {NodeJS.Signals} [options.stopSignal]
+ * @returns {{handle: ProcHandle, done: Promise<ChildResult>, pid: number | undefined}}
  */
 export function runChild({
   command,
@@ -245,16 +345,18 @@ export function runChild({
   settleAfter = null,
   stopSignal = 'SIGTERM',
 }) {
-  const child = spawn(command, args, {
-    cwd,
-    // PWD is the parent's otherwise, and opencode takes its project root from
-    // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
-    // consultant gets its working directory as PWD, never where the server runs.
-    env: env && cwd ? { ...env, PWD: cwd } : env,
-    detached: process.platform !== 'win32', // POSIX process group; Windows uses taskkill /T
-    windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  const child = /** @type {import('node:child_process').ChildProcessWithoutNullStreams} */ (
+    spawn(command, args, {
+      cwd,
+      // PWD is the parent's otherwise, and opencode takes its project root from
+      // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
+      // consultant gets its working directory as PWD, never where the server runs.
+      env: env && cwd ? { ...env, PWD: cwd } : env,
+      detached: process.platform !== 'win32', // POSIX process group; Windows uses taskkill /T
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+  );
   const cap = POLICY.output.rawCaptureMax;
 
   let stdout = '';
@@ -267,10 +369,11 @@ export function runChild({
   // says it is done; past that it is stopped and `stalled` set. A later line
   // can shorten the wait, never lengthen it.
   let stalled = false;
-  let settleTimer = null;
+  /** @type {NodeJS.Timeout | undefined} */
+  let settleTimer;
   let settleAt = Infinity;
-  const watch = (line) => {
-    const ms = settleAfter(line);
+  const watch = (/** @type {string} */ line) => {
+    const ms = /** @type {NonNullable<typeof settleAfter>} */ (settleAfter)(line);
     if (ms == null || Date.now() + ms >= settleAt) return;
     settleAt = Date.now() + ms;
     clearTimeout(settleTimer);
@@ -280,7 +383,7 @@ export function runChild({
     }, ms);
   };
 
-  const append = (which, chunk) => {
+  const append = (/** @type {'out' | 'err'} */ which, /** @type {string | Buffer} */ chunk) => {
     const text = chunk.toString('utf8');
     if (which === 'out') {
       if (stdout.length >= cap) {
@@ -304,10 +407,10 @@ export function runChild({
   // partial line is bounded by the cap too; past it, the line is kept as is.
   let pending = '';
   const byLine = Boolean(compactLine || settleAfter);
-  const compact = compactLine ?? ((l) => l);
+  const compact = compactLine ?? ((/** @type {string} */ l) => l);
   const flushLines = () => {
     const lines = pending.split('\n');
-    pending = lines.pop();
+    pending = /** @type {string} */ (lines.pop());
     for (const l of lines) {
       if (settleAfter) watch(l);
       append('out', `${compact(l)}\n`);
@@ -340,11 +443,13 @@ export function runChild({
     });
   }
 
+  /** @type {Promise<ChildResult>} */
   const done = new Promise((resolve) => {
     let settled = false;
     let pipesForced = false;
-    let orphanTimer = null;
-    const finish = (payload) => {
+    /** @type {NodeJS.Timeout | undefined} */
+    let orphanTimer;
+    const finish = (/** @type {{ code: number | null, signal: NodeJS.Signals | null, spawnError?: string }} */ payload) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);

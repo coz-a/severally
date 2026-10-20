@@ -66,8 +66,9 @@ const PATH_TOOLS = ['view_file', 'read_url_content'];
 // 2026-10-17). The sandbox home is protected as a whole, so without this one
 // exception no long page could be read. Only that file shape, only in this
 // sandbox: the rest of the home (credential link, transcripts) stays refused.
+/** @param {string} root */
 function spillPattern(root) {
-  const esc = (s) => s.replaceAll('\\', '/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const esc = (/** @type {string} */ s) => s.replaceAll('\\', '/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let real = root;
   try {
     real = fs.realpathSync.native(root);
@@ -78,6 +79,13 @@ function spillPattern(root) {
   return `^(?:${roots})/\\.gemini/antigravity-cli/brain/[^/]+/\\.system_generated/steps/[0-9]+/content\\.md$`;
 }
 
+/**
+ * @param {readonly string[]} allowed
+ * @param {string[]} rootPatterns
+ * @param {string[]} namePatterns
+ * @param {string} home
+ * @param {string} spill
+ */
 function hookSource(allowed, rootPatterns, namePatterns, home, spill) {
   return `import fs from 'node:fs';
 import path from 'node:path';
@@ -150,17 +158,24 @@ process.stdin.on('end', () => {
 `;
 }
 
-/** The tools the hook lets through: no web tools when the request turned the network off. */
+/**
+ * The tools the hook lets through: no web tools when the request turned the network off.
+ * @param {'on' | 'off'} [network]
+ */
 export function allowedTools(network = 'on') {
   return ALLOWED_TOOLS.filter((t) => network !== 'off' || !WEB_TOOLS.has(t));
 }
 
-/** The settings.json permission rules; with the network off, read_url moves to deny. */
+/**
+ * The settings.json permission rules; with the network off, read_url moves to deny.
+ * @param {'on' | 'off'} [network]
+ */
 export function sandboxPermissions(network = 'on') {
   if (network !== 'off') return { allow: [...SANDBOX_ALLOW], deny: [...SANDBOX_DENY] };
   return { allow: SANDBOX_ALLOW.filter((r) => r !== 'read_url(*)'), deny: [...SANDBOX_DENY, 'read_url(*)'] };
 }
 
+/** @param {string} script */
 function hookCommand(script) {
   return [process.execPath, script]
     .map((v) => {

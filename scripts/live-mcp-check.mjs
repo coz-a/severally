@@ -11,9 +11,10 @@ import { execFileSync } from 'node:child_process';
 
 // The globally installed server, unless another path is given.
 const BIN = process.argv[2] ?? 'severally-mcp';
-const env = { ...process.env };
+const env = /** @type {Record<string, string>} */ ({ ...process.env });
 const client = new Client({ name: 'live-mcp', version: '1' });
 await client.connect(new StdioClientTransport({ command: BIN, args: [], env }));
+/** @param {any} r A tool result whose first content item is JSON text. */
 const P = (r) => JSON.parse(r.content[0].text);
 
 const request = {
@@ -86,7 +87,7 @@ const before = countClaudeChildren();
 const cancelled = P(await client.callTool({ name: 'consult_cancel', arguments: { job_id: fu.job_id } }));
 console.log('cancel ->', cancelled.status, '|', cancelled.cancel_effect);
 let after = before;
-for (let i = 0; i < 40 && after >= before && before > 0; i++) {
+for (let i = 0; i < 40 && before !== null && before > 0 && after !== null && after >= before; i++) {
   await new Promise((r) => setTimeout(r, 250));
   after = countClaudeChildren();
 }
@@ -115,7 +116,7 @@ function countClaudeChildren() {
         : execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
     return out.split('\n').filter((l) => l.includes('--no-session-persistence') && l.includes('--restricted')).length;
   } catch (error) {
-    console.warn(`Could not inspect consultant processes: ${error.message}`);
+    console.warn(`Could not inspect consultant processes: ${/** @type {Error} */ (error).message}`);
     return null;
   }
 }

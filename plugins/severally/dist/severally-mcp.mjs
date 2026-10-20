@@ -110,6 +110,7 @@ function parseJsonc(text2) {
 }
 var init_jsonc = __esm({
   "src/jsonc.mjs"() {
+    "use strict";
   }
 });
 
@@ -634,7 +635,10 @@ function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   if (typeof command !== "string" || !command) return null;
   cwd = path.resolve(cwd);
   const windows = process.platform === "win32";
-  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
+  const value = (name) => env[
+    /** @type {string} */
+    windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name
+  ];
   const explicit = command.includes("/") || windows && command.includes("\\");
   const dirs = explicit ? [cwd] : [...windows ? [cwd] : [], ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)];
   for (const dir of dirs) {
@@ -654,18 +658,25 @@ function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   return null;
 }
 function execCommandSync(command, args, options = {}) {
-  const opts = { windowsHide: true, encoding: "utf8", ...options };
+  const opts = { windowsHide: true, encoding: (
+    /** @type {BufferEncoding} */
+    "utf8"
+  ), ...options };
   const batch = batchInvocation(command, args, opts);
   const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
   }
-  return result.stdout;
+  return (
+    /** @type {string} */
+    result.stdout
+  );
 }
 var import_which, import_cross_spawn, import_escape;
 var init_platform = __esm({
   "src/platform.mjs"() {
+    "use strict";
     import_which = __toESM(require_which(), 1);
     import_cross_spawn = __toESM(require_cross_spawn(), 1);
     import_escape = __toESM(require_escape(), 1);
@@ -715,7 +726,10 @@ function byTier(cands, tier) {
   if (!tier.family(cands)) return cands;
   const rank = (c) => {
     const words = modelWords(c.model);
-    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
+    return tier.last ? tier.words.indexOf(
+      /** @type {string} */
+      words.at(-1)
+    ) : tier.words.findIndex((w) => words.includes(w));
   };
   const ranks = cands.map(rank);
   if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
@@ -726,8 +740,12 @@ function byVersion(cands) {
   const stem = modelStem(cands[0].model).join("-");
   const versions = cands.map((c) => modelVersion(c.model));
   if (versions.includes(null) || cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
-  const best = versions.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
-  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
+  const known = (
+    /** @type {number[][]} */
+    versions
+  );
+  const best = known.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
+  return cands.filter((_, i) => compareVersions(known[i], best) === 0);
 }
 function rankCandidates(cands, ranking = []) {
   let left = byRanking(cands, ranking);
@@ -786,7 +804,10 @@ function buildConsultants(config2) {
     if (!isObject(cfg.clis)) fault("clis must be an object keyed by CLI");
     else {
       for (const [id2, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(id2)) {
+        if (!CLI_IDS.includes(
+          /** @type {CliId} */
+          id2
+        )) {
           problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
           continue;
         }
@@ -888,6 +909,7 @@ function make(name, def) {
 var CLI_IDS, DEFAULT_MODELS, CLI_VENDORS, table, CLI_ALIASES, VENDOR_WORDS, STEM_VENDORS, sameStem, TIERS, RESERVED_NAMES, isDigitWord, containsRun, compareVersions, TOP_KEYS, CLI_KEYS, CONSULTANT_KEYS, isObject, clamp;
 var init_consultants = __esm({
   "src/consultants.mjs"() {
+    "use strict";
     CLI_IDS = Object.freeze(["codex", "claude-code", "antigravity", "opencode"]);
     DEFAULT_MODELS = Object.freeze({
       codex: "gpt-6-astra",
@@ -1062,6 +1084,7 @@ function limitsSummary() {
 var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
 var init_policy = __esm({
   "src/policy.mjs"() {
+    "use strict";
     init_jsonc();
     init_platform();
     init_consultants();
@@ -1072,7 +1095,11 @@ var init_policy = __esm({
       try {
         return parseJsonc(fs2.readFileSync(CONFIG_PATH, "utf8"));
       } catch (err) {
-        if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
+        const e = (
+          /** @type {NodeJS.ErrnoException} */
+          err
+        );
+        if (e.code !== "ENOENT") configError = `${CONFIG_PATH}: ${e.message}`;
         return {};
       }
     })();
@@ -1189,7 +1216,10 @@ var init_policy = __esm({
           // opencode.json `provider` definitions copied into the sandbox config:
           // the only way to reach a provider the sandbox's empty HOME would not
           // know, such as a local OpenAI-compatible server.
-          provider: cfgCli("opencode").provider ?? {}
+          provider: (
+            /** @type {Record<string, any>} */
+            cfgCli("opencode").provider ?? {}
+          )
         })
       }),
       // Who can be asked, in config order, and how a name that fits several is
@@ -35561,11 +35591,11 @@ var init_mcp_DIH4cS6P = __esm({
       * @param errorMessage - The error message.
       * @returns The tool error result.
       */
-      createToolError(errorMessage2) {
+      createToolError(errorMessage3) {
         return {
           content: [{
             type: "text",
-            text: errorMessage2
+            text: errorMessage3
           }],
           isError: true
         };
@@ -36581,7 +36611,10 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
           "target_ambiguous"
         );
       }
-      return r.consultant;
+      return (
+        /** @type {Consultant} */
+        r.consultant
+      );
     });
     const off = [...new Set(chosen.filter((c) => !consultantAvailable(c)))];
     if (off.length) {
@@ -36656,6 +36689,7 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
 var L, trimmed, artifactSchema, exposedPathSchema, gitRevision, contextSchema, targetSpec, INITIATORS, NETWORK_MODES, requestSchema, RequestError;
 var init_schema = __esm({
   "src/schema.mjs"() {
+    "use strict";
     init_zod();
     init_policy();
     init_consultants();
@@ -36740,6 +36774,11 @@ var init_schema = __esm({
       followup_to: external_exports.string().trim().max(80).nullish()
     }).strict();
     RequestError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} [code]
+       * @param {unknown[]} [details]
+       */
       constructor(message, code = "invalid_request", details = void 0) {
         super(message);
         this.name = "RequestError";
@@ -36754,6 +36793,7 @@ var init_schema = __esm({
 var s, enumOf, obj, arr, CONSULT_RESULT_SCHEMA, RESULT_KEYS;
 var init_result_schema = __esm({
   "src/result-schema.mjs"() {
+    "use strict";
     s = (desc) => ({ type: "string", description: desc });
     enumOf = (values, desc) => ({ type: "string", enum: values, description: desc });
     obj = (properties, description) => ({
@@ -36844,14 +36884,21 @@ var init_result_schema = __esm({
 function looksLikeCode(name, value) {
   if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value))
     return true;
-  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split("_").at(-1))) return false;
+  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(
+    /** @type {string} */
+    name.split("_").at(-1)
+  )) return false;
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith("&");
 }
 function redact(value) {
   if (value === null || value === void 0) return value;
   if (typeof value === "string") {
     let out = value;
-    for (const [re, rep] of PATTERNS) out = out.replace(re, rep);
+    for (const [re, rep] of PATTERNS) out = out.replace(
+      re,
+      /** @type {any} */
+      rep
+    );
     return out;
   }
   if (Array.isArray(value)) return value.map(redact);
@@ -36865,6 +36912,7 @@ function redact(value) {
 var CODE_WORDS, PATTERNS;
 var init_redact = __esm({
   "src/redact.mjs"() {
+    "use strict";
     CODE_WORDS = /* @__PURE__ */ new Set([
       "true",
       "false",
@@ -36960,7 +37008,8 @@ function statEntry(source) {
   try {
     stat = fs3.lstatSync(source);
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${err.message}`, "not_found");
+    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${/** @type {Error} */
+    err.message}`, "not_found");
   }
   if (stat.isSymbolicLink()) {
     throw new ExposeError(`expose_paths entry "${source}" is a symlink; name the path it points at instead`, "invalid_type");
@@ -36975,7 +37024,8 @@ function walkDir(root, dir, onFile, totals, skipped) {
   try {
     items = fs3.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${err.message}`, "not_found");
+    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${/** @type {Error} */
+    err.message}`, "not_found");
   }
   for (const item of items) {
     const child = path4.join(dir, item.name);
@@ -37113,7 +37163,11 @@ function copyMasked(abs, dest) {
   let out = buf;
   if (!isBinary(buf)) {
     const text2 = buf.toString("utf8");
-    if (Buffer.from(text2, "utf8").equals(buf)) out = Buffer.from(redact(text2), "utf8");
+    if (Buffer.from(text2, "utf8").equals(buf)) out = Buffer.from(
+      /** @type {string} */
+      redact(text2),
+      "utf8"
+    );
   }
   fs3.mkdirSync(path4.dirname(dest), { recursive: true, mode: 448 });
   fs3.writeFileSync(dest, out, { mode: 384 });
@@ -37339,9 +37393,14 @@ function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
 var ExposeError, nulSplit;
 var init_expose_paths = __esm({
   "src/expose-paths.mjs"() {
+    "use strict";
     init_policy();
     init_redact();
     ExposeError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} code
+       */
       constructor(message, code) {
         super(message);
         this.name = "ExposeError";
@@ -37543,6 +37602,7 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
 var MODE_BRIEFS, GUARDRAILS_HEAD, GUARDRAILS_RULES, WEB_ON, WEB_OFF, WORKDIR_EMPTY, WORKDIR_EXPOSED, GUARDRAILS_TAIL, EXPOSE_LISTING_MAX, clip, HISTORY_CHARS;
 var init_brief = __esm({
   "src/brief.mjs"() {
+    "use strict";
     init_policy();
     init_result_schema();
     init_redact();
@@ -37778,10 +37838,15 @@ function normalizeResult(raw) {
 var OutputError, O, LEVELS, BASIS;
 var init_parse_result = __esm({
   "src/parse-result.mjs"() {
+    "use strict";
     init_policy();
     init_result_schema();
     init_redact();
     OutputError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} [detail]
+       */
       constructor(message, detail) {
         super(message);
         this.name = "OutputError";
@@ -37806,6 +37871,7 @@ function isRetriable(kind) {
 var RULES, AUTO_RETRY_KINDS;
 var init_failures = __esm({
   "src/failures.mjs"() {
+    "use strict";
     RULES = [
       [
         /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
@@ -37846,7 +37912,10 @@ function childEnv(target, extra = {}, operator = {}) {
   return { ...env, ...extra };
 }
 function providerEnvNames(target) {
-  const provider = JSON.stringify(POLICY.clis?.[target]?.provider ?? {});
+  const provider = JSON.stringify(
+    /** @type {Record<string, { provider?: unknown } | undefined>} */
+    POLICY.clis?.[target]?.provider ?? {}
+  );
   return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
 }
 function foreignSecret(target, key, keep) {
@@ -37886,17 +37955,20 @@ function runChild({
   settleAfter: settleAfter2 = null,
   stopSignal: stopSignal2 = "SIGTERM"
 }) {
-  const child = spawnCommand(command, args, {
-    cwd,
-    // PWD is the parent's otherwise, and opencode takes its project root from
-    // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
-    // consultant gets its working directory as PWD, never where the server runs.
-    env: env && cwd ? { ...env, PWD: cwd } : env,
-    detached: process.platform !== "win32",
-    // POSIX process group; Windows uses taskkill /T
-    windowsHide: true,
-    stdio: ["pipe", "pipe", "pipe"]
-  });
+  const child = (
+    /** @type {import('node:child_process').ChildProcessWithoutNullStreams} */
+    spawnCommand(command, args, {
+      cwd,
+      // PWD is the parent's otherwise, and opencode takes its project root from
+      // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
+      // consultant gets its working directory as PWD, never where the server runs.
+      env: env && cwd ? { ...env, PWD: cwd } : env,
+      detached: process.platform !== "win32",
+      // POSIX process group; Windows uses taskkill /T
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"]
+    })
+  );
   const cap = POLICY.output.rawCaptureMax;
   let stdout = "";
   const handle = new ProcHandle(child, () => stdout);
@@ -37905,10 +37977,13 @@ function runChild({
   let timedOut = false;
   let cancelled = false;
   let stalled = false;
-  let settleTimer = null;
+  let settleTimer;
   let settleAt = Infinity;
   const watch = (line) => {
-    const ms = settleAfter2(line);
+    const ms = (
+      /** @type {NonNullable<typeof settleAfter>} */
+      settleAfter2(line)
+    );
     if (ms == null || Date.now() + ms >= settleAt) return;
     settleAt = Date.now() + ms;
     clearTimeout(settleTimer);
@@ -37940,7 +38015,8 @@ function runChild({
   const compact = compactLine2 ?? ((l) => l);
   const flushLines = () => {
     const lines = pending.split("\n");
-    pending = lines.pop();
+    pending = /** @type {string} */
+    lines.pop();
     for (const l of lines) {
       if (settleAfter2) watch(l);
       append("out", `${compact(l)}
@@ -37972,7 +38048,7 @@ function runChild({
   const done = new Promise((resolve) => {
     let settled2 = false;
     let pipesForced = false;
-    let orphanTimer = null;
+    let orphanTimer;
     const finish = (payload) => {
       if (settled2) return;
       settled2 = true;
@@ -38019,6 +38095,7 @@ function runChild({
 var DROP_EXACT, DROP_PREFIX, TARGET_DROP_PREFIX, TARGET_DROP_EXACT, SECRET_PREFIX, SECRET_SUFFIX, SECRET_EXACT, OWN_PREFIX, ProcHandle;
 var init_run = __esm({
   "src/run.mjs"() {
+    "use strict";
     init_platform();
     init_policy();
     DROP_EXACT = /* @__PURE__ */ new Set(["CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT", "ANTHROPIC_LOG", "NODE_OPTIONS"]);
@@ -38048,6 +38125,10 @@ var init_run = __esm({
       opencode: ["ZAI_"]
     };
     ProcHandle = class {
+      /**
+       * @param {import('node:child_process').ChildProcess} child
+       * @param {() => string} [readStdout]
+       */
       constructor(child, readStdout = () => "") {
         this.child = child;
         this.killed = false;
@@ -38057,6 +38138,7 @@ var init_run = __esm({
        * Kill the child and every descendant it spawned -- also after the child
        * itself has exited: a descendant still holding its pipes keeps the
        * consultation from closing, and on POSIX it is still in the group.
+       * @param {NodeJS.Signals} [signal]
        */
       stop(signal = "SIGTERM") {
         if (this.killed || !this.child) return;
@@ -38279,7 +38361,10 @@ function withSeatLock(fn) {
       fs4.mkdirSync(lock);
       break;
     } catch (err) {
-      if (err.code !== "EEXIST") throw err;
+      if (
+        /** @type {NodeJS.ErrnoException} */
+        err.code !== "EEXIST"
+      ) throw err;
       try {
         if (Date.now() - fs4.statSync(lock).mtimeMs > LOCK_STALE_MS) fs4.rmdirSync(lock);
       } catch {
@@ -38322,7 +38407,11 @@ function takeSeats(seats, cap, held) {
         } catch {
         }
     }
-    for (const mine of seats.filter((x) => x.chain_id)) {
+    for (
+      const mine of
+      /** @type {(Seat & { chain_id: string, round: number })[]} */
+      seats.filter((x) => x.chain_id)
+    ) {
       let other = live.find((x) => x.chain_id === mine.chain_id);
       if (!other && fs4.existsSync(roundPath(mine.chain_id, mine.round))) {
         try {
@@ -38392,6 +38481,7 @@ function cleanupJobDir(jobId) {
 var roundPath, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS, cancelFile, cancelRequested;
 var init_store = __esm({
   "src/store.mjs"() {
+    "use strict";
     init_policy();
     roundPath = (chainId, round) => path6.join(POLICY.home, "history", chainId, `round-${String(round).padStart(2, "0")}.json`);
     JOB_ID = /^job_[0-9a-f]{12}$/;
@@ -38599,6 +38689,7 @@ function boundary({ args }) {
 var FORBIDDEN_FLAGS, RESERVED_FLAGS, PROFILE, listDir;
 var init_codex = __esm({
   "src/adapters/codex.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     FORBIDDEN_FLAGS = [
@@ -38767,6 +38858,7 @@ function boundary2({ args, hasExposedPaths }) {
 var FORBIDDEN_FLAGS2, RESERVED_FLAGS2, posixAbsolute;
 var init_claude_code = __esm({
   "src/adapters/claude-code.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     init_result_schema();
@@ -38987,6 +39079,7 @@ function prepareSandbox({ workdir, network = "on" }) {
 var SANDBOX_ALLOW, SANDBOX_DENY, ALLOWED_TOOLS, WEB_TOOLS, PATH_TOOLS, TOKEN_REL;
 var init_antigravity_sandbox = __esm({
   "src/adapters/antigravity-sandbox.mjs"() {
+    "use strict";
     init_policy();
     init_store();
     SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
@@ -39156,6 +39249,7 @@ function boundary3({ sandbox }) {
 var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, stopSignal;
 var init_antigravity = __esm({
   "src/adapters/antigravity.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     init_antigravity_sandbox();
@@ -39242,39 +39336,45 @@ function prepareSandbox2({ workdir, network = "on" }) {
     fs8.chmodSync(link, 384);
     credentials = "copy";
   }
-  const sandbox = {
-    root,
-    credentials,
-    tools: SANDBOX_ALLOW2.filter((t) => network !== "off" || !WEB_TOOLS2.has(t)),
-    // The exact path searched, so a caller that has to report `credentials:
-    // "missing"` can say where it looked instead of leaving the operator to
-    // guess which HOME severally read.
-    credentialsSource: source,
-    env: {
-      HOME: root,
-      XDG_CONFIG_HOME: path10.join(root, ".config"),
-      XDG_DATA_HOME: path10.join(root, ".local", "share"),
-      XDG_CACHE_HOME: path10.join(root, ".cache"),
-      XDG_STATE_HOME: path10.join(root, ".local", "state"),
-      // Belt and braces: no update checks, no project-config pickup from the
-      // parent directories of the (empty) working directory.
-      OPENCODE_DISABLE_AUTOUPDATE: "1",
-      OPENCODE_DISABLE_PROJECT_CONFIG: "1",
-      ...process.platform === "win32" ? {
-        USERPROFILE: root,
-        HOMEDRIVE: path10.parse(root).root.replace(/[\\/]$/, ""),
-        HOMEPATH: root.slice(path10.parse(root).root.length - 1),
-        APPDATA: path10.join(root, "AppData", "Roaming"),
-        LOCALAPPDATA: path10.join(root, "AppData", "Local")
-      } : {}
-    },
-    cleanup() {
-      try {
-        fs8.rmSync(root, { recursive: true, force: true });
-      } catch {
+  const sandbox = (
+    /** @type {OpencodeSandbox} */
+    {
+      root,
+      credentials,
+      tools: SANDBOX_ALLOW2.filter((t) => network !== "off" || !WEB_TOOLS2.has(t)),
+      // The exact path searched, so a caller that has to report `credentials:
+      // "missing"` can say where it looked instead of leaving the operator to
+      // guess which HOME severally read.
+      credentialsSource: source,
+      env: (
+        /** @type {Record<string, string>} */
+        {
+          HOME: root,
+          XDG_CONFIG_HOME: path10.join(root, ".config"),
+          XDG_DATA_HOME: path10.join(root, ".local", "share"),
+          XDG_CACHE_HOME: path10.join(root, ".cache"),
+          XDG_STATE_HOME: path10.join(root, ".local", "state"),
+          // Belt and braces: no update checks, no project-config pickup from the
+          // parent directories of the (empty) working directory.
+          OPENCODE_DISABLE_AUTOUPDATE: "1",
+          OPENCODE_DISABLE_PROJECT_CONFIG: "1",
+          ...process.platform === "win32" ? {
+            USERPROFILE: root,
+            HOMEDRIVE: path10.parse(root).root.replace(/[\\/]$/, ""),
+            HOMEPATH: root.slice(path10.parse(root).root.length - 1),
+            APPDATA: path10.join(root, "AppData", "Roaming"),
+            LOCALAPPDATA: path10.join(root, "AppData", "Local")
+          } : {}
+        }
+      ),
+      cleanup() {
+        try {
+          fs8.rmSync(root, { recursive: true, force: true });
+        } catch {
+        }
       }
     }
-  };
+  );
   sandbox.seed = (provider) => seedCredentialFromAuth(sandbox, provider);
   return sandbox;
 }
@@ -39330,6 +39430,7 @@ function seedCredentialFromAuth(sandbox, provider) {
 var DatabaseSync, SANDBOX_DENY2, SANDBOX_ALLOW2, WEB_TOOLS2, SANDBOX_TOOLS_OFF, AUTH_REL;
 var init_opencode_sandbox = __esm({
   "src/adapters/opencode-sandbox.mjs"() {
+    "use strict";
     init_policy();
     init_store();
     DatabaseSync = null;
@@ -39614,6 +39715,7 @@ function boundary4({ sandbox }) {
 var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4;
 var init_opencode = __esm({
   "src/adapters/opencode.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     init_platform();
@@ -39710,7 +39812,11 @@ async function settled(promise2, ms, signal) {
     await (promise2 ? Promise.race([promise2, until]) : until);
   } finally {
     clearTimeout(timer);
-    signal?.removeEventListener("abort", stop);
+    signal?.removeEventListener(
+      "abort",
+      /** @type {() => void} */
+      stop
+    );
   }
 }
 function parses(text2) {
@@ -39735,11 +39841,18 @@ function tally(values) {
   return out;
 }
 function recordSummary(job) {
-  const ids = recordableIds(job.result);
-  const written = new Set(job.record.entries.map((e) => e.id));
+  const record2 = (
+    /** @type {JobRecord} */
+    job.record
+  );
+  const ids = recordableIds(
+    /** @type {ConsultResult} */
+    job.result
+  );
+  const written = new Set(record2.entries.map((e) => e.id));
   return {
-    ...job.record,
-    verdicts: tally(job.record.entries.map((e) => e.verdict)),
+    ...record2,
+    verdicts: tally(record2.entries.map((e) => e.verdict)),
     coverage: { recordable: ids.length, recorded: written.size },
     unrecorded: ids.filter((id2) => !written.has(id2))
   };
@@ -39794,7 +39907,10 @@ function adviceCaveat(normalized) {
   return notes.length ? notes.join("; ") : null;
 }
 function sameVendorCaveat(caller, callerModel, consultant) {
-  const callerVendor = (callerModel ? vendorOf(callerModel) : null) ?? (caller ? CLI_VENDORS[caller] ?? null : null);
+  const callerVendor = (callerModel ? vendorOf(callerModel) : null) ?? (caller ? CLI_VENDORS[
+    /** @type {CliId} */
+    caller
+  ] ?? null : null);
   const vendor = consultant.vendor;
   if (!callerVendor || !vendor || callerVendor !== vendor) return null;
   const consultantModel = consultant.model;
@@ -39938,7 +40054,10 @@ function pointsOf(view, ids) {
   const verdicts = new Map((view.record?.entries ?? []).map((e) => [e.id, e]));
   const lists = { finding: r.findings, unknown: r.unknowns, next_check: r.next_checks };
   const points = [...new Set(ids)].map((id2) => {
-    const [kind, item] = Object.entries(lists).map(([k, l]) => [k, l.find((x) => x.id === id2)]).find(([, x]) => x);
+    const [kind, item] = (
+      /** @type {[string, ResultItem]} */
+      Object.entries(lists).map(([k, l]) => [k, l.find((x) => x.id === id2)]).find(([, x]) => x)
+    );
     return { kind, ...item, recorded: verdicts.get(id2) ?? null };
   });
   return {
@@ -40043,6 +40162,7 @@ function assertNoForbiddenFlags(target, args) {
 var ADAPTERS, MIN_RETRY_MS, CANCEL_POLL_MS, API_KEY_VARS, CREDENTIAL_FILE_VARS, ALL_API_CREDENTIAL_VARS, USAGE_FIGURES, id, LIVE_HERE, JobManager, PARTIAL_TAIL_CHARS, GROUP_CHARS, COLUMN_FIXED_CHARS, COMPARISON_NOTE_CHARS, QUESTION_CHARS, FAILURE_MESSAGE_CHARS, SUMMARY_CHARS, CAVEAT_CHARS, ITEM_CHARS, MIN_TEXT_CHARS, flagNames;
 var init_jobs = __esm({
   "src/jobs.mjs"() {
+    "use strict";
     init_policy();
     init_consultants();
     init_schema();
@@ -40078,11 +40198,24 @@ var init_jobs = __esm({
       // A consultation this process does not hold: finished (its round file), or
       // still in progress (its marker). A marker whose owner is gone becomes a
       // failed round, `interrupted`, written once by whichever process claims it.
+      /**
+       * @param {string} jobId
+       * @returns {StoredRound | null}
+       */
       #fromDisk(jobId) {
-        const done = loadRound(jobId);
+        const done = (
+          /** @type {Round | null} */
+          loadRound(jobId)
+        );
         if (done) return done;
-        const live = loadRunning(jobId);
-        if (!live) return loadRound(jobId);
+        const live = (
+          /** @type {StoredRound | null} */
+          loadRunning(jobId)
+        );
+        if (!live) return (
+          /** @type {Round | null} */
+          loadRound(jobId)
+        );
         const state = ownerState(jobId, live.owner);
         return state === "alive" ? live : this.#interrupt(jobId, live, state);
       }
@@ -40090,8 +40223,17 @@ var init_jobs = __esm({
       // something the next reader finishes: the round is written (the index
       // takes it once), then the marker goes. A round already on disk wins -- its
       // owner finished and died before removing the marker.
+      /**
+       * @param {string} jobId
+       * @param {StoredRound} rec
+       * @param {'alive' | 'dead' | 'overdue'} state
+       * @returns {Round}
+       */
       #interrupt(jobId, rec, state) {
-        const done = loadRound(jobId);
+        const done = (
+          /** @type {Round | null} */
+          loadRound(jobId)
+        );
         if (done) {
           removeRunning(jobId);
           return done;
@@ -40118,11 +40260,18 @@ var init_jobs = __esm({
       /** Close out the consultations whose process died, and remove their job directories. */
       sweepInterrupted() {
         for (const jobId of listRunning()) {
-          const rec = loadRunning(jobId);
+          const rec = (
+            /** @type {StoredRound | null} */
+            loadRunning(jobId)
+          );
           const state = rec && ownerState(jobId, rec.owner);
-          if (rec && state !== "alive") this.#interrupt(jobId, rec, state);
+          if (rec && state && state !== "alive") this.#interrupt(jobId, rec, state);
         }
       }
+      /**
+       * @param {StoredRound} rec
+       * @returns {JobView}
+       */
       #diskView(rec) {
         const elsewhere = Boolean(rec.owner);
         const { owner, ...view } = rec;
@@ -40133,12 +40282,17 @@ var init_jobs = __esm({
           record: view.record ? recordSummary(view) : null,
           brief: elsewhere ? null : view.brief,
           limits: elsewhere ? null : limitsSummary(),
-          next_step: elsewhere ? `running in another severally process (pid ${owner.pid}); poll again later -- it can only be cancelled from that process` : nextStep(view)
+          next_step: elsewhere ? `running in another severally process (pid ${/** @type {JobOwner} */
+          owner.pid}); poll again later -- it can only be cancelled from that process` : nextStep(view)
         };
       }
       get running() {
         return [...this.jobs.values()].filter((j) => j.status === "running");
       }
+      /**
+       * @param {Round} job
+       * @returns {Round}
+       */
       #record(job) {
         return {
           job_id: job.job_id,
@@ -40181,7 +40335,11 @@ var init_jobs = __esm({
       }
       // `detail: "full"` returns the brief as stored; by default a finished
       // consultation names it (size, sha256, round file) instead of repeating it.
-      /** @param {string} jobId @param {{detail?: string}} [opts] */
+      /**
+       * @param {string} jobId
+       * @param {{detail?: string}} [opts]
+       * @returns {JobView | null}
+       */
       view(jobId, { detail } = {}) {
         const job = this.jobs.get(jobId);
         if (!job) {
@@ -40207,18 +40365,29 @@ var init_jobs = __esm({
       // job_id and group_id can still be followed up and recorded against. The
       // index only picks and orders; each row shown is read from its round, which
       // holds the verdicts written since. Memory wins over disk for the same job.
+      /** @param {{limit?: number}} [opts] */
       list({ limit: limit2 = 20 } = {}) {
-        const here = this.order.map((jid) => this.jobs.get(jid));
+        const here = this.order.map((jid) => (
+          /** @type {Job} */
+          this.jobs.get(jid)
+        ));
         const seen = new Set(here.map((j) => j.job_id));
         const elsewhere = [];
         for (const jobId of listRunning()) {
-          const live = seen.has(jobId) ? null : loadRunning(jobId);
+          const live = (
+            /** @type {StoredRound | null} */
+            seen.has(jobId) ? null : loadRunning(jobId)
+          );
           if (!live) continue;
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
-          const saved = state === "alive" ? null : loadRoundAt(live);
+          const saved = (
+            /** @type {Round | null} */
+            state === "alive" ? null : loadRoundAt(live)
+          );
           elsewhere.push({
-            rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } }
+            rec: state === "alive" ? live : saved ?? /** @type {Round} */
+            { ...live, status: "failed", failure: { kind: "interrupted" } }
           });
         }
         for (const row of indexRows())
@@ -40228,9 +40397,13 @@ var init_jobs = __esm({
           }
         const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? "";
         const picked = [];
-        for (const x of [...here, ...elsewhere].sort((p, q) => at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0)) {
+        const candidates = [...here, ...elsewhere];
+        for (const x of candidates.sort((p, q) => at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0)) {
           if (picked.length >= limit2) break;
-          const j = x.row ? loadRoundAt(x.row) : x.rec ?? x;
+          const j = (
+            /** @type {Round | null} */
+            x.row ? loadRoundAt(x.row) : x.rec ?? x
+          );
           if (j) picked.push(j);
         }
         return picked.map((j) => {
@@ -40286,6 +40459,7 @@ var init_jobs = __esm({
         }
         return by;
       }
+      /** @param {Record<string, any>} rawRequest the tool arguments, not yet validated */
       start(rawRequest) {
         if (process.env.SEVERALLY_ACTIVE === "1") {
           throw new RequestError(
@@ -40308,7 +40482,8 @@ var init_jobs = __esm({
           fromGroup = this.#groupParents(followupTo);
           rawRequest = { ...rawRequest, targets: fromGroup.links.map((l) => l.parent.target) };
         } else if (followupTo) {
-          parent = this.jobs.get(followupTo) ?? loadRound(followupTo);
+          parent = this.jobs.get(followupTo) ?? /** @type {Round | null} */
+          loadRound(followupTo);
           if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, "unknown_job");
           if (parent.status !== "completed") {
             throw new RequestError(
@@ -40317,7 +40492,10 @@ var init_jobs = __esm({
             );
           }
           const rounds = this.#chainRounds(parent.chain_id);
-          const later = rounds.find((j) => j.round > parent.round && !["failed", "cancelled"].includes(j.status));
+          const later = rounds.find(
+            (j) => j.round > /** @type {Round} */
+            parent.round && !["failed", "cancelled"].includes(j.status)
+          );
           if (later) {
             throw new RequestError(
               `job "${followupTo}" is round ${parent.round}, and this consultation already has round ${later.round} (job "${later.job_id}", ${later.status}); follow up the latest round`,
@@ -40330,12 +40508,19 @@ var init_jobs = __esm({
           rawRequest = { ...rawRequest, target: parent.target };
         }
         if (parent || fromGroup)
-          rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
-        const req = parseRequest(rawRequest, {
-          isFollowup: Boolean(parent || fromGroup),
-          parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
-          groupFollowup: Boolean(fromGroup)
-        });
+          rawRequest = inherit(
+            rawRequest,
+            /** @type {Round} */
+            fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent
+          );
+        const req = (
+          /** @type {ParsedRequest} */
+          parseRequest(rawRequest, {
+            isFollowup: Boolean(parent || fromGroup),
+            parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+            groupFollowup: Boolean(fromGroup)
+          })
+        );
         if (POLICY.network === "off") req.network = "off";
         if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
           throw new RequestError(
@@ -40349,7 +40534,10 @@ var init_jobs = __esm({
             "followup_target_mismatch"
           );
         }
-        const round = parent ? parent.nextRound : 1;
+        const round = parent ? (
+          /** @type {number} */
+          parent.nextRound
+        ) : 1;
         if (!fromGroup && round > POLICY.maxRounds) {
           throw new RequestError(
             `this consultation has used its ${POLICY.maxRounds} rounds (1 initial + ${POLICY.maxRounds - 1} follow-ups); decide with what you have, or start a new consultation with a materially different question`,
@@ -40359,7 +40547,7 @@ var init_jobs = __esm({
         const chainOf = (i) => fromGroup ? fromGroup.links[i] : parent ? { parent, round } : null;
         const seats = req.targets.map((target, i) => ({
           job_id: id("job"),
-          ...chainOf(i) ? { chain_id: chainOf(i).parent.chain_id, round: chainOf(i).round } : {},
+          ...chainOf(i) ? { chain_id: chainOf(i)?.parent.chain_id, round: chainOf(i)?.round } : {},
           // Twice the budget plus an hour: the deadline is wall-clock, the budget is
           // not, so a suspended laptop must not make a live owner look overdue.
           owner: {
@@ -40395,13 +40583,18 @@ var init_jobs = __esm({
       // round of its own chain. A member that is still running, never answered or
       // has used its rounds is skipped and named; if that is every member, the
       // request is refused.
+      /**
+       * @param {string} groupId
+       * @returns {GroupParents}
+       */
       #groupParents(groupId) {
         const group = this.groups.get(groupId) ?? loadGroup(groupId);
         if (!group) throw new RequestError(`followup_to references unknown group "${groupId}"`, "unknown_group");
         const links = [];
         const skipped = [];
         for (const jid of group.job_ids) {
-          const member = this.jobs.get(jid) ?? loadRound(jid);
+          const member = this.jobs.get(jid) ?? /** @type {Round | null} */
+          loadRound(jid);
           if (!member) {
             skipped.push({
               job_id: jid,
@@ -40426,8 +40619,17 @@ var init_jobs = __esm({
         }
         return { group, links, skipped };
       }
+      /**
+       * @param {ParsedRequest} req
+       * @param {Array<{parent: Round | null, round: number, groupMember?: Round}>} links
+       * @param {Seat[]} seats
+       * @param {GroupParents | null} [fromGroup]
+       */
       #admitted(req, links, seats, fromGroup = null) {
-        const parent = links[0].groupMember ?? links[0].parent;
+        const parent = (
+          /** @type {Round} */
+          links[0].groupMember ?? links[0].parent
+        );
         const groupId = id("group");
         let exposeManifest = null;
         const parentEntries = req.context.expose_from_parent ? parent.brief?.expose_paths?.entries ?? [] : [];
@@ -40485,6 +40687,10 @@ var init_jobs = __esm({
           const { parent: from, round: round2 } = links[i];
           const chainId = from ? from.chain_id : id("chain");
           const jobId = seats[i].job_id;
+          const consultant = (
+            /** @type {Consultant} */
+            consultantByName(target)
+          );
           const job = {
             job_id: jobId,
             chain_id: chainId,
@@ -40519,9 +40725,9 @@ var init_jobs = __esm({
             status: "queued",
             // What this consultant is: the CLI it runs on, the model and its
             // lineage, as the operator defined it.
-            cli: consultantByName(target).cli,
-            model: consultantByName(target).model,
-            vendor: consultantByName(target).vendor,
+            cli: consultant.cli,
+            model: consultant.model,
+            vendor: consultant.vendor,
             created_at: (/* @__PURE__ */ new Date()).toISOString(),
             started_at: null,
             finished_at: null,
@@ -40570,7 +40776,10 @@ var init_jobs = __esm({
           group_id: groupId,
           ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
           ...fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {},
-          ...parentEntries.length ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {},
+          ...parentEntries.length ? { exposed_from_parent: inheritedSummary(
+            /** @type {ExposeManifest} */
+            exposeManifest
+          ) } : {},
           mode: req.mode,
           // Counted, not refused: a brief of facts alone is a legitimate
           // consultation, but one about code that hands over no file is one the
@@ -40615,13 +40824,27 @@ var init_jobs = __esm({
       // (memory wins: it can hold a verdict written since the round was saved).
       // Each point goes with the lead's verdict on it, so the consultant answers
       // knowing which of its points were checked and how they came out.
+      /**
+       * @param {string} chainId
+       * @returns {Round[]}
+       */
       #chainRounds(chainId) {
-        const byRound = new Map(loadChain(chainId).map((j) => [j.round, j]));
+        const byRound = new Map(
+          /** @type {Round[]} */
+          loadChain(chainId).map((j) => [j.round, j])
+        );
         for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
         return [...byRound.values()];
       }
+      /**
+       * @param {string} chainId
+       * @returns {PriorRound[]}
+       */
       #chainHistory(chainId) {
-        return this.#chainRounds(chainId).filter((j) => j.status === "completed" && j.result).sort((a, b) => a.round - b.round).map((j) => {
+        return this.#chainRounds(chainId).filter(
+          /** @returns {j is Round & {result: ConsultResult}} */
+          (j) => j.status === "completed" && Boolean(j.result)
+        ).sort((a, b) => a.round - b.round).map((j) => {
           const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
           const ordered = (items, shape) => [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
             id: x.id,
@@ -40645,7 +40868,10 @@ var init_jobs = __esm({
       }
       #evict() {
         while (this.order.length > POLICY.maxJobsRetained) {
-          const oldest = this.order.shift();
+          const oldest = (
+            /** @type {string} */
+            this.order.shift()
+          );
           const j = this.jobs.get(oldest);
           if (j && (j.status === "running" || j.status === "queued")) {
             this.order.push(oldest);
@@ -40659,14 +40885,25 @@ var init_jobs = __esm({
       // last member there is nothing left to compare, so drop the group rather than
       // keep answering as a complete fan-out with no answers in it (and keep the
       // Map, which holds the question text, from growing without bound).
+      /** @param {string} groupId */
       #dropGroupIfEmpty(groupId) {
         const group = this.groups.get(groupId);
         if (!group) return;
         if (group.job_ids.some((jid) => this.jobs.has(jid))) return;
         this.groups.delete(groupId);
       }
+      /**
+       * @param {Job} job
+       * @param {ParsedRequest} req
+       * @param {import('./brief.mjs').BriefChain} chain
+       * @param {string} [brief]
+       * @returns {Promise<Job>}
+       */
       async #execute(job, req, chain, brief) {
-        const consultant = consultantByName(job.target);
+        const consultant = (
+          /** @type {Consultant} */
+          consultantByName(job.target)
+        );
         const cli = consultant.cli;
         const adapter = ADAPTERS[cli];
         const workdir = makeWorkdir(job.job_id);
@@ -40720,7 +40957,9 @@ var init_jobs = __esm({
               env,
               input: text2,
               timeoutMs: timeout,
-              onCancelSignal: (fn) => job._cancelFns.push(fn),
+              onCancelSignal: (fn) => {
+                job._cancelFns.push(fn);
+              },
               compactLine: adapter.compactLine,
               settleAfter: adapter.settleAfter,
               stopSignal: adapter.stopSignal
@@ -40761,7 +41000,7 @@ var init_jobs = __esm({
             }
             const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
             interpreted = adapter.interpret({ ...run, lastMessageText });
-            const { recoveredError } = interpreted;
+            const recoveredError = interpreted.ok ? interpreted.recoveredError : null;
             if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
               interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
             }
@@ -40840,7 +41079,8 @@ var init_jobs = __esm({
               throw err;
             }
           }
-          job.result = normalized.result;
+          job.result = /** @type {ConsultResult} */
+          normalized.result;
           const notes = [
             adviceCaveat(normalized),
             sameVendorCaveat(job.caller, job.caller_model, consultant),
@@ -40860,6 +41100,13 @@ var init_jobs = __esm({
           sandbox?.cleanup();
         }
       }
+      /**
+       * @param {Job} job
+       * @param {string} kind
+       * @param {unknown} message
+       * @param {string | null} [detail]
+       * @returns {Job}
+       */
       #fail(job, kind, message, detail) {
         if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") return job;
         job.status = kind === "cancelled" ? "cancelled" : "failed";
@@ -40875,12 +41122,14 @@ var init_jobs = __esm({
         return job;
       }
       // The in-progress marker other processes read (see store.writeRunning).
+      /** @param {Job} job */
       #mark(job) {
         try {
           writeRunning({ ...this.#record(job), owner: job._owner });
         } catch {
         }
       }
+      /** @param {Job} job */
       #finish(job) {
         try {
           persistRound(this.#record(job));
@@ -40918,6 +41167,7 @@ var init_jobs = __esm({
       // record is checked before anything is written, so a bad id leaves the
       // history as it was; then each job is written on its own, and a write that
       // fails is named in the answer rather than reported as saved.
+      /** @param {Record<string, any>} input */
       #recordMany(input2) {
         const extra = Object.keys(input2).filter((k) => k !== "records");
         if (extra.length) {
@@ -40960,7 +41210,10 @@ var init_jobs = __esm({
       }
       // Everything that can be wrong with a record, found before anything is
       // written: what the job's record and reflection become, or a RequestError.
-      /** @param {{job_id?: string, entries?: any[], reflection?: any}} rec */
+      /**
+       * @param {{job_id?: any, entries?: any[], reflection?: any}} rec
+       * @returns {RecordChange}
+       */
       #checkRecord({ job_id: jobId, entries, reflection }) {
         if (entries === void 0 && reflection === void 0) {
           throw new RequestError(
@@ -40969,7 +41222,8 @@ var init_jobs = __esm({
           );
         }
         const live = this.jobs.get(jobId);
-        const job = live ?? loadRound(jobId);
+        const job = live ?? /** @type {Round | null} */
+        loadRound(jobId);
         if (!job) {
           throw new RequestError(`no consultation with job_id "${jobId}" in this session or in ~/.severally/history`, "unknown_job");
         }
@@ -41025,9 +41279,16 @@ var init_jobs = __esm({
           }
           newReflection = { delta, related_item_ids: related, recorded_at: now };
         }
-        const newRecord = entries === void 0 ? void 0 : { updated_at: now, entries: ids.filter((id2) => merged.has(id2)).map((id2) => merged.get(id2)) };
+        const newRecord = entries === void 0 ? void 0 : {
+          updated_at: now,
+          entries: ids.filter((id2) => merged.has(id2)).map((id2) => (
+            /** @type {RecordEntry} */
+            merged.get(id2)
+          ))
+        };
         return { job, live, record: newRecord, reflection: newReflection };
       }
+      /** @param {RecordChange} change */
       #saveRecord({ job, live, record: record2, reflection }) {
         const was = { record: job.record, reflection: job.reflection };
         if (reflection !== void 0) job.reflection = reflection;
@@ -41051,6 +41312,12 @@ var init_jobs = __esm({
           reflection_saved: job.reflection != null
         };
       }
+      /**
+       * @param {string} jobId
+       * @param {number | undefined} waitMs
+       * @param {{detail?: string}} [opts]
+       * @param {AbortSignal} [signal]
+       */
       async wait(jobId, waitMs, opts, signal) {
         const job = this.jobs.get(jobId);
         if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs, signal);
@@ -41063,6 +41330,13 @@ var init_jobs = __esm({
       }
       // A consultation another process runs has no promise here, so its history
       // is re-read once a second until it is no longer running or the wait is up.
+      /**
+       * @template {{status: string}} T
+       * @param {() => T | null} read
+       * @param {number | undefined} waitMs
+       * @param {AbortSignal} [signal]
+       * @returns {Promise<T | null>}
+       */
       async #waitOnDisk(read, waitMs, signal) {
         const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
         let view = read();
@@ -41085,6 +41359,7 @@ var init_jobs = __esm({
           }
         }, CANCEL_POLL_MS).unref();
       }
+      /** @param {string} jobId */
       cancel(jobId) {
         const job = this.jobs.get(jobId);
         if (!job) {
@@ -41108,7 +41383,11 @@ var init_jobs = __esm({
       // Every field here is derived from the one `members` array it is handed, so a
       // group view can never report one status in `members` and another in
       // `comparison` or `status` for the same job.
-      /** @param {any} group @param {any[]} members @param {{detail?: string}} [opts] */
+      /**
+       * @param {Group} group
+       * @param {JobView[]} members
+       * @param {{detail?: string}} [opts]
+       */
       #shapeGroup(group, members2, { detail } = {}) {
         const full = detail === "full";
         const cancelling = members2.some((m) => m.status === "cancelling");
@@ -41149,7 +41428,10 @@ var init_jobs = __esm({
           // worse than one that admits the comparison is partial.
           incomplete_note: missing > 0 ? `${missing} of ${group.job_ids.length} member consultation(s) have aged out of this session's history; the comparison below is partial` : null,
           members: trimmed2,
-          comparison: null,
+          comparison: (
+            /** @type {ReturnType<typeof comparison> | null} */
+            null
+          ),
           cancellable: live,
           next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? `list the points where the consultants diverge, check the grounds behind each one (consult_get({ job_id, ids: ["f2", ...] }) on a member returns those points whole, with their grounds: fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes; unknowns u1... and next_checks c1... are fetched the same way; consult_get({ job_id }) returns the whole answer, for its alternatives' tradeoffs and references), then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision. Write what checking showed for every member in one call: consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] })` : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
           // The limits went out with consult_start, and consult_list has them;
@@ -41161,11 +41443,26 @@ var init_jobs = __esm({
         if (anyFinished) view.comparison = comparison(members2, full ? Infinity : GROUP_CHARS - printed(view));
         return view;
       }
+      /**
+       * @param {string} groupId
+       * @param {{detail?: string}} [opts]
+       */
       groupView(groupId, opts) {
         const group = this.groups.get(groupId) ?? loadGroup(groupId);
         if (!group) return null;
-        return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean), opts);
+        return this.#shapeGroup(
+          group,
+          /** @type {JobView[]} */
+          group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean),
+          opts
+        );
       }
+      /**
+       * @param {string} groupId
+       * @param {number | undefined} waitMs
+       * @param {{detail?: string}} [opts]
+       * @param {AbortSignal} [signal]
+       */
       async waitGroup(groupId, waitMs, opts, signal) {
         const group = this.groups.get(groupId);
         if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
@@ -41176,6 +41473,7 @@ var init_jobs = __esm({
         }
         return this.groupView(groupId, opts);
       }
+      /** @param {string} groupId */
       cancelGroup(groupId) {
         const group = this.groups.get(groupId);
         if (!group) {
@@ -41191,7 +41489,10 @@ var init_jobs = __esm({
           const j = this.jobs.get(jid);
           return j && (j.status === "running" || j.status === "queued");
         }).length;
-        const members2 = group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean);
+        const members2 = (
+          /** @type {JobView[]} */
+          group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean)
+        );
         const total = group.job_ids.length;
         return {
           ...this.#shapeGroup(group, members2),
@@ -41465,13 +41766,19 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
   if (Boolean(chainId) === Boolean(groupId)) {
     throw new ExportError("pass exactly one of chain_id or group_id", "export_target_required");
   }
-  const chainIds = groupId ? chainsOfGroup(groupId) : [chainId];
+  const chainIds = groupId ? chainsOfGroup(groupId) : [
+    /** @type {string} */
+    chainId
+  ];
   const perChain = chainIds.map((id2) => ({ chain_id: id2, rounds: roundsOf(id2) }));
   const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
   if (total === 0) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, "unknown_chain");
   }
-  const first = perChain.find((c) => c.rounds.length)?.rounds[0];
+  const first = (
+    /** @type {Stored} */
+    perChain.find((c) => c.rounds.length)?.rounds[0]
+  );
   const lines = [
     `# Consultation record: ${first.question}`,
     "",
@@ -41501,9 +41808,14 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 var ExportError, historyDir, bullets2;
 var init_export = __esm({
   "src/export.mjs"() {
+    "use strict";
     init_policy();
     init_expose_paths();
     ExportError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} code
+       */
       constructor(message, code) {
         super(message);
         this.name = "ExportError";
@@ -41541,14 +41853,18 @@ function staleInstall(home = os5.homedir(), severallyHome = POLICY.home) {
     runtime: bundle?.match(/(?:SEVERALLY_VERSION = |name: ["']severally["'], version: )["'](\d+\.\d+\.\d+)["']/)?.[1],
     claude_skills_dir: (() => {
       try {
-        return JSON.parse(plugin).version;
+        return JSON.parse(
+          /** @type {string} */
+          plugin
+        ).version;
       } catch {
         return void 0;
       }
     })()
   };
   const copies = { this_server: SEVERALLY_VERSION };
-  for (const [name, v] of Object.entries(found)) if (/^\d+\.\d+\.\d+$/.test(v ?? "")) copies[name] = v;
+  for (const [name, v] of Object.entries(found)) if (/^\d+\.\d+\.\d+$/.test(v ?? "")) copies[name] = /** @type {string} */
+  v;
   const versions = Object.values(copies);
   if (versions.every((v) => v === SEVERALLY_VERSION)) return null;
   const newest = versions.reduce((a, b) => older(a, b) ? b : a);
@@ -41588,7 +41904,7 @@ function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null, limits: limitsSummary() });
         }
-        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
       }
     }
   );
@@ -41631,9 +41947,15 @@ function createServer(manager = new JobManager()) {
       }, PROGRESS_EVERY_MS);
       let view;
       try {
-        view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal) : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+        view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal) : await manager.wait(
+          /** @type {string} */
+          job_id,
+          wait_ms ?? DEFAULT_WAIT_MS,
+          { detail },
+          req?.signal
+        );
       } finally {
-        clearInterval(timer);
+        clearInterval(timer ?? void 0);
       }
       if (!view) {
         return fail({
@@ -41643,7 +41965,11 @@ function createServer(manager = new JobManager()) {
       }
       if (!ids || ["running", "queued", "cancelling"].includes(view.status)) return ok(view);
       try {
-        return ok(pointsOf(view, ids));
+        return ok(pointsOf(
+          /** @type {import('./jobs.mjs').JobView} */
+          view,
+          ids
+        ));
       } catch (err) {
         if (err instanceof RequestError) return fail({ error: err.code, message: err.message });
         throw err;
@@ -41665,7 +41991,10 @@ function createServer(manager = new JobManager()) {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
       }
-      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
+      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(
+        /** @type {string} */
+        job_id
+      );
       if (!view) {
         return fail({
           error: "unknown_job",
@@ -41708,7 +42037,7 @@ function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
         }
-        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
       }
     }
   );
@@ -41728,7 +42057,7 @@ function createServer(manager = new JobManager()) {
         return ok(exportChain({ chain_id, group_id }));
       } catch (err) {
         if (err instanceof ExportError) return fail({ error: err.code, message: err.message });
-        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
       }
     }
   );
@@ -41779,9 +42108,10 @@ async function main() {
   process.on("exit", () => manager.killNow());
   serveStdio(() => createServer(manager).server);
 }
-var SEVERALLY_VERSION, DEFAULT_WAIT_MS, PROGRESS_EVERY_MS, semver, older, SERVER_INSTRUCTIONS, startDescription, recordShape;
+var SEVERALLY_VERSION, DEFAULT_WAIT_MS, PROGRESS_EVERY_MS, semver, older, SERVER_INSTRUCTIONS, startDescription, recordShape, errorMessage2;
 var init_server = __esm({
   "src/server.mjs"() {
+    "use strict";
     init_zod();
     init_dist();
     init_stdio();
@@ -41789,7 +42119,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.4.0";
+    SEVERALLY_VERSION = "2.4.1";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -41858,6 +42188,10 @@ Model, permissions, rounds, timeout and size caps are fixed by this server.`;
         related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("f1, u1, c1 ...")
       }).optional().describe("written after reading the answer")
     };
+    errorMessage2 = (err) => String(
+      /** @type {Error | undefined} */
+      err?.message ?? err
+    );
   }
 });
 
@@ -41871,11 +42205,15 @@ function registration({ cmd, checks }) {
   let ran = false;
   for (const args of checks) {
     try {
-      const out = execCommandSync(cmd, args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
+      const out = (
+        /** @type {string} */
+        execCommandSync(cmd, args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] })
+      );
       ran = true;
       if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return "registered (listed by the client)";
     } catch (err) {
-      if (typeof err.status === "number") ran = true;
+      if (typeof /** @type {{ status?: unknown }} */
+      err.status === "number") ran = true;
     }
   }
   return ran ? "not registered" : `could not tell (${cmd} ${checks.map((a) => a.join(" ")).join(" / ")} failed)`;
@@ -41887,8 +42225,13 @@ function login(cli) {
   let out;
   let ok = true;
   try {
-    out = execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
-  } catch (err) {
+    out = /** @type {string} */
+    execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e) {
+    const err = (
+      /** @type {{ status?: unknown, stdout?: unknown }} */
+      e
+    );
     if (typeof err.status !== "number") return `could not tell (${check2.cmd} ${check2.args.join(" ")} failed)`;
     out = `${err.stdout ?? ""}`;
     ok = false;
@@ -41931,6 +42274,7 @@ function status() {
 var CLIENTS, LOGIN;
 var init_status = __esm({
   "src/status.mjs"() {
+    "use strict";
     init_policy();
     init_server();
     init_platform();

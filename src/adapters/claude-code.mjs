@@ -33,6 +33,10 @@ import { POLICY, PROTECTED_FILE_NAMES, protectedRoots } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 import { CONSULT_RESULT_SCHEMA } from '../result-schema.mjs';
 
+/** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
+/** @typedef {import('../run.mjs').Invocation} Invocation */
+/** @typedef {import('../run.mjs').Interpreted} Interpreted */
+
 // --add-dir is not listed: the adapter passes `--add-dir /` itself, and
 // assertNoForbiddenFlags refuses any other value. --restricted confines the
 // file tools to the working directories, and without expose_paths that
@@ -89,11 +93,12 @@ export const RESERVED_FLAGS = [
 /** Read deny rules for the paths no consultant may read. */
 // Claude Code matches Windows paths in POSIX form (C:\\Users -> /c/Users), so
 // an absolute rule names the drive that way: //c/Users/..., not //C:/Users/....
-export const posixAbsolute = (p) => p.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`);
+export const posixAbsolute = (/** @type {string} */ p) =>
+  p.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, /** @type {string} */ d) => `/${d.toLowerCase()}`);
 
 export function protectedReadRules() {
   const home = os.homedir().replaceAll('\\', '/');
-  const spec = (root) =>
+  const spec = (/** @type {string} */ root) =>
     root.startsWith(`${home}/`) ? `~/${root.slice(home.length + 1)}` : `//${posixAbsolute(root).replace(/^\/+/, '')}`;
   return [
     ...protectedRoots().flatMap((r) => [`Read(${spec(r)})`, `Read(${spec(r)}/**)`]),
@@ -101,6 +106,10 @@ export function protectedReadRules() {
   ];
 }
 
+/**
+ * @param {BuildRequest} req
+ * @returns {Invocation}
+ */
 export function buildInvocation({ workdir, guardrails, consultant, hasExposedPaths = false, network = 'on' }) {
   const t = POLICY.clis['claude-code'];
   const chosen = consultant.model;
@@ -145,6 +154,10 @@ export function buildInvocation({ workdir, guardrails, consultant, hasExposedPat
   return { command: t.cli, args, model: chosen, workdir };
 }
 
+/**
+ * @param {string} [stdout]
+ * @returns {any}
+ */
 function lastJsonObject(stdout) {
   const lines = (stdout || '').split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -160,6 +173,10 @@ function lastJsonObject(stdout) {
   return null;
 }
 
+/**
+ * @param {{ stdout?: string, stderr?: string, code?: number | null }} run
+ * @returns {Interpreted}
+ */
 export function interpret({ stdout, stderr, code }) {
   const payload = lastJsonObject(stdout);
   if (!payload) {
@@ -193,10 +210,11 @@ export function interpret({ stdout, stderr, code }) {
   return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
 
+/** @param {any} payload */
 export function usageRecord(payload) {
   if (!payload) return null;
   const u = payload.usage ?? {};
-  const num = (v) => (typeof v === 'number' ? v : null);
+  const num = (/** @type {unknown} */ v) => (typeof v === 'number' ? v : null);
   return {
     input_tokens: num(u.input_tokens),
     cached_input_tokens: num(u.cache_read_input_tokens),
@@ -212,6 +230,7 @@ export function usageRecord(payload) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
+ * @param {{ args: string[], hasExposedPaths?: boolean }} req
  */
 export function boundary({ args, hasExposedPaths }) {
   const tools = args[args.indexOf('--tools') + 1];

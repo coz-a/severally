@@ -11,8 +11,12 @@
 // byte offsets -- and therefore JSON.parse's error positions -- still point at
 // the right place in the original text.
 
-/** Remove // and /* *\/ comments and trailing commas, preserving offsets. */
+/**
+ * Remove // and /* *\/ comments and trailing commas, preserving offsets.
+ * @param {string} text
+ */
 export function stripJsonc(text) {
+  /** @type {string[]} */
   const out = [];
   let inString = false;
   let i = 0;
@@ -78,7 +82,11 @@ export function stripJsonc(text) {
   return out.join('');
 }
 
-/** JSON.parse, tolerating comments and trailing commas. */
+/**
+ * JSON.parse, tolerating comments and trailing commas.
+ * @param {string} text
+ * @returns {any}
+ */
 export function parseJsonc(text) {
   return JSON.parse(stripJsonc(text));
 }

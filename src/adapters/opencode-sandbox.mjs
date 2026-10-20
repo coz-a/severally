@@ -48,6 +48,7 @@ import { sandboxHome } from '../store.mjs';
 // node:sqlite ships unflagged from Node 23 (and late 22.x); the engines field
 // allows older runtimes, where credential seeding degrades to a no-op and the
 // job fails with the CLI's own auth error instead.
+/** @type {typeof import('node:sqlite').DatabaseSync | null} */
 let DatabaseSync = null;
 try {
   ({ DatabaseSync } = sqliteRequire(import.meta.url)('node:sqlite'));
@@ -104,8 +105,21 @@ function readRules() {
 const AUTH_REL = path.join('.local', 'share', 'opencode', 'auth.json');
 
 /**
+ * The synthesised HOME of one consultation, as prepareSandbox returns it.
+ * @typedef {object} OpencodeSandbox
+ * @property {string} root
+ * @property {string} credentials 'copy' or 'missing'
+ * @property {string[]} tools
+ * @property {string} credentialsSource
+ * @property {Record<string, string>} env
+ * @property {() => void} cleanup
+ * @property {(provider: string) => boolean} seed insert the provider's credential into the session database
+ */
+
+/**
  * Build the synthesised HOME for one consultation.
  * @param {{workdir: string, network?: 'on' | 'off'}} opts workdir is <jobdir>/work; the home is store.sandboxHome(<job id>).
+ * @returns {OpencodeSandbox}
  */
 export function prepareSandbox({ workdir, network = 'on' }) {
   const root = sandboxHome(path.basename(path.dirname(workdir)));
@@ -163,7 +177,7 @@ export function prepareSandbox({ workdir, network = 'on' }) {
     credentials = 'copy';
   }
 
-  const sandbox = {
+  const sandbox = /** @type {OpencodeSandbox} */ ({
     root,
     credentials,
     tools: SANDBOX_ALLOW.filter((t) => network !== 'off' || !WEB_TOOLS.has(t)),
@@ -171,7 +185,7 @@ export function prepareSandbox({ workdir, network = 'on' }) {
     // "missing"` can say where it looked instead of leaving the operator to
     // guess which HOME severally read.
     credentialsSource: source,
-    env: {
+    env: /** @type {Record<string, string>} */ ({
       HOME: root,
       XDG_CONFIG_HOME: path.join(root, '.config'),
       XDG_DATA_HOME: path.join(root, '.local', 'share'),
@@ -190,7 +204,7 @@ export function prepareSandbox({ workdir, network = 'on' }) {
             LOCALAPPDATA: path.join(root, 'AppData', 'Local'),
           }
         : {}),
-    },
+    }),
     cleanup() {
       try {
         fs.rmSync(root, { recursive: true, force: true });
@@ -198,8 +212,8 @@ export function prepareSandbox({ workdir, network = 'on' }) {
         /* best effort */
       }
     },
-  };
-  sandbox.seed = (provider) => seedCredentialFromAuth(sandbox, provider);
+  });
+  sandbox.seed = (/** @type {string} */ provider) => seedCredentialFromAuth(sandbox, provider);
   return sandbox;
 }
 
@@ -214,6 +228,8 @@ export function prepareSandbox({ workdir, network = 'on' }) {
  * -- note "key" (the method), not the "api" auth.json uses. Only api-key
  * entries are seeded; OAuth tokens have a different shape and lifecycle.
  *
+ * @param {{ root: string }} sandbox
+ * @param {unknown} provider
  * @returns {boolean} true when a row was written and a retry is worth it.
  */
 export function seedCredentialFromAuth(sandbox, provider) {
@@ -225,6 +241,7 @@ export function seedCredentialFromAuth(sandbox, provider) {
   // CLI's own migrations, so an unbootstrapped sandbox is simply not seedable.
   if (!fs.existsSync(dbPath)) return false;
 
+  /** @type {{ label: string, value: string } | null} */
   let row = null;
   // The operator's session database is what the 2.x CLI itself authenticates
   // with, so it outranks the copied auth.json: an operator who rotated their
@@ -238,6 +255,7 @@ export function seedCredentialFromAuth(sandbox, provider) {
     try {
       const db = new DatabaseSync(operatorDb, { readOnly: true });
       try {
+        /** @type {any} */
         const found = db
           .prepare('SELECT label, value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1')
           .get(provider);

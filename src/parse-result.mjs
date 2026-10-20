@@ -8,6 +8,10 @@ import { RESULT_KEYS } from './result-schema.mjs';
 import { redact } from './redact.mjs';
 
 export class OutputError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} [detail]
+   */
   constructor(message, detail) {
     super(message);
     this.name = 'OutputError';
@@ -17,6 +21,11 @@ export class OutputError extends Error {
 
 const O = POLICY.output;
 
+/**
+ * @param {unknown} v
+ * @param {number} max
+ * @returns {string | null}
+ */
 function clampText(v, max) {
   if (typeof v !== 'string') return null;
   const t = v.trim();
@@ -27,26 +36,44 @@ function clampText(v, max) {
 const LEVELS = ['high', 'medium', 'low'];
 const BASIS = ['sufficient', 'thin', 'insufficient'];
 
+/**
+ * @param {unknown} v
+ * @param {string | null} [fallback]
+ * @returns {string | null}
+ */
 function level(v, fallback = null) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
   return LEVELS.includes(t) ? t : fallback;
 }
 
+/**
+ * @param {unknown} v
+ * @returns {string | null}
+ */
 function basis(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
   return BASIS.includes(t) ? t : null;
 }
 
+/**
+ * @param {unknown} v
+ * @returns {string | null}
+ */
 function stance(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
   return STANCES.includes(t) ? t : null;
 }
 
-/** Extract a JSON object from raw model text (fenced block, or first balanced object). */
+/**
+ * Extract a JSON object from raw model text (fenced block, or first balanced object).
+ * @param {unknown} text
+ * @returns {Record<string, any> | null}
+ */
 export function extractJson(text) {
   if (typeof text !== 'string') return null;
   const trimmed = text.trim();
   if (!trimmed) return null;
+  /** @type {string[]} */
   const candidates = [];
   if (trimmed.startsWith('{')) candidates.push(trimmed);
   const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
@@ -98,11 +125,19 @@ export function extractJson(text) {
 // verdict against one point later. The id is ours, assigned at parse time and
 // never read from the answer: a consultant that numbered its own findings
 // cannot make one of them impersonate another.
+/**
+ * @param {unknown} raw
+ * @param {Record<string, 'text' | 'level'>} fields
+ * @param {{ requiredField: string, idPrefix?: string | null }} options
+ * @returns {Record<string, any>[]}
+ */
 function mapList(raw, fields, { requiredField, idPrefix = null }) {
   if (!Array.isArray(raw)) return [];
+  /** @type {Record<string, any>[]} */
   const out = [];
   for (const entry of raw.slice(0, O.listMax)) {
     if (!entry || typeof entry !== 'object') continue;
+    /** @type {Record<string, any>} */
     const item = idPrefix ? { id: `${idPrefix}${out.length + 1}` } : {};
     for (const [key, kind] of Object.entries(fields)) {
       item[key] = kind === 'level' ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
@@ -115,7 +150,7 @@ function mapList(raw, fields, { requiredField, idPrefix = null }) {
 
 /**
  * @param {object|string} raw  parsed JSON object, or raw text to mine one out of
- * @returns {{result: object, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
+ * @returns {{result: Record<string, any>, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
  */
 export function normalizeResult(raw) {
   const objIn = typeof raw === 'string' ? extractJson(raw) : raw;
@@ -129,6 +164,7 @@ export function normalizeResult(raw) {
     throw new OutputError('consultant response has no usable "summary" field', JSON.stringify(src).slice(0, 2000));
   }
 
+  /** @type {Record<string, any>} */
   const result = {
     summary,
     confidence: level(src.confidence),
@@ -191,12 +227,12 @@ export function normalizeResult(raw) {
     ),
     references: (Array.isArray(src.references) ? src.references : [])
       .slice(0, O.referencesMax)
-      .map((r) =>
+      .map((/** @type {any} */ r) =>
         r && typeof r === 'object'
           ? { title: clampText(r.title, 300), url: clampText(r.url, 1000), relevance: clampText(r.relevance, 600) }
           : { title: clampText(r, 300), url: null, relevance: null },
       )
-      .filter((r) => r.title || r.url),
+      .filter((/** @type {any} */ r) => r.title || r.url),
   };
 
   // The lists are cut to O.listMax before anything else looks at them; say how
@@ -213,7 +249,7 @@ export function normalizeResult(raw) {
   });
 
   // Grounds are the point of the exercise: a finding without them is not evidence.
-  const groundless = result.findings.filter((f) => !f.grounds).length;
+  const groundless = result.findings.filter((/** @type {any} */ f) => !f.grounds).length;
 
   return {
     result,

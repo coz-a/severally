@@ -30,6 +30,14 @@ import { POLICY } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 import { spawnCommand } from '../platform.mjs';
 
+/** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
+/** @typedef {import('../run.mjs').ChildResult} ChildResult */
+/** @typedef {import('../run.mjs').Invocation} Invocation */
+/** @typedef {import('../run.mjs').Interpreted} Interpreted */
+/** @typedef {import('./opencode-sandbox.mjs').OpencodeSandbox} OpencodeSandbox */
+/** @typedef {import('../run.mjs').InterpretedOk} OpencodeOk */
+/** @typedef {import('../run.mjs').InterpretedFail} InterpretedFail */
+
 // Checked against opencode 1.18.31. The list exists so a future edit that
 // reaches for one of them is refused rather than quietly widening the
 // consultant:
@@ -82,21 +90,28 @@ export { prepareSandbox } from './opencode-sandbox.mjs';
 // server lives and dies with the child's process group. 1.18.31 has no such
 // flag (unknown flags die with a usage dump), so support is probed once per
 // process through `run --help` and the invocation stays 1.x-exact without it.
+/** @type {boolean | null} */
 let standaloneSupport = null;
+/** @type {Promise<void> | null} */
 let probePromise = null;
 
 /** Probe the CLI's capabilities once per process; safe to call per job. */
 export async function prepare() {
   if (standaloneSupport !== null) return;
   if (!probePromise) {
-    probePromise = new Promise((resolve) => {
+    probePromise = new Promise((/** @type {() => void} */ resolve) => {
       let settled = false;
+      /** @type {NodeJS.Timeout | null} */
       let timer = null;
       // Only a SUCCESSFUL help invocation may cache its answer: a spawn
       // error, a timeout or a nonzero exit is transient, and caching it as
       // "unsupported" would pin a 2.x install to the shared-service route
       // for the process lifetime. Transient outcomes resolve without
       // caching, so the next job probes again.
+      /**
+       * @param {boolean} supported
+       * @param {boolean} cache
+       */
       const finishProbe = (supported, cache) => {
         if (settled) return;
         settled = true;
@@ -115,10 +130,10 @@ export async function prepare() {
         );
         const child = spawnCommand(POLICY.clis.opencode.cli, ['run', '--help'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
         let out = '';
-        child.stdout.on('data', (c) => {
+        /** @type {NonNullable<typeof child.stdout>} */ (child.stdout).on('data', (c) => {
           out += c;
         });
-        child.stderr.on('data', (c) => {
+        /** @type {NonNullable<typeof child.stderr>} */ (child.stderr).on('data', (c) => {
           out += c;
         });
         child.on('error', () => finishProbe(false, false));
@@ -162,6 +177,8 @@ export async function resetProbe() {
  * and the caller retries once. Strictly once per job; every other failure
  * kind -- an auth rejection, a usage limit, invalid output -- means a
  * respawn is wasted compute.
+ * @param {{ interpreted: Interpreted, sandbox: OpencodeSandbox | undefined, model: string }} args
+ * @returns {boolean}
  */
 export function recoverAuthFailure({ interpreted, sandbox, model }) {
   if (!interpreted || interpreted.ok !== false || interpreted.failureKind !== 'model_unavailable') return false;
@@ -176,6 +193,10 @@ export function recoverAuthFailure({ interpreted, sandbox, model }) {
 // adapter adds or leaves out by capability probe.
 export const RESERVED_FLAGS = ['--model', '--standalone', '--wizard'];
 
+/**
+ * @param {BuildRequest} req
+ * @returns {Invocation}
+ */
 export function buildInvocation({ consultant }) {
   const t = POLICY.clis.opencode;
   const chosen = consultant.model;
@@ -204,8 +225,13 @@ export function buildInvocation({ consultant }) {
   return { command: t.cli, args, model: chosen };
 }
 
-/** Every complete NDJSON object opencode wrote to stdout, oldest first. */
+/**
+ * Every complete NDJSON object opencode wrote to stdout, oldest first.
+ * @param {string | undefined} stdout
+ * @returns {any[]}
+ */
 export function events(stdout) {
+  /** @type {any[]} */
   const out = [];
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -227,6 +253,8 @@ export function events(stdout) {
  * filled rawCaptureMax and cut the final answer off the stream. Nothing here
  * reads tool results: interpret wants text/step_finish/error, and progress
  * only the tool name.
+ * @param {string} line
+ * @returns {string}
  */
 export function compactLine(line) {
   if (!line.includes('"tool_use"')) return line;
@@ -242,7 +270,11 @@ export function compactLine(line) {
   }
 }
 
-/** One line naming the error opencode reported, in classifyMessage's terms. */
+/**
+ * One line naming the error opencode reported, in classifyMessage's terms.
+ * @param {any} error
+ * @returns {string}
+ */
 function errorMessage(error) {
   if (!error || typeof error !== 'object') return JSON.stringify(error);
   // 2.x: {type, message} -- the message is already a complete human sentence,
@@ -260,6 +292,8 @@ function errorMessage(error) {
  * log line lands). Raw stdout is never the message: it is the event stream
  * of a run that was working fine, its head says nothing about the failure, and
  * numbers inside it ("reasoning":403) would be classified as HTTP statuses.
+ * @param {{ errors: string[], stderr?: string, stdout?: string, code?: number | null, signal?: NodeJS.Signals | null, what: string }} run
+ * @returns {{ msg: string, kind: string }}
  */
 function failureMessage({ errors, stderr, stdout, code, signal, what }) {
   if (errors.length) {
@@ -276,9 +310,12 @@ function failureMessage({ errors, stderr, stdout, code, signal, what }) {
  * Parse the event stream `opencode run --format json` writes to stdout.
  * The answer is the LAST completed text part: a consultation can emit prose
  * between tool calls, and only the final part carries the reply contract.
+ * @param {Partial<ChildResult>} run
+ * @returns {OpencodeOk | InterpretedFail}
  */
 export function interpret({ stdout, stderr, code, signal = null, truncated = false }) {
   const all = events(stdout);
+  /** @type {string | null} */
   let text = null;
   let textIndex = -1;
   let lastErrorIndex = -1;
@@ -286,7 +323,9 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
   let tokens = null;
   let cost = null;
   let steps = 0;
+  /** @type {string[]} */
   const errors = [];
+  /** @type {string[]} */
   const earlierTextParts = [];
   for (let i = 0; i < all.length; i++) {
     const e = all[i];
@@ -367,17 +406,26 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
  * "working steadily through tool calls" from "wedged on one call", which is
  * the difference between raising the budget and narrowing the brief.
  */
-/** Tool calls seen in the event stream, one per call id; `:error` when the call failed or was refused. */
+/**
+ * Tool calls seen in the event stream, one per call id; `:error` when the call failed or was refused.
+ * @param {{ stdout?: string }} run
+ * @returns {Record<string, number>}
+ */
 export function toolCalls({ stdout }) {
+  /** @type {Map<unknown, string>} */
   const seen = new Map();
   for (const e of events(stdout)) {
     if (e.type === 'tool_use' && e.part?.tool) {
       seen.set(e.part.callID ?? e.part.id ?? seen.size, e.part.state?.status === 'error' ? `${e.part.tool}:error` : e.part.tool);
     }
   }
-  return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+  return [...seen.values()].reduce((/** @type {Record<string, number>} */ o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
 
+/**
+ * @param {{ stdout?: string }} run
+ * @returns {string | null}
+ */
 export function progress({ stdout }) {
   const seen = events(stdout).filter((e) => ['step_start', 'step_finish', 'text', 'tool_use'].includes(e.type));
   if (!seen.length) return null;
@@ -386,10 +434,14 @@ export function progress({ stdout }) {
   return `${seen.length} event(s), last was ${what}`;
 }
 
+/**
+ * @param {any} raw
+ * @returns {Record<string, number | null>}
+ */
 export function usageRecord(raw) {
   const r = raw ?? {};
   const t = r.tokens && typeof r.tokens === 'object' ? r.tokens : {};
-  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const num = (/** @type {unknown} */ v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const cache = t.cache && typeof t.cache === 'object' ? t.cache : {};
   return {
     input_tokens: num(t.input),
@@ -407,6 +459,8 @@ export function usageRecord(raw) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
+ * @param {{ sandbox: OpencodeSandbox }} launch
+ * @returns {Record<string, any>}
  */
 export function boundary({ sandbox }) {
   return {

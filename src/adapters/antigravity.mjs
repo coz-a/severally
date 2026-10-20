@@ -20,6 +20,10 @@ import { classifyMessage } from '../failures.mjs';
 
 export { prepareSandbox } from './antigravity-sandbox.mjs';
 
+/** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
+/** @typedef {import('../run.mjs').Invocation} Invocation */
+/** @typedef {import('../run.mjs').Interpreted} Interpreted */
+
 // Checked against `agy --help` at 1.1.28. These are inert in print mode as the
 // adapter builds it today; the list exists so a future edit that reaches for
 // one of them is refused rather than quietly widening the consultant.
@@ -50,6 +54,10 @@ export const FORBIDDEN_FLAGS = [
 // --effort too: the effort is chosen through the model name, in one place.
 export const RESERVED_FLAGS = ['--print', '-p', '--prompt', '--project', '--remote-control', '--effort'];
 
+/**
+ * @param {BuildRequest} req
+ * @returns {Invocation}
+ */
 export function buildInvocation({ schemaPath, consultant }) {
   const t = POLICY.clis.antigravity;
   const chosen = consultant.model;
@@ -76,7 +84,11 @@ export function buildInvocation({ schemaPath, consultant }) {
   return { command: t.cli, args, model: chosen };
 }
 
-/** Every complete NDJSON object agy wrote, oldest first. */
+/**
+ * Every complete NDJSON object agy wrote, oldest first.
+ * @param {string} [stdout]
+ * @returns {any[]}
+ */
 function events(stdout) {
   const out = [];
   for (const line of (stdout || '').split('\n')) {
@@ -96,6 +108,8 @@ function events(stdout) {
  * The final envelope: the `result` event under stream-json, or a bare envelope
  * when agy was run with --output-format json (as older configs and the unit
  * tests do).
+ * @param {string} [stdout]
+ * @returns {any}
  */
 function finalEnvelope(stdout) {
   const all = events(stdout);
@@ -113,6 +127,8 @@ function finalEnvelope(stdout) {
  * one tool call", which is the difference between raising the budget and
  * narrowing the brief; and it lets the lead cut a heavy consultation short
  * instead of waiting out the whole budget for nothing.
+ * @param {{ stdout: string }} run
+ * @returns {string | null}
  */
 export function progress({ stdout }) {
   const steps = events(stdout).filter((e) => e.event === 'step_update' && e.step_update);
@@ -123,7 +139,11 @@ export function progress({ stdout }) {
   return `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
 }
 
-/** Tool calls seen in the step stream, one per step index; `:error` when the step failed or was refused. */
+/**
+ * Tool calls seen in the step stream, one per step index; `:error` when the step failed or was refused.
+ * @param {{ stdout: string }} run
+ * @returns {Record<string, number>}
+ */
 export function toolCalls({ stdout }) {
   const seen = new Map();
   for (const e of events(stdout)) {
@@ -139,6 +159,8 @@ export function toolCalls({ stdout }) {
  * (job_790a7173c16d) agy wrote its finish step and then stayed alive for six
  * minutes; the server waits for the process to close, so without this the
  * consultation would have sat "running" until its budget ran out.
+ * @param {string} line
+ * @returns {number | null}
  */
 export function settleAfter(line) {
   if (!line.includes('"result"') && !line.includes('"finish"')) return null;
@@ -163,10 +185,12 @@ export const stopSignal = 'SIGQUIT';
  * goroutine dump and is written inside the sandbox HOME that is removed when
  * the consultation ends, and whatever reached the stderr pipe. Not redacted
  * here; the caller does that.
+ * @param {{ run: import('../run.mjs').ChildResult, sandbox: { root: string } }} args
  */
 export function diagnostics({ run, sandbox }) {
-  const tail = (s) => String(s ?? '').slice(-200_000);
+  const tail = (/** @type {unknown} */ s) => String(s ?? '').slice(-200_000);
   const dir = path.join(sandbox.root, '.gemini', 'antigravity-cli', 'log');
+  /** @type {string[]} */
   let names = [];
   try {
     names = fs.readdirSync(dir).sort();
@@ -187,6 +211,10 @@ export function diagnostics({ run, sandbox }) {
   ].join('\n');
 }
 
+/**
+ * @param {{ stdout?: string, stderr?: string, code?: number | null }} run
+ * @returns {Interpreted}
+ */
 export function interpret({ stdout, stderr, code }) {
   const payload = finalEnvelope(stdout);
   if (!payload) {
@@ -209,10 +237,11 @@ export function interpret({ stdout, stderr, code }) {
   return { ok: true, text, usageRaw: payload, denials: payload.denied_actions ?? [] };
 }
 
+/** @param {any} payload */
 export function usageRecord(payload) {
   if (!payload) return null;
   const u = payload.usage ?? {};
-  const num = (v) => (typeof v === 'number' ? v : null);
+  const num = (/** @type {unknown} */ v) => (typeof v === 'number' ? v : null);
   return {
     input_tokens: num(u.input_tokens),
     cached_input_tokens: num(u.cache_read_tokens),
@@ -224,7 +253,9 @@ export function usageRecord(payload) {
     turns: num(payload.num_turns),
     // Which permissions the sandbox refused. A denied read_url usually explains
     // a thin evidence basis, so it is worth keeping in the record.
-    denied_actions: Array.isArray(payload.denied_actions) ? payload.denied_actions.map((d) => d?.action).filter(Boolean) : null,
+    denied_actions: Array.isArray(payload.denied_actions)
+      ? payload.denied_actions.map((/** @type {any} */ d) => d?.action).filter(Boolean)
+      : null,
   };
 }
 
@@ -232,6 +263,7 @@ export function usageRecord(payload) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
+ * @param {{ sandbox: { tools: readonly string[] } }} req
  */
 export function boundary({ sandbox }) {
   return {

@@ -3,9 +3,18 @@
 // no validation keywords beyond type/enum) so it can be handed verbatim to
 // Codex's --output-schema and Claude Code's --json-schema.
 
+/** @param {string} desc */
 const s = (desc) => ({ type: 'string', description: desc });
+/**
+ * @param {string[]} values
+ * @param {string} desc
+ */
 const enumOf = (values, desc) => ({ type: 'string', enum: values, description: desc });
 
+/**
+ * @param {Record<string, object>} properties
+ * @param {string} [description]
+ */
 const obj = (properties, description) => ({
   type: 'object',
   description,
@@ -14,6 +23,10 @@ const obj = (properties, description) => ({
   additionalProperties: false,
 });
 
+/**
+ * @param {object} items
+ * @param {string} description
+ */
 const arr = (items, description) => ({ type: 'array', description, items });
 
 export const CONSULT_RESULT_SCHEMA = obj(

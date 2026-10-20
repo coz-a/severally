@@ -18,7 +18,13 @@ import {
 } from './policy.mjs';
 import { normalizeName, resolveConsultant } from './consultants.mjs';
 
+/** @typedef {ReturnType<typeof availableConsultants>[number]} Consultant */
+
 const L = POLICY.input;
+/**
+ * @param {number} max
+ * @param {string} label
+ */
 const trimmed = (max, label) =>
   z.string().trim().min(1, `${label} must not be empty`).max(max, `${label} exceeds ${max} characters`);
 
@@ -144,6 +150,7 @@ export const requestSchema = z
   })
   .strict();
 
+/** @param {Record<string, any>} req The request after parseRequest has filled in its defaults. */
 export function charCount(req) {
   let n = req.question.length + (req.objective?.length ?? 0);
   for (const c of req.constraints) n += c.length;
@@ -156,6 +163,11 @@ export function charCount(req) {
 }
 
 export class RequestError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} [code]
+   * @param {unknown[]} [details]
+   */
   constructor(message, code = 'invalid_request', details = undefined) {
     super(message);
     this.name = 'RequestError';
@@ -168,6 +180,8 @@ export class RequestError extends Error {
  * Validate + normalise a consult request.
  * `isFollowup` is decided by the caller (the job store resolves followup_to first);
  * `groupFollowup` when followup_to named a fan-out, whose members are the targets.
+ * @param {unknown} raw
+ * @param {{ isFollowup?: boolean, parentMode?: string | null, groupFollowup?: boolean }} [options]
  */
 export function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowup = false } = {}) {
   const parsed = requestSchema.safeParse(raw);
@@ -208,12 +222,14 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
       'target_required',
     );
   }
+  /** @type {string[]} */
   const named = hasSingle ? [req.target] : req.targets;
   const isAll = named.map((n) => normalizeName(n) === 'all');
   if (isAll.some(Boolean) && named.length > 1) {
     throw new RequestError('"all" already means every available consultant; pass it alone', 'all_mixed');
   }
 
+  /** @type {Consultant[]} */
   let chosen;
   if (isAll[0]) {
     chosen = availableConsultants();
@@ -245,11 +261,11 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
       if (r.ambiguous) {
         throw new RequestError(
           `${JSON.stringify(name)} fits more than one consultant and no ranking rule decides between ` +
-            `${r.ambiguous.map((c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')}; name one of them`,
+            `${r.ambiguous.map((/** @type {Consultant} */ c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')}; name one of them`,
           'target_ambiguous',
         );
       }
-      return r.consultant;
+      return /** @type {Consultant} */ (r.consultant);
     });
     const off = [...new Set(chosen.filter((c) => !consultantAvailable(c)))];
     if (off.length) {

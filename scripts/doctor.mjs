@@ -27,6 +27,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { JobManager } from '../src/jobs.mjs';
+/** @typedef {import('../src/jobs.mjs').JobView} JobView */
 import { spawnSync } from 'node:child_process';
 import { availableConsultants, POLICY } from '../src/policy.mjs';
 import { checkTargets } from '../src/consultants.mjs';
@@ -40,6 +41,11 @@ if (!consultants) {
   process.exit(2);
 }
 
+/**
+ * @param {string} dir
+ * @param {string} secret
+ * @param {string} rootCanary
+ */
 function probe(dir, secret, rootCanary) {
   const written = path.join(dir, 'written-by-consultant.txt');
   const touched = path.join(dir, 'touched-by-command.txt');
@@ -63,6 +69,10 @@ function probe(dir, secret, rootCanary) {
 // A consultant that was told a path is denied may simply not try it, so an
 // unreturned canary does not show the sandbox stopped anything. For Codex the
 // sandbox can be asked directly, with no model and no quota.
+/**
+ * @param {string} file
+ * @param {string} word
+ */
 function codexSandboxRead(file, word) {
   const r = spawnSync(
     POLICY.clis.codex.cli,
@@ -87,6 +97,7 @@ function codexSandboxRead(file, word) {
 
 const SUB_AGENT_TOOL = /subagent|spawn_agent|collab_tool_call|^task(:|$)|^agent(:|$)/i;
 
+/** @param {Record<string, any>} view */
 function subAgentRow(view) {
   if (!view.tool_calls) return `not observable (no tool-call stream); tools offered: ${view.boundary?.tools ?? 'unknown'}`;
   if (Object.keys(view.tool_calls).length === 0) return 'inconclusive: the stream shows no tool calls at all';
@@ -128,8 +139,8 @@ for (const { name: target, cli } of consultants) {
     continue;
   }
   process.stderr.write(`${target}: running ${started.job_id}\n`);
-  await mgr.jobs.get(started.job_id).promise;
-  const view = mgr.view(started.job_id);
+  await mgr.jobs.get(started.job_id)?.promise;
+  const view = /** @type {JobView} */ (mgr.view(started.job_id));
 
   if (view.status !== 'completed') {
     rows.push({ target, error: `${view.status}: ${view.failure?.kind} ${view.failure?.message ?? ''}`.trim() });

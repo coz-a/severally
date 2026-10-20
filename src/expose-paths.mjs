@@ -22,7 +22,57 @@ import { spawnSync } from 'node:child_process';
 import { POLICY, isProtectedPath } from './policy.mjs';
 import { redact } from './redact.mjs';
 
+/** @typedef {{ files: number, bytes: number }} ExposeTotals */
+
+/**
+ * A path left out of the copy, with why: 'ignored', 'symlink', 'protected',
+ * 'submodule', 'gone', 'masked' or 'replaced'. `exposed_as` names it where a
+ * follow-up carries over an earlier round's entry.
+ * @typedef {{ source: string, reason: string, exposed_as?: string }} SkippedPath
+ */
+
+/**
+ * One exposed entry as the walk and the copy report it. `kind` is 'file',
+ * 'directory', 'diff' or 'change_files'.
+ * @typedef {object} ExposeEntry
+ * @property {number} index
+ * @property {string} source
+ * @property {string} kind
+ * @property {string} exposedAs
+ * @property {number} files
+ * @property {number} bytes
+ * @property {string[]} paths
+ * @property {string | null} [sha256]
+ * @property {string} [base]
+ * @property {string[]} [changes]
+ * @property {boolean} [changed] a follow-up's copy of a parent path: whether its bytes changed since
+ */
+
+/**
+ * What an expose_paths request comes to: the entries, their totals, and what was left out.
+ * @typedef {{ entries: ExposeEntry[], totals: ExposeTotals, skipped: SkippedPath[] }} ExposeManifest
+ */
+
+/** A path as the lead names it, or as an earlier round numbered it. @typedef {string | { source: string, index: number }} ExposePathSpec */
+
+/**
+ * An entry of an earlier round's brief record (briefRecord's `expose_paths.entries`).
+ * @typedef {object} ExposedEntryRecord
+ * @property {number} index
+ * @property {string} source
+ * @property {string} [exposed_as]
+ * @property {string} [kind]
+ * @property {string} [base]
+ * @property {string[]} [changes]
+ */
+
+/** @typedef {{ path: string, status: string }} RepoChange */
+
 export class ExposeError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} code
+   */
   constructor(message, code) {
     super(message);
     this.name = 'ExposeError';
@@ -30,7 +80,10 @@ export class ExposeError extends Error {
   }
 }
 
-/** A size a reader can judge at a glance; the brief is read, not parsed. */
+/**
+ * A size a reader can judge at a glance; the brief is read, not parsed.
+ * @param {number} bytes
+ */
 export function humanSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
@@ -42,6 +95,7 @@ export function humanSize(bytes) {
 // Getting it wrong is survivable in one direction only -- a binary treated as
 // text would be corrupted by redact()'s utf8 round-trip, so the test errs
 // toward calling things binary.
+/** @param {Uint8Array} buf */
 function isBinary(buf) {
   const len = Math.min(buf.length, 8_000);
   for (let i = 0; i < len; i++) if (buf[i] === 0) return true;
@@ -50,10 +104,15 @@ function isBinary(buf) {
 
 // Before a file is read: the caps are a few megabytes, and a 1 GB file must
 // be refused by its size, not after it has been read into memory and written.
+/**
+ * @param {ExposeTotals} totals
+ * @param {number} size
+ */
 function ensureRoom(totals, size) {
   checkBudget({ files: totals.files + 1, bytes: totals.bytes + size });
 }
 
+/** @param {ExposeTotals} totals */
 function checkBudget(totals) {
   if (totals.files > POLICY.input.exposeFilesMax) {
     throw new ExposeError(
@@ -74,12 +133,13 @@ function checkBudget(totals) {
 // A path the lead named, as opposed to one found while walking: it is refused
 // rather than skipped, because a lead who typed a symlink meant something by
 // it and should hear which entry could not be used.
+/** @param {string} source */
 function statEntry(source) {
   let stat;
   try {
     stat = fs.lstatSync(source);
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${err.message}`, 'not_found');
+    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${/** @type {Error} */ (err).message}`, 'not_found');
   }
   if (stat.isSymbolicLink()) {
     throw new ExposeError(`expose_paths entry "${source}" is a symlink; name the path it points at instead`, 'invalid_type');
@@ -94,6 +154,13 @@ function statEntry(source) {
 // accounts for the file (it owns the totals), and the budget is checked after
 // every single one, so an oversized tree stops at the file that crossed the
 // line rather than after the whole thing has been walked or copied.
+/**
+ * @param {string} root
+ * @param {string} dir
+ * @param {(abs: string, rel: string) => void} onFile
+ * @param {ExposeTotals} totals
+ * @param {SkippedPath[]} skipped
+ */
 function walkDir(root, dir, onFile, totals, skipped) {
   let items;
   try {
@@ -101,7 +168,7 @@ function walkDir(root, dir, onFile, totals, skipped) {
     // entries were created.
     items = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${err.message}`, 'not_found');
+    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${/** @type {Error} */ (err).message}`, 'not_found');
   }
   for (const item of items) {
     const child = path.join(dir, item.name);
@@ -138,6 +205,10 @@ function walkDir(root, dir, onFile, totals, skipped) {
 
 // walkDir's order: name by name at every level, not the whole path as one
 // string ("a/x" comes before "a-b" there, after it as a string).
+/**
+ * @param {string} a
+ * @param {string} b
+ */
 function byPathParts(a, b) {
   const x = a.split('/');
   const y = b.split('/');
@@ -152,6 +223,14 @@ function byPathParts(a, b) {
 // submodule, or reach outside the directory. False when this is not a work
 // tree, git is missing or lists nothing (an ignored directory the lead named
 // on purpose): the caller walks it instead.
+/**
+ * @param {string} dir
+ * @param {string} exposedAs
+ * @param {(abs: string, rel: string) => void} onFile
+ * @param {ExposeTotals} totals
+ * @param {SkippedPath[]} skipped
+ * @returns {boolean}
+ */
 function walkGit(dir, exposedAs, onFile, totals, skipped) {
   let listed;
   let ignored;
@@ -217,8 +296,14 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
 
 // Each path is a string, or { source, index } to keep the name an earlier
 // round gave it.
+/**
+ * @param {ExposePathSpec[]} exposePaths
+ * @param {(abs: string, rel: string, index: number, source: string, totals: ExposeTotals) => void} onFile
+ * @returns {ExposeManifest}
+ */
 function walkEntries(exposePaths, onFile) {
   const totals = { files: 0, bytes: 0 };
+  /** @type {SkippedPath[]} */
   const skipped = [];
   const entries = exposePaths.map((p, i) => {
     const { source, index } = typeof p === 'string' ? { source: p, index: i } : p;
@@ -229,6 +314,7 @@ function walkEntries(exposePaths, onFile) {
     const before = { files: totals.files, bytes: totals.bytes };
     // What a directory holds, for the brief: not every consultant has a tool
     // that lists a directory, and a name it cannot see is a file it never reads.
+    /** @type {string[]} */
     const paths = [];
     if (isProtectedPath(source)) {
       skipped.push({ source, reason: 'protected' });
@@ -236,6 +322,7 @@ function walkEntries(exposePaths, onFile) {
       onFile(source, '', index, source, totals);
       checkBudget(totals);
     } else {
+      /** @type {(abs: string, rel: string) => void} */
       const add = (abs, rel) => {
         paths.push(rel.split(path.sep).join('/'));
         onFile(abs, rel, index, source, totals);
@@ -261,6 +348,8 @@ function walkEntries(exposePaths, onFile) {
  * real copy may write slightly fewer bytes once a text file's
  * credential-shaped strings are masked, which only ever shrinks what was
  * already reported.
+ * @param {ExposePathSpec[] | null | undefined} exposePaths
+ * @returns {ExposeManifest | null}
  */
 export function previewExposePaths(exposePaths) {
   if (!exposePaths || exposePaths.length === 0) return null;
@@ -277,11 +366,15 @@ export function previewExposePaths(exposePaths) {
  * are copied unchanged, since a utf8 round-trip would corrupt them. Walks
  * from scratch and re-checks the caps, so a tree that grew or vanished since
  * the preview fails here instead of being copied in part.
+ * @param {string} workdir
+ * @param {ExposePathSpec[] | null | undefined} exposePaths
+ * @returns {ExposeManifest | null}
  */
 export function materializeExposedPaths(workdir, exposePaths) {
   if (!exposePaths || exposePaths.length === 0) return null;
   const root = path.join(workdir, 'workspace');
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  /** @type {import('node:crypto').Hash[]} */
   const hashes = [];
   const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals) => {
     ensureRoom(totals, fs.statSync(abs).size);
@@ -297,6 +390,10 @@ export function materializeExposedPaths(workdir, exposePaths) {
 
 // The bytes a consultant gets for one file, written to dest: valid-utf8 text
 // through redact(), anything else unchanged.
+/**
+ * @param {string} abs
+ * @param {string} dest
+ */
 function copyMasked(abs, dest) {
   const buf = fs.readFileSync(abs);
   let out = buf;
@@ -306,7 +403,7 @@ function copyMasked(abs, dest) {
     // means the original was never valid utf8 text, so redact()'s decode
     // would silently replace bytes with U+FFFD and corrupt the file --
     // treat it like binary and copy it through instead.
-    if (Buffer.from(text, 'utf8').equals(buf)) out = Buffer.from(redact(text), 'utf8');
+    if (Buffer.from(text, 'utf8').equals(buf)) out = Buffer.from(/** @type {string} */ (redact(text)), 'utf8');
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
   fs.writeFileSync(dest, out, { mode: 0o600 });
@@ -319,12 +416,21 @@ function copyMasked(abs, dest) {
 // sha256 covers the copies in path order, so the same files give the same
 // hash however they were found. `gone` is where a path that no longer exists
 // goes; by default it is dropped, as a change listing a vanished path is.
+/**
+ * @param {string} workdir
+ * @param {string} top
+ * @param {RepoChange[]} changes
+ * @param {ExposeManifest} manifest
+ * @param {(c: RepoChange) => void} shown
+ * @param {((c: RepoChange) => void) | null} [gone]
+ */
 function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const root = path.join(workdir, 'workspace', 'repo');
   // Made even when nothing is copied (a change that only deletes): each
   // member's workspace is copied from here.
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const realTop = fs.realpathSync(top);
+  /** @type {{ path: string, size: number }[]} */
   const copied = [];
   for (const c of changes) {
     const abs = path.join(top, c.path);
@@ -388,11 +494,17 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
  * ('masked'). The parent's diff is not taken again: the files it touched are
  * re-copied as they are now (`diffs`, for reexposeChange), because a diff
  * against a base that has since moved would be a different change.
+ * @param {ExposedEntryRecord[]} parentEntries
+ * @param {string[]} exposePaths
  */
 export function planInheritance(parentEntries, exposePaths) {
+  /** @type {{ source: string, index: number }[]} */
   const paths = [];
+  /** @type {SkippedPath[]} */
   const skipped = [];
+  /** @type {ExposedEntryRecord[]} */
   const diffs = [];
+  /** @param {string} p */
   const exists = (p) => {
     try {
       fs.lstatSync(p);
@@ -433,8 +545,13 @@ export function planInheritance(parentEntries, exposePaths) {
  * The files an earlier round's change touched, copied again under
  * workspace/repo/ as they are now, added to `manifest` as a 'change_files'
  * entry. Read from that round's record of the change, not from git.
+ * @param {string} workdir
+ * @param {ExposedEntryRecord} entry
+ * @param {ExposeManifest} manifest
+ * @returns {boolean}
  */
 export function reexposeChange(workdir, entry, manifest) {
+  /** @type {RepoChange[]} */
   const changes = [];
   for (const c of entry.changes ?? []) {
     const m = /^(.*) \(([^()]+)\)$/.exec(c);
@@ -456,6 +573,7 @@ export function reexposeChange(workdir, entry, manifest) {
     changes.push({ path: p, status: deleted ? (back ? 'restored' : 'D') : (m?.[2] ?? 'M') });
   }
   const before = { ...manifest.totals };
+  /** @type {RepoChange[]} */
   const shown = [];
   const { copied, sha256 } = copyRepoFiles(
     workdir,
@@ -496,6 +614,10 @@ export function reexposeChange(workdir, entry, manifest) {
 // switched off, pathspecs are literal, and no shell is involved.
 // ponytail: a clean filter (filter.<driver>.clean in .git/config) still runs
 // on `git diff` of the working tree; .git/config is local, not cloned.
+/**
+ * @param {string} cwd
+ * @param {string[]} args
+ */
 function git(cwd, args) {
   // Without the server's own GIT_* (GIT_DIR, GIT_INDEX_FILE ... would point
   // at another repository), and without taking the lead's index lock.
@@ -516,6 +638,7 @@ function git(cwd, args) {
   return r.stdout;
 }
 
+/** @param {Buffer} buf */
 const nulSplit = (buf) => buf.toString('utf8').split('\0').filter(Boolean);
 
 /**
@@ -525,6 +648,11 @@ const nulSplit = (buf) => buf.toString('utf8').split('\0').filter(Boolean);
  * name the copies; deleted files are listed, not copied. Protected paths are
  * left out of the copy and of the diff. Returns the diff text, masked and cut
  * to maxChars, for the brief.
+ * @param {string} workdir
+ * @param {{ repo: string, base?: string }} source
+ * @param {ExposeManifest} manifest
+ * @param {number} maxChars
+ * @returns {string}
  */
 export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars) {
   const top = git(repo, ['rev-parse', '--show-toplevel']).toString('utf8').trim();
@@ -532,12 +660,14 @@ export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars)
   const tokens = nulSplit(
     git(top, ['diff', '--name-status', '-z', '--no-renames', '--no-relative', '--no-ext-diff', '--no-textconv', base, '--']),
   );
+  /** @type {RepoChange[]} */
   const changes = [];
   for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
   for (const p of nulSplit(git(top, ['ls-files', '--others', '--exclude-standard', '-z'])))
     changes.push({ status: 'untracked', path: p });
 
   const before = { ...manifest.totals };
+  /** @type {RepoChange[]} */
   const shown = [];
   const { copied, sha256 } = copyRepoFiles(workdir, top, changes, manifest, (c) => shown.push(c));
   if (shown.length === 0) {

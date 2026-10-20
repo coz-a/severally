@@ -56,6 +56,11 @@ import path from 'node:path';
 import { POLICY, protectedRoots } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 
+/** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
+/** @typedef {import('../run.mjs').ChildResult} ChildResult */
+/** @typedef {import('../run.mjs').Invocation} Invocation */
+/** @typedef {import('../run.mjs').Interpreted} Interpreted */
+
 export const FORBIDDEN_FLAGS = [
   '--dangerously-bypass-approvals-and-sandbox',
   '--dangerously-bypass-hook-trust',
@@ -85,6 +90,7 @@ export const RESERVED_FLAGS = [
 
 const PROFILE = 'severally';
 
+/** @param {string} dir @returns {string[]} */
 const listDir = (dir) => {
   try {
     return fs.readdirSync(dir);
@@ -120,6 +126,10 @@ export function filesystemPermissions() {
   return `{ ":root" = "read", ${denied.map((p) => `${JSON.stringify(p)} = "none"`).join(', ')} }`;
 }
 
+/**
+ * @param {BuildRequest} req
+ * @returns {Invocation}
+ */
 export function buildInvocation({ workdir, schemaPath, consultant, network = 'on' }) {
   const t = POLICY.clis.codex;
   const chosen = consultant.model;
@@ -163,6 +173,11 @@ export function buildInvocation({ workdir, schemaPath, consultant, network = 'on
   return { command: t.cli, args, lastMessagePath, model: chosen };
 }
 
+/**
+ * @param {any} node
+ * @param {Record<string, number>} acc
+ * @returns {void}
+ */
 function walkUsage(node, acc) {
   if (!node || typeof node !== 'object') return;
   if (node.usage && typeof node.usage === 'object') {
@@ -174,8 +189,13 @@ function walkUsage(node, acc) {
   for (const v of Object.values(node)) if (v && typeof v === 'object') walkUsage(v, acc);
 }
 
-/** Parse the JSONL event stream `codex exec --json` writes to stdout. */
+/**
+ * Parse the JSONL event stream `codex exec --json` writes to stdout.
+ * @param {Partial<ChildResult> & { lastMessageText?: string }} run
+ * @returns {Interpreted}
+ */
 export function interpret({ stdout, stderr, code, lastMessageText }) {
+  /** @type {any[]} */
   const events = [];
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -188,6 +208,7 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
   }
 
   const errorEvents = events.filter((e) => e.type === 'error' || e.type === 'turn.failed');
+  /** @type {Record<string, number>} */
   const usage = {};
   for (const e of events) walkUsage(e, usage);
 
@@ -237,6 +258,8 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
  * What this consultation has done so far. Codex already runs with `exec --json`,
  * so its event stream is there for the reading -- no flag change and no parser
  * change, only a use for events we were otherwise discarding.
+ * @param {{ stdout?: string }} run
+ * @returns {string | null}
  */
 export function progress({ stdout }) {
   const items = [];
@@ -260,8 +283,11 @@ export function progress({ stdout }) {
  * Tool calls seen in the event stream, counted by item type (and by tool for
  * MCP and collaboration calls, which is where a sub-agent spawn shows up);
  * `:error` when the item ended failed or declined.
+ * @param {{ stdout?: string }} run
+ * @returns {Record<string, number>}
  */
 export function toolCalls({ stdout }) {
+  /** @type {Map<unknown, string>} */
   const seen = new Map();
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -279,11 +305,16 @@ export function toolCalls({ stdout }) {
     const name = item.status === 'failed' || item.status === 'declined' ? `${base}:error` : base;
     seen.set(item.id ?? `${name}#${seen.size}`, name);
   }
-  return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+  return [...seen.values()].reduce((/** @type {Record<string, number>} */ o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
 
+/**
+ * @param {any} raw
+ * @returns {Record<string, number | null>}
+ */
 export function usageRecord(raw) {
   const u = raw ?? {};
+  /** @param {...string} names */
   const pick = (...names) => {
     for (const n of names) if (typeof u[n] === 'number') return u[n];
     return null;
@@ -302,6 +333,8 @@ export function usageRecord(raw) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
+ * @param {{ args: string[] }} launch
+ * @returns {Record<string, any>}
  */
 export function boundary({ args }) {
   return {

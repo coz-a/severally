@@ -13,6 +13,7 @@ const skillsDir = path.join(root, 'plugins', 'severally', 'skills');
 // `en`/`jp` are the everyday name a user would actually type when asking for
 // this peer by alias ("ask GPT", "gptと相談して") -- English keeps the
 // acronym capitalised, casual Japanese usually doesn't.
+/** @type {Record<string, { label: string, short: string, reach: string, en: string, jp: string, jpVerb: string }>} */
 const PEERS = {
   codex: {
     label: 'Codex CLI',
@@ -70,6 +71,7 @@ const EVERYONE_TRIGGERS = [
 
 // All four everyday-alias shapes for one peer: "ask X", "get X to review
 // this", the natural Japanese "XにVERBして" form, and "Xにレビューしてもらって".
+/** @param {string} peerId */
 function triggersFor(peerId) {
   const p = PEERS[peerId];
   return [`"ask ${p.en}"`, `"get ${p.en} to review this"`, `"${p.jp}${p.jpVerb}"`, `"${p.jp}にレビューしてもらって"`];
@@ -83,6 +85,7 @@ function triggersFor(peerId) {
 // one turn and the Skill itself then needs approving once (checked
 // 2026-10-18 with `claude -p --permission-mode default`).
 const QUIET_TOOLS = ['consult_get', 'consult_list', 'consult_record', 'consult_export', 'consult_cancel'];
+/** @param {string} text */
 function withAllowedTools(text) {
   const names = QUIET_TOOLS.flatMap((t) => [`mcp__plugin_severally_severally__${t}`, `mcp__severally__${t}`]);
   // A one-line description is assumed; a folded one would swallow the new key.
@@ -96,6 +99,7 @@ function withAllowedTools(text) {
 // then file name. Writes nothing, so it is safe to call from a test without
 // mutating the working tree.
 export function renderSkills() {
+  /** @type {Record<string, Record<string, string>>} */
   const rendered = {};
   for (const host of HOSTS) rendered[host.dir] = {};
   for (const name of SKILL_FILES) {
@@ -107,8 +111,10 @@ export function renderSkills() {
 
 const SKILL_FILES = ['SKILL.md', 'reference.md'];
 
+/** @param {string} file */
 function renderTemplate(file) {
   const tmpl = fs.readFileSync(path.join(skillsDir, '_template', file), 'utf8');
+  /** @type {Record<string, string>} */
   const rendered = {};
   for (const host of HOSTS) {
     const peers = Object.keys(PEERS).filter((id) => id !== host.self);
@@ -184,6 +190,8 @@ export async function bundle() {
  * THIRD_PARTY_NOTICES beside the bundle: each package the bundle actually
  * contains, with its LICENSE file verbatim. esbuild's legalComments cannot do
  * this -- these packages state their licence only in the LICENSE file.
+ * @param {string[]} inputs
+ * @param {string} outDir
  */
 function writeNotices(inputs, outDir) {
   const pkgDirs = new Set();
