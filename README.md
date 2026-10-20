@@ -119,6 +119,9 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 
 What each mode changes is in [docs/install.md](docs/install.md#two-install-modes).
 
+`npx -y severally-mcp@latest status` shows what is set up without starting a consultation: the config file, the
+consultants this machine can reach, the installed copies' versions and which clients have severally registered.
+
 ### Updating
 
 This line replaces your install with the latest version, with no version number to look up:

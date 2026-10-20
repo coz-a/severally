@@ -56,6 +56,11 @@ export function configWarnings() {
   return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
 }
 
+/** The names of the consultants out of use because of a mistake in their own config section. */
+export function brokenConsultantNames() {
+  return configError ? [] : Object.keys(BUILT.broken);
+}
+
 /** Why the consultant of this name is out of use because of a config mistake, or null. */
 export function brokenConsultant(name) {
   const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;

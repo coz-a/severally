@@ -42,7 +42,12 @@ run `npm run init-config` (see [Configuration](../README.md#configuration) in th
 
 ## Checking the registration
 
-After restarting the clients, check that each one sees severally. Skip the lines for CLIs you don't have:
+`npx -y severally-mcp@latest status` shows it all at once, without starting a consultation: whether the config
+file is valid, which consultants this machine can reach (and why the others cannot), whether every installed copy
+is the same version, and which clients have severally registered. It does not check that a CLI is logged in; the
+first consultation shows that.
+
+To check one client yourself, after restarting it. Skip the lines for CLIs you don't have:
 
 ```bash
 # macOS / Linux (plugin mode)

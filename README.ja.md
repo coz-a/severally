@@ -117,6 +117,9 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 
 方式ごとに何が変わるかは [docs/install.ja.md](docs/install.ja.md#2-つのインストール方式) にあります。
 
+`npx -y severally-mcp@latest status` を実行すると、相談を始めずに、設定ファイル・この機械から使える相談相手・
+入っている写しの版・どのクライアントに登録されているかを表示します。
+
 ### 更新
 
 次の 1 行で、最新版に入れ替わります。バージョン番号を調べる必要はありません。
