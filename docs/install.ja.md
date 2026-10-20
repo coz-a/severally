@@ -94,8 +94,11 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 - プラグイン方式では、npm のグローバルなインストールも行います。これで、Codex が起動する `severally-mcp` コマンドが
   入ります。`--skip-global` を付けるとこの手順を飛ばしますが、`PATH` 上の `severally-mcp` がすでに写した runtime を
   指している場合しか受け付けません。手動方式ではグローバルなインストールは要りません。
-- クライアントの設定は、各 CLI のコマンド（`plugin add` / `mcp add`）だけで変えます。何かをする前に、各クライアントの
-  設定ファイル（`~/.claude.json`、`~/.codex/config.toml`、`~/.gemini/config/mcp_config.json` と
+- クライアントの設定は、各 CLI のコマンド（`plugin add` / `mcp add`）だけで変えます。例外は手動で登録する Codex で、
+  `config.toml` の `[mcp_servers.severally]` の表に `tool_timeout_sec = 660` の 1 行も書きます（Codex のプラグインと
+  同じ長い待ちにするためで、`codex mcp add` では設定できません）。表にすでに `tool_timeout_sec` があれば、その値を
+  残し、待ち時間もそれに合わせます。1 行を書けなければ、長い待ちなしで Codex を登録し、そう表示します。
+  何かをする前に、各クライアントの設定ファイル（`~/.claude.json`、`~/.codex/config.toml`、`~/.gemini/config/mcp_config.json` と
   `~/.gemini/antigravity-cli/settings.json`、`~/.config/opencode/opencode.json(c)`）と既存の Skill のディレクトリを、
   `~/.severally/backups/<timestamp>/` にバックアップします。バックアップの名前は元のパスから付けます。
 - 方式を切り替えると、もう一方の方式で残った重複の登録を、バックアップしてから取り除きます。
