@@ -185,7 +185,7 @@ npx -y severally-mcp@latest install
 ### 答えが返ったあと
 
 相談を始めても、エージェントは答えを待たずに、答えに左右されない作業を進められます。答えはふつう 1〜10 分で
-そろいます（Antigravity がいちばん遅い）。
+そろいます（いちばん時間がかかるのは Antigravity です）。
 
 どの答えも同じ形で返ります。結論、根拠つきの指摘、決められなかったこと、判断が変わる条件、確かめ方です。
 相談相手が失敗したときは、理由（`usage_limit`、`timeout` など）を付けて失敗として返します。「問題なし」として
@@ -221,7 +221,7 @@ npx -y severally-mcp@latest install
 すべて [CONFIG.md](CONFIG.md)（英語）にあり、[config.example.json](config.example.json) はそのまま写せる例です。
 設定を変えたら、クライアントを再起動してください。
 
-API キーで使うモデル（OpenRouter や、OpenAI 互換のほかの API）やローカルのモデルに相談するには、OpenCode を入れて、
+API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの API）やローカルのモデルに相談するには、OpenCode を入れて、
 そのモデルを相談相手に足します。書き方は
 [CONFIG.md](CONFIG.md#api-keys-and-other-model-families-through-opencode) にあります。
 
