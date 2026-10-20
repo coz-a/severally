@@ -125,7 +125,7 @@ What a consultant can read and do is under [What a consultant can see and do](#w
 
 ### Requirements
 
-- Node.js 20.10 or newer
+- Node.js 22 or newer
 - At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
   fresh Claude Code session.
 - On macOS and Linux, npm's global executable directory on `PATH`: the default install puts a `severally-mcp`

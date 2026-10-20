@@ -10,7 +10,7 @@ into that cache, so it can be cleared afterwards.
 
 ## Requirements
 
-Beyond Node.js 20.10 or newer and a logged-in CLI, as in the README:
+Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 
 - macOS/Linux: npm's global executable directory on `PATH`. The default (plugin mode, below) installs a
   `severally-mcp` command there for Codex to launch. `--manual` does without it.
@@ -65,7 +65,7 @@ For Claude Code alone, no clone and no installer are needed. In Claude Code:
 /plugin install severally@severally
 ```
 
-Restart Claude Code and check with `claude plugin details severally`. Node.js 20.10 or newer must be on `PATH`,
+Restart Claude Code and check with `claude plugin details severally`. Node.js 22 or newer must be on `PATH`,
 since the plugin starts its server with `node`. The tools appear as `mcp__plugin_severally_severally__*`. This
 route has been tried on Linux only.
 

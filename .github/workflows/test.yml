@@ -16,7 +16,7 @@ jobs:
         node: [24]
         include:
           - os: ubuntu-latest
-            node: 20
+            node: 22
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7

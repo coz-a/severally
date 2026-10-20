@@ -122,7 +122,7 @@ flowchart TB
 
 ### 必要なもの
 
-- Node.js 20.10 以降
+- Node.js 22 以降
 - インストールしてログインした CLI（4 つのうち少なくとも 1 つ）。1 つで足り、Claude Code だけでも、新しい
   Claude Code のセッションに相談できます。
 - macOS と Linux では、npm のグローバルの実行ディレクトリが `PATH` にあること。既定のインストールは、Codex が
