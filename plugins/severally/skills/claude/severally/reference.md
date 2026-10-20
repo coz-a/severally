@@ -17,9 +17,8 @@ checked as given: the server rejects a first-round `explore` that carries a prop
 anchoring-sensitive — if you want your plan critiqued, that is `review`.
 
 **For a decision heavy enough to be worth two consultations**, ask `explore` first on the facts alone, then
-`review` with the proposal, and read what the first raised that the second never did. Measured on this
-project: repeat runs of the identical brief did not move the bottom line, while withholding the proposal once
-did, and the withheld run was the only one to question what the decision was even about.
+`review` with the proposal, and read what the first raised that the second never did. A consultant that sees
+your proposal tends to answer around it; one that does not is more likely to question the framing itself.
 
 ## A brief for a decision you will live with
 

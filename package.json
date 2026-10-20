@@ -27,6 +27,7 @@
     "README.md",
     "README.ja.md",
     "CONFIG.md",
+    "config.example.json",
     "docs"
   ],
   "engines": {

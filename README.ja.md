@@ -128,6 +128,9 @@ flowchart TB
 - macOS と Linux では、npm のグローバルの実行ディレクトリが `PATH` にあること。既定のインストールは、Codex が
   起動する `severally-mcp` コマンドをそこに置きます。`--manual` なら要りません。
 
+インストーラとサーバは Linux・macOS・Windows でテストしています。Claude Code と Codex のマーケットプレイスからの
+導入と、実際の CLI での動作を試したのは Linux だけです。
+
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
@@ -188,7 +191,8 @@ npx -y severally-mcp@latest install
 相談を始めても、エージェントは答えを待たずに、答えに左右されない作業を進められます。答えはふつう 1〜10 分で
 そろいます（いちばん時間がかかるのは Antigravity です）。
 
-どの答えも同じ形で返ります。結論、根拠つきの指摘、決められなかったこと、判断が変わる条件、確かめ方です。
+どの答えも同じ形で求めます。結論、根拠つきの指摘、決められなかったこと、判断が変わる条件、確かめ方です。
+結論や指摘の根拠などが欠けた答えは、そのことを注意書き（caveat）で知らせます。
 相談相手が失敗したときは、理由（`usage_limit`、`timeout` など）を付けて失敗として返します。「問題なし」として
 返すことはありません。
 
@@ -235,7 +239,8 @@ npx -y severally-mcp@latest install
 ```
 
 モデルの ID は新しいモデルが出るたびに変わるので、使っている CLI に合わせて書き換えてください。`effort` を
-書かなければ、相談相手は effort `high` で動きます。
+書かなければ、相談相手は effort `high` で動きます。ただし Antigravity はモデル名で決まり（`gemini-4-argon-high`）、
+`effort` を書くと設定の誤りになります。
 
 そのうえで、主担当を安価なモデルで起動します（`claude --model sonnet`、動いているセッションなら
 `/model sonnet`）。主担当は、[頼み方](#頼み方)に挙げた場面で自分から相談します。「マージする前にみんなに
@@ -246,7 +251,7 @@ npx -y severally-mcp@latest install
 **既定のままなら設定は要りません**。サーバは起動時に `PATH` にある CLI を探し、見つかった CLI をそれぞれ、既定の
 モデルで動く相談相手にします。CLI を止める、ほかのモデルの相談相手を足す、といったときは
 `~/.severally/config.json` を置きます。クローンから入れた場合は、`npm run init-config` でひな形を作れます。キーは
-すべて [CONFIG.md](CONFIG.md)（英語）にあり、[config.example.json](config.example.json) はそのまま写せる例です。
+すべて [CONFIG.md](CONFIG.md)（英語）にあり、[config.example.json](config.example.json) は書き換えて使う例です（パス・モデル・メモは架空のものです）。
 設定を変えたら、クライアントを再起動してください。
 
 API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの API）やローカルのモデルに相談するには、OpenCode を入れて、
@@ -270,7 +275,8 @@ API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの 
 | Antigravity | できる（`view_file`） | 拒否（ツールのフック） | なし | できない | できる（`network: "off"` のときを除く） |
 | OpenCode | できる（`read` / `glob` / `grep`） | 拒否（権限の規則） | なし（Code Mode の `execute` は拒否） | できない | できる（`network: "off"` のときを除く） |
 
-どの相談相手も空の作業ディレクトリで始まり、サーバはあなたのリポジトリの場所を伝えません。それでも、あなたの
+どの相談相手も、渡したファイルの写しだけが入った専用の作業ディレクトリで始まり、サーバはあなたのリポジトリの
+場所を伝えません。それでも、あなたの
 ユーザーアカウントで読めるファイルは、表で「拒否」とした秘密のパスを除いて読めます。Codex はファイルの名前では
 拒否しないので、あなたのリポジトリにある `.env` は Codex から読めます。
 
@@ -292,7 +298,7 @@ CLI ごとにどう守らせているかは [docs/how-it-works.ja.md](docs/how-i
 | `consult_get` | 相談を待ち、状態か答えを返す。`ids` を付けると、答えのうちその指摘だけを返す |
 | `consult_cancel` | 相談、または全員に聞いた相談をまとめて止め、相談相手のプロセスも止める |
 | `consult_record` | 答えの指摘ごとの主担当の判定と、答えから新しく分かったことを書く |
-| `consult_list` | 最近の相談を、各相談相手が報告した使用量とともに並べる |
+| `consult_list` | このセッションの最近の相談を、各相談相手が報告した使用量とともに並べる |
 | `consult_export` | 相談を、追加の質問と判定を含めて Markdown で返す |
 
 `consult_start` の主な引数は次のとおりです。

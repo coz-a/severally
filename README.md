@@ -131,6 +131,9 @@ What a consultant can read and do is under [What a consultant can see and do](#w
 - On macOS and Linux, npm's global executable directory on `PATH`: the default install puts a `severally-mcp`
   command there for Codex to launch. `--manual` does without it.
 
+The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
+routes and the real CLIs have been tried on Linux only.
+
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
@@ -191,9 +194,10 @@ same bug. One consultation takes minutes and real quota, so it is not for small 
 Starting a consultation does not make the agent wait: it can work on something that does not depend on the
 answers, which usually arrive within one to ten minutes (Antigravity is the slowest).
 
-Every answer has the same shape: a bottom line, findings with their grounds, what the consultant could not
-determine, conditions that would change its judgement, and how to check. A consultant that fails comes back as a
-failure with the reason (`usage_limit`, `timeout` …), never as "no problems found".
+Every answer is asked for in the same shape: a bottom line, findings with their grounds, what the consultant could
+not determine, conditions that would change its judgement, and how to check. When an answer leaves part of that
+out, such as the bottom line or the grounds for a finding, it says so in a caveat. A consultant that fails comes
+back as a failure with the reason (`usage_limit`, `timeout` …), never as "no problems found".
 
 The agent checks the findings that would change the decision itself, then tells you what it checked, what it did
 not adopt, and what is still unverified.
@@ -242,7 +246,8 @@ A `~/.severally/config.json` for this:
 ```
 
 Model ids change as new models come out; replace them with the ones your CLIs offer. Consultants run at effort
-`high` unless you set `effort`.
+`high` unless you set `effort`, except on Antigravity, where the model name sets it (`gemini-4-argon-high`) and an
+`effort` key is a config mistake.
 
 Then start the lead on the cheaper model (`claude --model sonnet`, or `/model sonnet` in a running session). The
 lead consults on its own at the moments listed under [Asking](#asking), and you can ask it to ("ask everyone before
@@ -253,7 +258,7 @@ we merge this"). Each consultant runs on its own CLI's login and quota.
 **No configuration needed by default.** At startup the server looks for the CLIs on `PATH`, and each one it finds
 becomes a consultant on its default model. To turn a CLI off or add consultants on other models, put a
 `~/.severally/config.json` in place. From a clone, `npm run init-config` writes a template. Every key is in
-[CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is a working example to copy from. Restart
+[CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is an example to adapt: its paths, models and notes are made up. Restart
 the client after changing it.
 
 To consult a model you reach with an API key (OpenRouter, or another OpenAI-compatible API) or a local model,
@@ -277,8 +282,8 @@ history is never sent. No consultant can:
 | Antigravity | yes (`view_file`) | blocked (tool hook) | none | no | yes, unless `network: "off"` |
 | OpenCode | yes (`read` / `glob` / `grep`) | blocked (permission rules) | none (its Code Mode `execute` is refused) | no | yes, unless `network: "off"` |
 
-Every consultant starts in an empty working directory, and the server does not tell it where your repository
-is. It can still read any file your user account can read, except the credential paths the table marks blocked.
+Every consultant starts in a working directory of its own that holds only copies of the files you handed it, and
+the server does not tell it where your repository is. It can still read any file your user account can read, except the credential paths the table marks blocked.
 Codex does not block by file name, so a `.env` in your repository is readable to it.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
@@ -298,7 +303,7 @@ it exposes, go to each consultant's model. Every argument is described in the to
 | `consult_get` | Waits for a consultation and returns its state or answer; with `ids`, just those points of the answer |
 | `consult_cancel` | Stops a consultation or a whole fan-out, and its consultant processes |
 | `consult_record` | Writes the lead's verdicts on an answer's points, and what the answer added |
-| `consult_list` | Lists recent consultations, with the usage each consultant reported |
+| `consult_list` | Lists this session's recent consultations, with the usage each consultant reported |
 | `consult_export` | Returns a consultation, follow-ups and verdicts included, as Markdown |
 
 The arguments of `consult_start` that matter most:
