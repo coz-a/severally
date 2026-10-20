@@ -104,7 +104,7 @@ const AUTH_REL = path.join('.local', 'share', 'opencode', 'auth.json');
 
 /**
  * Build the synthesised HOME for one consultation.
- * @param {{workdir: string}} opts workdir is <jobdir>/work; the home is store.sandboxHome(<job id>).
+ * @param {{workdir: string, network?: 'on' | 'off'}} opts workdir is <jobdir>/work; the home is store.sandboxHome(<job id>).
  */
 export function prepareSandbox({ workdir, network = 'on' }) {
   const root = sandboxHome(path.basename(path.dirname(workdir)));

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseJsonc } from './jsonc.mjs';
 import { findCommand } from './platform.mjs';
-import { buildConsultants, CLI_IDS, normalizeName } from './consultants.mjs';
+import { buildConsultants, normalizeName } from './consultants.mjs';
 
 // One file, read once at start, so an operator configures a machine in a
 // single place instead of editing each client's MCP registration. Precedence

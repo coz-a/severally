@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sandboxEnv, reviewRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
 const home = sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
