@@ -394,7 +394,14 @@ const CLIENTS = [
     // reachable only inside whatever directory the installer happened to
     // run from.
     remove: () => ({ ok: true, out: 'opencode has no mcp remove; re-adding replaces the entry' }),
-    add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--', ...bin]),
+    // OpenCode sets no deadline of its own on a tool call (a 610 s call came
+    // back), so it gets the long consult_get wait with no timeout to pair.
+    add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--env', LONG_WAIT, '--', ...bin]),
+    keptNote: () => {
+      const text = [path.join(xdgConfig, 'opencode', 'opencode.json'), path.join(xdgConfig, 'opencode', 'opencode.jsonc')]
+        .map((f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } }).join('\n');
+      if (!text.includes('SEVERALLY_MAX_WAIT_MS')) log('   this registration lacks the long consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS)');
+    },
     // A zero exit from `mcp add` can be a usage dump in disguise (see above),
     // so this client's registration is verified by listing after adding --
     // and the recorded command is compared against this install's.

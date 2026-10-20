@@ -43,6 +43,10 @@ const CONFIG = (() => {
 // that one out of use, with the reason.
 const BUILT = buildConsultants(CONFIG);
 if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join('; ')}`;
+// A value that is neither, from the environment, cannot be read as either: reading it as "on" would open the web.
+if (!configError && ![undefined, '', 'on', 'off'].includes(process.env.SEVERALLY_NETWORK)) {
+  configError = `SEVERALLY_NETWORK must be "on" or "off", not ${JSON.stringify(process.env.SEVERALLY_NETWORK)}`;
+}
 const FROM = configError ? buildConsultants({}) : BUILT;
 const LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
 
@@ -54,6 +58,11 @@ export function configProblem() {
 /** The mistakes kept to one consultant or one CLI, each of which is out of use until fixed. */
 export function configWarnings() {
   return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
+}
+
+/** The names of the consultants out of use because of a mistake in their own config section. */
+export function brokenConsultantNames() {
+  return configError ? [] : Object.keys(BUILT.broken);
 }
 
 /** Why the consultant of this name is out of use because of a config mistake, or null. */
@@ -238,6 +247,10 @@ export const POLICY = Object.freeze({
   // clients allow a tool call, so a long wait does not blow up as a client-side
   // timeout while the consultation is still healthy; a client registration
   // that is known to wait longer raises it (scripts/install.mjs).
+  // "off" takes the web away from every consultation, whatever the request
+  // asks; "on" leaves it to each request's own network.
+  // Either source can close it; neither can reopen what the other closed.
+  network: [process.env.SEVERALLY_NETWORK, cfgServer.network].includes('off') ? 'off' : 'on',
   maxWaitMs: limit('SEVERALLY_MAX_WAIT_MS', cfgServer.max_wait_ms, 45_000, 0, 600_000),
 
   input: Object.freeze({
@@ -416,6 +429,8 @@ export function limitsSummary() {
     // Per consultant, because they no longer share one budget.
     timeout_ms: by(timeoutMs),
     max_rounds_per_chain: POLICY.maxRounds,
+    // "off": the operator has taken the web away from every consultation.
+    network: POLICY.network,
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,

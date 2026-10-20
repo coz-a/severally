@@ -243,3 +243,12 @@ test('the advertised limits name the caps a lead has to plan against', async () 
   assert.equal(POLICY.input.exposeBytesMax, 5_000_000);
   assert.match(limitsSummary().consultant_permissions, /expose_paths/);
 });
+
+test('constraints and success_criteria put inside context are taken as the request\'s own', () => {
+  const { context, constraints, success_criteria, ...rest } = reviewRequest();
+  const req = parseRequest({ ...rest, context: { ...context, constraints, success_criteria } });
+  assert.deepEqual(req.constraints, constraints);
+  assert.deepEqual(req.success_criteria, success_criteria);
+  assert.equal('constraints' in req.context, false);
+  rejects({ ...reviewRequest(), context: { ...context, constraints: ['x'] } }, 'invalid_request');
+});

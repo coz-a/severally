@@ -9,7 +9,7 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
-export const SEVERALLY_VERSION = '2.2.0';
+export const SEVERALLY_VERSION = '2.3.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -223,7 +223,8 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'Stop a running consultation and kill the consultant process and everything it spawned. ' +
-        'Pass group_id instead of job_id to stop every consultant in a fan-out.',
+        'Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs '
+        + 'is asked to stop, and that server stops it within a second.',
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
@@ -316,8 +317,8 @@ export function createServer(manager = new JobManager()) {
       title: 'List recent consultations',
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
-        'Recent consultations from this session, newest first: status, one-line summary, initiator; and '
-        + 'usage_totals, the tokens (and cost, where the CLI reports one) each consultant reported this session, '
+        'Recent consultations, earlier sessions\' too (this_session is false), newest first, with their ids, '
+        + 'status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, '
         + 'retries included. A figure a CLI does not report is named under not_reported, not counted as zero.',
       inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional() }),
     },

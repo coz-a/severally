@@ -228,6 +228,12 @@ export function buildConsultants(config) {
     if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(', ')})`);
   }
 
+  // The one server key that is not a number to clamp: a wrong value cannot
+  // be read as either setting, and reading it as "on" would open the web.
+  if (isObject(cfg.server) && cfg.server.network !== undefined && !['on', 'off'].includes(cfg.server.network)) {
+    fault('server.network must be "on" or "off"');
+  }
+
   let ranking = [];
   if (cfg.ranking !== undefined) {
     if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === 'string' && r.trim() !== '')) ranking = cfg.ranking.map((r) => r.trim());

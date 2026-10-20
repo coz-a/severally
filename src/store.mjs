@@ -63,6 +63,21 @@ function indexRow(jobId) {
   return null;
 }
 
+/** Every row of the history index, in the order written; a damaged line is skipped. */
+export function indexRows() {
+  return readIfExists(path.join(POLICY.home, 'history', 'index.jsonl')).split('\n').flatMap((line) => {
+    try {
+      const row = line.trim() ? JSON.parse(line) : null;
+      return row && typeof row === 'object' && JOB_ID.test(row.job_id) ? [row] : [];
+    } catch { return []; }
+  });
+}
+
+/** The round file an index row points at, or null. */
+export function loadRoundAt(row) {
+  try { return JSON.parse(fs.readFileSync(roundPath(row.chain_id, row.round), 'utf8')); } catch { return null; }
+}
+
 export const roundPath = (chainId, round) =>
   path.join(POLICY.home, 'history', chainId, `round-${String(round).padStart(2, '0')}.json`);
 
@@ -199,7 +214,12 @@ function withSeatLock(fn) {
 export function takeSeats(seats, cap, held) {
   return withSeatLock(() => {
     const live = [];
-    for (const name of fs.readdirSync(seatsDir())) {
+    const names = fs.readdirSync(seatsDir());
+    // A cancel asked for after its consultation ended has no seat left to go with.
+    for (const name of names.filter((n) => n.endsWith('.cancel'))) {
+      if (!names.includes(name.replace(/\.cancel$/, '.json'))) try { fs.rmSync(path.join(seatsDir(), name), { force: true }); } catch { /* best effort */ }
+    }
+    for (const name of names) {
       if (!name.endsWith('.json')) continue;
       let seat = null;
       try { seat = JSON.parse(fs.readFileSync(path.join(seatsDir(), name), 'utf8')); } catch { /* half-written or damaged: free */ }
@@ -230,6 +250,19 @@ export function takeSeats(seats, cap, held) {
 export function releaseSeat(jobId) {
   if (!JOB_ID.test(jobId)) return;
   try { fs.rmSync(seatFile(jobId), { force: true }); } catch { /* best effort */ }
+  clearCancel(jobId);
+}
+
+// A cancel asked for by a server that does not run the consultation: left
+// beside its seat, for the server that does to find and act on.
+const cancelFile = (jobId) => path.join(seatsDir(), `${jobId}.cancel`);
+export function requestCancel(jobId) {
+  if (!JOB_ID.test(jobId)) return false;
+  try { fs.mkdirSync(seatsDir(), { recursive: true, mode: 0o700 }); fs.writeFileSync(cancelFile(jobId), '', { mode: 0o600 }); return true; } catch { return false; }
+}
+export const cancelRequested = (jobId) => JOB_ID.test(jobId) && fs.existsSync(cancelFile(jobId));
+export function clearCancel(jobId) {
+  if (JOB_ID.test(jobId)) try { fs.rmSync(cancelFile(jobId), { force: true }); } catch { /* best effort */ }
 }
 
 export function loadGroup(groupId) {

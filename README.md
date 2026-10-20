@@ -94,7 +94,7 @@ routes and the real CLIs have been tried on Linux only.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.2.0 install
+npx -y severally-mcp@2.3.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -118,6 +118,9 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 | `--skip-global` | skips the global npm install in plugin mode, when `severally-mcp` on `PATH` is already this install |
 
 What each mode changes is in [docs/install.md](docs/install.md#two-install-modes).
+
+`npx -y severally-mcp@latest status` shows what is set up without starting a consultation: the config file, the
+consultants this machine can reach, the installed copies' versions and which clients have severally registered.
 
 ### Updating
 
@@ -316,7 +319,9 @@ Codex does not block by file name, so a `.env` in your repository is readable to
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
-has no web search or browsing. The brief, and whatever a consultant reads, still goes to that CLI's model.
+has no web search or browsing. To make that the rule for every consultation, set `"server": { "network": "off" }`
+in the [config file](CONFIG.md#server-wide-keys); a request cannot turn it back on. The brief, and whatever a
+consultant reads, still goes to that CLI's model.
 
 How each CLI is held to this is in [docs/how-it-works.md](docs/how-it-works.md#how-a-consultant-is-kept-to-reading).
 
@@ -329,9 +334,9 @@ it exposes, go to each consultant's model. Every argument is described in the to
 |---|---|
 | `consult_start` | Starts a consultation with one consultant (`target`) or several (`targets`), and returns a `job_id` or `group_id` at once |
 | `consult_get` | Waits for a consultation and returns its state or answer; with `ids`, just those points of the answer |
-| `consult_cancel` | Stops a consultation or a whole fan-out, and its consultant processes |
+| `consult_cancel` | Stops a consultation or a whole fan-out, and its consultant processes, also one another session started |
 | `consult_record` | Writes the lead's verdicts on an answer's points, and what the answer added |
-| `consult_list` | Lists this session's recent consultations, with the usage each consultant reported |
+| `consult_list` | Lists recent consultations, earlier sessions' included, with the usage each consultant reported in this session |
 | `consult_export` | Returns a consultation, follow-ups and verdicts included, as Markdown |
 
 The arguments of `consult_start` that matter most:

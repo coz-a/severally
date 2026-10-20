@@ -132,7 +132,7 @@ test('POSIX plugin installation survives checkout deletion, including npm comman
   assert.deepEqual(state.opencode, [process.execPath, runtime]);
   assert.ok(
     fs.readFileSync(f.log, 'utf8').includes(
-      JSON.stringify(['opencode', 'mcp', 'add', 'severally', '--global', '--', process.execPath, runtime]),
+      JSON.stringify(['opencode', 'mcp', 'add', 'severally', '--global', '--env', 'SEVERALLY_MAX_WAIT_MS=600000', '--', process.execPath, runtime]),
     ),
     'opencode must be registered through its own mcp add, globally',
   );
@@ -176,8 +176,9 @@ test('POSIX manual mode needs no global npm install and registers the copied run
   // Only a client known to outwait ten minutes gets the long consult_get wait.
   const adds = calls.filter((args) => args[1] === 'mcp' && args[2] === 'add');
   const longWait = (cli) => adds.find((args) => args[0] === cli).includes('SEVERALLY_MAX_WAIT_MS=600000');
-  assert.equal(longWait('claude'), true);
-  for (const cli of ['agy', 'opencode']) assert.equal(longWait(cli), false, cli);
+  // OpenCode waited out a 610 s tool call; Antigravity is not known to.
+  for (const cli of ['claude', 'opencode']) assert.equal(longWait(cli), true, cli);
+  assert.equal(longWait('agy'), false);
 });
 
 // A manually registered Codex gets the same long consult_get wait as the
@@ -488,4 +489,14 @@ test('severally-mcp install runs the installer from the package, and points else
     { encoding: 'utf8', stdio: 'pipe' }), (err) => err.status === 2 && /severally-install: unknown argument\(s\) "--bogus"/.test(err.stderr));
   assert.throws(() => execFileSync(process.execPath, [path.join(root, 'plugins', 'severally', 'dist', 'severally-mcp.mjs'), 'install'],
     { encoding: 'utf8', stdio: 'pipe' }), (err) => err.status === 1 && /npx -y severally-mcp@latest install/.test(err.stderr));
+});
+
+test('POSIX OpenCode registered before the long wait is kept, and the installer says --force adds it', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const cfgDir = path.join(f.dir, '.config', 'opencode');
+  fs.mkdirSync(cfgDir, { recursive: true });
+  fs.writeFileSync(path.join(cfgDir, 'opencode.json'), JSON.stringify({ mcp: { severally: { command: ['node', 'x'] } } }));
+  fs.writeFileSync(f.registry, JSON.stringify({ opencode: ['node', 'x'] }));
+  const out = f.install('--manual');
+  assert.match(out, /OpenCode[\s\S]*lacks the long consult_get wait[\s\S]*--force adds it/);
 });

@@ -42,7 +42,11 @@ node scripts/install.mjs
 
 ## 登録の確かめ方
 
-クライアントを再起動したあと、それぞれが severally を認識しているかを確かめます。持っていない CLI の行は飛ばしてください。
+`npx -y severally-mcp@latest status` を実行すると、相談を始めずに、まとめて確かめられます。設定ファイルが正しいか、
+この機械から使える相談相手（使えないものはその理由）、入っている写しの版がそろっているか、どのクライアントに
+severally が登録されているかを表示します。CLI にログインしているかは確かめません。それは最初の相談で分かります。
+
+クライアントごとに自分で確かめるときは、再起動したあとに次を実行します。持っていない CLI の行は飛ばしてください。
 
 ```bash
 # macOS / Linux（プラグイン方式）
@@ -98,7 +102,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   `config.toml` の `[mcp_servers.severally]` の表に `tool_timeout_sec = 660` の 1 行も書きます（Codex のプラグインと
   同じ長い待ちにするためで、`codex mcp add` では設定できません）。表にすでに `tool_timeout_sec` があれば、その値を
   残し、待ち時間もそれに合わせます。1 行を書けなければ、長い待ちなしで Codex を登録し、そう表示します。
-  何かをする前に、各クライアントの設定ファイル（`~/.claude.json`、`~/.codex/config.toml`、`~/.gemini/config/mcp_config.json` と
+- 何かをする前に、各クライアントの設定ファイル（`~/.claude.json`、`~/.codex/config.toml`、`~/.gemini/config/mcp_config.json` と
   `~/.gemini/antigravity-cli/settings.json`、`~/.config/opencode/opencode.json(c)`）と既存の Skill のディレクトリを、
   `~/.severally/backups/<timestamp>/` にバックアップします。バックアップの名前は元のパスから付けます。
 - 方式を切り替えると、もう一方の方式で残った重複の登録を、バックアップしてから取り除きます。

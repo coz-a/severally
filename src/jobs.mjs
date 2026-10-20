@@ -27,6 +27,9 @@ const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity, opencode };
 // anyway would silently extend the job's advertised wall-clock deadline.
 const MIN_RETRY_MS = 5_000;
 
+// How often a server looks for a cancel another server asked for.
+const CANCEL_POLL_MS = 1_000;
+
 // The second way a consultant can be authenticated. A linked token file and an
 // API key / ADC file are alternatives, not both required, so the presence of
 // either has to satisfy the credential check below. These are the names
@@ -226,14 +229,39 @@ export class JobManager {
     return compactBrief(rec, detail);
   }
 
+  // This session's consultations and the history's, so an earlier session's
+  // job_id and group_id can still be followed up and recorded against. The
+  // index only picks and orders; each row shown is read from its round, which
+  // holds the verdicts written since. Memory wins over disk for the same job.
   list({ limit = 20 } = {}) {
-    return this.order
-      .slice(-limit)
-      .reverse()
-      .map((jid) => {
-        const j = this.jobs.get(jid);
+    const here = this.order.map((jid) => this.jobs.get(jid));
+    const seen = new Set(here.map((j) => j.job_id));
+    const elsewhere = [];
+    // Read only: a marker whose owner is gone is shown as interrupted, and
+    // left for consult_get or the startup sweep to close out.
+    for (const jobId of store.listRunning()) {
+      const live = seen.has(jobId) ? null : store.loadRunning(jobId);
+      if (!live) continue;
+      seen.add(jobId);
+      const state = ownerState(jobId, live.owner);
+      // A round saved just before its owner died is the answer, whatever the marker says.
+      const saved = state === 'alive' ? null : store.loadRoundAt(live);
+      elsewhere.push({ rec: state === 'alive' ? live : saved ?? { ...live, status: 'failed', failure: { kind: 'interrupted' } } });
+    }
+    for (const row of store.indexRows()) if (!seen.has(row.job_id)) { seen.add(row.job_id); elsewhere.push({ row }); }
+    const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? '';
+    const picked = [];
+    // Round files are read only for the rows shown; one that cannot be read is passed over.
+    for (const x of [...here, ...elsewhere].sort((p, q) => (at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0))) {
+      if (picked.length >= limit) break;
+      const j = x.row ? store.loadRoundAt(x.row) : x.rec ?? x;
+      if (j) picked.push(j);
+    }
+    return picked
+      .map((j) => {
         return {
           job_id: j.job_id,
+          group_id: j.group_id ?? null,
           chain_id: j.chain_id,
           round: j.round,
           target: j.target,
@@ -246,7 +274,8 @@ export class JobManager {
           duration_ms: j.duration_ms,
           summary: j.result ? j.result.summary.slice(0, 200) : null,
           recorded: Boolean(j.record),
-          verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
+          verdicts: j.record?.entries ? tally(j.record.entries.map((e) => e.verdict)) : null,
+          this_session: this.jobs.has(j.job_id),
           predicted: Boolean(j.prediction),
           reflected: Boolean(j.reflection),
           initiator: j.initiator ?? null,
@@ -345,6 +374,8 @@ export class JobManager {
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
       groupFollowup: Boolean(fromGroup),
     });
+    // The operator's setting only ever closes: a request cannot reopen the web.
+    if (POLICY.network === 'off') req.network = 'off';
 
     if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
       throw new RequestError(
@@ -569,6 +600,7 @@ export class JobManager {
       this.jobs.set(jobId, job);
       this.order.push(jobId);
       LIVE_HERE.add(jobId);
+      this.#watchCancels();
       job._owner = seats[i].owner;
       this.#mark(job);
       return job;
@@ -1208,16 +1240,31 @@ export class JobManager {
     return view;
   }
 
+  // Cancels another server asked for (store.requestCancel), checked while
+  // this one runs anything. ponytail: polled once a second, not signalled;
+  // a watch on the slots directory if that delay ever matters.
+  #watchCancels() {
+    this._cancelWatch ??= setInterval(() => {
+      for (const job of this.jobs.values()) {
+        if ((job.status === 'running' || job.status === 'queued') && store.cancelRequested(job.job_id)) {
+          store.clearCancel(job.job_id);
+          this.cancel(job.job_id);
+        }
+      }
+    }, CANCEL_POLL_MS).unref();
+  }
+
   cancel(jobId) {
     const job = this.jobs.get(jobId);
     if (!job) {
       const view = this.view(jobId);
       if (!view) return null;
+      if (view.status !== 'running' && view.status !== 'queued') return { ...view, cancel_effect: `job was already ${view.status}` };
       return {
         ...view,
-        cancel_effect: view.status === 'running' || view.status === 'queued'
-          ? 'nothing signalled: this consultation runs in another severally process, and only that process can cancel it'
-          : `job was already ${view.status}`,
+        cancel_effect: store.requestCancel(jobId)
+          ? `asked the severally process running it to stop it; that takes up to ${CANCEL_POLL_MS / 1000} s, and consult_get shows when it has`
+          : 'nothing signalled: the request to the severally process running it could not be written',
       };
     }
     if (job.status !== 'running' && job.status !== 'queued') {
@@ -1334,7 +1381,12 @@ export class JobManager {
     if (!group) {
       const view = this.groupView(groupId);
       if (!view) return null;
-      return { ...view, cancel_effect: 'nothing signalled: this fan-out was started by another severally process or before a restart, and only a live process can cancel its own consultants' };
+      // Started by another server: each member still running there is asked to stop.
+      const asked = (store.loadGroup(groupId)?.job_ids ?? [])
+        .map((jid) => this.cancel(jid)).filter((r) => /^asked/.test(r?.cancel_effect ?? '')).length;
+      return { ...view, cancel_effect: asked
+        ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1000} s, and consult_get shows when it has`
+        : 'nothing to signal: no consultant in this fan-out is still running' };
     }
     // Count what is actually about to be signalled before signalling it:
     // cancel() short-circuits on a member that has already finished, so a
@@ -1520,7 +1572,7 @@ function inherit(raw, round) {
   const out = raw.network === undefined && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
   for (const k of ['objective', 'success_criteria', 'constraints']) {
-    if (out[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+    if (out[k] === undefined && raw.context?.[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
   }
   const ctx = { ...(raw.context ?? {}) };
   for (const k of ['facts', 'proposal', 'counterpoints']) {

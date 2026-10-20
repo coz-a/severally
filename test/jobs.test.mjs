@@ -1178,7 +1178,7 @@ test('a path that does not exist is refused before a job exists', async () => {
     () => mgr.start(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: [missing] } })),
     (err) => err.code === 'expose_path_invalid' && err.message.includes(missing),
   );
-  assert.equal(mgr.list().length, 0, 'no job may have been created');
+  assert.equal(mgr.list().filter((j) => j.this_session).length, 0, 'no job may have been created');
 });
 
 test('a tree over the size cap is refused before a job exists', async () => {
@@ -1190,7 +1190,7 @@ test('a tree over the size cap is refused before a job exists', async () => {
     () => mgr.start(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: [repo] } })),
     (err) => err.code === 'expose_paths_too_large',
   );
-  assert.equal(mgr.list().length, 0);
+  assert.equal(mgr.list().filter((j) => j.this_session).length, 0);
 });
 
 // A consultation with no exposed paths must read exactly as it did before.
@@ -1375,4 +1375,14 @@ test('a follow-up that leaves out network keeps the earlier round\'s; a caller\'
   assert.equal((await finish(mgr, r3.job_id)).network, 'on');
   const full = mgr.view(r2.job_id, { detail: 'full' });
   assert.ok(full.brief.artifacts.some((a) => a.name === 'git diff of the fix'));
+});
+
+test('a follow-up that passes constraints inside context replaces the earlier ones', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const r1 = mgr.start(reviewRequest());
+  await finish(mgr, r1.job_id);
+  const r2 = mgr.start({ followup_to: r1.job_id, question: 'q', context: { constraints: ['Only the client may change'] } });
+  await finish(mgr, r2.job_id);
+  assert.deepEqual(mgr.view(r2.job_id, { detail: 'full' }).brief.constraints, ['Only the client may change']);
 });

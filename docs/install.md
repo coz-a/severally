@@ -42,7 +42,12 @@ run `npm run init-config` (see [Configuration](../README.md#configuration) in th
 
 ## Checking the registration
 
-After restarting the clients, check that each one sees severally. Skip the lines for CLIs you don't have:
+`npx -y severally-mcp@latest status` shows it all at once, without starting a consultation: whether the config
+file is valid, which consultants this machine can reach (and why the others cannot), whether every installed copy
+is the same version, and which clients have severally registered. It does not check that a CLI is logged in; the
+first consultation shows that.
+
+To check one client yourself, after restarting it. Skip the lines for CLIs you don't have:
 
 ```bash
 # macOS / Linux (plugin mode)
@@ -98,8 +103,8 @@ Windows. Pass `--manual` to use manual mode on macOS/Linux too.
   exception: for a manually registered Codex it also writes one line, `tool_timeout_sec = 660`, into
   `config.toml` under `[mcp_servers.severally]` (the same long wait the Codex plugin has; `codex mcp add` cannot
   set it). An existing `tool_timeout_sec` there is kept, and the wait follows it. If the line cannot be written,
-  Codex is registered without the long wait and the installer says so. Before it does anything, it backs up
-  each client's settings file (`~/.claude.json`, `~/.codex/config.toml`,
+  Codex is registered without the long wait and the installer says so.
+- Before it does anything, it backs up each client's settings file (`~/.claude.json`, `~/.codex/config.toml`,
   `~/.gemini/config/mcp_config.json` and `~/.gemini/antigravity-cli/settings.json`,
   `~/.config/opencode/opencode.json(c)`) and any existing Skill directory to `~/.severally/backups/<timestamp>/`,
   naming each backup after its original path.

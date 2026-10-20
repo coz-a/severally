@@ -43,7 +43,7 @@ test('a consultation running in another process is reported as running and left 
   const v = b.view(s.job_id);
   assert.notEqual(v.status, 'failed');
   assert.match(v.next_step, /another severally process/);
-  assert.match(b.cancel(s.job_id).cancel_effect, /nothing signalled/);
+  assert.match(b.cancel(s.job_id).cancel_effect, /asked the severally process running it/);
   assert.ok(store.loadRunning(s.job_id), 'a live owner keeps its marker');
 
   a.cancel(s.job_id);
@@ -242,4 +242,89 @@ test('two servers cannot both continue one consultation at once: the second foll
   const r3 = b.start(reviewRequest({ followup_to: r1.job_id }));
   assert.equal(r3.round, 3);
   await b.jobs.get(r3.job_id).promise;
+});
+
+test('consult_list shows earlier sessions\' consultations too, newest first, each once', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const a = new JobManager();
+  const one = a.start(reviewRequest());
+  await a.jobs.get(one.job_id).promise;
+  const fan = a.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await Promise.all(fan.jobs.map((j) => a.jobs.get(j.job_id).promise));
+
+  const b = new JobManager();
+  const mine = b.start(reviewRequest());
+  await b.jobs.get(mine.job_id).promise;
+  const listed = b.list({ limit: 4 });
+  assert.equal(listed[0].job_id, mine.job_id, 'this session\'s newest first');
+  const ids = listed.map((j) => j.job_id);
+  assert.equal(new Set(ids).size, ids.length, 'each consultation once');
+  for (const j of fan.jobs) assert.ok(ids.includes(j.job_id), 'an earlier session\'s fan-out is listed');
+  const member = listed.find((j) => j.job_id === fan.jobs[0].job_id);
+  assert.equal(member.group_id, fan.group_id);
+  assert.match(member.summary, /Stub consultant summary/);
+  assert.equal(member.status, 'completed');
+  for (let i = 1; i < listed.length; i++) assert.ok(listed[i - 1].created_at >= listed[i].created_at);
+  // What it lists can be used: recorded against from this session.
+  b.record({ job_id: member.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }] });
+  assert.deepEqual(b.list({ limit: 4 }).find((j) => j.job_id === member.job_id).verdicts, { confirmed: 1 });
+});
+
+test('another server can cancel a consultation: it asks, and the server running it stops it', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const a = new JobManager();
+  const s = a.start(reviewRequest());
+  const b = new JobManager();
+  // b holds nothing of a's in memory, as a separate process would not.
+  const asked = b.cancel(s.job_id);
+  assert.match(asked.cancel_effect, /asked the severally process running it/);
+  const view = await a.jobs.get(s.job_id).promise.then(() => a.view(s.job_id));
+  assert.equal(view.status, 'cancelled');
+  assert.equal(store.cancelRequested(s.job_id), false, 'the request is consumed');
+});
+
+test('the cancel reaches a consultation that a separate server process runs', async () => {
+  const { spawn } = await import('node:child_process');
+  const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    const { JobManager } = await import(${JSON.stringify(jobsUrl)});
+    const mgr = new JobManager();
+    const s = mgr.start(${JSON.stringify(reviewRequest())});
+    console.log(s.job_id);
+    await mgr.jobs.get(s.job_id).promise;
+    console.log(mgr.view(s.job_id).status);
+  `], { env: { ...process.env, STUB_BEHAVIOR: 'hang' } });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  await waitFor(() => /job_\w+\n/.test(out), { timeoutMs: 8000 });
+  const jobId = out.trim().split('\n')[0];
+  assert.match(new JobManager().cancel(jobId).cancel_effect, /asked/);
+  await new Promise((r) => child.on('exit', r));
+  assert.equal(out.trim().split('\n').pop(), 'cancelled');
+});
+
+test('consult_list only reads: a dead server\'s consultation shows as interrupted and its marker stays', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const a = new JobManager();
+  const s = a.start(reviewRequest());
+  const marker = store.loadRunning(s.job_id);
+  store.writeRunning({ ...marker, owner: { ...marker.owner, pid: deadPid() } });
+  fs.appendFileSync(path.join(home, 'history', 'index.jsonl'), 'null\n42\n');
+  const row = new JobManager().list({ limit: 100 }).find((j) => j.job_id === s.job_id);
+  assert.equal(row.status, 'failed');
+  assert.equal(row.failure_kind, 'interrupted');
+  assert.ok(store.loadRunning(s.job_id), 'listing wrote nothing');
+  store.writeRunning(marker);
+  a.cancel(s.job_id);
+  await a.jobs.get(s.job_id).promise;
+});
+
+test('another server can cancel a whole fan-out it did not start', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const a = new JobManager();
+  const fan = a.start(reviewRequest({ target: undefined, targets: ['codex', 'gemini'] }));
+  const asked = new JobManager().cancelGroup(fan.group_id);
+  assert.match(asked.cancel_effect, /asked the severally process running it to stop 2/);
+  const views = await Promise.all(fan.jobs.map((j) => a.jobs.get(j.job_id).promise.then(() => a.view(j.job_id))));
+  assert.deepEqual(views.map((v) => v.status), ['cancelled', 'cancelled']);
 });

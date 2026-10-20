@@ -141,7 +141,8 @@ or vanished entry is marked), and leave it off when the follow-up does not need 
 Spend follow-ups only where you and the consultant actually diverge: quote the specific point, give the evidence
 that answers it, and ask what would change their view. Write your verdicts with `consult_record` first: the
 consultant is shown each earlier point with your verdict, so it answers what your checking found instead of
-restating it. A follow-up works across a server restart.
+restating it. A follow-up works across a server restart; `consult_list` shows an earlier session's
+consultations with their `job_id` and `group_id`.
 
 After each follow-up, state in one sentence the cause you still differ on. If it is the same as last round and
 the round brought no new evidence and no new condition that would change the judgement, stop and hand the user

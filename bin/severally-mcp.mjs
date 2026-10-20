@@ -15,6 +15,9 @@ if (process.argv[2] === 'install') {
   }
   process.argv.splice(2, 1);
   await import(installer.href);
+} else if (process.argv[2] === 'status') {
+  const { status } = await import('../src/status.mjs');
+  process.exitCode = status();
 } else {
   main().catch((err) => {
     process.stderr.write(`severally: fatal: ${err?.stack ?? err}\n`);

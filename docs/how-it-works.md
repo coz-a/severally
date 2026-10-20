@@ -43,8 +43,8 @@ OpenCode    ──(skill)──> severally server ──> codex exec | claude -p
 - A consultation stays readable after the server restarts, and from any other severally process on the machine.
   One still running elsewhere reads as running; one whose server stopped abruptly (a crash or a kill) before it
   finished comes back as `interrupted`; an ordinary shutdown records its running consultations as cancelled.
-- Only the process running a consultation can cancel it; `consult_cancel` from another one says that nothing
-  was signalled.
+- `consult_cancel` from another severally process leaves a request for the process running the consultation,
+  which checks once a second and stops it.
 - A check the lead cannot run itself, such as one that needs another person's answer, comes back to you with the
   reason.
 - **For decisions you will have to justify later** (interfaces, migrations, security, concurrency), the lead
@@ -55,7 +55,9 @@ OpenCode    ──(skill)──> severally server ──> codex exec | claude -p
   other.
 - A request with no plan is `explore`, one with a plan is `review`, and one with a plan and the opposing claims
   is `debate`. The server refuses a first `explore` request that contains the plan. A follow-up keeps the mode of
-  the consultation it continues. The follow-up limit is `server.max_rounds` in the config file.
+  the consultation it continues, and everything else it was given unless the lead passes it again: the
+  consultant, `network`, the objective, constraints, success criteria, facts, plan, opposing claims and supplied
+  material. The new brief restates them. The follow-up limit is `server.max_rounds` in the config file.
 
 ## Records
 
