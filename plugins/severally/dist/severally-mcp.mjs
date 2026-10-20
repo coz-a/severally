@@ -40203,7 +40203,7 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 }
 
 // src/server.mjs
-var SEVERALLY_VERSION = "2.0.0";
+var SEVERALLY_VERSION = "2.1.0";
 var DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
 var PROGRESS_EVERY_MS = 15e3;
 var semver = (v) => String(v).split(".").map(Number);
