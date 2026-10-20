@@ -254,6 +254,8 @@ const codexHome = process.env.CODEX_HOME ?? path.join(home, '.codex');
 // both or neither, since the wait without the timeout would outlast Codex's
 // own deadline.
 const LONG_WAIT = 'SEVERALLY_MAX_WAIT_MS=600000';
+const AGY_WAIT = 'SEVERALLY_MAX_WAIT_MS=165000';
+const agyConfig = path.join(home, '.gemini', 'config', 'mcp_config.json');
 const CODEX_TIMEOUT_SEC = 660;
 const codexConfig = path.join(codexHome, 'config.toml');
 // The user's own tool_timeout_sec, read before --force removes the table that holds it.
@@ -365,7 +367,14 @@ const CLIENTS = [
       return r.ok && /severally/.test(r.out);
     },
     remove: () => tryRun('agy', ['mcp', 'remove', 'severally']),
-    add: (bin) => tryRun('agy', ['mcp', 'add', 'severally', ...bin]),
+    // agy stops an MCP tool call at 3 minutes, progress notifications or not
+    // (measured: a 310 s call ended at 180 s), so its wait is 15 s under that.
+    add: (bin) => tryRun('agy', ['mcp', 'add', '--env', AGY_WAIT, 'severally', ...bin]),
+    keptNote: () => {
+      if (!/SEVERALLY_MAX_WAIT_MS/.test(fs.existsSync(agyConfig) ? fs.readFileSync(agyConfig, 'utf8') : '')) {
+        log('   this registration lacks the longer consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS=165000)');
+      }
+    },
     skillFrom: path.join(PLUGIN, 'skills', 'antigravity', 'severally'),
     skillTo: path.join(home, '.gemini', 'config', 'skills', 'severally'),
   },
