@@ -119,6 +119,7 @@ for (const { name: target, cli } of consultants) {
   const { _secret, ...request } = probe(dir, secret, rootCanary);
 
   const mgr = new JobManager();
+  /** @type {Record<string, any>} */
   const started = mgr.start({ target, ...request });
   if (!started.job_id) {
     rows.push({ target, error: JSON.stringify(started) });

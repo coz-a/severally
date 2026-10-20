@@ -82,8 +82,6 @@ test('the synthesised home denies every write path and allows reading and the we
   }
   // read carries path rules: allowed everywhere but the protected paths.
   assert.equal(cfg.permission.read['*'], 'allow', 'read must be allowed');
-  {
-  }
   assert.deepEqual(cfg.mcp, {}, 'no MCP server may be reachable: this is the recursion barrier');
   assert.equal(cfg.share, 'disabled', 'the session must never be uploaded');
   assert.equal(cfg.snapshot, false);

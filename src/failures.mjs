@@ -19,6 +19,7 @@ export const FAILURE_KINDS = [
 // also says 429, and only what is left is treated as transient. A message
 // that fits neither -- Gemini's bare RESOURCE_EXHAUSTED is one -- falls
 // through to cli_error.
+/** @type {Array<[RegExp, string]>} */
 const RULES = [
   [
     /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,

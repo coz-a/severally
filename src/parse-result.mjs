@@ -115,7 +115,7 @@ function mapList(raw, fields, { requiredField, idPrefix = null }) {
 
 /**
  * @param {object|string} raw  parsed JSON object, or raw text to mine one out of
- * @returns {{result: object, quality: {structured_output: boolean, missing_sections: string[]}}}
+ * @returns {{result: object, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
  */
 export function normalizeResult(raw) {
   const objIn = typeof raw === 'string' ? extractJson(raw) : raw;

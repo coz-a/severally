@@ -93,6 +93,7 @@ function ownerState(jobId, owner) {
 
 export class JobManager {
   constructor() {
+    this._cancelWatch = null;
     this.jobs = new Map();
     this.groups = new Map();
     this.order = [];
@@ -217,6 +218,7 @@ export class JobManager {
 
   // `detail: "full"` returns the brief as stored; by default a finished
   // consultation names it (size, sha256, round file) instead of repeating it.
+  /** @param {string} jobId @param {{detail?: string}} [opts] */
   view(jobId, { detail } = {}) {
     const job = this.jobs.get(jobId);
     if (!job) {
@@ -1143,6 +1145,7 @@ export class JobManager {
   // consultant did not produce and a word outside VERDICTS, then stores what
   // was written. It never decides that a finding was adopted, and it never
   // fills in a verdict the lead did not write.
+  /** @param {Record<string, any>} [input] */
   record(input = {}) {
     if (input.records !== undefined) return this.#recordMany(input);
     const allowed = ['job_id', 'entries', 'reflection'];
@@ -1209,6 +1212,7 @@ export class JobManager {
 
   // Everything that can be wrong with a record, found before anything is
   // written: what the job's record and reflection become, or a RequestError.
+  /** @param {{job_id?: string, entries?: any[], reflection?: any}} rec */
   #checkRecord({ job_id: jobId, entries, reflection }) {
     if (entries === undefined && reflection === undefined) {
       throw new RequestError(
@@ -1386,6 +1390,7 @@ export class JobManager {
   // Every field here is derived from the one `members` array it is handed, so a
   // group view can never report one status in `members` and another in
   // `comparison` or `status` for the same job.
+  /** @param {any} group @param {any[]} members @param {{detail?: string}} [opts] */
   #shapeGroup(group, members, { detail } = {}) {
     const full = detail === 'full';
     const cancelling = members.some((m) => m.status === 'cancelling');

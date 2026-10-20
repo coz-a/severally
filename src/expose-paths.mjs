@@ -507,7 +507,10 @@ function git(cwd, args) {
     env: { ...env, GIT_OPTIONAL_LOCKS: '0' },
   });
   if (r.error || r.status !== 0) {
-    const why = r.error?.code === 'ENOENT' ? 'git is not on PATH' : String(r.stderr ?? r.error?.message ?? '').trim();
+    const why =
+      /** @type {NodeJS.ErrnoException} */ (r.error)?.code === 'ENOENT'
+        ? 'git is not on PATH'
+        : String(r.stderr ?? r.error?.message ?? '').trim();
     throw new ExposeError(`context.expose_diff: git ${args[0]} failed in "${cwd}": ${why}`, 'not_found');
   }
   return r.stdout;

@@ -406,7 +406,7 @@ test('POSIX opencode list that is briefly empty after add is asked again, not re
   const f = fixture(t);
   f.env.STUB_LIST_EMPTY_FOR = '3'; // the two checks before adding, and the first one after
   const out = f.install('--manual', '--force');
-  assert.match(out, /Registering with OpenCode\n(?:.*\n)*?   registered\n/);
+  assert.match(out, /Registering with OpenCode\n(?:.*\n)*? {3}registered\n/);
 });
 
 // If the list never shows it but the config holds exactly this install's

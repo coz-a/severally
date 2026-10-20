@@ -105,6 +105,7 @@ const request = { target, ...REQUESTS[mode] };
 
 console.log('limits:', JSON.stringify(limitsSummary(), null, 2));
 const mgr = new JobManager();
+/** @type {Record<string, any>} */
 const started = mgr.start(request);
 if (!started.job_id) {
   console.error('live-check runs one consultant at a time: pass a single --target, not "all"');

@@ -155,8 +155,11 @@ export function createServer(manager = new JobManager()) {
   const stale = staleInstall();
   const server = new McpServer({ name: 'severally', version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
 
-  const ok = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] });
-  const fail = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true });
+  const ok = (payload) => ({ content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }] });
+  const fail = (payload) => ({
+    content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }],
+    isError: true,
+  });
 
   server.registerTool(
     'consult_start',

@@ -32,26 +32,28 @@ function looksLikeCode(name, value) {
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith('&');
 }
 
+// A replacement is a string or a function of the match.
+/** @type {Array<[RegExp, any]>} */
 const PATTERNS = [
   // Provider API keys
-  [/\bsk-ant-[A-Za-z0-9_\-]{12,}/g, '[REDACTED:anthropic-key]'],
-  [/\bsk-proj-[A-Za-z0-9_\-]{12,}/g, '[REDACTED:openai-key]'],
-  [/\bsk-[A-Za-z0-9_\-]{20,}/g, '[REDACTED:api-key]'],
+  [/\bsk-ant-[A-Za-z0-9_-]{12,}/g, '[REDACTED:anthropic-key]'],
+  [/\bsk-proj-[A-Za-z0-9_-]{12,}/g, '[REDACTED:openai-key]'],
+  [/\bsk-[A-Za-z0-9_-]{20,}/g, '[REDACTED:api-key]'],
   [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[REDACTED:github-token]'],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, '[REDACTED:github-token]'],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, '[REDACTED:slack-token]'],
   [/https:\/\/hooks\.slack\.com\/services\/T[A-Za-z0-9]+\/B[A-Za-z0-9]+\/[A-Za-z0-9]+/g, '[REDACTED:slack-webhook]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED:aws-access-key-id]'],
   [/\bASIA[0-9A-Z]{16}\b/g, '[REDACTED:aws-access-key-id]'],
-  [/\bAIza[0-9A-Za-z_\-]{30,}/g, '[REDACTED:google-api-key]'],
+  [/\bAIza[0-9A-Za-z_-]{30,}/g, '[REDACTED:google-api-key]'],
   // Stripe secret and restricted keys (pk_ is public, left alone), npm, GitLab, Hugging Face
   [/\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/g, '[REDACTED:stripe-key]'],
   [/\bnpm_[A-Za-z0-9]{30,}/g, '[REDACTED:npm-token]'],
-  [/\bglpat-[A-Za-z0-9_\-]{20,}/g, '[REDACTED:gitlab-token]'],
+  [/\bglpat-[A-Za-z0-9_-]{20,}/g, '[REDACTED:gitlab-token]'],
   [/\bhf_[A-Za-z0-9]{30,}/g, '[REDACTED:huggingface-token]'],
   // JWT / OAuth access tokens (3 base64url segments)
-  [/\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}/g, '[REDACTED:jwt]'],
-  [/\bBearer\s+[A-Za-z0-9._\-]{20,}/gi, 'Bearer [REDACTED:token]'],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[REDACTED:jwt]'],
+  [/\bBearer\s+[A-Za-z0-9._-]{20,}/gi, 'Bearer [REDACTED:token]'],
   // PEM private keys
   [/-----BEGIN[^-]{0,40}PRIVATE KEY-----[\s\S]*?-----END[^-]{0,40}PRIVATE KEY-----/g, '[REDACTED:private-key]'],
   // The password in a URL's userinfo, also with an empty user (redis://:pass@host)

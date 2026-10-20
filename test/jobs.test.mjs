@@ -383,7 +383,7 @@ test('a follow-up brief carries grounds, unknowns and checks with their verdicts
   const r2 = mgr.start(reviewRequest({ followup_to: r1.job_id }));
   await finish(mgr, r2.job_id);
   const brief = fs.readFileSync(briefOut, 'utf8');
-  assert.match(brief, /- r1\.f1: Retry storm risk\n  grounds: The excerpt retries without a cap\./);
+  assert.match(brief, /- r1\.f1: Retry storm risk\n {2}grounds: The excerpt retries without a cap\./);
   assert.match(brief, /- r1\.u1: Current QPS/);
   assert.match(brief, /- r1\.c1: Load test -- lead's verdict: confirmed \(Replayed; p99 held\.\)/);
   delete process.env.STUB_BRIEF_OUT;

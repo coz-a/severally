@@ -36881,24 +36881,24 @@ var init_redact = __esm({
     ]);
     PATTERNS = [
       // Provider API keys
-      [/\bsk-ant-[A-Za-z0-9_\-]{12,}/g, "[REDACTED:anthropic-key]"],
-      [/\bsk-proj-[A-Za-z0-9_\-]{12,}/g, "[REDACTED:openai-key]"],
-      [/\bsk-[A-Za-z0-9_\-]{20,}/g, "[REDACTED:api-key]"],
+      [/\bsk-ant-[A-Za-z0-9_-]{12,}/g, "[REDACTED:anthropic-key]"],
+      [/\bsk-proj-[A-Za-z0-9_-]{12,}/g, "[REDACTED:openai-key]"],
+      [/\bsk-[A-Za-z0-9_-]{20,}/g, "[REDACTED:api-key]"],
       [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, "[REDACTED:github-token]"],
       [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED:github-token]"],
       [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, "[REDACTED:slack-token]"],
       [/https:\/\/hooks\.slack\.com\/services\/T[A-Za-z0-9]+\/B[A-Za-z0-9]+\/[A-Za-z0-9]+/g, "[REDACTED:slack-webhook]"],
       [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
       [/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
-      [/\bAIza[0-9A-Za-z_\-]{30,}/g, "[REDACTED:google-api-key]"],
+      [/\bAIza[0-9A-Za-z_-]{30,}/g, "[REDACTED:google-api-key]"],
       // Stripe secret and restricted keys (pk_ is public, left alone), npm, GitLab, Hugging Face
       [/\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/g, "[REDACTED:stripe-key]"],
       [/\bnpm_[A-Za-z0-9]{30,}/g, "[REDACTED:npm-token]"],
-      [/\bglpat-[A-Za-z0-9_\-]{20,}/g, "[REDACTED:gitlab-token]"],
+      [/\bglpat-[A-Za-z0-9_-]{20,}/g, "[REDACTED:gitlab-token]"],
       [/\bhf_[A-Za-z0-9]{30,}/g, "[REDACTED:huggingface-token]"],
       // JWT / OAuth access tokens (3 base64url segments)
-      [/\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}/g, "[REDACTED:jwt]"],
-      [/\bBearer\s+[A-Za-z0-9._\-]{20,}/gi, "Bearer [REDACTED:token]"],
+      [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[REDACTED:jwt]"],
+      [/\bBearer\s+[A-Za-z0-9._-]{20,}/gi, "Bearer [REDACTED:token]"],
       // PEM private keys
       [/-----BEGIN[^-]{0,40}PRIVATE KEY-----[\s\S]*?-----END[^-]{0,40}PRIVATE KEY-----/g, "[REDACTED:private-key]"],
       // The password in a URL's userinfo, also with an empty user (redis://:pass@host)
@@ -37268,7 +37268,10 @@ function git(cwd, args) {
     env: { ...env, GIT_OPTIONAL_LOCKS: "0" }
   });
   if (r.error || r.status !== 0) {
-    const why = r.error?.code === "ENOENT" ? "git is not on PATH" : String(r.stderr ?? r.error?.message ?? "").trim();
+    const why = (
+      /** @type {NodeJS.ErrnoException} */
+      r.error?.code === "ENOENT" ? "git is not on PATH" : String(r.stderr ?? r.error?.message ?? "").trim()
+    );
     throw new ExposeError(`context.expose_diff: git ${args[0]} failed in "${cwd}": ${why}`, "not_found");
   }
   return r.stdout;
@@ -40066,6 +40069,7 @@ var init_jobs = __esm({
     LIVE_HERE = /* @__PURE__ */ new Set();
     JobManager = class {
       constructor() {
+        this._cancelWatch = null;
         this.jobs = /* @__PURE__ */ new Map();
         this.groups = /* @__PURE__ */ new Map();
         this.order = [];
@@ -40177,6 +40181,7 @@ var init_jobs = __esm({
       }
       // `detail: "full"` returns the brief as stored; by default a finished
       // consultation names it (size, sha256, round file) instead of repeating it.
+      /** @param {string} jobId @param {{detail?: string}} [opts] */
       view(jobId, { detail } = {}) {
         const job = this.jobs.get(jobId);
         if (!job) {
@@ -40893,6 +40898,7 @@ var init_jobs = __esm({
       // consultant did not produce and a word outside VERDICTS, then stores what
       // was written. It never decides that a finding was adopted, and it never
       // fills in a verdict the lead did not write.
+      /** @param {Record<string, any>} [input] */
       record(input2 = {}) {
         if (input2.records !== void 0) return this.#recordMany(input2);
         const allowed = ["job_id", "entries", "reflection"];
@@ -40954,6 +40960,7 @@ var init_jobs = __esm({
       }
       // Everything that can be wrong with a record, found before anything is
       // written: what the job's record and reflection become, or a RequestError.
+      /** @param {{job_id?: string, entries?: any[], reflection?: any}} rec */
       #checkRecord({ job_id: jobId, entries, reflection }) {
         if (entries === void 0 && reflection === void 0) {
           throw new RequestError(
@@ -41101,6 +41108,7 @@ var init_jobs = __esm({
       // Every field here is derived from the one `members` array it is handed, so a
       // group view can never report one status in `members` and another in
       // `comparison` or `status` for the same job.
+      /** @param {any} group @param {any[]} members @param {{detail?: string}} [opts] */
       #shapeGroup(group, members2, { detail } = {}) {
         const full = detail === "full";
         const cancelling = members2.some((m) => m.status === "cancelling");
@@ -41553,8 +41561,17 @@ function staleInstall(home = os5.homedir(), severallyHome = POLICY.home) {
 function createServer(manager = new JobManager()) {
   const stale = staleInstall();
   const server = new McpServer({ name: "severally", version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
-  const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
-  const fail = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: true });
+  const ok = (payload) => ({ content: [{ type: (
+    /** @type {const} */
+    "text"
+  ), text: JSON.stringify(payload, null, 2) }] });
+  const fail = (payload) => ({
+    content: [{ type: (
+      /** @type {const} */
+      "text"
+    ), text: JSON.stringify(payload, null, 2) }],
+    isError: true
+  });
   server.registerTool(
     "consult_start",
     {

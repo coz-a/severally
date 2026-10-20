@@ -175,6 +175,8 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
+  // Filled in below with what the request resolves to (targets, caller, ...).
+  /** @type {Record<string, any>} */
   const req = parsed.data;
   // Left without a default in the schema, so that a follow-up can tell a list
   // it left out (inherited from the round before, jobs.mjs) from one it

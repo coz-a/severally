@@ -283,7 +283,9 @@ test('cancellation terminates a native child and its descendant', async (t) => {
     if (descendant) {
       try {
         process.kill(descendant);
-      } catch {}
+      } catch {
+        // already gone
+      }
     }
   });
   descendant = Number(await waitFor(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8')));
