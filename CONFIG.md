@@ -79,6 +79,8 @@ A name is lower-case letters, digits, `.` and `-`, at most 64 characters; `all` 
 | `enabled` | boolean | `true` | Turns this one consultant off, leaving the others on its CLI. |
 | `note` | string | – | Why it is off, as for `clis`. |
 
+### API keys and other model families, through OpenCode
+
 OpenCode is the way to consult other model families. Any `provider/model` that `opencode models` lists can be
 a consultant. Checked on 2026-10-17 with opencode 2.0.24: `opencode/deepseek-v4.1-flash-free` (DeepSeek) and
 `opencode/nemotron-3-ultra-free#` (NVIDIA Nemotron, which has no effort variant) both answered as consultants,

@@ -6,16 +6,16 @@
 </h1>
 
 <p align="center">
-  <em>Independent opinions, returned severally. Your agent checks each one.</em>
+  <a href="https://github.com/coz-a/severally/actions/workflows/test.yml"><img src="https://github.com/coz-a/severally/actions/workflows/test.yml/badge.svg" alt="Test"></a>
 </p>
 
 <p align="center"><a href="README.md">English</a> | 日本語</p>
 
-severally は、AI エージェントに相談相手（Codex・Claude Code・Antigravity・OpenCode）を付けるためのプラグインです。
+AI エージェントが、ほかのコーディングエージェントに独立した意見を求め、答えを相談相手ごとに受け取るためのプラグインです。
 
-エージェントは、調査に行き詰まったときや、甲乙つけがたい選択に当たったときに、相談相手に意見を
+相談相手は Codex・Claude Code・Antigravity・OpenCode です。エージェントは、調査に行き詰まったときや、甲乙つけがたい選択に当たったときに、相談相手に意見を
 求めます。返ってきた指摘は自分で確かめ、その結果をもとに作業を続けます。巻き戻しにくい変更のような
-重要な判断では、承認を求める前に相談し、あなたが決めるべきことだけを訊くようになります。あなたから
+重要な判断では、承認を求める前に相談し、あなたが決めるべきことだけを訊きます。あなたから
 「Codex に聞いて」と頼むこともできます。
 
 severally は、独立した複数の相談相手に質問し、答えを 1 つにまとめずに相談相手ごとに返します。意見が割れたこと
@@ -26,6 +26,7 @@ severally は、独立した複数の相談相手に質問し、答えを 1 つ�
 - [使い方の例](#使い方の例)
 - [仕組み](#仕組み)
 - [インストール](#インストール)
+  - [必要なもの](#必要なもの)
   - [更新](#更新)
   - [アンインストール](#アンインストール)
 - [使い方](#使い方)
@@ -118,8 +119,13 @@ flowchart TB
 
 ## インストール
 
-Node.js 20.10 以降と、インストールしてログインした CLI が、4 つのうち少なくとも 1 つ必要です。CLI は 1 つで足り、
-Claude Code だけでも、新しい Claude Code のセッションに相談できます。
+### 必要なもの
+
+- Node.js 20.10 以降
+- インストールしてログインした CLI（4 つのうち少なくとも 1 つ）。1 つで足り、Claude Code だけでも、新しい
+  Claude Code のセッションに相談できます。
+- macOS と Linux では、npm のグローバルの実行ディレクトリが `PATH` にあること。既定のインストールは、Codex が
+  起動する `severally-mcp` コマンドをそこに置きます。`--manual` なら要りません。
 
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
@@ -143,7 +149,9 @@ npx -y severally-mcp@latest install
 ```
 
 `@latest` を付けると、npx は毎回 npm に最新版を問い合わせます。手元に古い写しがあっても、それは使いません。
-終わったら、クライアントを再起動してください。
+終わったら、クライアントを再起動してください。Claude Code のプラグインマーケットプレイスから入れた場合は、
+[docs/install.ja.md](docs/install.ja.md#更新) を見てください。版ごとの変更点は
+[リリース](https://github.com/coz-a/severally/releases)にあります。
 
 ### アンインストール
 
@@ -172,12 +180,12 @@ npx -y severally-mcp@latest install
   巻き戻しにくい変更の承認を求める前です。
 
 相談が向いているのは、重要な設計判断、巻き戻しにくい選択、同じ不具合で 2 回以上失敗したときです。相談 1 回に
-数分と実際の使用量がかかるので、小さな修正には向きません。
+数分から 10 分ほどと実際の使用量がかかるので、小さな修正には向きません。
 
 ### 答えが返ったあと
 
-相談を始めても、エージェントは答えを待たずに、答えに左右されない作業を進められます。答えはふつう数分以内に
-そろいます。
+相談を始めても、エージェントは答えを待たずに、答えに左右されない作業を進められます。答えはふつう 1〜10 分で
+そろいます（Antigravity がいちばん遅い）。
 
 どの答えも同じ形で返ります。結論、根拠つきの指摘、決められなかったこと、判断が変わる条件、確かめ方です。
 相談相手が失敗したときは、理由（`usage_limit`、`timeout` など）を付けて失敗として返します。「問題なし」として
@@ -212,6 +220,10 @@ npx -y severally-mcp@latest install
 `~/.severally/config.json` を置きます。クローンから入れた場合は、`npm run init-config` でひな形を作れます。キーは
 すべて [CONFIG.md](CONFIG.md)（英語）にあり、[config.example.json](config.example.json) はそのまま写せる例です。
 設定を変えたら、クライアントを再起動してください。
+
+API キーで使うモデル（OpenRouter や、OpenAI 互換のほかの API）やローカルのモデルに相談するには、OpenCode を入れて、
+そのモデルを相談相手に足します。書き方は
+[CONFIG.md](CONFIG.md#api-keys-and-other-model-families-through-opencode) にあります。
 
 ## 相談相手が読めるものとできること
 
@@ -257,7 +269,8 @@ CLI ごとにどう守らせているかは [docs/how-it-works.ja.md](docs/how-i
 
 `consult_start` の主な引数は次のとおりです。
 
-- `context.expose_paths`: 相談相手に読み取り専用で写すファイルとディレクトリ（絶対パス）
+- `context.expose_paths`: 相談相手に読み取り専用で写すファイルとディレクトリ（絶対パス）。git のリポジトリの中の
+  ディレクトリは、git が管理するファイルだけを写す（`.gitignore` で外したものは写さない）
 - `context.expose_diff`: `{ repo, base? }`。変更中の差分をブリーフに入れ、差分が触るファイルを写す
 - `network`: `"off"` にすると、その回のどの相談相手も Web の検索と閲覧ができない
 - `followup_to`: 追加の質問のもとになる答えの `job_id`。全員に聞いた相談の `group_id` を渡すと、全員にもう一度聞く
@@ -265,7 +278,7 @@ CLI ごとにどう守らせているかは [docs/how-it-works.ja.md](docs/how-i
 ## 貢献
 
 質問と不具合の報告は [Issues](https://github.com/coz-a/severally/issues) へどうぞ。プルリクエストも歓迎します。
-大きな変更は、先に Issue で相談してください。
+大きな変更は、先に Issue で相談してください。参加する方は、[行動規範](CODE_OF_CONDUCT.md)に従ってください。
 
 - `npm install` のあと `npm test` を実行します。テストは本物の代わりに用意した CLI を相手にオフラインで動き、
   実際の API は呼びません。

@@ -132,6 +132,18 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 - **OpenCode** は、自分の `permission` の設定で変えていなければ、MCP ツールを確認なしで使います。
 - **Antigravity**: MCP ツールを 1 つずつ許可する規則の書き方を確かめていないので、ここでは扱いません。
 
+### 相談の開始の確認も省く
+
+エージェントは自分から相談します（相談するかどうかを訊かないよう Skill が指示しています）。そのため `consult_start` の
+確認を残すと、エージェントが始める相談のたびに 1 回あなたの確認を待ちます。この確認は、材料が手元を離れる前の
+唯一の歯止めなので、既定では残します。省くときは、上のツールと同じ書き方で `consult_start` も足します。
+Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_start` を、Codex なら `config.toml` に
+`[mcp_servers.severally.tools.consult_start]` の表を書きます。
+
+そうすると、どの相談でも次のものが、あなたに訊かずに各相談相手のモデルへ送られます。ブリーフ、渡したファイル、
+相談相手が実行中に読んだものです（[相談相手が読めるものとできること](../README.ja.md#相談相手が読めるものとできること)）。
+エージェントが触れるものがすべてそのベンダーに渡ってよい環境でだけ、省いてください。
+
 ## 更新
 
 `npx -y severally-mcp@latest install` を実行します。

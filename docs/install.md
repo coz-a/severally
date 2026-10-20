@@ -132,6 +132,19 @@ leaves this to you. Keep `consult_start` prompting: it is the point where materi
 - **OpenCode** allows MCP tools without asking unless your own `permission` settings say otherwise.
 - **Antigravity**: not covered here; the rule syntax for a single MCP tool has not been checked.
 
+### Letting consultations start without the prompt too
+
+The agent consults on its own (the Skill tells it not to ask whether to), so with `consult_start` prompting, every
+consultation it starts waits for you once. That prompt is the only check before material leaves your machine, so it
+stays by default. To drop it, add `consult_start` the same way as the tools above:
+`mcp__plugin_severally_severally__consult_start` in Claude Code's allow list, or a
+`[mcp_servers.severally.tools.consult_start]` table in Codex's `config.toml`.
+
+From then on, each consultation sends these to every consultant's model without asking you: the brief, the files
+it exposes, and whatever the consultant reads while it runs (see
+[What a consultant can see and do](../README.md#what-a-consultant-can-see-and-do)). Do it only where everything the
+agent can reach may go to those vendors.
+
 ## Updating
 
 Run `npx -y severally-mcp@latest install`, or pull the clone and run `npm install` and

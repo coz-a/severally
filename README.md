@@ -6,17 +6,17 @@
 </h1>
 
 <p align="center">
-  <em>Independent opinions, returned severally. Your agent checks each one.</em>
+  <a href="https://github.com/coz-a/severally/actions/workflows/test.yml"><img src="https://github.com/coz-a/severally/actions/workflows/test.yml/badge.svg" alt="Test"></a>
 </p>
 
 <p align="center">English | <a href="README.ja.md">日本語</a></p>
 
-A plugin that gives your AI agent consultants: Codex, Claude Code, Antigravity and OpenCode.
+A plugin that lets your AI agent ask other coding agents for independent opinions, returned separately.
 
-When the agent gets stuck in an investigation, or faces two options that look equally good, it asks the
+The consultants are Codex, Claude Code, Antigravity and OpenCode. When the agent gets stuck in an investigation, or faces two options that look equally good, it asks the
 consultants for their opinions. It checks the findings that come back itself, and carries on from what it found.
-For an important decision, such as a change that is hard to reverse, it now consults before asking you to approve
-it, and asks you only about what is yours to decide. You can also ask yourself: "ask Codex".
+For an important decision, such as a change that is hard to reverse, it consults before asking you to approve it,
+and asks you only about what is yours to decide. You can also ask yourself: "ask Codex".
 
 The plugin puts the question to several independent consultants, and returns each one's answer on its own
 instead of merging them into one, because a disagreement means something too. The agent checks why they disagree
@@ -27,6 +27,7 @@ before deciding how to take the answers.
 - [Example](#example)
 - [How it works](#how-it-works)
 - [Install](#install)
+  - [Requirements](#requirements)
   - [Updating](#updating)
   - [Uninstall](#uninstall)
 - [Usage](#usage)
@@ -121,8 +122,13 @@ What a consultant can read and do is under [What a consultant can see and do](#w
 
 ## Install
 
-You need Node.js 20.10 or newer and at least one of the four CLIs, installed and logged in. One is enough: with
-only Claude Code, you can still ask a fresh Claude Code session.
+### Requirements
+
+- Node.js 20.10 or newer
+- At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
+  fresh Claude Code session.
+- On macOS and Linux, npm's global executable directory on `PATH`: the default install puts a `severally-mcp`
+  command there for Codex to launch. `--manual` does without it.
 
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
@@ -146,7 +152,9 @@ npx -y severally-mcp@latest install
 ```
 
 With `@latest`, npx asks npm for the newest version every time, so an older copy it already has is not used.
-Then restart the clients.
+Then restart the clients. Installed from the Claude Code plugin marketplace: see
+[docs/install.md](docs/install.md#updating). What changed in each version is in the
+[releases](https://github.com/coz-a/severally/releases).
 
 ### Uninstall
 
@@ -175,12 +183,12 @@ Ask in your own words, in the chat with your agent:
   good, and before asking you to approve a hard-to-reverse change.
 
 It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
-same bug. One consultation costs a few minutes and real quota, so it is not for small fixes.
+same bug. One consultation takes minutes and real quota, so it is not for small fixes.
 
 ### When the answers come back
 
 Starting a consultation does not make the agent wait: it can work on something that does not depend on the
-answers, which usually arrive within a few minutes.
+answers, which usually arrive within one to ten minutes (Antigravity is the slowest).
 
 Every answer has the same shape: a bottom line, findings with their grounds, what the consultant could not
 determine, conditions that would change its judgement, and how to check. A consultant that fails comes back as a
@@ -218,6 +226,10 @@ becomes a consultant on its default model. To turn a CLI off or add consultants 
 `~/.severally/config.json` in place. From a clone, `npm run init-config` writes a template. Every key is in
 [CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is a working example to copy from. Restart
 the client after changing it.
+
+To consult a model you reach with an API key (OpenRouter, or another OpenAI-compatible API) or a local model,
+install OpenCode and add the model as a consultant: see
+[CONFIG.md](CONFIG.md#api-keys-and-other-model-families-through-opencode).
 
 ## What a consultant can see and do
 
@@ -262,7 +274,8 @@ it exposes, go to each consultant's model. Every argument is described in the to
 
 The arguments of `consult_start` that matter most:
 
-- `context.expose_paths`: files and directories, by absolute path, copied read-only for the consultant
+- `context.expose_paths`: files and directories, by absolute path, copied read-only for the consultant; a
+  directory in a git repository copies only the files git lists (nothing `.gitignore` excludes)
 - `context.expose_diff`: `{ repo, base? }`, a change in progress: the diff goes in the brief and the files it touches are copied
 - `network`: `"off"` takes web search and browsing away from every consultant in the round
 - `followup_to`: the `job_id` of the answer a follow-up continues, or a fan-out's `group_id` to ask every consultant in it again
@@ -270,7 +283,8 @@ The arguments of `consult_start` that matter most:
 ## Contributing
 
 Questions and bug reports go to [Issues](https://github.com/coz-a/severally/issues). Pull requests are welcome; for
-a large change, open an issue first so we can talk it over.
+a large change, open an issue first so we can talk it over. Everyone taking part is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 - `npm install`, then `npm test`. The tests run offline against stand-in CLIs and make no real API calls.
 - After changing the source or the Skill template, run `npm run build`. The built server in
