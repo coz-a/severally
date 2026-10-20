@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sandboxEnv, reviewRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
 const home = sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
@@ -12,10 +12,10 @@ const finish = async (mgr, jobId) => {
   return mgr.view(jobId);
 };
 
-const roundFile = (view) => JSON.parse(fs.readFileSync(
-  path.join(home, 'history', view.chain_id, `round-${String(view.round).padStart(2, '0')}.json`),
-  'utf8',
-));
+const roundFile = (view) =>
+  JSON.parse(
+    fs.readFileSync(path.join(home, 'history', view.chain_id, `round-${String(view.round).padStart(2, '0')}.json`), 'utf8'),
+  );
 
 const completed = async (over = {}) => {
   process.env.STUB_BEHAVIOR = 'ok';
@@ -60,7 +60,7 @@ test('a consultation that never produced an answer still records what was asked'
   assert.equal(roundFile(view).brief.objective, 'Ship a retry policy that will not amplify an outage.');
 });
 
-test('the lead\'s verdict on a finding is stored as written and reaches the round file', async () => {
+test("the lead's verdict on a finding is stored as written and reaches the round file", async () => {
   const { mgr, view } = await completed();
   const out = mgr.record({
     job_id: view.job_id,
@@ -109,10 +109,13 @@ test('a verdict outside the four words is refused rather than reinterpreted', as
 
 test('recording the same id again replaces that verdict and leaves the others alone', async () => {
   const { mgr, view } = await completed();
-  mgr.record({ job_id: view.job_id, entries: [
-    { id: 'f1', verdict: 'unverified' },
-    { id: 'u1', verdict: 'unverifiable', effect: 'No dashboard access.' },
-  ] });
+  mgr.record({
+    job_id: view.job_id,
+    entries: [
+      { id: 'f1', verdict: 'unverified' },
+      { id: 'u1', verdict: 'unverifiable', effect: 'No dashboard access.' },
+    ],
+  });
   mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Measured.' }] });
   const { record } = mgr.view(view.job_id);
   assert.equal(record.entries.length, 2);
@@ -152,11 +155,14 @@ test('consult_list says which consultations have a verdict written and what the 
   assert.equal(before.recorded, false);
   assert.equal(before.verdicts, null);
 
-  mgr.record({ job_id: view.job_id, entries: [
-    { id: 'f1', verdict: 'confirmed' },
-    { id: 'c1', verdict: 'confirmed' },
-    { id: 'u1', verdict: 'unverified' },
-  ] });
+  mgr.record({
+    job_id: view.job_id,
+    entries: [
+      { id: 'f1', verdict: 'confirmed' },
+      { id: 'c1', verdict: 'confirmed' },
+      { id: 'u1', verdict: 'unverified' },
+    ],
+  });
   const after = mgr.list().find((j) => j.job_id === view.job_id);
   assert.equal(after.recorded, true);
   assert.deepEqual(after.verdicts, { confirmed: 2, unverified: 1 });
@@ -206,11 +212,14 @@ test('a completed consultation points at the record as the way it closes', async
 
 test('once every point carries a verdict, the consultation stops asking to be closed', async () => {
   const { mgr, view } = await completed();
-  mgr.record({ job_id: view.job_id, entries: [
-    { id: 'f1', verdict: 'confirmed' },
-    { id: 'u1', verdict: 'unverifiable' },
-    { id: 'c1', verdict: 'unverified', effect: 'Deferred to the load-test window.' },
-  ] });
+  mgr.record({
+    job_id: view.job_id,
+    entries: [
+      { id: 'f1', verdict: 'confirmed' },
+      { id: 'u1', verdict: 'unverifiable' },
+      { id: 'c1', verdict: 'unverified', effect: 'Deferred to the load-test window.' },
+    ],
+  });
   assert.doesNotMatch(mgr.view(view.job_id).next_step, /consult_record/);
 });
 
@@ -222,8 +231,10 @@ test('a prediction written when the consultation starts is stored with the round
   assert.equal(stored.expected, 'do_not_proceed');
   assert.equal(stored.worry, 'The write amplification will sink the primary.');
   assert.ok(stored.recorded_at, 'the record says when the prediction was written');
-  assert.ok(new Date(stored.recorded_at) <= new Date(roundFile(view).finished_at),
-    'a prediction is only a prediction if it predates the answer');
+  assert.ok(
+    new Date(stored.recorded_at) <= new Date(roundFile(view).finished_at),
+    'a prediction is only a prediction if it predates the answer',
+  );
 });
 
 test('the prediction is never sent to the consultant', async () => {
@@ -256,7 +267,7 @@ test('a prediction cannot be written once the answer is in', async () => {
   assert.equal(roundFile(view).prediction.expected, 'do_not_proceed', 'the stored prediction is untouched');
 });
 
-test('what the answer added is recorded in the lead\'s own words, not as a hit or a miss', async () => {
+test("what the answer added is recorded in the lead's own words, not as a hit or a miss", async () => {
   const { mgr, view } = await completed({ prediction });
   const out = mgr.record({
     job_id: view.job_id,

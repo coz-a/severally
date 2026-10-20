@@ -12,15 +12,18 @@ if (process.env.STUB_ENV_OUT) fs.writeFileSync(process.env.STUB_ENV_OUT, JSON.st
 // the only way a test can tell a file that actually reached the consultant
 // from one the brief merely claims is there.
 if (process.env.STUB_CWD_OUT) {
-  const list = (dir, prefix = '') => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (
-    e.isDirectory() ? list(path.join(dir, e.name), `${prefix}${e.name}/`) : [`${prefix}${e.name}`]
-  ));
+  const list = (dir, prefix = '') =>
+    fs
+      .readdirSync(dir, { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? list(path.join(dir, e.name), `${prefix}${e.name}/`) : [`${prefix}${e.name}`]));
   fs.writeFileSync(process.env.STUB_CWD_OUT, JSON.stringify(list(process.cwd())));
 }
 
 let stdin = '';
 process.stdin.setEncoding('utf8');
-process.stdin.on('data', (d) => { stdin += d; });
+process.stdin.on('data', (d) => {
+  stdin += d;
+});
 process.stdin.on('end', () => run());
 if (process.stdin.isTTY) run();
 
@@ -32,7 +35,15 @@ function answer(overrides = {}) {
     confidence: 'medium',
     evidence_basis: 'sufficient',
     stance: 'proceed',
-    findings: [{ point: 'Retry storm risk', grounds: 'The excerpt retries without a cap.', impact: 'Cascading load', severity: 'high', confidence: 'medium' }],
+    findings: [
+      {
+        point: 'Retry storm risk',
+        grounds: 'The excerpt retries without a cap.',
+        impact: 'Cascading load',
+        severity: 'high',
+        confidence: 'medium',
+      },
+    ],
     alternatives: [{ option: 'Token bucket', tradeoffs: 'More state', when_preferred: 'When bursts are common' }],
     unknowns: [{ item: 'Current QPS', why_it_matters: 'Sets the cap', how_to_obtain: 'Check the dashboard' }],
     decision_changers: [{ condition: 'QPS below 5', changes_to: 'No cap needed' }],
@@ -112,11 +123,16 @@ function run() {
   // _invalid: no answer, only the leftover process. _hang: the stub itself
   // wedges too, for a deadline or a cancel.
   if (behavior.startsWith('orphan_pipe')) {
-    const code = behavior.includes('stubborn') ? "process.on('SIGTERM',()=>{});setInterval(()=>{},1e9)" : 'setInterval(()=>{},1e9)';
+    const code = behavior.includes('stubborn')
+      ? "process.on('SIGTERM',()=>{});setInterval(()=>{},1e9)"
+      : 'setInterval(()=>{},1e9)';
     const gc = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'inherit', 'inherit'] });
     if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));
     out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
-    if (behavior.endsWith('_hang')) { setInterval(() => {}, 1e9); return; }
+    if (behavior.endsWith('_hang')) {
+      setInterval(() => {}, 1e9);
+      return;
+    }
     if (lastMessagePath && !behavior.endsWith('_invalid')) fs.writeFileSync(lastMessagePath, answer());
     // Give the grandchild a moment to start before the stub goes.
     setTimeout(() => process.exit(0), 200);
@@ -125,7 +141,10 @@ function run() {
   if (behavior === 'leak_secret') {
     out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
     if (lastMessagePath) {
-      fs.writeFileSync(lastMessagePath, answer({ summary: 'Use the key sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFF to authenticate.' }));
+      fs.writeFileSync(
+        lastMessagePath,
+        answer({ summary: 'Use the key sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFF to authenticate.' }),
+      );
     }
     process.exit(0);
   }

@@ -48,6 +48,1262 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/jsonc.mjs
+function stripJsonc(text2) {
+  const out = [];
+  let inString = false;
+  let i = 0;
+  const blankBack = () => {
+    for (let j = out.length - 1; j >= 0; j--) {
+      const c = out[j];
+      if (c === " " || c === "\n" || c === "\r" || c === "	") continue;
+      if (c === ",") out[j] = " ";
+      return;
+    }
+  };
+  while (i < text2.length) {
+    const c = text2[i];
+    const next = text2[i + 1];
+    if (inString) {
+      out.push(c);
+      if (c === "\\") {
+        out.push(next ?? "");
+        i += 2;
+        continue;
+      }
+      if (c === '"') inString = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out.push(c);
+      i++;
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      while (i < text2.length && text2[i] !== "\n") {
+        out.push(" ");
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      out.push(" ", " ");
+      i += 2;
+      while (i < text2.length && !(text2[i] === "*" && text2[i + 1] === "/")) {
+        out.push(text2[i] === "\n" ? "\n" : " ");
+        i++;
+      }
+      out.push(" ", " ");
+      i += 2;
+      continue;
+    }
+    if (c === "}" || c === "]") blankBack();
+    out.push(c);
+    i++;
+  }
+  return out.join("");
+}
+function parseJsonc(text2) {
+  return JSON.parse(stripJsonc(text2));
+}
+var init_jsonc = __esm({
+  "src/jsonc.mjs"() {
+  }
+});
+
+// node_modules/isexe/windows.js
+var require_windows = __commonJS({
+  "node_modules/isexe/windows.js"(exports, module) {
+    module.exports = isexe;
+    isexe.sync = sync;
+    var fs13 = __require("fs");
+    function checkPathExt(path14, options) {
+      var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
+      if (!pathext) {
+        return true;
+      }
+      pathext = pathext.split(";");
+      if (pathext.indexOf("") !== -1) {
+        return true;
+      }
+      for (var i = 0; i < pathext.length; i++) {
+        var p = pathext[i].toLowerCase();
+        if (p && path14.substr(-p.length).toLowerCase() === p) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function checkStat(stat, path14, options) {
+      if (!stat.isSymbolicLink() && !stat.isFile()) {
+        return false;
+      }
+      return checkPathExt(path14, options);
+    }
+    function isexe(path14, options, cb) {
+      fs13.stat(path14, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path14, options));
+      });
+    }
+    function sync(path14, options) {
+      return checkStat(fs13.statSync(path14), path14, options);
+    }
+  }
+});
+
+// node_modules/isexe/mode.js
+var require_mode = __commonJS({
+  "node_modules/isexe/mode.js"(exports, module) {
+    module.exports = isexe;
+    isexe.sync = sync;
+    var fs13 = __require("fs");
+    function isexe(path14, options, cb) {
+      fs13.stat(path14, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, options));
+      });
+    }
+    function sync(path14, options) {
+      return checkStat(fs13.statSync(path14), options);
+    }
+    function checkStat(stat, options) {
+      return stat.isFile() && checkMode(stat, options);
+    }
+    function checkMode(stat, options) {
+      var mod = stat.mode;
+      var uid = stat.uid;
+      var gid = stat.gid;
+      var myUid = options.uid !== void 0 ? options.uid : process.getuid && process.getuid();
+      var myGid = options.gid !== void 0 ? options.gid : process.getgid && process.getgid();
+      var u = parseInt("100", 8);
+      var g = parseInt("010", 8);
+      var o = parseInt("001", 8);
+      var ug = u | g;
+      var ret = mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
+      return ret;
+    }
+  }
+});
+
+// node_modules/isexe/index.js
+var require_isexe = __commonJS({
+  "node_modules/isexe/index.js"(exports, module) {
+    var fs13 = __require("fs");
+    var core;
+    if (process.platform === "win32" || global.TESTING_WINDOWS) {
+      core = require_windows();
+    } else {
+      core = require_mode();
+    }
+    module.exports = isexe;
+    isexe.sync = sync;
+    function isexe(path14, options, cb) {
+      if (typeof options === "function") {
+        cb = options;
+        options = {};
+      }
+      if (!cb) {
+        if (typeof Promise !== "function") {
+          throw new TypeError("callback not provided");
+        }
+        return new Promise(function(resolve, reject) {
+          isexe(path14, options || {}, function(er, is) {
+            if (er) {
+              reject(er);
+            } else {
+              resolve(is);
+            }
+          });
+        });
+      }
+      core(path14, options || {}, function(er, is) {
+        if (er) {
+          if (er.code === "EACCES" || options && options.ignoreErrors) {
+            er = null;
+            is = false;
+          }
+        }
+        cb(er, is);
+      });
+    }
+    function sync(path14, options) {
+      try {
+        return core.sync(path14, options || {});
+      } catch (er) {
+        if (options && options.ignoreErrors || er.code === "EACCES") {
+          return false;
+        } else {
+          throw er;
+        }
+      }
+    }
+  }
+});
+
+// node_modules/which/which.js
+var require_which = __commonJS({
+  "node_modules/which/which.js"(exports, module) {
+    var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
+    var path14 = __require("path");
+    var COLON = isWindows ? ";" : ":";
+    var isexe = require_isexe();
+    var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
+    var getPathInfo = (cmd, opt) => {
+      const colon = opt.colon || COLON;
+      const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
+        // windows always checks the cwd first
+        ...isWindows ? [process.cwd()] : [],
+        ...(opt.path || process.env.PATH || /* istanbul ignore next: very unusual */
+        "").split(colon)
+      ];
+      const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
+      const pathExt = isWindows ? pathExtExe.split(colon) : [""];
+      if (isWindows) {
+        if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
+          pathExt.unshift("");
+      }
+      return {
+        pathEnv,
+        pathExt,
+        pathExtExe
+      };
+    };
+    var which2 = (cmd, opt, cb) => {
+      if (typeof opt === "function") {
+        cb = opt;
+        opt = {};
+      }
+      if (!opt)
+        opt = {};
+      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+      const found = [];
+      const step = (i) => new Promise((resolve, reject) => {
+        if (i === pathEnv.length)
+          return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+        const ppRaw = pathEnv[i];
+        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+        const pCmd = path14.join(pathPart, cmd);
+        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+        resolve(subStep(p, i, 0));
+      });
+      const subStep = (p, i, ii) => new Promise((resolve, reject) => {
+        if (ii === pathExt.length)
+          return resolve(step(i + 1));
+        const ext = pathExt[ii];
+        isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
+          if (!er && is) {
+            if (opt.all)
+              found.push(p + ext);
+            else
+              return resolve(p + ext);
+          }
+          return resolve(subStep(p, i, ii + 1));
+        });
+      });
+      return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
+    };
+    var whichSync = (cmd, opt) => {
+      opt = opt || {};
+      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+      const found = [];
+      for (let i = 0; i < pathEnv.length; i++) {
+        const ppRaw = pathEnv[i];
+        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+        const pCmd = path14.join(pathPart, cmd);
+        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+        for (let j = 0; j < pathExt.length; j++) {
+          const cur = p + pathExt[j];
+          try {
+            const is = isexe.sync(cur, { pathExt: pathExtExe });
+            if (is) {
+              if (opt.all)
+                found.push(cur);
+              else
+                return cur;
+            }
+          } catch (ex) {
+          }
+        }
+      }
+      if (opt.all && found.length)
+        return found;
+      if (opt.nothrow)
+        return null;
+      throw getNotFoundError(cmd);
+    };
+    module.exports = which2;
+    which2.sync = whichSync;
+  }
+});
+
+// node_modules/path-key/index.js
+var require_path_key = __commonJS({
+  "node_modules/path-key/index.js"(exports, module) {
+    "use strict";
+    var pathKey = (options = {}) => {
+      const environment = options.env || process.env;
+      const platform = options.platform || process.platform;
+      if (platform !== "win32") {
+        return "PATH";
+      }
+      return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
+    };
+    module.exports = pathKey;
+    module.exports.default = pathKey;
+  }
+});
+
+// node_modules/cross-spawn/lib/util/resolveCommand.js
+var require_resolveCommand = __commonJS({
+  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
+    "use strict";
+    var path14 = __require("path");
+    var which2 = require_which();
+    var getPathKey = require_path_key();
+    function resolveCommandAttempt(parsed, withoutPathExt) {
+      const env = parsed.options.env || process.env;
+      const cwd = process.cwd();
+      const hasCustomCwd = parsed.options.cwd != null;
+      const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
+      if (shouldSwitchCwd) {
+        try {
+          process.chdir(parsed.options.cwd);
+        } catch (err) {
+        }
+      }
+      let resolved;
+      try {
+        resolved = which2.sync(parsed.command, {
+          path: env[getPathKey({ env })],
+          pathExt: withoutPathExt ? path14.delimiter : void 0
+        });
+      } catch (e) {
+      } finally {
+        if (shouldSwitchCwd) {
+          process.chdir(cwd);
+        }
+      }
+      if (resolved) {
+        resolved = path14.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+      }
+      return resolved;
+    }
+    function resolveCommand(parsed) {
+      return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
+    }
+    module.exports = resolveCommand;
+  }
+});
+
+// node_modules/cross-spawn/lib/util/escape.js
+var require_escape = __commonJS({
+  "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
+    "use strict";
+    var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
+    function escapeCommand(arg) {
+      arg = arg.replace(metaCharsRegExp, "^$1");
+      return arg;
+    }
+    function escapeArgument(arg, doubleEscapeMetaChars) {
+      arg = `${arg}`;
+      arg = arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+      arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
+      arg = `"${arg}"`;
+      arg = arg.replace(metaCharsRegExp, "^$1");
+      if (doubleEscapeMetaChars) {
+        arg = arg.replace(metaCharsRegExp, "^$1");
+      }
+      return arg;
+    }
+    module.exports.command = escapeCommand;
+    module.exports.argument = escapeArgument;
+  }
+});
+
+// node_modules/shebang-regex/index.js
+var require_shebang_regex = __commonJS({
+  "node_modules/shebang-regex/index.js"(exports, module) {
+    "use strict";
+    module.exports = /^#!(.*)/;
+  }
+});
+
+// node_modules/shebang-command/index.js
+var require_shebang_command = __commonJS({
+  "node_modules/shebang-command/index.js"(exports, module) {
+    "use strict";
+    var shebangRegex = require_shebang_regex();
+    module.exports = (string4 = "") => {
+      const match = string4.match(shebangRegex);
+      if (!match) {
+        return null;
+      }
+      const [path14, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path14.split("/").pop();
+      if (binary === "env") {
+        return argument;
+      }
+      return argument ? `${binary} ${argument}` : binary;
+    };
+  }
+});
+
+// node_modules/cross-spawn/lib/util/readShebang.js
+var require_readShebang = __commonJS({
+  "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
+    "use strict";
+    var fs13 = __require("fs");
+    var shebangCommand = require_shebang_command();
+    function readShebang(command) {
+      const size = 150;
+      const buffer = Buffer.alloc(size);
+      let fd;
+      try {
+        fd = fs13.openSync(command, "r");
+        fs13.readSync(fd, buffer, 0, size, 0);
+        fs13.closeSync(fd);
+      } catch (e) {
+      }
+      return shebangCommand(buffer.toString());
+    }
+    module.exports = readShebang;
+  }
+});
+
+// node_modules/cross-spawn/lib/parse.js
+var require_parse = __commonJS({
+  "node_modules/cross-spawn/lib/parse.js"(exports, module) {
+    "use strict";
+    var path14 = __require("path");
+    var resolveCommand = require_resolveCommand();
+    var escape3 = require_escape();
+    var readShebang = require_readShebang();
+    var isWin = process.platform === "win32";
+    var isExecutableRegExp = /\.(?:com|exe)$/i;
+    var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
+    function detectShebang(parsed) {
+      parsed.file = resolveCommand(parsed);
+      const shebang = parsed.file && readShebang(parsed.file);
+      if (shebang) {
+        parsed.args.unshift(parsed.file);
+        parsed.command = shebang;
+        return resolveCommand(parsed);
+      }
+      return parsed.file;
+    }
+    function parseNonShell(parsed) {
+      if (!isWin) {
+        return parsed;
+      }
+      const commandFile = detectShebang(parsed);
+      const needsShell = !isExecutableRegExp.test(commandFile);
+      if (parsed.options.forceShell || needsShell) {
+        const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
+        parsed.command = path14.normalize(parsed.command);
+        parsed.command = escape3.command(parsed.command);
+        parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
+        const shellCommand = [parsed.command].concat(parsed.args).join(" ");
+        parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
+        parsed.command = process.env.comspec || "cmd.exe";
+        parsed.options.windowsVerbatimArguments = true;
+      }
+      return parsed;
+    }
+    function parse3(command, args, options) {
+      if (args && !Array.isArray(args)) {
+        options = args;
+        args = null;
+      }
+      args = args ? args.slice(0) : [];
+      options = Object.assign({}, options);
+      const parsed = {
+        command,
+        args,
+        options,
+        file: void 0,
+        original: {
+          command,
+          args
+        }
+      };
+      return options.shell ? parsed : parseNonShell(parsed);
+    }
+    module.exports = parse3;
+  }
+});
+
+// node_modules/cross-spawn/lib/enoent.js
+var require_enoent = __commonJS({
+  "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
+    "use strict";
+    var isWin = process.platform === "win32";
+    function notFoundError(original, syscall) {
+      return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
+        code: "ENOENT",
+        errno: "ENOENT",
+        syscall: `${syscall} ${original.command}`,
+        path: original.command,
+        spawnargs: original.args
+      });
+    }
+    function hookChildProcess(cp, parsed) {
+      if (!isWin) {
+        return;
+      }
+      const originalEmit = cp.emit;
+      cp.emit = function(name, arg1) {
+        if (name === "exit") {
+          const err = verifyENOENT(arg1, parsed);
+          if (err) {
+            return originalEmit.call(cp, "error", err);
+          }
+        }
+        return originalEmit.apply(cp, arguments);
+      };
+    }
+    function verifyENOENT(status2, parsed) {
+      if (isWin && status2 === 1 && !parsed.file) {
+        return notFoundError(parsed.original, "spawn");
+      }
+      return null;
+    }
+    function verifyENOENTSync(status2, parsed) {
+      if (isWin && status2 === 1 && !parsed.file) {
+        return notFoundError(parsed.original, "spawnSync");
+      }
+      return null;
+    }
+    module.exports = {
+      hookChildProcess,
+      verifyENOENT,
+      verifyENOENTSync,
+      notFoundError
+    };
+  }
+});
+
+// node_modules/cross-spawn/index.js
+var require_cross_spawn = __commonJS({
+  "node_modules/cross-spawn/index.js"(exports, module) {
+    "use strict";
+    var cp = __require("child_process");
+    var parse3 = require_parse();
+    var enoent = require_enoent();
+    function spawn2(command, args, options) {
+      const parsed = parse3(command, args, options);
+      const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
+      enoent.hookChildProcess(spawned, parsed);
+      return spawned;
+    }
+    function spawnSync2(command, args, options) {
+      const parsed = parse3(command, args, options);
+      const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
+      result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
+      return result;
+    }
+    module.exports = spawn2;
+    module.exports.spawn = spawn2;
+    module.exports.sync = spawnSync2;
+    module.exports._parse = parse3;
+    module.exports._enoent = enoent;
+  }
+});
+
+// src/platform.mjs
+import fs from "node:fs";
+import path from "node:path";
+import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from "node:child_process";
+function batchInvocation(command, args, options) {
+  if (process.platform !== "win32") return null;
+  const resolved = findCommand(command, options);
+  if (!resolved || !/\.(cmd|bat)$/i.test(resolved)) return null;
+  const forwarding = /%\*/.test(fs.readFileSync(resolved, "utf8"));
+  const line = [import_escape.default.command(resolved), ...args.map((arg) => import_escape.default.argument(arg, forwarding))].join(" ");
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", `"${line}"`],
+    options: { ...options, windowsHide: true, windowsVerbatimArguments: true }
+  };
+}
+function spawnCommand(command, args, options = {}) {
+  const batch = batchInvocation(command, args, options);
+  return batch ? nativeSpawn(batch.command, batch.args, batch.options) : (0, import_cross_spawn.default)(command, args, options);
+}
+function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
+  if (typeof command !== "string" || !command) return null;
+  cwd = path.resolve(cwd);
+  const windows = process.platform === "win32";
+  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
+  const explicit = command.includes("/") || windows && command.includes("\\");
+  const dirs = explicit ? [cwd] : [...windows ? [cwd] : [], ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)];
+  for (const dir of dirs) {
+    const candidate = path.resolve(cwd, dir.replace(/^"(.*)"$/, "$1"), command);
+    const found = import_which.default.sync(candidate, { nothrow: true, pathExt: value("PATHEXT") });
+    if (found) return found;
+  }
+  if (explicit) {
+    const candidate = path.resolve(cwd, command);
+    try {
+      if (!fs.statSync(candidate).isFile()) return null;
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+    }
+  }
+  return null;
+}
+function execCommandSync(command, args, options = {}) {
+  const opts = { windowsHide: true, encoding: "utf8", ...options };
+  const batch = batchInvocation(command, args, opts);
+  const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
+  }
+  return result.stdout;
+}
+var import_which, import_cross_spawn, import_escape;
+var init_platform = __esm({
+  "src/platform.mjs"() {
+    import_which = __toESM(require_which(), 1);
+    import_cross_spawn = __toESM(require_cross_spawn(), 1);
+    import_escape = __toESM(require_escape(), 1);
+  }
+});
+
+// src/consultants.mjs
+function normalizeName(raw) {
+  if (typeof raw !== "string") return raw;
+  return raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+function modelWords(model) {
+  const s2 = String(model ?? "").toLowerCase();
+  return s2.slice(s2.lastIndexOf("/") + 1).split(/[-._#:\s]+/).filter(Boolean);
+}
+function modelStem(model) {
+  const words = modelWords(model);
+  const at = words.findIndex(isDigitWord);
+  return at === -1 ? words : words.slice(0, at);
+}
+function modelVersion(model) {
+  const words = modelWords(model);
+  const at = words.findIndex(isDigitWord);
+  if (at === -1) return null;
+  const digits = [];
+  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, "")));
+  return digits;
+}
+function vendorOf(model, explicit = null) {
+  if (typeof explicit === "string" && explicit.trim() !== "") return explicit.trim().toLowerCase();
+  const first = modelStem(model)[0] ?? "";
+  if (/^o\d/.test(first)) return "openai";
+  return STEM_VENDORS[first] ?? null;
+}
+function matchesWords(model, wanted) {
+  return containsRun(modelWords(model), modelWords(wanted));
+}
+function byRanking(cands, ranking) {
+  const index = (c) => {
+    const i = ranking.findIndex((r) => normalizeName(r) === normalizeName(c.name) || matchesWords(c.model, r));
+    return i === -1 ? Infinity : i;
+  };
+  const best = Math.min(...cands.map(index));
+  return best === Infinity ? cands : cands.filter((c) => index(c) === best);
+}
+function byTier(cands, tier) {
+  if (!tier.family(cands)) return cands;
+  const rank = (c) => {
+    const words = modelWords(c.model);
+    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
+  };
+  const ranks = cands.map(rank);
+  if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
+  const best = Math.min(...ranks);
+  return cands.filter((_, i) => ranks[i] === best);
+}
+function byVersion(cands) {
+  const stem = modelStem(cands[0].model).join("-");
+  const versions = cands.map((c) => modelVersion(c.model));
+  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
+  const best = versions.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
+  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
+}
+function rankCandidates(cands, ranking = []) {
+  let left = byRanking(cands, ranking);
+  for (const tier of TIERS) {
+    if (left.length === 1) break;
+    left = byTier(left, tier);
+  }
+  if (left.length > 1) left = byVersion(left);
+  return left.length === 1 ? left[0] : null;
+}
+function resolveConsultant(input2, consultants, ranking = []) {
+  const key = normalizeName(input2);
+  if (typeof key !== "string" || key === "") return { none: true };
+  const own2 = consultants.find((c) => normalizeName(c.name) === key);
+  if (own2) return { consultant: own2 };
+  let cands;
+  if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
+  else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
+  else cands = consultants.filter((c) => matchesWords(c.model, input2));
+  if (cands.length === 0) return { none: true };
+  if (cands.length === 1) return { consultant: cands[0] };
+  const winner = rankCandidates(cands, ranking);
+  return winner ? { consultant: winner } : { ambiguous: cands };
+}
+function sameModel(callerModel, consultantModel) {
+  const a = modelWords(callerModel);
+  const b = modelWords(consultantModel);
+  if (a.length && a.length === b.length && a.every((w, i) => w === b[i])) return "same";
+  if (containsRun(a, b) || containsRun(b, a)) return "unknown";
+  return "different";
+}
+function buildConsultants(config2) {
+  const problems = [];
+  const global2 = [];
+  const broken = {};
+  const brokenClis = {};
+  const fault = (msg) => {
+    problems.push(msg);
+    global2.push(msg);
+  };
+  const cfg = isObject(config2) ? config2 : {};
+  if (!isObject(config2)) fault("the config file must hold a JSON object");
+  for (const key of Object.keys(cfg)) {
+    if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
+  }
+  if (isObject(cfg.server) && cfg.server.network !== void 0 && !["on", "off"].includes(cfg.server.network)) {
+    fault('server.network must be "on" or "off"');
+  }
+  let ranking = [];
+  if (cfg.ranking !== void 0) {
+    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== ""))
+      ranking = cfg.ranking.map((r) => r.trim());
+    else fault("ranking must be an array of non-empty strings");
+  }
+  if (cfg.clis !== void 0) {
+    if (!isObject(cfg.clis)) fault("clis must be an object keyed by CLI");
+    else {
+      for (const [id2, def] of Object.entries(cfg.clis)) {
+        if (!CLI_IDS.includes(id2)) {
+          problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
+          continue;
+        }
+        const before = problems.length;
+        if (!isObject(def)) {
+          problems.push(`clis.${id2} must be an object`);
+          brokenClis[id2] = problems.slice(before);
+          continue;
+        }
+        for (const k of Object.keys(def))
+          if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
+        if (def.enabled !== void 0 && typeof def.enabled !== "boolean")
+          problems.push(`clis.${id2}.enabled: must be true or false`);
+        for (const k of ["bin", "note"])
+          if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`clis.${id2}.${k}: must be a string`);
+        if (def.args !== void 0 && !(Array.isArray(def.args) && def.args.every((a) => typeof a === "string")))
+          problems.push(`clis.${id2}.args: must be an array of strings`);
+        if (def.env !== void 0 && !(isObject(def.env) && Object.values(def.env).every((v) => typeof v === "string")))
+          problems.push(`clis.${id2}.env: must be an object of strings`);
+        if (def.provider !== void 0) {
+          if (id2 !== "opencode") problems.push(`clis.${id2}.provider: only OpenCode takes provider definitions`);
+          else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject)))
+            problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
+        }
+        if (problems.length > before) brokenClis[id2] = problems.slice(before);
+      }
+    }
+  }
+  const consultants = [];
+  if (cfg.consultants === void 0) {
+    for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
+  } else if (!isObject(cfg.consultants)) {
+    fault("consultants must be an object keyed by name");
+  } else {
+    const seen = /* @__PURE__ */ new Map();
+    for (const [name, def] of Object.entries(cfg.consultants)) {
+      const at = `consultants.${name}`;
+      if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) {
+        problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`);
+        continue;
+      }
+      if (RESERVED_NAMES.includes(name)) {
+        problems.push(`${at}: "${name}" is reserved`);
+        continue;
+      }
+      const before = problems.length;
+      if (!isObject(def)) {
+        problems.push(`${at} must be an object`);
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      for (const k of Object.keys(def))
+        if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
+      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
+      if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
+      for (const k of ["effort", "vendor", "note"]) {
+        if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
+      }
+      if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`${at}.enabled: must be true or false`);
+      for (const k of ["timeout_ms", "max_budget_usd"]) {
+        if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k])))
+          problems.push(`${at}.${k}: must be a number`);
+      }
+      if (def.max_budget_usd !== void 0 && def.cli !== "claude-code")
+        problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
+      if (def.effort !== void 0 && def.cli === "antigravity")
+        problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
+      if (problems.length > before) {
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      const pair = `${def.cli}
+${def.model.trim()}`;
+      if (seen.has(pair)) {
+        problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      seen.set(pair, name);
+      consultants.push(make(name, def));
+    }
+  }
+  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
+}
+function make(name, def) {
+  const model = def.model.trim();
+  return Object.freeze({
+    name,
+    cli: def.cli,
+    model,
+    effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
+    timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
+    maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
+    vendor: vendorOf(model, def.vendor ?? null),
+    enabled: def.enabled !== false,
+    note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
+  });
+}
+var CLI_IDS, DEFAULT_MODELS, CLI_VENDORS, table, CLI_ALIASES, VENDOR_WORDS, STEM_VENDORS, sameStem, TIERS, RESERVED_NAMES, isDigitWord, containsRun, compareVersions, TOP_KEYS, CLI_KEYS, CONSULTANT_KEYS, isObject, clamp;
+var init_consultants = __esm({
+  "src/consultants.mjs"() {
+    CLI_IDS = Object.freeze(["codex", "claude-code", "antigravity", "opencode"]);
+    DEFAULT_MODELS = Object.freeze({
+      codex: "gpt-6-astra",
+      "claude-code": "claude-opus-5-5",
+      antigravity: "gemini-4-argon-high",
+      opencode: "zai-coding-plan/glm-5.3"
+    });
+    CLI_VENDORS = Object.freeze({ codex: "openai", "claude-code": "anthropic", antigravity: "google", opencode: null });
+    table = (entries) => Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), entries));
+    CLI_ALIASES = table({
+      codex: "codex",
+      "claude-code": "claude-code",
+      antigravity: "antigravity",
+      agy: "antigravity",
+      opencode: "opencode"
+    });
+    VENDOR_WORDS = table({ openai: "openai", chatgpt: "openai", anthropic: "anthropic", google: "google" });
+    STEM_VENDORS = table({
+      gpt: "openai",
+      claude: "anthropic",
+      gemini: "google",
+      glm: "zai",
+      deepseek: "deepseek",
+      nemotron: "nvidia"
+    });
+    sameStem = (cands) => new Set(cands.map((c) => modelStem(c.model).join("-"))).size === 1;
+    TIERS = Object.freeze([
+      { words: ["opus", "sonnet", "haiku"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "claude") },
+      { words: ["ultra", "pro", "flash", "lite"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "gemini") },
+      // Effort words: the last word of the name, between otherwise like models.
+      { words: ["max", "xhigh", "high", "medium", "low"], family: sameStem, last: true }
+    ]);
+    RESERVED_NAMES = Object.freeze(["all"]);
+    isDigitWord = (w) => /^v?\d+$/.test(w);
+    containsRun = (hay, needle) => needle.length > 0 && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
+    compareVersions = (a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const d = (a[i] ?? -1) - (b[i] ?? -1);
+        if (d !== 0) return d;
+      }
+      return 0;
+    };
+    TOP_KEYS = ["server", "clis", "consultants", "ranking"];
+    CLI_KEYS = ["enabled", "note", "bin", "args", "env", "provider"];
+    CONSULTANT_KEYS = ["cli", "model", "effort", "timeout_ms", "max_budget_usd", "vendor", "enabled", "note"];
+    isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+  }
+});
+
+// src/policy.mjs
+import fs2 from "node:fs";
+import os from "node:os";
+import path2 from "node:path";
+function configProblem() {
+  return configError;
+}
+function configWarnings() {
+  return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
+}
+function brokenConsultantNames() {
+  return configError ? [] : Object.keys(BUILT.broken);
+}
+function brokenConsultant(name) {
+  const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
+  return p ? `the config file has a mistake in it: ${p.join("; ")}` : null;
+}
+function isInstalled(command) {
+  return findCommand(command) !== null;
+}
+function resolveCaller(raw) {
+  const key = normalizeName(raw);
+  return typeof key === "string" && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
+}
+function detectCaller(env = process.env) {
+  if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
+  if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return "codex";
+  if (Object.keys(env).some((k) => k.startsWith("AGY_") || k.startsWith("ANTIGRAVITY_"))) return "antigravity";
+  return null;
+}
+function expandHome(value) {
+  if (typeof value !== "string") return value;
+  if (value === "~") return os.homedir();
+  return /^~[\\/]/.test(value) ? path2.join(os.homedir(), value.slice(2)) : value;
+}
+function timeoutMs(consultant) {
+  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 18e5, 1e3, 72e5);
+}
+function agyExitGraceMs() {
+  return {
+    afterResult: limit("SEVERALLY_AGY_AFTER_RESULT_MS", void 0, 1e4, 100, 6e5),
+    afterFinish: limit("SEVERALLY_AGY_AFTER_FINISH_MS", void 0, 6e4, 100, 6e5)
+  };
+}
+function credentialsHome() {
+  return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
+}
+function opencodeCredentialsHome() {
+  return str("SEVERALLY_OPENCODE_CRED_HOME", os.homedir());
+}
+function protectedRoots() {
+  const fwd = (p) => p.replaceAll("\\", "/");
+  return [
+    ...PROTECTED_HOME_PATHS.map((rel) => fwd(path2.join(os.homedir(), rel))),
+    ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path2.join(POLICY.home, rel)))
+  ];
+}
+function protectedRootPatterns(extraRoots = []) {
+  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map(
+    (r) => `^${escapeRe(r.replace(/\/+$/, "")).replaceAll("*", "[^/]+")}(/|$)`
+  );
+}
+function protectedNamePatterns() {
+  return PROTECTED_FILE_NAMES.map((n) => `^${escapeRe(n).replaceAll("*", ".*")}$`);
+}
+function isProtectedPath(abs) {
+  const flags = PATHS_CASE_INSENSITIVE ? "i" : "";
+  const roots = protectedRootPatterns().map((p) => new RegExp(p, flags));
+  const names = protectedNamePatterns().map((p) => new RegExp(p, flags));
+  let real = abs;
+  try {
+    real = fs2.realpathSync.native(abs);
+  } catch {
+  }
+  return [abs, real].some((p) => {
+    const fwd = p.replaceAll("\\", "/");
+    return roots.some((re) => re.test(fwd)) || names.some((re) => re.test(path2.basename(fwd)));
+  });
+}
+function consultantByName(name) {
+  return POLICY.consultants.find((c) => c.name === name);
+}
+function consultantAvailable(c) {
+  return c.enabled && POLICY.clis[c.cli].available;
+}
+function unavailableReason(c) {
+  if (!c || consultantAvailable(c)) return null;
+  if (!c.enabled) return c.note ?? "turned off in the operator configuration";
+  const cli = POLICY.clis[c.cli];
+  if (cli.note) return cli.note;
+  if (!isInstalled(cli.cli)) return `${cli.cli} is not installed here`;
+  return "turned off in the operator configuration";
+}
+function availableConsultants() {
+  return POLICY.consultants.filter(consultantAvailable);
+}
+function limitsSummary() {
+  const list = availableConsultants();
+  const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
+  return {
+    available_targets: list.map((c) => c.name),
+    // A consultant or CLI out of use because of a mistake in its own section.
+    ...LOCAL.length ? { config_mistakes: configWarnings() } : {},
+    clis: by((c) => c.cli),
+    models: by((c) => c.model),
+    // Per consultant, because they no longer share one budget.
+    timeout_ms: by(timeoutMs),
+    max_rounds_per_chain: POLICY.maxRounds,
+    // "off": the operator has taken the web away from every consultation.
+    network: POLICY.network,
+    max_concurrent_jobs: POLICY.maxConcurrent,
+    max_wait_ms: POLICY.maxWaitMs,
+    input_char_budget: POLICY.input.totalCharsMax,
+    // Stated so it is true of all three consultants. Reading is allowed for
+    // every one of them -- what keeps a consultation brief-only is that the
+    // child starts in an empty working directory and is never told where the
+    // repository is, not that it cannot read. Codex is additionally sandboxed
+    // read-only rather than execution-free, so do not advertise "no execution".
+    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is -- unless context.expose_paths names files or directories, which are copied read-only into that working directory and are then the only part of your repository it has; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
+  };
+}
+var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
+var init_policy = __esm({
+  "src/policy.mjs"() {
+    init_jsonc();
+    init_platform();
+    init_consultants();
+    CONFIG_HOME = process.env.SEVERALLY_HOME || path2.join(os.homedir(), ".severally");
+    CONFIG_PATH = process.env.SEVERALLY_CONFIG || [path2.join(CONFIG_HOME, "config.jsonc"), path2.join(CONFIG_HOME, "config.json")].find((p) => fs2.existsSync(p)) || path2.join(CONFIG_HOME, "config.json");
+    configError = null;
+    CONFIG = (() => {
+      try {
+        return parseJsonc(fs2.readFileSync(CONFIG_PATH, "utf8"));
+      } catch (err) {
+        if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
+        return {};
+      }
+    })();
+    BUILT = buildConsultants(CONFIG);
+    if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join("; ")}`;
+    if (!configError && ![void 0, "", "on", "off"].includes(process.env.SEVERALLY_NETWORK)) {
+      configError = `SEVERALLY_NETWORK must be "on" or "off", not ${JSON.stringify(process.env.SEVERALLY_NETWORK)}`;
+    }
+    FROM = configError ? buildConsultants({}) : BUILT;
+    LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
+    usable = configError ? {} : CONFIG;
+    cfgCli = (id2) => {
+      if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
+        return {
+          enabled: false,
+          note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}`
+        };
+      }
+      return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
+    };
+    cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
+    num = (name, dflt, min, max) => {
+      const raw = process.env[name];
+      if (raw === void 0 || raw === "") return dflt;
+      const v = Number(raw);
+      if (!Number.isFinite(v)) return dflt;
+      return Math.min(max, Math.max(min, v));
+    };
+    limit = (name, fromCfg, dflt, min, max) => {
+      const fromEnv = num(name, null, min, max);
+      if (fromEnv !== null) return fromEnv;
+      if (typeof fromCfg === "number" && Number.isFinite(fromCfg)) return Math.min(max, Math.max(min, fromCfg));
+      return dflt;
+    };
+    str = (name, dflt) => {
+      const raw = process.env[name];
+      return raw === void 0 || raw === "" ? dflt : raw;
+    };
+    CALLER_ALIASES = Object.freeze(
+      Object.assign(/* @__PURE__ */ Object.create(null), {
+        codex: "codex",
+        gpt: "codex",
+        chatgpt: "codex",
+        openai: "codex",
+        "claude-code": "claude-code",
+        claude: "claude-code",
+        anthropic: "claude-code",
+        antigravity: "antigravity",
+        agy: "antigravity",
+        gemini: "antigravity",
+        google: "antigravity",
+        opencode: "opencode",
+        glm: "opencode"
+      })
+    );
+    CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
+    MODES = ["explore", "review", "debate"];
+    VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
+    STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
+    binFor = (id2, envName, dflt) => {
+      const fromEnv = process.env[envName];
+      if (fromEnv !== void 0 && fromEnv !== "") return expandHome(fromEnv);
+      const fromCfg = cfgCli(id2).bin;
+      return expandHome(typeof fromCfg === "string" && fromCfg !== "" ? fromCfg : dflt);
+    };
+    disabledNote = (id2) => {
+      const n = cfgCli(id2).note;
+      return typeof n === "string" && n.trim() !== "" ? n.trim() : null;
+    };
+    isEnabled = (id2, cli) => {
+      const flag = cfgCli(id2).enabled;
+      if (typeof flag === "boolean") return flag;
+      return isInstalled(cli);
+    };
+    CODEX_BIN = binFor("codex", "SEVERALLY_CODEX_BIN", "codex");
+    CLAUDE_BIN = binFor("claude-code", "SEVERALLY_CLAUDE_BIN", "claude");
+    AGY_BIN = binFor("antigravity", "SEVERALLY_AGY_BIN", "agy");
+    OPENCODE_BIN = binFor("opencode", "SEVERALLY_OPENCODE_BIN", "opencode");
+    extras = (id2) => ({ extraArgs: cfgCli(id2).args ?? [], extraEnv: cfgCli(id2).env ?? {} });
+    POLICY = Object.freeze({
+      home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
+      // Per CLI: how to launch it and whether it can run here. What runs on it is
+      // a consultant's business.
+      clis: Object.freeze({
+        codex: Object.freeze({
+          cli: CODEX_BIN,
+          available: isEnabled("codex", CODEX_BIN),
+          note: disabledNote("codex"),
+          label: "Codex CLI",
+          ...extras("codex")
+        }),
+        "claude-code": Object.freeze({
+          cli: CLAUDE_BIN,
+          available: isEnabled("claude-code", CLAUDE_BIN),
+          note: disabledNote("claude-code"),
+          label: "Claude Code CLI",
+          ...extras("claude-code")
+        }),
+        // Where the real Antigravity credentials live is credentialsHome() below,
+        // not a field here: the sandbox reads it per job (see timeoutMs()).
+        antigravity: Object.freeze({
+          cli: AGY_BIN,
+          available: isEnabled("antigravity", AGY_BIN),
+          note: disabledNote("antigravity"),
+          label: "Antigravity CLI",
+          ...extras("antigravity")
+        }),
+        opencode: Object.freeze({
+          cli: OPENCODE_BIN,
+          available: isEnabled("opencode", OPENCODE_BIN),
+          note: disabledNote("opencode"),
+          label: "OpenCode CLI",
+          ...extras("opencode"),
+          // opencode.json `provider` definitions copied into the sandbox config:
+          // the only way to reach a provider the sandbox's empty HOME would not
+          // know, such as a local OpenAI-compatible server.
+          provider: cfgCli("opencode").provider ?? {}
+        })
+      }),
+      // Who can be asked, in config order, and how a name that fits several is
+      // settled. See consultants.mjs.
+      consultants: FROM.consultants,
+      ranking: FROM.ranking,
+      // Grace period between SIGTERM and SIGKILL of the child process group.
+      killGraceMs: limit("SEVERALLY_KILL_GRACE_MS", cfgServer.kill_grace_ms, 5e3, 500, 6e4),
+      // Automatic re-runs of a consultation that failed with a transient error
+      // (rate_limited, cli_error), inside the job's original time budget. The
+      // wait before the n-th re-run is retryBackoffMs * 3^(n-1).
+      maxAutoRetries: limit("SEVERALLY_MAX_AUTO_RETRIES", cfgServer.max_auto_retries, 2, 0, 3),
+      retryBackoffMs: limit("SEVERALLY_RETRY_BACKOFF_MS", cfgServer.retry_backoff_ms, 5e3, 0, 6e4),
+      // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
+      maxRounds: limit("SEVERALLY_MAX_ROUNDS", cfgServer.max_rounds, 5, 1, 20),
+      // Default 9 so several independent consultations can run at once; a
+      // "consult everyone" fan-out (the three peers plus a fresh session of the
+      // caller's own CLI) fits well inside it. The ceiling equals the default:
+      // going beyond that is an operator decision with quota to match.
+      maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
+      maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
+      // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
+      // clients allow a tool call, so a long wait does not blow up as a client-side
+      // timeout while the consultation is still healthy; a client registration
+      // that is known to wait longer raises it (scripts/install.mjs).
+      // "off" takes the web away from every consultation, whatever the request
+      // asks; "on" leaves it to each request's own network.
+      // Either source can close it; neither can reopen what the other closed.
+      network: [process.env.SEVERALLY_NETWORK, cfgServer.network].includes("off") ? "off" : "on",
+      maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
+      input: Object.freeze({
+        questionMax: 4e3,
+        objectiveMax: 4e3,
+        proposalMax: 2e4,
+        constraintMax: 1e3,
+        constraintsMax: 20,
+        factMax: 6e3,
+        factsMax: 40,
+        counterpointMax: 4e3,
+        counterpointsMax: 20,
+        artifactsMax: 10,
+        artifactExcerptMax: 2e4,
+        artifactNameMax: 200,
+        // expose_paths: how many paths a lead may name, and what the copy of
+        // them may add up to. Fixed like every other input cap -- a consultant
+        // that can be pointed at more of the disk by configuration is a
+        // different consultant, not a tuned one.
+        exposePathsMax: 20,
+        exposeFilesMax: 500,
+        exposeBytesMax: 5e6,
+        totalCharsMax: 12e4
+      }),
+      output: Object.freeze({
+        // Raw child stdout/stderr kept per stream before truncation.
+        rawCaptureMax: 4e5,
+        summaryMax: 8e3,
+        itemTextMax: 4e3,
+        listMax: 30,
+        referencesMax: 40
+      })
+    });
+    PROTECTED_HOME_PATHS = Object.freeze([
+      ".ssh",
+      ".gnupg",
+      ".aws",
+      ".azure",
+      ".kube",
+      ".docker",
+      ".config/gcloud",
+      ".config/gh",
+      ".config/hub",
+      ".netrc",
+      ".npmrc",
+      ".pypirc",
+      ".git-credentials",
+      ".cargo/credentials",
+      ".cargo/credentials.toml",
+      ".terraform.d",
+      ".vault-token",
+      "Library/Keychains",
+      ".codex",
+      ".claude",
+      ".claude.json",
+      ".gemini",
+      ".config/opencode",
+      ".local/share/opencode"
+    ]);
+    PROTECTED_SEVERALLY_PATHS = Object.freeze([
+      "history",
+      "backups",
+      "config.json",
+      "config.jsonc",
+      "homes",
+      // Where homes lived before 1.7: one left by an interrupted run can still hold an auth.json copy.
+      "jobs/*/home"
+    ]);
+    PROTECTED_FILE_NAMES = Object.freeze([
+      ".env",
+      ".env.*",
+      ".npmrc",
+      ".netrc",
+      ".pypirc",
+      ".git-credentials",
+      "id_rsa",
+      "id_ed25519",
+      "id_ecdsa",
+      "id_dsa"
+    ]);
+    escapeRe = (s2) => s2.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    PATHS_CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
+    artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
+  }
+});
+
 // node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
@@ -92,7 +1348,7 @@ __export(util_exports, {
   hexToUint8Array: () => hexToUint8Array,
   hide: () => hide,
   installLazyProp: () => installLazyProp,
-  isObject: () => isObject,
+  isObject: () => isObject2,
   isPlainObject: () => isPlainObject,
   issue: () => issue,
   joinValues: () => joinValues,
@@ -299,11 +1555,11 @@ function esc(str2) {
 function slugify(input2) {
   return input2.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
-function isObject(data) {
+function isObject2(data) {
   return typeof data === "object" && data !== null && !Array.isArray(data);
 }
 function isPlainObject(o) {
-  if (isObject(o) === false)
+  if (isObject2(o) === false)
     return false;
   const ctor = o.constructor;
   if (ctor === void 0)
@@ -311,7 +1567,7 @@ function isPlainObject(o) {
   if (typeof ctor !== "function")
     return true;
   const prot = ctor.prototype;
-  if (isObject(prot) === false)
+  if (isObject2(prot) === false)
     return false;
   if (Object.prototype.hasOwnProperty.call(prot, "isPrototypeOf") === false) {
     return false;
@@ -3445,7 +4701,7 @@ var init_schemas = __esm({
         }
         return propValues;
       });
-      const isObject3 = isObject;
+      const isObject3 = isObject2;
       const catchall = def.catchall;
       let value;
       const memo3 = globalConfig.memoizer;
@@ -3589,7 +4845,7 @@ var init_schemas = __esm({
         return doc.compile();
       };
       let fastpass;
-      const isObject3 = isObject;
+      const isObject3 = isObject2;
       const jit = !globalConfig.jitless;
       const allowsEval2 = allowsEval;
       const fastEnabled = jit && allowsEval2.value;
@@ -3727,7 +4983,7 @@ var init_schemas = __esm({
       const disc = cached(() => discriminatorMap(def));
       inst._zod.parse = (payload, ctx) => {
         const input2 = payload.value;
-        if (!isObject(input2)) {
+        if (!isObject2(input2)) {
           payload.issues.push({
             code: "invalid_type",
             expected: "object",
@@ -35248,1247 +36504,6 @@ var init_stdio = __esm({
   }
 });
 
-// src/jsonc.mjs
-function stripJsonc(text2) {
-  const out = [];
-  let inString = false;
-  let i = 0;
-  const blankBack = () => {
-    for (let j = out.length - 1; j >= 0; j--) {
-      const c = out[j];
-      if (c === " " || c === "\n" || c === "\r" || c === "	") continue;
-      if (c === ",") out[j] = " ";
-      return;
-    }
-  };
-  while (i < text2.length) {
-    const c = text2[i];
-    const next = text2[i + 1];
-    if (inString) {
-      out.push(c);
-      if (c === "\\") {
-        out.push(next ?? "");
-        i += 2;
-        continue;
-      }
-      if (c === '"') inString = false;
-      i++;
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      out.push(c);
-      i++;
-      continue;
-    }
-    if (c === "/" && next === "/") {
-      while (i < text2.length && text2[i] !== "\n") {
-        out.push(" ");
-        i++;
-      }
-      continue;
-    }
-    if (c === "/" && next === "*") {
-      out.push(" ", " ");
-      i += 2;
-      while (i < text2.length && !(text2[i] === "*" && text2[i + 1] === "/")) {
-        out.push(text2[i] === "\n" ? "\n" : " ");
-        i++;
-      }
-      out.push(" ", " ");
-      i += 2;
-      continue;
-    }
-    if (c === "}" || c === "]") blankBack();
-    out.push(c);
-    i++;
-  }
-  return out.join("");
-}
-function parseJsonc(text2) {
-  return JSON.parse(stripJsonc(text2));
-}
-var init_jsonc = __esm({
-  "src/jsonc.mjs"() {
-  }
-});
-
-// node_modules/isexe/windows.js
-var require_windows = __commonJS({
-  "node_modules/isexe/windows.js"(exports, module) {
-    module.exports = isexe;
-    isexe.sync = sync;
-    var fs13 = __require("fs");
-    function checkPathExt(path14, options) {
-      var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
-      if (!pathext) {
-        return true;
-      }
-      pathext = pathext.split(";");
-      if (pathext.indexOf("") !== -1) {
-        return true;
-      }
-      for (var i = 0; i < pathext.length; i++) {
-        var p = pathext[i].toLowerCase();
-        if (p && path14.substr(-p.length).toLowerCase() === p) {
-          return true;
-        }
-      }
-      return false;
-    }
-    function checkStat(stat, path14, options) {
-      if (!stat.isSymbolicLink() && !stat.isFile()) {
-        return false;
-      }
-      return checkPathExt(path14, options);
-    }
-    function isexe(path14, options, cb) {
-      fs13.stat(path14, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path14, options));
-      });
-    }
-    function sync(path14, options) {
-      return checkStat(fs13.statSync(path14), path14, options);
-    }
-  }
-});
-
-// node_modules/isexe/mode.js
-var require_mode = __commonJS({
-  "node_modules/isexe/mode.js"(exports, module) {
-    module.exports = isexe;
-    isexe.sync = sync;
-    var fs13 = __require("fs");
-    function isexe(path14, options, cb) {
-      fs13.stat(path14, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, options));
-      });
-    }
-    function sync(path14, options) {
-      return checkStat(fs13.statSync(path14), options);
-    }
-    function checkStat(stat, options) {
-      return stat.isFile() && checkMode(stat, options);
-    }
-    function checkMode(stat, options) {
-      var mod = stat.mode;
-      var uid = stat.uid;
-      var gid = stat.gid;
-      var myUid = options.uid !== void 0 ? options.uid : process.getuid && process.getuid();
-      var myGid = options.gid !== void 0 ? options.gid : process.getgid && process.getgid();
-      var u = parseInt("100", 8);
-      var g = parseInt("010", 8);
-      var o = parseInt("001", 8);
-      var ug = u | g;
-      var ret = mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
-      return ret;
-    }
-  }
-});
-
-// node_modules/isexe/index.js
-var require_isexe = __commonJS({
-  "node_modules/isexe/index.js"(exports, module) {
-    var fs13 = __require("fs");
-    var core;
-    if (process.platform === "win32" || global.TESTING_WINDOWS) {
-      core = require_windows();
-    } else {
-      core = require_mode();
-    }
-    module.exports = isexe;
-    isexe.sync = sync;
-    function isexe(path14, options, cb) {
-      if (typeof options === "function") {
-        cb = options;
-        options = {};
-      }
-      if (!cb) {
-        if (typeof Promise !== "function") {
-          throw new TypeError("callback not provided");
-        }
-        return new Promise(function(resolve, reject) {
-          isexe(path14, options || {}, function(er, is) {
-            if (er) {
-              reject(er);
-            } else {
-              resolve(is);
-            }
-          });
-        });
-      }
-      core(path14, options || {}, function(er, is) {
-        if (er) {
-          if (er.code === "EACCES" || options && options.ignoreErrors) {
-            er = null;
-            is = false;
-          }
-        }
-        cb(er, is);
-      });
-    }
-    function sync(path14, options) {
-      try {
-        return core.sync(path14, options || {});
-      } catch (er) {
-        if (options && options.ignoreErrors || er.code === "EACCES") {
-          return false;
-        } else {
-          throw er;
-        }
-      }
-    }
-  }
-});
-
-// node_modules/which/which.js
-var require_which = __commonJS({
-  "node_modules/which/which.js"(exports, module) {
-    var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path14 = __require("path");
-    var COLON = isWindows ? ";" : ":";
-    var isexe = require_isexe();
-    var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
-    var getPathInfo = (cmd, opt) => {
-      const colon = opt.colon || COLON;
-      const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
-        // windows always checks the cwd first
-        ...isWindows ? [process.cwd()] : [],
-        ...(opt.path || process.env.PATH || /* istanbul ignore next: very unusual */
-        "").split(colon)
-      ];
-      const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
-      const pathExt = isWindows ? pathExtExe.split(colon) : [""];
-      if (isWindows) {
-        if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
-          pathExt.unshift("");
-      }
-      return {
-        pathEnv,
-        pathExt,
-        pathExtExe
-      };
-    };
-    var which2 = (cmd, opt, cb) => {
-      if (typeof opt === "function") {
-        cb = opt;
-        opt = {};
-      }
-      if (!opt)
-        opt = {};
-      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
-      const found = [];
-      const step = (i) => new Promise((resolve, reject) => {
-        if (i === pathEnv.length)
-          return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
-        const ppRaw = pathEnv[i];
-        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path14.join(pathPart, cmd);
-        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        resolve(subStep(p, i, 0));
-      });
-      const subStep = (p, i, ii) => new Promise((resolve, reject) => {
-        if (ii === pathExt.length)
-          return resolve(step(i + 1));
-        const ext = pathExt[ii];
-        isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
-          if (!er && is) {
-            if (opt.all)
-              found.push(p + ext);
-            else
-              return resolve(p + ext);
-          }
-          return resolve(subStep(p, i, ii + 1));
-        });
-      });
-      return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
-    };
-    var whichSync = (cmd, opt) => {
-      opt = opt || {};
-      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
-      const found = [];
-      for (let i = 0; i < pathEnv.length; i++) {
-        const ppRaw = pathEnv[i];
-        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path14.join(pathPart, cmd);
-        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        for (let j = 0; j < pathExt.length; j++) {
-          const cur = p + pathExt[j];
-          try {
-            const is = isexe.sync(cur, { pathExt: pathExtExe });
-            if (is) {
-              if (opt.all)
-                found.push(cur);
-              else
-                return cur;
-            }
-          } catch (ex) {
-          }
-        }
-      }
-      if (opt.all && found.length)
-        return found;
-      if (opt.nothrow)
-        return null;
-      throw getNotFoundError(cmd);
-    };
-    module.exports = which2;
-    which2.sync = whichSync;
-  }
-});
-
-// node_modules/path-key/index.js
-var require_path_key = __commonJS({
-  "node_modules/path-key/index.js"(exports, module) {
-    "use strict";
-    var pathKey = (options = {}) => {
-      const environment = options.env || process.env;
-      const platform = options.platform || process.platform;
-      if (platform !== "win32") {
-        return "PATH";
-      }
-      return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
-    };
-    module.exports = pathKey;
-    module.exports.default = pathKey;
-  }
-});
-
-// node_modules/cross-spawn/lib/util/resolveCommand.js
-var require_resolveCommand = __commonJS({
-  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
-    "use strict";
-    var path14 = __require("path");
-    var which2 = require_which();
-    var getPathKey = require_path_key();
-    function resolveCommandAttempt(parsed, withoutPathExt) {
-      const env = parsed.options.env || process.env;
-      const cwd = process.cwd();
-      const hasCustomCwd = parsed.options.cwd != null;
-      const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
-      if (shouldSwitchCwd) {
-        try {
-          process.chdir(parsed.options.cwd);
-        } catch (err) {
-        }
-      }
-      let resolved;
-      try {
-        resolved = which2.sync(parsed.command, {
-          path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path14.delimiter : void 0
-        });
-      } catch (e) {
-      } finally {
-        if (shouldSwitchCwd) {
-          process.chdir(cwd);
-        }
-      }
-      if (resolved) {
-        resolved = path14.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
-      }
-      return resolved;
-    }
-    function resolveCommand(parsed) {
-      return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
-    }
-    module.exports = resolveCommand;
-  }
-});
-
-// node_modules/cross-spawn/lib/util/escape.js
-var require_escape = __commonJS({
-  "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
-    "use strict";
-    var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
-    function escapeCommand(arg) {
-      arg = arg.replace(metaCharsRegExp, "^$1");
-      return arg;
-    }
-    function escapeArgument(arg, doubleEscapeMetaChars) {
-      arg = `${arg}`;
-      arg = arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
-      arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
-      arg = `"${arg}"`;
-      arg = arg.replace(metaCharsRegExp, "^$1");
-      if (doubleEscapeMetaChars) {
-        arg = arg.replace(metaCharsRegExp, "^$1");
-      }
-      return arg;
-    }
-    module.exports.command = escapeCommand;
-    module.exports.argument = escapeArgument;
-  }
-});
-
-// node_modules/shebang-regex/index.js
-var require_shebang_regex = __commonJS({
-  "node_modules/shebang-regex/index.js"(exports, module) {
-    "use strict";
-    module.exports = /^#!(.*)/;
-  }
-});
-
-// node_modules/shebang-command/index.js
-var require_shebang_command = __commonJS({
-  "node_modules/shebang-command/index.js"(exports, module) {
-    "use strict";
-    var shebangRegex = require_shebang_regex();
-    module.exports = (string4 = "") => {
-      const match = string4.match(shebangRegex);
-      if (!match) {
-        return null;
-      }
-      const [path14, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path14.split("/").pop();
-      if (binary === "env") {
-        return argument;
-      }
-      return argument ? `${binary} ${argument}` : binary;
-    };
-  }
-});
-
-// node_modules/cross-spawn/lib/util/readShebang.js
-var require_readShebang = __commonJS({
-  "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
-    "use strict";
-    var fs13 = __require("fs");
-    var shebangCommand = require_shebang_command();
-    function readShebang(command) {
-      const size = 150;
-      const buffer = Buffer.alloc(size);
-      let fd;
-      try {
-        fd = fs13.openSync(command, "r");
-        fs13.readSync(fd, buffer, 0, size, 0);
-        fs13.closeSync(fd);
-      } catch (e) {
-      }
-      return shebangCommand(buffer.toString());
-    }
-    module.exports = readShebang;
-  }
-});
-
-// node_modules/cross-spawn/lib/parse.js
-var require_parse = __commonJS({
-  "node_modules/cross-spawn/lib/parse.js"(exports, module) {
-    "use strict";
-    var path14 = __require("path");
-    var resolveCommand = require_resolveCommand();
-    var escape3 = require_escape();
-    var readShebang = require_readShebang();
-    var isWin = process.platform === "win32";
-    var isExecutableRegExp = /\.(?:com|exe)$/i;
-    var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
-    function detectShebang(parsed) {
-      parsed.file = resolveCommand(parsed);
-      const shebang = parsed.file && readShebang(parsed.file);
-      if (shebang) {
-        parsed.args.unshift(parsed.file);
-        parsed.command = shebang;
-        return resolveCommand(parsed);
-      }
-      return parsed.file;
-    }
-    function parseNonShell(parsed) {
-      if (!isWin) {
-        return parsed;
-      }
-      const commandFile = detectShebang(parsed);
-      const needsShell = !isExecutableRegExp.test(commandFile);
-      if (parsed.options.forceShell || needsShell) {
-        const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path14.normalize(parsed.command);
-        parsed.command = escape3.command(parsed.command);
-        parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
-        const shellCommand = [parsed.command].concat(parsed.args).join(" ");
-        parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
-        parsed.command = process.env.comspec || "cmd.exe";
-        parsed.options.windowsVerbatimArguments = true;
-      }
-      return parsed;
-    }
-    function parse3(command, args, options) {
-      if (args && !Array.isArray(args)) {
-        options = args;
-        args = null;
-      }
-      args = args ? args.slice(0) : [];
-      options = Object.assign({}, options);
-      const parsed = {
-        command,
-        args,
-        options,
-        file: void 0,
-        original: {
-          command,
-          args
-        }
-      };
-      return options.shell ? parsed : parseNonShell(parsed);
-    }
-    module.exports = parse3;
-  }
-});
-
-// node_modules/cross-spawn/lib/enoent.js
-var require_enoent = __commonJS({
-  "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
-    "use strict";
-    var isWin = process.platform === "win32";
-    function notFoundError(original, syscall) {
-      return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
-        code: "ENOENT",
-        errno: "ENOENT",
-        syscall: `${syscall} ${original.command}`,
-        path: original.command,
-        spawnargs: original.args
-      });
-    }
-    function hookChildProcess(cp, parsed) {
-      if (!isWin) {
-        return;
-      }
-      const originalEmit = cp.emit;
-      cp.emit = function(name, arg1) {
-        if (name === "exit") {
-          const err = verifyENOENT(arg1, parsed);
-          if (err) {
-            return originalEmit.call(cp, "error", err);
-          }
-        }
-        return originalEmit.apply(cp, arguments);
-      };
-    }
-    function verifyENOENT(status2, parsed) {
-      if (isWin && status2 === 1 && !parsed.file) {
-        return notFoundError(parsed.original, "spawn");
-      }
-      return null;
-    }
-    function verifyENOENTSync(status2, parsed) {
-      if (isWin && status2 === 1 && !parsed.file) {
-        return notFoundError(parsed.original, "spawnSync");
-      }
-      return null;
-    }
-    module.exports = {
-      hookChildProcess,
-      verifyENOENT,
-      verifyENOENTSync,
-      notFoundError
-    };
-  }
-});
-
-// node_modules/cross-spawn/index.js
-var require_cross_spawn = __commonJS({
-  "node_modules/cross-spawn/index.js"(exports, module) {
-    "use strict";
-    var cp = __require("child_process");
-    var parse3 = require_parse();
-    var enoent = require_enoent();
-    function spawn2(command, args, options) {
-      const parsed = parse3(command, args, options);
-      const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
-      enoent.hookChildProcess(spawned, parsed);
-      return spawned;
-    }
-    function spawnSync2(command, args, options) {
-      const parsed = parse3(command, args, options);
-      const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
-      result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
-      return result;
-    }
-    module.exports = spawn2;
-    module.exports.spawn = spawn2;
-    module.exports.sync = spawnSync2;
-    module.exports._parse = parse3;
-    module.exports._enoent = enoent;
-  }
-});
-
-// src/platform.mjs
-import fs from "node:fs";
-import path from "node:path";
-import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from "node:child_process";
-function batchInvocation(command, args, options) {
-  if (process.platform !== "win32") return null;
-  const resolved = findCommand(command, options);
-  if (!resolved || !/\.(cmd|bat)$/i.test(resolved)) return null;
-  const forwarding = /%\*/.test(fs.readFileSync(resolved, "utf8"));
-  const line = [import_escape.default.command(resolved), ...args.map((arg) => import_escape.default.argument(arg, forwarding))].join(" ");
-  return {
-    command: process.env.ComSpec || "cmd.exe",
-    args: ["/d", "/s", "/c", `"${line}"`],
-    options: { ...options, windowsHide: true, windowsVerbatimArguments: true }
-  };
-}
-function spawnCommand(command, args, options = {}) {
-  const batch = batchInvocation(command, args, options);
-  return batch ? nativeSpawn(batch.command, batch.args, batch.options) : (0, import_cross_spawn.default)(command, args, options);
-}
-function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
-  if (typeof command !== "string" || !command) return null;
-  cwd = path.resolve(cwd);
-  const windows = process.platform === "win32";
-  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
-  const explicit = command.includes("/") || windows && command.includes("\\");
-  const dirs = explicit ? [cwd] : [
-    ...windows ? [cwd] : [],
-    ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)
-  ];
-  for (const dir of dirs) {
-    const candidate = path.resolve(cwd, dir.replace(/^"(.*)"$/, "$1"), command);
-    const found = import_which.default.sync(candidate, { nothrow: true, pathExt: value("PATHEXT") });
-    if (found) return found;
-  }
-  if (explicit) {
-    const candidate = path.resolve(cwd, command);
-    try {
-      if (!fs.statSync(candidate).isFile()) return null;
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {
-    }
-  }
-  return null;
-}
-function execCommandSync(command, args, options = {}) {
-  const opts = { windowsHide: true, encoding: "utf8", ...options };
-  const batch = batchInvocation(command, args, opts);
-  const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
-  }
-  return result.stdout;
-}
-var import_which, import_cross_spawn, import_escape;
-var init_platform = __esm({
-  "src/platform.mjs"() {
-    import_which = __toESM(require_which(), 1);
-    import_cross_spawn = __toESM(require_cross_spawn(), 1);
-    import_escape = __toESM(require_escape(), 1);
-  }
-});
-
-// src/consultants.mjs
-function normalizeName(raw) {
-  if (typeof raw !== "string") return raw;
-  return raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
-}
-function modelWords(model) {
-  const s2 = String(model ?? "").toLowerCase();
-  return s2.slice(s2.lastIndexOf("/") + 1).split(/[-._#:\s]+/).filter(Boolean);
-}
-function modelStem(model) {
-  const words = modelWords(model);
-  const at = words.findIndex(isDigitWord);
-  return at === -1 ? words : words.slice(0, at);
-}
-function modelVersion(model) {
-  const words = modelWords(model);
-  const at = words.findIndex(isDigitWord);
-  if (at === -1) return null;
-  const digits = [];
-  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, "")));
-  return digits;
-}
-function vendorOf(model, explicit = null) {
-  if (typeof explicit === "string" && explicit.trim() !== "") return explicit.trim().toLowerCase();
-  const first = modelStem(model)[0] ?? "";
-  if (/^o\d/.test(first)) return "openai";
-  return STEM_VENDORS[first] ?? null;
-}
-function matchesWords(model, wanted) {
-  return containsRun(modelWords(model), modelWords(wanted));
-}
-function byRanking(cands, ranking) {
-  const index = (c) => {
-    const i = ranking.findIndex((r) => normalizeName(r) === normalizeName(c.name) || matchesWords(c.model, r));
-    return i === -1 ? Infinity : i;
-  };
-  const best = Math.min(...cands.map(index));
-  return best === Infinity ? cands : cands.filter((c) => index(c) === best);
-}
-function byTier(cands, tier) {
-  if (!tier.family(cands)) return cands;
-  const rank = (c) => {
-    const words = modelWords(c.model);
-    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
-  };
-  const ranks = cands.map(rank);
-  if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
-  const best = Math.min(...ranks);
-  return cands.filter((_, i) => ranks[i] === best);
-}
-function byVersion(cands) {
-  const stem = modelStem(cands[0].model).join("-");
-  const versions = cands.map((c) => modelVersion(c.model));
-  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
-  const best = versions.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
-  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
-}
-function rankCandidates(cands, ranking = []) {
-  let left = byRanking(cands, ranking);
-  for (const tier of TIERS) {
-    if (left.length === 1) break;
-    left = byTier(left, tier);
-  }
-  if (left.length > 1) left = byVersion(left);
-  return left.length === 1 ? left[0] : null;
-}
-function resolveConsultant(input2, consultants, ranking = []) {
-  const key = normalizeName(input2);
-  if (typeof key !== "string" || key === "") return { none: true };
-  const own2 = consultants.find((c) => normalizeName(c.name) === key);
-  if (own2) return { consultant: own2 };
-  let cands;
-  if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
-  else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
-  else cands = consultants.filter((c) => matchesWords(c.model, input2));
-  if (cands.length === 0) return { none: true };
-  if (cands.length === 1) return { consultant: cands[0] };
-  const winner = rankCandidates(cands, ranking);
-  return winner ? { consultant: winner } : { ambiguous: cands };
-}
-function sameModel(callerModel, consultantModel) {
-  const a = modelWords(callerModel);
-  const b = modelWords(consultantModel);
-  if (a.length && a.length === b.length && a.every((w, i) => w === b[i])) return "same";
-  if (containsRun(a, b) || containsRun(b, a)) return "unknown";
-  return "different";
-}
-function buildConsultants(config2) {
-  const problems = [];
-  const global2 = [];
-  const broken = {};
-  const brokenClis = {};
-  const fault = (msg) => {
-    problems.push(msg);
-    global2.push(msg);
-  };
-  const cfg = isObject2(config2) ? config2 : {};
-  if (!isObject2(config2)) fault("the config file must hold a JSON object");
-  for (const key of Object.keys(cfg)) {
-    if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
-  }
-  if (isObject2(cfg.server) && cfg.server.network !== void 0 && !["on", "off"].includes(cfg.server.network)) {
-    fault('server.network must be "on" or "off"');
-  }
-  let ranking = [];
-  if (cfg.ranking !== void 0) {
-    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== "")) ranking = cfg.ranking.map((r) => r.trim());
-    else fault("ranking must be an array of non-empty strings");
-  }
-  if (cfg.clis !== void 0) {
-    if (!isObject2(cfg.clis)) fault("clis must be an object keyed by CLI");
-    else {
-      for (const [id2, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(id2)) {
-          problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
-          continue;
-        }
-        const before = problems.length;
-        if (!isObject2(def)) {
-          problems.push(`clis.${id2} must be an object`);
-          brokenClis[id2] = problems.slice(before);
-          continue;
-        }
-        for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
-        if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`clis.${id2}.enabled: must be true or false`);
-        for (const k of ["bin", "note"]) if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`clis.${id2}.${k}: must be a string`);
-        if (def.args !== void 0 && !(Array.isArray(def.args) && def.args.every((a) => typeof a === "string"))) problems.push(`clis.${id2}.args: must be an array of strings`);
-        if (def.env !== void 0 && !(isObject2(def.env) && Object.values(def.env).every((v) => typeof v === "string"))) problems.push(`clis.${id2}.env: must be an object of strings`);
-        if (def.provider !== void 0) {
-          if (id2 !== "opencode") problems.push(`clis.${id2}.provider: only OpenCode takes provider definitions`);
-          else if (!(isObject2(def.provider) && Object.values(def.provider).every(isObject2))) problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
-        }
-        if (problems.length > before) brokenClis[id2] = problems.slice(before);
-      }
-    }
-  }
-  const consultants = [];
-  if (cfg.consultants === void 0) {
-    for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
-  } else if (!isObject2(cfg.consultants)) {
-    fault("consultants must be an object keyed by name");
-  } else {
-    const seen = /* @__PURE__ */ new Map();
-    for (const [name, def] of Object.entries(cfg.consultants)) {
-      const at = `consultants.${name}`;
-      if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) {
-        problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`);
-        continue;
-      }
-      if (RESERVED_NAMES.includes(name)) {
-        problems.push(`${at}: "${name}" is reserved`);
-        continue;
-      }
-      const before = problems.length;
-      if (!isObject2(def)) {
-        problems.push(`${at} must be an object`);
-        broken[name] = problems.slice(before);
-        continue;
-      }
-      for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
-      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
-      if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
-      for (const k of ["effort", "vendor", "note"]) {
-        if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
-      }
-      if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`${at}.enabled: must be true or false`);
-      for (const k of ["timeout_ms", "max_budget_usd"]) {
-        if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k]))) problems.push(`${at}.${k}: must be a number`);
-      }
-      if (def.max_budget_usd !== void 0 && def.cli !== "claude-code") problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
-      if (def.effort !== void 0 && def.cli === "antigravity") problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
-      if (problems.length > before) {
-        broken[name] = problems.slice(before);
-        continue;
-      }
-      const pair = `${def.cli}
-${def.model.trim()}`;
-      if (seen.has(pair)) {
-        problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
-        broken[name] = problems.slice(before);
-        continue;
-      }
-      seen.set(pair, name);
-      consultants.push(make(name, def));
-    }
-  }
-  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
-}
-function make(name, def) {
-  const model = def.model.trim();
-  return Object.freeze({
-    name,
-    cli: def.cli,
-    model,
-    effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
-    timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
-    maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
-    vendor: vendorOf(model, def.vendor ?? null),
-    enabled: def.enabled !== false,
-    note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
-  });
-}
-var CLI_IDS, DEFAULT_MODELS, CLI_VENDORS, table, CLI_ALIASES, VENDOR_WORDS, STEM_VENDORS, sameStem, TIERS, RESERVED_NAMES, isDigitWord, containsRun, compareVersions, TOP_KEYS, CLI_KEYS, CONSULTANT_KEYS, isObject2, clamp;
-var init_consultants = __esm({
-  "src/consultants.mjs"() {
-    CLI_IDS = Object.freeze(["codex", "claude-code", "antigravity", "opencode"]);
-    DEFAULT_MODELS = Object.freeze({
-      codex: "gpt-6-astra",
-      "claude-code": "claude-opus-5-5",
-      antigravity: "gemini-4-argon-high",
-      opencode: "zai-coding-plan/glm-5.3"
-    });
-    CLI_VENDORS = Object.freeze({ codex: "openai", "claude-code": "anthropic", antigravity: "google", opencode: null });
-    table = (entries) => Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), entries));
-    CLI_ALIASES = table({
-      codex: "codex",
-      "claude-code": "claude-code",
-      antigravity: "antigravity",
-      agy: "antigravity",
-      opencode: "opencode"
-    });
-    VENDOR_WORDS = table({ openai: "openai", chatgpt: "openai", anthropic: "anthropic", google: "google" });
-    STEM_VENDORS = table({
-      gpt: "openai",
-      claude: "anthropic",
-      gemini: "google",
-      glm: "zai",
-      deepseek: "deepseek",
-      nemotron: "nvidia"
-    });
-    sameStem = (cands) => new Set(cands.map((c) => modelStem(c.model).join("-"))).size === 1;
-    TIERS = Object.freeze([
-      { words: ["opus", "sonnet", "haiku"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "claude") },
-      { words: ["ultra", "pro", "flash", "lite"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "gemini") },
-      // Effort words: the last word of the name, between otherwise like models.
-      { words: ["max", "xhigh", "high", "medium", "low"], family: sameStem, last: true }
-    ]);
-    RESERVED_NAMES = Object.freeze(["all"]);
-    isDigitWord = (w) => /^v?\d+$/.test(w);
-    containsRun = (hay, needle) => needle.length > 0 && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
-    compareVersions = (a, b) => {
-      for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const d = (a[i] ?? -1) - (b[i] ?? -1);
-        if (d !== 0) return d;
-      }
-      return 0;
-    };
-    TOP_KEYS = ["server", "clis", "consultants", "ranking"];
-    CLI_KEYS = ["enabled", "note", "bin", "args", "env", "provider"];
-    CONSULTANT_KEYS = ["cli", "model", "effort", "timeout_ms", "max_budget_usd", "vendor", "enabled", "note"];
-    isObject2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-    clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-  }
-});
-
-// src/policy.mjs
-import fs2 from "node:fs";
-import os from "node:os";
-import path2 from "node:path";
-function configProblem() {
-  return configError;
-}
-function configWarnings() {
-  return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
-}
-function brokenConsultantNames() {
-  return configError ? [] : Object.keys(BUILT.broken);
-}
-function brokenConsultant(name) {
-  const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
-  return p ? `the config file has a mistake in it: ${p.join("; ")}` : null;
-}
-function isInstalled(command) {
-  return findCommand(command) !== null;
-}
-function resolveCaller(raw) {
-  const key = normalizeName(raw);
-  return typeof key === "string" && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
-}
-function detectCaller(env = process.env) {
-  if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
-  if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return "codex";
-  if (Object.keys(env).some((k) => k.startsWith("AGY_") || k.startsWith("ANTIGRAVITY_"))) return "antigravity";
-  return null;
-}
-function expandHome(value) {
-  if (typeof value !== "string") return value;
-  if (value === "~") return os.homedir();
-  return /^~[\\/]/.test(value) ? path2.join(os.homedir(), value.slice(2)) : value;
-}
-function timeoutMs(consultant) {
-  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 18e5, 1e3, 72e5);
-}
-function agyExitGraceMs() {
-  return {
-    afterResult: limit("SEVERALLY_AGY_AFTER_RESULT_MS", void 0, 1e4, 100, 6e5),
-    afterFinish: limit("SEVERALLY_AGY_AFTER_FINISH_MS", void 0, 6e4, 100, 6e5)
-  };
-}
-function credentialsHome() {
-  return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
-}
-function opencodeCredentialsHome() {
-  return str("SEVERALLY_OPENCODE_CRED_HOME", os.homedir());
-}
-function protectedRoots() {
-  const fwd = (p) => p.replaceAll("\\", "/");
-  return [
-    ...PROTECTED_HOME_PATHS.map((rel) => fwd(path2.join(os.homedir(), rel))),
-    ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path2.join(POLICY.home, rel)))
-  ];
-}
-function protectedRootPatterns(extraRoots = []) {
-  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map((r) => `^${escapeRe(r.replace(/\/+$/, "")).replaceAll("*", "[^/]+")}(/|$)`);
-}
-function protectedNamePatterns() {
-  return PROTECTED_FILE_NAMES.map((n) => `^${escapeRe(n).replaceAll("*", ".*")}$`);
-}
-function isProtectedPath(abs) {
-  const flags = PATHS_CASE_INSENSITIVE ? "i" : "";
-  const roots = protectedRootPatterns().map((p) => new RegExp(p, flags));
-  const names = protectedNamePatterns().map((p) => new RegExp(p, flags));
-  let real = abs;
-  try {
-    real = fs2.realpathSync.native(abs);
-  } catch {
-  }
-  return [abs, real].some((p) => {
-    const fwd = p.replaceAll("\\", "/");
-    return roots.some((re) => re.test(fwd)) || names.some((re) => re.test(path2.basename(fwd)));
-  });
-}
-function consultantByName(name) {
-  return POLICY.consultants.find((c) => c.name === name);
-}
-function consultantAvailable(c) {
-  return c.enabled && POLICY.clis[c.cli].available;
-}
-function unavailableReason(c) {
-  if (!c || consultantAvailable(c)) return null;
-  if (!c.enabled) return c.note ?? "turned off in the operator configuration";
-  const cli = POLICY.clis[c.cli];
-  if (cli.note) return cli.note;
-  if (!isInstalled(cli.cli)) return `${cli.cli} is not installed here`;
-  return "turned off in the operator configuration";
-}
-function availableConsultants() {
-  return POLICY.consultants.filter(consultantAvailable);
-}
-function limitsSummary() {
-  const list = availableConsultants();
-  const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
-  return {
-    available_targets: list.map((c) => c.name),
-    // A consultant or CLI out of use because of a mistake in its own section.
-    ...LOCAL.length ? { config_mistakes: configWarnings() } : {},
-    clis: by((c) => c.cli),
-    models: by((c) => c.model),
-    // Per consultant, because they no longer share one budget.
-    timeout_ms: by(timeoutMs),
-    max_rounds_per_chain: POLICY.maxRounds,
-    // "off": the operator has taken the web away from every consultation.
-    network: POLICY.network,
-    max_concurrent_jobs: POLICY.maxConcurrent,
-    max_wait_ms: POLICY.maxWaitMs,
-    input_char_budget: POLICY.input.totalCharsMax,
-    // Stated so it is true of all three consultants. Reading is allowed for
-    // every one of them -- what keeps a consultation brief-only is that the
-    // child starts in an empty working directory and is never told where the
-    // repository is, not that it cannot read. Codex is additionally sandboxed
-    // read-only rather than execution-free, so do not advertise "no execution".
-    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is -- unless context.expose_paths names files or directories, which are copied read-only into that working directory and are then the only part of your repository it has; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
-  };
-}
-var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
-var init_policy = __esm({
-  "src/policy.mjs"() {
-    init_jsonc();
-    init_platform();
-    init_consultants();
-    CONFIG_HOME = process.env.SEVERALLY_HOME || path2.join(os.homedir(), ".severally");
-    CONFIG_PATH = process.env.SEVERALLY_CONFIG || [path2.join(CONFIG_HOME, "config.jsonc"), path2.join(CONFIG_HOME, "config.json")].find((p) => fs2.existsSync(p)) || path2.join(CONFIG_HOME, "config.json");
-    configError = null;
-    CONFIG = (() => {
-      try {
-        return parseJsonc(fs2.readFileSync(CONFIG_PATH, "utf8"));
-      } catch (err) {
-        if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
-        return {};
-      }
-    })();
-    BUILT = buildConsultants(CONFIG);
-    if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join("; ")}`;
-    if (!configError && ![void 0, "", "on", "off"].includes(process.env.SEVERALLY_NETWORK)) {
-      configError = `SEVERALLY_NETWORK must be "on" or "off", not ${JSON.stringify(process.env.SEVERALLY_NETWORK)}`;
-    }
-    FROM = configError ? buildConsultants({}) : BUILT;
-    LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
-    usable = configError ? {} : CONFIG;
-    cfgCli = (id2) => {
-      if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
-        return { enabled: false, note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}` };
-      }
-      return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
-    };
-    cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
-    num = (name, dflt, min, max) => {
-      const raw = process.env[name];
-      if (raw === void 0 || raw === "") return dflt;
-      const v = Number(raw);
-      if (!Number.isFinite(v)) return dflt;
-      return Math.min(max, Math.max(min, v));
-    };
-    limit = (name, fromCfg, dflt, min, max) => {
-      const fromEnv = num(name, null, min, max);
-      if (fromEnv !== null) return fromEnv;
-      if (typeof fromCfg === "number" && Number.isFinite(fromCfg)) return Math.min(max, Math.max(min, fromCfg));
-      return dflt;
-    };
-    str = (name, dflt) => {
-      const raw = process.env[name];
-      return raw === void 0 || raw === "" ? dflt : raw;
-    };
-    CALLER_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
-      codex: "codex",
-      gpt: "codex",
-      chatgpt: "codex",
-      openai: "codex",
-      "claude-code": "claude-code",
-      claude: "claude-code",
-      anthropic: "claude-code",
-      antigravity: "antigravity",
-      agy: "antigravity",
-      gemini: "antigravity",
-      google: "antigravity",
-      opencode: "opencode",
-      glm: "opencode"
-    }));
-    CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
-    MODES = ["explore", "review", "debate"];
-    VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
-    STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
-    binFor = (id2, envName, dflt) => {
-      const fromEnv = process.env[envName];
-      if (fromEnv !== void 0 && fromEnv !== "") return expandHome(fromEnv);
-      const fromCfg = cfgCli(id2).bin;
-      return expandHome(typeof fromCfg === "string" && fromCfg !== "" ? fromCfg : dflt);
-    };
-    disabledNote = (id2) => {
-      const n = cfgCli(id2).note;
-      return typeof n === "string" && n.trim() !== "" ? n.trim() : null;
-    };
-    isEnabled = (id2, cli) => {
-      const flag = cfgCli(id2).enabled;
-      if (typeof flag === "boolean") return flag;
-      return isInstalled(cli);
-    };
-    CODEX_BIN = binFor("codex", "SEVERALLY_CODEX_BIN", "codex");
-    CLAUDE_BIN = binFor("claude-code", "SEVERALLY_CLAUDE_BIN", "claude");
-    AGY_BIN = binFor("antigravity", "SEVERALLY_AGY_BIN", "agy");
-    OPENCODE_BIN = binFor("opencode", "SEVERALLY_OPENCODE_BIN", "opencode");
-    extras = (id2) => ({ extraArgs: cfgCli(id2).args ?? [], extraEnv: cfgCli(id2).env ?? {} });
-    POLICY = Object.freeze({
-      home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
-      // Per CLI: how to launch it and whether it can run here. What runs on it is
-      // a consultant's business.
-      clis: Object.freeze({
-        codex: Object.freeze({
-          cli: CODEX_BIN,
-          available: isEnabled("codex", CODEX_BIN),
-          note: disabledNote("codex"),
-          label: "Codex CLI",
-          ...extras("codex")
-        }),
-        "claude-code": Object.freeze({
-          cli: CLAUDE_BIN,
-          available: isEnabled("claude-code", CLAUDE_BIN),
-          note: disabledNote("claude-code"),
-          label: "Claude Code CLI",
-          ...extras("claude-code")
-        }),
-        // Where the real Antigravity credentials live is credentialsHome() below,
-        // not a field here: the sandbox reads it per job (see timeoutMs()).
-        antigravity: Object.freeze({
-          cli: AGY_BIN,
-          available: isEnabled("antigravity", AGY_BIN),
-          note: disabledNote("antigravity"),
-          label: "Antigravity CLI",
-          ...extras("antigravity")
-        }),
-        opencode: Object.freeze({
-          cli: OPENCODE_BIN,
-          available: isEnabled("opencode", OPENCODE_BIN),
-          note: disabledNote("opencode"),
-          label: "OpenCode CLI",
-          ...extras("opencode"),
-          // opencode.json `provider` definitions copied into the sandbox config:
-          // the only way to reach a provider the sandbox's empty HOME would not
-          // know, such as a local OpenAI-compatible server.
-          provider: cfgCli("opencode").provider ?? {}
-        })
-      }),
-      // Who can be asked, in config order, and how a name that fits several is
-      // settled. See consultants.mjs.
-      consultants: FROM.consultants,
-      ranking: FROM.ranking,
-      // Grace period between SIGTERM and SIGKILL of the child process group.
-      killGraceMs: limit("SEVERALLY_KILL_GRACE_MS", cfgServer.kill_grace_ms, 5e3, 500, 6e4),
-      // Automatic re-runs of a consultation that failed with a transient error
-      // (rate_limited, cli_error), inside the job's original time budget. The
-      // wait before the n-th re-run is retryBackoffMs * 3^(n-1).
-      maxAutoRetries: limit("SEVERALLY_MAX_AUTO_RETRIES", cfgServer.max_auto_retries, 2, 0, 3),
-      retryBackoffMs: limit("SEVERALLY_RETRY_BACKOFF_MS", cfgServer.retry_backoff_ms, 5e3, 0, 6e4),
-      // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
-      maxRounds: limit("SEVERALLY_MAX_ROUNDS", cfgServer.max_rounds, 5, 1, 20),
-      // Default 9 so several independent consultations can run at once; a
-      // "consult everyone" fan-out (the three peers plus a fresh session of the
-      // caller's own CLI) fits well inside it. The ceiling equals the default:
-      // going beyond that is an operator decision with quota to match.
-      maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
-      maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
-      // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
-      // clients allow a tool call, so a long wait does not blow up as a client-side
-      // timeout while the consultation is still healthy; a client registration
-      // that is known to wait longer raises it (scripts/install.mjs).
-      // "off" takes the web away from every consultation, whatever the request
-      // asks; "on" leaves it to each request's own network.
-      // Either source can close it; neither can reopen what the other closed.
-      network: [process.env.SEVERALLY_NETWORK, cfgServer.network].includes("off") ? "off" : "on",
-      maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
-      input: Object.freeze({
-        questionMax: 4e3,
-        objectiveMax: 4e3,
-        proposalMax: 2e4,
-        constraintMax: 1e3,
-        constraintsMax: 20,
-        factMax: 6e3,
-        factsMax: 40,
-        counterpointMax: 4e3,
-        counterpointsMax: 20,
-        artifactsMax: 10,
-        artifactExcerptMax: 2e4,
-        artifactNameMax: 200,
-        // expose_paths: how many paths a lead may name, and what the copy of
-        // them may add up to. Fixed like every other input cap -- a consultant
-        // that can be pointed at more of the disk by configuration is a
-        // different consultant, not a tuned one.
-        exposePathsMax: 20,
-        exposeFilesMax: 500,
-        exposeBytesMax: 5e6,
-        totalCharsMax: 12e4
-      }),
-      output: Object.freeze({
-        // Raw child stdout/stderr kept per stream before truncation.
-        rawCaptureMax: 4e5,
-        summaryMax: 8e3,
-        itemTextMax: 4e3,
-        listMax: 30,
-        referencesMax: 40
-      })
-    });
-    PROTECTED_HOME_PATHS = Object.freeze([
-      ".ssh",
-      ".gnupg",
-      ".aws",
-      ".azure",
-      ".kube",
-      ".docker",
-      ".config/gcloud",
-      ".config/gh",
-      ".config/hub",
-      ".netrc",
-      ".npmrc",
-      ".pypirc",
-      ".git-credentials",
-      ".cargo/credentials",
-      ".cargo/credentials.toml",
-      ".terraform.d",
-      ".vault-token",
-      "Library/Keychains",
-      ".codex",
-      ".claude",
-      ".claude.json",
-      ".gemini",
-      ".config/opencode",
-      ".local/share/opencode"
-    ]);
-    PROTECTED_SEVERALLY_PATHS = Object.freeze([
-      "history",
-      "backups",
-      "config.json",
-      "config.jsonc",
-      "homes",
-      // Where homes lived before 1.7: one left by an interrupted run can still hold an auth.json copy.
-      "jobs/*/home"
-    ]);
-    PROTECTED_FILE_NAMES = Object.freeze([
-      ".env",
-      ".env.*",
-      ".npmrc",
-      ".netrc",
-      ".pypirc",
-      ".git-credentials",
-      "id_rsa",
-      "id_ed25519",
-      "id_ecdsa",
-      "id_dsa"
-    ]);
-    escapeRe = (s2) => s2.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-    PATHS_CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
-    artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
-  }
-});
-
 // src/schema.mjs
 import path3 from "node:path";
 function charCount(req) {
@@ -36541,7 +36556,10 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
   if (isAll[0]) {
     chosen = availableConsultants();
     if (!chosen.length) {
-      throw new RequestError("no consultant is available on this machine -- install one of the CLIs, or check the config file", "target_unavailable");
+      throw new RequestError(
+        "no consultant is available on this machine -- install one of the CLIs, or check the config file",
+        "target_unavailable"
+      );
     }
   } else {
     const reachable = availableConsultants();
@@ -36549,7 +36567,10 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
       let r = resolveConsultant(name, reachable, POLICY.ranking);
       if (r.none) r = resolveConsultant(name, POLICY.consultants, POLICY.ranking);
       if (r.none && brokenConsultant(name)) {
-        throw new RequestError(`consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`, "target_unavailable");
+        throw new RequestError(
+          `consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`,
+          "target_unavailable"
+        );
       }
       if (r.none) {
         throw new RequestError(`no consultant answers to ${JSON.stringify(name)}; available: ${listed()}`, "unknown_target");
@@ -36821,7 +36842,8 @@ var init_result_schema = __esm({
 
 // src/redact.mjs
 function looksLikeCode(name, value) {
-  if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value)) return true;
+  if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value))
+    return true;
   if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split("_").at(-1))) return false;
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith("&");
 }
@@ -36843,27 +36865,40 @@ function redact(value) {
 var CODE_WORDS, PATTERNS;
 var init_redact = __esm({
   "src/redact.mjs"() {
-    CODE_WORDS = /* @__PURE__ */ new Set(["true", "false", "null", "none", "undefined", "string", "str", "number", "boolean", "bool", "int", "bytes"]);
+    CODE_WORDS = /* @__PURE__ */ new Set([
+      "true",
+      "false",
+      "null",
+      "none",
+      "undefined",
+      "string",
+      "str",
+      "number",
+      "boolean",
+      "bool",
+      "int",
+      "bytes"
+    ]);
     PATTERNS = [
       // Provider API keys
-      [/\bsk-ant-[A-Za-z0-9_\-]{12,}/g, "[REDACTED:anthropic-key]"],
-      [/\bsk-proj-[A-Za-z0-9_\-]{12,}/g, "[REDACTED:openai-key]"],
-      [/\bsk-[A-Za-z0-9_\-]{20,}/g, "[REDACTED:api-key]"],
+      [/\bsk-ant-[A-Za-z0-9_-]{12,}/g, "[REDACTED:anthropic-key]"],
+      [/\bsk-proj-[A-Za-z0-9_-]{12,}/g, "[REDACTED:openai-key]"],
+      [/\bsk-[A-Za-z0-9_-]{20,}/g, "[REDACTED:api-key]"],
       [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, "[REDACTED:github-token]"],
       [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED:github-token]"],
       [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, "[REDACTED:slack-token]"],
       [/https:\/\/hooks\.slack\.com\/services\/T[A-Za-z0-9]+\/B[A-Za-z0-9]+\/[A-Za-z0-9]+/g, "[REDACTED:slack-webhook]"],
       [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
       [/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
-      [/\bAIza[0-9A-Za-z_\-]{30,}/g, "[REDACTED:google-api-key]"],
+      [/\bAIza[0-9A-Za-z_-]{30,}/g, "[REDACTED:google-api-key]"],
       // Stripe secret and restricted keys (pk_ is public, left alone), npm, GitLab, Hugging Face
       [/\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/g, "[REDACTED:stripe-key]"],
       [/\bnpm_[A-Za-z0-9]{30,}/g, "[REDACTED:npm-token]"],
-      [/\bglpat-[A-Za-z0-9_\-]{20,}/g, "[REDACTED:gitlab-token]"],
+      [/\bglpat-[A-Za-z0-9_-]{20,}/g, "[REDACTED:gitlab-token]"],
       [/\bhf_[A-Za-z0-9]{30,}/g, "[REDACTED:huggingface-token]"],
       // JWT / OAuth access tokens (3 base64url segments)
-      [/\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}/g, "[REDACTED:jwt]"],
-      [/\bBearer\s+[A-Za-z0-9._\-]{20,}/gi, "Bearer [REDACTED:token]"],
+      [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[REDACTED:jwt]"],
+      [/\bBearer\s+[A-Za-z0-9._-]{20,}/gi, "Bearer [REDACTED:token]"],
       // PEM private keys
       [/-----BEGIN[^-]{0,40}PRIVATE KEY-----[\s\S]*?-----END[^-]{0,40}PRIVATE KEY-----/g, "[REDACTED:private-key]"],
       // The password in a URL's userinfo, also with an empty user (redis://:pass@host)
@@ -37167,7 +37202,10 @@ function planInheritance(parentEntries, exposePaths) {
   let next = parentEntries.reduce((n, e) => Math.max(n, e.index + 1), 0);
   for (const p of exposePaths) if (!paths.some((x) => x.source === p)) paths.push({ source: p, index: next++ });
   if (paths.length > POLICY.input.exposePathsMax) {
-    throw new ExposeError(`expose_from_parent and expose_paths together name ${paths.length} entries, over the cap of ${POLICY.input.exposePathsMax}; name fewer new paths`, "too_large");
+    throw new ExposeError(
+      `expose_from_parent and expose_paths together name ${paths.length} entries, over the cap of ${POLICY.input.exposePathsMax}; name fewer new paths`,
+      "too_large"
+    );
   }
   return { paths, skipped, diffs };
 }
@@ -37182,11 +37220,12 @@ function reexposeChange(workdir, entry, manifest) {
     }
     const deleted = m?.[2] === "deleted";
     let back = false;
-    if (deleted) try {
-      fs3.lstatSync(path4.join(entry.source, p));
-      back = true;
-    } catch {
-    }
+    if (deleted)
+      try {
+        fs3.lstatSync(path4.join(entry.source, p));
+        back = true;
+      } catch {
+      }
     changes.push({ path: p, status: deleted ? back ? "restored" : "D" : m?.[2] ?? "M" });
   }
   const before = { ...manifest.totals };
@@ -37229,7 +37268,10 @@ function git(cwd, args) {
     env: { ...env, GIT_OPTIONAL_LOCKS: "0" }
   });
   if (r.error || r.status !== 0) {
-    const why = r.error?.code === "ENOENT" ? "git is not on PATH" : String(r.stderr ?? r.error?.message ?? "").trim();
+    const why = (
+      /** @type {NodeJS.ErrnoException} */
+      r.error?.code === "ENOENT" ? "git is not on PATH" : String(r.stderr ?? r.error?.message ?? "").trim()
+    );
     throw new ExposeError(`context.expose_diff: git ${args[0]} failed in "${cwd}": ${why}`, "not_found");
   }
   return r.stdout;
@@ -37237,25 +37279,21 @@ function git(cwd, args) {
 function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
   const top = git(repo, ["rev-parse", "--show-toplevel"]).toString("utf8").trim();
   git(top, ["rev-parse", "--verify", `${base}^{commit}`]);
-  const tokens = nulSplit(git(top, [
-    "diff",
-    "--name-status",
-    "-z",
-    "--no-renames",
-    "--no-relative",
-    "--no-ext-diff",
-    "--no-textconv",
-    base,
-    "--"
-  ]));
+  const tokens = nulSplit(
+    git(top, ["diff", "--name-status", "-z", "--no-renames", "--no-relative", "--no-ext-diff", "--no-textconv", base, "--"])
+  );
   const changes = [];
   for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
-  for (const p of nulSplit(git(top, ["ls-files", "--others", "--exclude-standard", "-z"]))) changes.push({ status: "untracked", path: p });
+  for (const p of nulSplit(git(top, ["ls-files", "--others", "--exclude-standard", "-z"])))
+    changes.push({ status: "untracked", path: p });
   const before = { ...manifest.totals };
   const shown = [];
   const { copied, sha256 } = copyRepoFiles(workdir, top, changes, manifest, (c) => shown.push(c));
   if (shown.length === 0) {
-    throw new ExposeError(`context.expose_diff: no change against ${base} to show` + (changes.length ? " (every changed file is a protected path)" : ""), "not_found");
+    throw new ExposeError(
+      `context.expose_diff: no change against ${base} to show` + (changes.length ? " (every changed file is a protected path)" : ""),
+      "not_found"
+    );
   }
   manifest.entries.push({
     index: manifest.entries.reduce((n, e) => Math.max(n, e.index + 1), 0),
@@ -37285,11 +37323,13 @@ function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
     base,
     "--"
   ]).toString("utf8") : "";
-  let text2 = redact(full.split(/^(?=diff --git )/m).filter((sec) => {
-    const rest = sec.slice("diff --git ".length, sec.indexOf("\n"));
-    const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
-    return tracked.has(p) && rest === `a/${p} b/${p}`;
-  }).join(""));
+  let text2 = redact(
+    full.split(/^(?=diff --git )/m).filter((sec) => {
+      const rest = sec.slice("diff --git ".length, sec.indexOf("\n"));
+      const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
+      return tracked.has(p) && rest === `a/${p} b/${p}`;
+    }).join("")
+  );
   if (text2.length > maxChars) {
     text2 = maxChars < 500 ? "" : `${text2.slice(0, maxChars - 200)}
 ... [diff cut by severally: ${text2.length} characters in all; every changed file is under workspace/repo/]`;
@@ -37385,7 +37425,9 @@ function deletedLines(changes = []) {
   const gone = changes.filter((c) => c.endsWith(" (deleted)")).map((c) => c.slice(0, -" (deleted)".length));
   if (!gone.length) return [];
   const shown = gone.slice(0, 50);
-  return [`  - deleted by the change, so not copied: ${shown.join(", ")}${gone.length > shown.length ? `, and ${gone.length - shown.length} more` : ""}`];
+  return [
+    `  - deleted by the change, so not copied: ${shown.join(", ")}${gone.length > shown.length ? `, and ${gone.length - shown.length} more` : ""}`
+  ];
 }
 function renderExposeManifest(manifest) {
   if (!manifest || manifest.entries.length === 0 && manifest.skipped.length === 0) return null;
@@ -37481,7 +37523,8 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
-    if (left.length) parts.push(`(Round${left.length > 1 ? "s" : ""} ${left.join(", ")} left out to keep this brief within its size.)`);
+    if (left.length)
+      parts.push(`(Round${left.length > 1 ? "s" : ""} ${left.join(", ")} left out to keep this brief within its size.)`);
     parts.push(...blocks.slice(blocks.length - kept));
     parts.push("");
     parts.push(
@@ -37655,40 +37698,68 @@ function normalizeResult(raw) {
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
     stance: stance(src.stance),
-    findings: mapList(src.findings, {
-      point: "text",
-      grounds: "text",
-      impact: "text",
-      severity: "level",
-      confidence: "level"
-    }, { requiredField: "point", idPrefix: "f" }),
-    alternatives: mapList(src.alternatives, {
-      option: "text",
-      tradeoffs: "text",
-      when_preferred: "text"
-    }, { requiredField: "option" }),
-    unknowns: mapList(src.unknowns, {
-      item: "text",
-      why_it_matters: "text",
-      how_to_obtain: "text"
-    }, { requiredField: "item", idPrefix: "u" }),
-    decision_changers: mapList(src.decision_changers, {
-      condition: "text",
-      changes_to: "text"
-    }, { requiredField: "condition" }),
-    next_checks: mapList(src.next_checks, {
-      check: "text",
-      method: "text",
-      expected_signal: "text"
-    }, { requiredField: "check", idPrefix: "c" }),
-    remaining_disagreements: mapList(src.remaining_disagreements, {
-      topic: "text",
-      your_position: "text",
-      why_unresolved: "text"
-    }, { requiredField: "topic" }),
-    references: (Array.isArray(src.references) ? src.references : []).slice(0, O.referencesMax).map((r) => r && typeof r === "object" ? { title: clampText(r.title, 300), url: clampText(r.url, 1e3), relevance: clampText(r.relevance, 600) } : { title: clampText(r, 300), url: null, relevance: null }).filter((r) => r.title || r.url)
+    findings: mapList(
+      src.findings,
+      {
+        point: "text",
+        grounds: "text",
+        impact: "text",
+        severity: "level",
+        confidence: "level"
+      },
+      { requiredField: "point", idPrefix: "f" }
+    ),
+    alternatives: mapList(
+      src.alternatives,
+      {
+        option: "text",
+        tradeoffs: "text",
+        when_preferred: "text"
+      },
+      { requiredField: "option" }
+    ),
+    unknowns: mapList(
+      src.unknowns,
+      {
+        item: "text",
+        why_it_matters: "text",
+        how_to_obtain: "text"
+      },
+      { requiredField: "item", idPrefix: "u" }
+    ),
+    decision_changers: mapList(
+      src.decision_changers,
+      {
+        condition: "text",
+        changes_to: "text"
+      },
+      { requiredField: "condition" }
+    ),
+    next_checks: mapList(
+      src.next_checks,
+      {
+        check: "text",
+        method: "text",
+        expected_signal: "text"
+      },
+      { requiredField: "check", idPrefix: "c" }
+    ),
+    remaining_disagreements: mapList(
+      src.remaining_disagreements,
+      {
+        topic: "text",
+        your_position: "text",
+        why_unresolved: "text"
+      },
+      { requiredField: "topic" }
+    ),
+    references: (Array.isArray(src.references) ? src.references : []).slice(0, O.referencesMax).map(
+      (r) => r && typeof r === "object" ? { title: clampText(r.title, 300), url: clampText(r.url, 1e3), relevance: clampText(r.relevance, 600) } : { title: clampText(r, 300), url: null, relevance: null }
+    ).filter((r) => r.title || r.url)
   };
-  const listTruncated = Object.fromEntries(["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax).map((k) => [k, src[k].length]));
+  const listTruncated = Object.fromEntries(
+    ["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax).map((k) => [k, src[k].length])
+  );
   const missing = RESULT_KEYS.filter((k) => {
     const v = result[k];
     return v === null || v === void 0 || Array.isArray(v) && v.length === 0;
@@ -37736,10 +37807,19 @@ var RULES, AUTO_RETRY_KINDS;
 var init_failures = __esm({
   "src/failures.mjs"() {
     RULES = [
-      [/\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i, "usage_limit"],
-      [/\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i, "rate_limited"],
+      [
+        /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
+        "usage_limit"
+      ],
+      [
+        /\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i,
+        "rate_limited"
+      ],
       [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
-      [/\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i, "model_unavailable"]
+      [
+        /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i,
+        "model_unavailable"
+      ]
     ];
     AUTO_RETRY_KINDS = Object.freeze(["rate_limited", "cli_error"]);
   }
@@ -37941,14 +38021,7 @@ var init_run = __esm({
   "src/run.mjs"() {
     init_platform();
     init_policy();
-    DROP_EXACT = /* @__PURE__ */ new Set([
-      "CLAUDECODE",
-      "CLAUDE_PID",
-      "CLAUDE_EFFORT",
-      "AI_AGENT",
-      "ANTHROPIC_LOG",
-      "NODE_OPTIONS"
-    ]);
+    DROP_EXACT = /* @__PURE__ */ new Set(["CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT", "ANTHROPIC_LOG", "NODE_OPTIONS"]);
     DROP_PREFIX = ["CLAUDE_CODE_", "SEVERALLY_", "MCP_"];
     TARGET_DROP_PREFIX = {
       codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_", "ZAI_"],
@@ -38229,10 +38302,11 @@ function takeSeats(seats, cap, held) {
     const live = [];
     const names = fs4.readdirSync(seatsDir());
     for (const name of names.filter((n) => n.endsWith(".cancel"))) {
-      if (!names.includes(name.replace(/\.cancel$/, ".json"))) try {
-        fs4.rmSync(path6.join(seatsDir(), name), { force: true });
-      } catch {
-      }
+      if (!names.includes(name.replace(/\.cancel$/, ".json")))
+        try {
+          fs4.rmSync(path6.join(seatsDir(), name), { force: true });
+        } catch {
+        }
     }
     for (const name of names) {
       if (!name.endsWith(".json")) continue;
@@ -38242,10 +38316,11 @@ function takeSeats(seats, cap, held) {
       } catch {
       }
       if (seat && held(seat)) live.push(seat);
-      else try {
-        fs4.rmSync(path6.join(seatsDir(), name), { force: true });
-      } catch {
-      }
+      else
+        try {
+          fs4.rmSync(path6.join(seatsDir(), name), { force: true });
+        } catch {
+        }
     }
     for (const mine of seats.filter((x) => x.chain_id)) {
       let other = live.find((x) => x.chain_id === mine.chain_id);
@@ -38287,10 +38362,11 @@ function requestCancel(jobId) {
   }
 }
 function clearCancel(jobId) {
-  if (JOB_ID.test(jobId)) try {
-    fs4.rmSync(cancelFile(jobId), { force: true });
-  } catch {
-  }
+  if (JOB_ID.test(jobId))
+    try {
+      fs4.rmSync(cancelFile(jobId), { force: true });
+    } catch {
+    }
 }
 function loadGroup(groupId) {
   if (!GROUP_ID.test(groupId)) return null;
@@ -38351,7 +38427,8 @@ function filesystemPermissions() {
   fs5.mkdirSync(path7.join(POLICY.home, "homes"), { recursive: true, mode: 448 });
   const codexHome = path7.join(os2.homedir(), ".codex").replaceAll("\\", "/");
   const denied = protectedRoots().flatMap((p) => {
-    if (p === codexHome) return listDir(codexHome).filter((n) => n !== "packages").map((n) => `${codexHome}/${n}`);
+    if (p === codexHome)
+      return listDir(codexHome).filter((n) => n !== "packages").map((n) => `${codexHome}/${n}`);
     const star = p.indexOf("/*/");
     if (star === -1) return [p];
     const [parent, rest] = [p.slice(0, star), p.slice(star + 3)];
@@ -38636,7 +38713,13 @@ function interpret2({ stdout, stderr, code }) {
   const payload = lastJsonObject(stdout);
   if (!payload) {
     const msg = (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `claude exited with code ${code} and produced no JSON result`;
-    return { ok: false, failureKind: code === 0 ? "invalid_output" : classifyMessage(msg), message: msg, payload: null, usageRaw: null };
+    return {
+      ok: false,
+      failureKind: code === 0 ? "invalid_output" : classifyMessage(msg),
+      message: msg,
+      payload: null,
+      usageRaw: null
+    };
   }
   if (payload.is_error) {
     const msg = typeof payload.result === "string" ? payload.result : JSON.stringify(payload).slice(0, 2e3);
@@ -38645,7 +38728,13 @@ function interpret2({ stdout, stderr, code }) {
   const structured = payload.structured_output ?? payload.structuredOutput ?? null;
   const text2 = structured ?? (typeof payload.result === "string" ? payload.result : null);
   if (!text2) {
-    return { ok: false, failureKind: "invalid_output", message: "result payload contained no answer", payload, usageRaw: payload };
+    return {
+      ok: false,
+      failureKind: "invalid_output",
+      message: "result payload contained no answer",
+      payload,
+      usageRaw: payload
+    };
   }
   return { ok: true, text: text2, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
@@ -38832,7 +38921,17 @@ function prepareSandbox({ workdir, network = "on" }) {
   fs6.writeFileSync(path8.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
   const tools = allowedTools(network);
   const hookScript = path8.join(root, "tool-allowlist.mjs");
-  fs6.writeFileSync(hookScript, hookSource(tools, protectedRootPatterns([root, path8.join(credentialsHome(), ".gemini")]), protectedNamePatterns(), os4.homedir(), spillPattern(root)), { mode: 384 });
+  fs6.writeFileSync(
+    hookScript,
+    hookSource(
+      tools,
+      protectedRootPatterns([root, path8.join(credentialsHome(), ".gemini")]),
+      protectedNamePatterns(),
+      os4.homedir(),
+      spillPattern(root)
+    ),
+    { mode: 384 }
+  );
   const hooks = {
     severally: {
       PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: hookCommand(hookScript), timeout: 10 }] }]
@@ -38891,13 +38990,7 @@ var init_antigravity_sandbox = __esm({
     init_policy();
     init_store();
     SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
-    SANDBOX_DENY = Object.freeze([
-      "write_file(*)",
-      "command(*)",
-      "mcp(*)",
-      "execute_url(*)",
-      "unsandboxed(*)"
-    ]);
+    SANDBOX_DENY = Object.freeze(["write_file(*)", "command(*)", "mcp(*)", "execute_url(*)", "unsandboxed(*)"]);
     ALLOWED_TOOLS = Object.freeze(["view_file", "search_web", "read_url_content", "finish"]);
     WEB_TOOLS = /* @__PURE__ */ new Set(["search_web", "read_url_content"]);
     PATH_TOOLS = ["view_file", "read_url_content"];
@@ -38974,7 +39067,8 @@ function toolCalls2({ stdout }) {
   const seen = /* @__PURE__ */ new Map();
   for (const e of events(stdout)) {
     const s2 = e.event === "step_update" ? e.step_update : null;
-    if (s2?.tool_name) seen.set(s2.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s2.state ?? "") ? `${s2.tool_name}:error` : s2.tool_name);
+    if (s2?.tool_name)
+      seen.set(s2.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s2.state ?? "") ? `${s2.tool_name}:error` : s2.tool_name);
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
@@ -39096,10 +39190,7 @@ import path10 from "node:path";
 import crypto3 from "node:crypto";
 import { createRequire as sqliteRequire } from "node:module";
 function readRules() {
-  const deny = [
-    ...protectedRoots().flatMap((r) => [r, `${r}/**`]),
-    ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])
-  ];
+  const deny = [...protectedRoots().flatMap((r) => [r, `${r}/**`]), ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])];
   return { "*": "allow", ...Object.fromEntries(deny.map((p) => [p, "deny"])) };
 }
 function prepareSandbox2({ workdir, network = "on" }) {
@@ -39225,7 +39316,9 @@ function seedCredentialFromAuth(sandbox, provider) {
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      db.prepare("INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)").run(`cred_${crypto3.randomBytes(18).toString("base64url")}`, provider, row.label, row.value, Date.now(), Date.now());
+      db.prepare(
+        "INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(`cred_${crypto3.randomBytes(18).toString("base64url")}`, provider, row.label, row.value, Date.now(), Date.now());
     } finally {
       db.close();
     }
@@ -39303,7 +39396,9 @@ async function prepare() {
         resolve();
       };
       try {
-        const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP" || k === "STUB_HELP_DELAY_MS"));
+        const env = Object.fromEntries(
+          Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP" || k === "STUB_HELP_DELAY_MS")
+        );
         const child = spawnCommand(POLICY.clis.opencode.cli, ["run", "--help"], { env, stdio: ["ignore", "pipe", "pipe"] });
         let out = "";
         child.stdout.on("data", (c) => {
@@ -39388,7 +39483,10 @@ function compactLine(line) {
   try {
     const e = JSON.parse(line);
     if (e?.type !== "tool_use") return line;
-    return JSON.stringify({ type: e.type, part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } } });
+    return JSON.stringify({
+      type: e.type,
+      part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } }
+    });
   } catch {
     return line;
   }
@@ -39559,12 +39657,13 @@ function ownerState(jobId, owner) {
   if (!owner) return "dead";
   let pidAlive;
   if (owner.pid === process.pid) pidAlive = LIVE_HERE.has(jobId);
-  else try {
-    process.kill(owner.pid, 0);
-    pidAlive = true;
-  } catch (err) {
-    pidAlive = err.code === "EPERM";
-  }
+  else
+    try {
+      process.kill(owner.pid, 0);
+      pidAlive = true;
+    } catch (err) {
+      pidAlive = err.code === "EPERM";
+    }
   if (!pidAlive) return "dead";
   return Date.now() > Date.parse(owner.deadline_at) ? "overdue" : "alive";
 }
@@ -39657,7 +39756,8 @@ function inherit(raw, round) {
   const out = raw.network === void 0 && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
   for (const k of ["objective", "success_criteria", "constraints"]) {
-    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length))
+      out[k] = brief[k];
   }
   const ctx = { ...raw.context ?? {} };
   for (const k of ["facts", "proposal", "counterpoints"]) {
@@ -39665,7 +39765,8 @@ function inherit(raw, round) {
   }
   const artifacts = [...brief.artifacts ?? []];
   const last = artifacts.at(-1);
-  if (brief.expose_paths?.entries?.some((e) => e.kind === "diff") && last?.kind === "diff" && last.name.startsWith("git diff ")) artifacts.pop();
+  if (brief.expose_paths?.entries?.some((e) => e.kind === "diff") && last?.kind === "diff" && last.name.startsWith("git diff "))
+    artifacts.pop();
   if (ctx.artifacts === void 0 && artifacts.length) {
     ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));
   }
@@ -39682,7 +39783,8 @@ function adviceCaveat(normalized) {
   } else if (!result.evidence_basis) {
     notes.push("the consultant did not say how well its evidence supports the answer (evidence_basis)");
   }
-  if (!result.stance) notes.push("the answer gives no bottom line (stance): read the summary and findings for one before relying on it");
+  if (!result.stance)
+    notes.push("the answer gives no bottom line (stance): read the summary and findings for one before relying on it");
   if (quality.findings_without_grounds > 0) {
     notes.push(`${quality.findings_without_grounds} finding(s) arrived without grounds: do not adopt them without checking`);
   }
@@ -39828,7 +39930,10 @@ function pointsOf(view, ids) {
   const known = recordableIds(r);
   const unknown2 = ids.filter((id2) => !known.includes(id2));
   if (unknown2.length) {
-    throw new RequestError(`${unknown2.map((id2) => `"${id2}"`).join(", ")} not in this answer; it has: ${known.join(", ")}`, "unknown_entry_id");
+    throw new RequestError(
+      `${unknown2.map((id2) => `"${id2}"`).join(", ")} not in this answer; it has: ${known.join(", ")}`,
+      "unknown_entry_id"
+    );
   }
   const verdicts = new Map((view.record?.entries ?? []).map((e) => [e.id, e]));
   const lists = { finding: r.findings, unknown: r.unknowns, next_check: r.next_checks };
@@ -39899,11 +40004,16 @@ function nextStep(job) {
     const close = open2 > 0 ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict.` : "";
     return (left > 0 ? `check the grounds behind the points that matter, run the one check that would change the decision, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
   }
-  if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error") return "retriable: narrow the brief and start a new consultation";
-  if (job.failure?.kind === "interrupted") return "the severally process running it exited before the consultant answered; start the consultation again if you still need it";
-  if (job.failure?.kind === "rate_limited") return "the consultant was rate-limited and the server already re-ran it (see retries); try again in a few minutes, or proceed on your own judgement";
-  if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth") return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
-  if (job.failure?.kind === "invalid_output") return "the consultant answered but not in the required shape; retry once with a shorter brief before giving up";
+  if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error")
+    return "retriable: narrow the brief and start a new consultation";
+  if (job.failure?.kind === "interrupted")
+    return "the severally process running it exited before the consultant answered; start the consultation again if you still need it";
+  if (job.failure?.kind === "rate_limited")
+    return "the consultant was rate-limited and the server already re-ran it (see retries); try again in a few minutes, or proceed on your own judgement";
+  if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth")
+    return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
+  if (job.failure?.kind === "invalid_output")
+    return "the consultant answered but not in the required shape; retry once with a shorter brief before giving up";
   return "proceed on your own judgement and note that no peer input was obtained";
 }
 function extraArgsProblem(target, adapterArgs, extra) {
@@ -39959,6 +40069,7 @@ var init_jobs = __esm({
     LIVE_HERE = /* @__PURE__ */ new Set();
     JobManager = class {
       constructor() {
+        this._cancelWatch = null;
         this.jobs = /* @__PURE__ */ new Map();
         this.groups = /* @__PURE__ */ new Map();
         this.order = [];
@@ -40070,6 +40181,7 @@ var init_jobs = __esm({
       }
       // `detail: "full"` returns the brief as stored; by default a finished
       // consultation names it (size, sha256, round file) instead of repeating it.
+      /** @param {string} jobId @param {{detail?: string}} [opts] */
       view(jobId, { detail } = {}) {
         const job = this.jobs.get(jobId);
         if (!job) {
@@ -40105,12 +40217,15 @@ var init_jobs = __esm({
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
           const saved = state === "alive" ? null : loadRoundAt(live);
-          elsewhere.push({ rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } } });
+          elsewhere.push({
+            rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } }
+          });
         }
-        for (const row of indexRows()) if (!seen.has(row.job_id)) {
-          seen.add(row.job_id);
-          elsewhere.push({ row });
-        }
+        for (const row of indexRows())
+          if (!seen.has(row.job_id)) {
+            seen.add(row.job_id);
+            elsewhere.push({ row });
+          }
         const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? "";
         const picked = [];
         for (const x of [...here, ...elsewhere].sort((p, q) => at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0)) {
@@ -40159,10 +40274,11 @@ var init_jobs = __esm({
           t.consultations += 1;
           t.attempts += attempts.length;
           for (const u of attempts) {
-            for (const [k, v] of Object.entries(u)) if (typeof v === "number") {
-              t[k] = (t[k] ?? 0) + v;
-              seen.add(k);
-            }
+            for (const [k, v] of Object.entries(u))
+              if (typeof v === "number") {
+                t[k] = (t[k] ?? 0) + v;
+                seen.add(k);
+              }
           }
         }
         for (const [target, t] of Object.entries(by)) {
@@ -40177,7 +40293,8 @@ var init_jobs = __esm({
             "recursion_blocked"
           );
         }
-        if (configProblem()) throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
+        if (configProblem())
+          throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
         const followupTo = typeof rawRequest?.followup_to === "string" && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
         let parent = null;
         let fromGroup = null;
@@ -40212,7 +40329,8 @@ var init_jobs = __esm({
         if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
           rawRequest = { ...rawRequest, target: parent.target };
         }
-        if (parent || fromGroup) rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
+        if (parent || fromGroup)
+          rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
         const req = parseRequest(rawRequest, {
           isFollowup: Boolean(parent || fromGroup),
           parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -40246,7 +40364,9 @@ var init_jobs = __esm({
           // not, so a suspended laptop must not make a live owner look overdue.
           owner: {
             pid: process.pid,
-            deadline_at: new Date(Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 36e5).toISOString()
+            deadline_at: new Date(
+              Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 36e5
+            ).toISOString()
           }
         }));
         const taken = takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === "alive");
@@ -40283,7 +40403,11 @@ var init_jobs = __esm({
         for (const jid of group.job_ids) {
           const member = this.jobs.get(jid) ?? loadRound(jid);
           if (!member) {
-            skipped.push({ job_id: jid, target: null, reason: "not found: aged out of the history, or still running in another severally process" });
+            skipped.push({
+              job_id: jid,
+              target: null,
+              reason: "not found: aged out of the history, or still running in another severally process"
+            });
             continue;
           }
           const rounds = this.#chainRounds(member.chain_id);
@@ -40318,7 +40442,11 @@ var init_jobs = __esm({
           try {
             fs9.mkdirSync(path11.join(snapshot, "workspace"), { recursive: true, mode: 448 });
             const plan = planInheritance(parentEntries, req.context.expose_paths);
-            exposeManifest = materializeExposedPaths(snapshot, plan.paths) ?? { entries: [], totals: { files: 0, bytes: 0 }, skipped: [] };
+            exposeManifest = materializeExposedPaths(snapshot, plan.paths) ?? {
+              entries: [],
+              totals: { files: 0, bytes: 0 },
+              skipped: []
+            };
             exposeManifest.skipped.push(...plan.skipped);
             const parentSources = new Set(parentEntries.map((e) => e.source));
             for (const e of exposeManifest.entries) if (parentSources.has(e.source)) e.inherited = true;
@@ -40495,10 +40623,12 @@ var init_jobs = __esm({
       #chainHistory(chainId) {
         return this.#chainRounds(chainId).filter((j) => j.status === "completed" && j.result).sort((a, b) => a.round - b.round).map((j) => {
           const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
-          const ordered = (items, shape) => [
-            ...items.filter((x) => verdicts.has(x.id)),
-            ...items.filter((x) => !verdicts.has(x.id))
-          ].map((x) => ({ id: x.id, ...shape(x), verdict: verdicts.get(x.id)?.verdict ?? null, effect: verdicts.get(x.id)?.effect ?? null }));
+          const ordered = (items, shape) => [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
+            id: x.id,
+            ...shape(x),
+            verdict: verdicts.get(x.id)?.verdict ?? null,
+            effect: verdicts.get(x.id)?.effect ?? null
+          }));
           const checked = (x) => x.verdict !== null;
           const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
           return {
@@ -40581,12 +40711,7 @@ var init_jobs = __esm({
           if (argsProblem) return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${argsProblem}`);
           invocation.args = withExtraArgs(invocation.args, t.extraArgs);
           assertNoForbiddenFlags(cli, invocation.args);
-          job.boundary = adapter.boundary?.({
-            args: invocation.args,
-            sandbox,
-            network: req.network,
-            hasExposedPaths: Boolean(req._snapshot)
-          }) ?? null;
+          job.boundary = adapter.boundary?.({ args: invocation.args, sandbox, network: req.network, hasExposedPaths: Boolean(req._snapshot) }) ?? null;
           const attempt = (timeout) => {
             const { handle, done } = runChild({
               command: invocation.command,
@@ -40654,7 +40779,12 @@ var init_jobs = __esm({
               authTried = true;
               const seeded = adapter.recoverAuthFailure({ interpreted, sandbox, model: job.model });
               if (seeded && remaining >= MIN_RETRY_MS) {
-                job.retries.push({ failure_kind: interpreted.failureKind, reason: "credentials re-seeded", at: (/* @__PURE__ */ new Date()).toISOString(), usage: adapter.usageRecord(interpreted.usageRaw) });
+                job.retries.push({
+                  failure_kind: interpreted.failureKind,
+                  reason: "credentials re-seeded",
+                  at: (/* @__PURE__ */ new Date()).toISOString(),
+                  usage: adapter.usageRecord(interpreted.usageRaw)
+                });
                 run = await attempt(remaining);
                 continue;
               }
@@ -40662,7 +40792,12 @@ var init_jobs = __esm({
             const wait = POLICY.retryBackoffMs * 3 ** autoRetries;
             if (AUTO_RETRY_KINDS.includes(interpreted.failureKind) && autoRetries < POLICY.maxAutoRetries && remaining - wait >= MIN_RETRY_MS) {
               autoRetries += 1;
-              job.retries.push({ failure_kind: interpreted.failureKind, reason: `transient; re-run after ${wait} ms`, at: (/* @__PURE__ */ new Date()).toISOString(), usage: adapter.usageRecord(interpreted.usageRaw) });
+              job.retries.push({
+                failure_kind: interpreted.failureKind,
+                reason: `transient; re-run after ${wait} ms`,
+                at: (/* @__PURE__ */ new Date()).toISOString(),
+                usage: adapter.usageRecord(interpreted.usageRaw)
+              });
               await new Promise((resolve) => {
                 const timer = setTimeout(resolve, wait);
                 job._cancelFns.push(() => {
@@ -40763,6 +40898,7 @@ var init_jobs = __esm({
       // consultant did not produce and a word outside VERDICTS, then stores what
       // was written. It never decides that a finding was adopted, and it never
       // fills in a verdict the lead did not write.
+      /** @param {Record<string, any>} [input] */
       record(input2 = {}) {
         if (input2.records !== void 0) return this.#recordMany(input2);
         const allowed = ["job_id", "entries", "reflection"];
@@ -40785,7 +40921,10 @@ var init_jobs = __esm({
       #recordMany(input2) {
         const extra = Object.keys(input2).filter((k) => k !== "records");
         if (extra.length) {
-          throw new RequestError(`records cannot be combined with ${extra.map((k) => `"${k}"`).join(", ")}; put each job's verdicts inside records`, "unknown_field");
+          throw new RequestError(
+            `records cannot be combined with ${extra.map((k) => `"${k}"`).join(", ")}; put each job's verdicts inside records`,
+            "unknown_field"
+          );
         }
         const { records } = input2;
         if (!Array.isArray(records) || records.length === 0) {
@@ -40796,10 +40935,12 @@ var init_jobs = __esm({
         const seen = /* @__PURE__ */ new Set();
         records.forEach((r, i) => {
           try {
-            if (seen.has(r?.job_id)) throw new RequestError(`job "${r.job_id}" appears twice; give each job one record`, "duplicate_job");
+            if (seen.has(r?.job_id))
+              throw new RequestError(`job "${r.job_id}" appears twice; give each job one record`, "duplicate_job");
             seen.add(r?.job_id);
             const unknown2 = Object.keys(r ?? {}).filter((k) => !["job_id", "entries", "reflection"].includes(k));
-            if (unknown2.length) throw new RequestError(`${unknown2.map((k) => `"${k}"`).join(", ")} cannot be written here`, "unknown_field");
+            if (unknown2.length)
+              throw new RequestError(`${unknown2.map((k) => `"${k}"`).join(", ")} cannot be written here`, "unknown_field");
             changes.push(this.#checkRecord(r ?? {}));
           } catch (err) {
             if (!(err instanceof RequestError)) throw err;
@@ -40819,17 +40960,18 @@ var init_jobs = __esm({
       }
       // Everything that can be wrong with a record, found before anything is
       // written: what the job's record and reflection become, or a RequestError.
+      /** @param {{job_id?: string, entries?: any[], reflection?: any}} rec */
       #checkRecord({ job_id: jobId, entries, reflection }) {
         if (entries === void 0 && reflection === void 0) {
-          throw new RequestError("pass entries (verdicts on specific points), reflection (what the answer added), or both", "nothing_to_record");
+          throw new RequestError(
+            "pass entries (verdicts on specific points), reflection (what the answer added), or both",
+            "nothing_to_record"
+          );
         }
         const live = this.jobs.get(jobId);
         const job = live ?? loadRound(jobId);
         if (!job) {
-          throw new RequestError(
-            `no consultation with job_id "${jobId}" in this session or in ~/.severally/history`,
-            "unknown_job"
-          );
+          throw new RequestError(`no consultation with job_id "${jobId}" in this session or in ~/.severally/history`, "unknown_job");
         }
         if (!job.result) {
           throw new RequestError(
@@ -40948,7 +41090,8 @@ var init_jobs = __esm({
         if (!job) {
           const view = this.view(jobId);
           if (!view) return null;
-          if (view.status !== "running" && view.status !== "queued") return { ...view, cancel_effect: `job was already ${view.status}` };
+          if (view.status !== "running" && view.status !== "queued")
+            return { ...view, cancel_effect: `job was already ${view.status}` };
           return {
             ...view,
             cancel_effect: requestCancel(jobId) ? `asked the severally process running it to stop it; that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing signalled: the request to the severally process running it could not be written"
@@ -40965,6 +41108,7 @@ var init_jobs = __esm({
       // Every field here is derived from the one `members` array it is handed, so a
       // group view can never report one status in `members` and another in
       // `comparison` or `status` for the same job.
+      /** @param {any} group @param {any[]} members @param {{detail?: string}} [opts] */
       #shapeGroup(group, members2, { detail } = {}) {
         const full = detail === "full";
         const cancelling = members2.some((m) => m.status === "cancelling");
@@ -41038,7 +41182,10 @@ var init_jobs = __esm({
           const view = this.groupView(groupId);
           if (!view) return null;
           const asked = (loadGroup(groupId)?.job_ids ?? []).map((jid) => this.cancel(jid)).filter((r) => /^asked/.test(r?.cancel_effect ?? "")).length;
-          return { ...view, cancel_effect: asked ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing to signal: no consultant in this fan-out is still running" };
+          return {
+            ...view,
+            cancel_effect: asked ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing to signal: no consultant in this fan-out is still running"
+          };
         }
         const signalled = group.job_ids.filter((jid) => {
           const j = this.jobs.get(jid);
@@ -41157,11 +41304,23 @@ function briefSection(brief) {
     out.push("");
   };
   block("Objective", brief.objective);
-  block("Success criteria", bullets2(brief.success_criteria, (c) => `- ${c}`));
-  block("Constraints", bullets2(brief.constraints, (c) => `- ${c}`));
-  block("Facts as given", bullets2(brief.facts, (f) => `- ${f}`));
+  block(
+    "Success criteria",
+    bullets2(brief.success_criteria, (c) => `- ${c}`)
+  );
+  block(
+    "Constraints",
+    bullets2(brief.constraints, (c) => `- ${c}`)
+  );
+  block(
+    "Facts as given",
+    bullets2(brief.facts, (f) => `- ${f}`)
+  );
   block("Proposal", brief.proposal);
-  block("Opposing claims", bullets2(brief.counterpoints, (c) => `- ${c}`));
+  block(
+    "Opposing claims",
+    bullets2(brief.counterpoints, (c) => `- ${c}`)
+  );
   for (const a of brief.artifacts ?? []) {
     out.push(`**Material: ${a.name}** (${[a.kind, a.language, a.source].filter(Boolean).join(", ")})`, "");
     out.push(...fence(a.excerpt, a.language));
@@ -41178,7 +41337,8 @@ function briefSection(brief) {
     if (count("symlink")) out.push(`- ${count("symlink")} symlink(s) inside those directories were skipped, not followed`);
     if (count("protected")) out.push(`- ${count("protected")} credential or history path(s) were left out on purpose`);
     if (count("gone")) out.push(`- ${count("gone")} path(s) from the earlier round no longer existed and were not copied again`);
-    if (count("masked")) out.push(`- ${count("masked")} path(s) from the earlier round were masked in its record and were not copied again`);
+    if (count("masked"))
+      out.push(`- ${count("masked")} path(s) from the earlier round were masked in its record and were not copied again`);
     if (count("replaced")) out.push("- the earlier round's change was replaced by the diff given in this round");
     out.push("");
   }
@@ -41273,7 +41433,9 @@ function roundSection(round, previousBrief) {
   ];
   if (round.result) {
     head.push(`- stance as declared: ${round.result.stance ?? "not declared"}`);
-    head.push(`- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`);
+    head.push(
+      `- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`
+    );
   }
   head.push("");
   head.push("### Question", "", round.question, "");
@@ -41329,8 +41491,12 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
       if (round.brief) previousBrief = round.brief;
     }
   }
-  return { markdown: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
-`, rounds: total, chain_ids: chainIds };
+  return {
+    markdown: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
+`,
+    rounds: total,
+    chain_ids: chainIds
+  };
 }
 var ExportError, historyDir, bullets2;
 var init_export = __esm({
@@ -41350,6 +41516,13 @@ var init_export = __esm({
 });
 
 // src/server.mjs
+var server_exports = {};
+__export(server_exports, {
+  SEVERALLY_VERSION: () => SEVERALLY_VERSION,
+  createServer: () => createServer,
+  main: () => main,
+  staleInstall: () => staleInstall
+});
 import fs11 from "node:fs";
 import os5 from "node:os";
 import path13 from "node:path";
@@ -41387,12 +41560,18 @@ function staleInstall(home = os5.homedir(), severallyHome = POLICY.home) {
 }
 function createServer(manager = new JobManager()) {
   const stale = staleInstall();
-  const server = new McpServer(
-    { name: "severally", version: SEVERALLY_VERSION },
-    { instructions: SERVER_INSTRUCTIONS }
-  );
-  const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
-  const fail = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: true });
+  const server = new McpServer({ name: "severally", version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
+  const ok = (payload) => ({ content: [{ type: (
+    /** @type {const} */
+    "text"
+  ), text: JSON.stringify(payload, null, 2) }] });
+  const fail = (payload) => ({
+    content: [{ type: (
+      /** @type {const} */
+      "text"
+    ), text: JSON.stringify(payload, null, 2) }],
+    isError: true
+  });
   server.registerTool(
     "consult_start",
     {
@@ -41424,7 +41603,9 @@ function createServer(manager = new JobManager()) {
         group_id: external_exports.string().min(1).optional(),
         wait_ms: external_exports.number().int().min(0).max(POLICY.maxWaitMs).optional(),
         detail: external_exports.enum(["full"]).optional(),
-        ids: external_exports.array(external_exports.string().min(1)).min(1).max(100).optional().describe("with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote")
+        ids: external_exports.array(external_exports.string().min(1)).min(1).max(100).optional().describe(
+          "with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote"
+        )
       })
     },
     async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
@@ -41432,14 +41613,20 @@ function createServer(manager = new JobManager()) {
         return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
       }
       if (ids && (group_id || detail)) {
-        return fail({ error: "invalid_request", message: "ids goes with job_id alone: a point id belongs to one consultant's answer" });
+        return fail({
+          error: "invalid_request",
+          message: "ids goes with job_id alone: a point id belongs to one consultant's answer"
+        });
       }
       const req = ctx?.mcpReq;
       const token = req?._meta?.progressToken;
       let beats = 0;
       const timer = token === void 0 ? null : setInterval(() => {
         beats += 1;
-        req.notify({ method: "notifications/progress", params: { progressToken: token, progress: beats, message: "the consultation is still running" } }).catch(() => {
+        req.notify({
+          method: "notifications/progress",
+          params: { progressToken: token, progress: beats, message: "the consultation is still running" }
+        }).catch(() => {
         });
       }, PROGRESS_EVERY_MS);
       let view;
@@ -41449,7 +41636,10 @@ function createServer(manager = new JobManager()) {
         clearInterval(timer);
       }
       if (!view) {
-        return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
+        return fail({
+          error: "unknown_job",
+          message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"`
+        });
       }
       if (!ids || ["running", "queued", "cancelling"].includes(view.status)) return ok(view);
       try {
@@ -41477,7 +41667,10 @@ function createServer(manager = new JobManager()) {
       }
       const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
       if (!view) {
-        return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
+        return fail({
+          error: "unknown_job",
+          message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"`
+        });
       }
       return ok(view);
     }
@@ -41497,15 +41690,20 @@ function createServer(manager = new JobManager()) {
     async ({ job_id, entries, reflection, records }) => {
       try {
         if (records !== void 0) {
-          const out = manager.record(Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== void 0)));
+          const out = manager.record(
+            Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== void 0))
+          );
           return out.not_saved ? fail(out) : ok(out);
         }
-        if (!job_id) return fail({ error: "invalid_request", message: "pass job_id (with entries and/or reflection), or records" });
-        return ok(manager.record({
-          job_id,
-          ...entries === void 0 ? {} : { entries },
-          ...reflection === void 0 ? {} : { reflection }
-        }));
+        if (!job_id)
+          return fail({ error: "invalid_request", message: "pass job_id (with entries and/or reflection), or records" });
+        return ok(
+          manager.record({
+            job_id,
+            ...entries === void 0 ? {} : { entries },
+            ...reflection === void 0 ? {} : { reflection }
+          })
+        );
       } catch (err) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
@@ -41552,9 +41750,11 @@ function createServer(manager = new JobManager()) {
 }
 async function main() {
   const problem = configProblem();
-  if (problem) process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}
+  if (problem)
+    process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}
 `);
-  for (const w of configWarnings()) process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}
+  for (const w of configWarnings())
+    process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}
 `);
   if (availableConsultants().length === 0) {
     process.stderr.write(
@@ -41562,9 +41762,7 @@ async function main() {
     );
   }
   if (process.env.SEVERALLY_ACTIVE === "1") {
-    process.stderr.write(
-      "severally: refusing to start inside a severally consultant session (recursion barrier)\n"
-    );
+    process.stderr.write("severally: refusing to start inside a severally consultant session (recursion barrier)\n");
     process.exit(2);
   }
   const manager = new JobManager();
@@ -41591,7 +41789,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.3.1";
+    SEVERALLY_VERSION = "2.4.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -41647,12 +41845,14 @@ prediction: { expected, worry }, kept and never sent; it can only be written her
 Model, permissions, rounds, timeout and size caps are fixed by this server.`;
     recordShape = {
       job_id: external_exports.string().min(1).describe("the job_id consult_get returned"),
-      entries: external_exports.array(external_exports.object({
-        id: external_exports.string().min(1).describe("f1, u1, c1 ... from the result"),
-        verdict: external_exports.enum(VERDICTS),
-        effect: external_exports.string().max(4e3).optional().describe("what it changed, or why it is unverified"),
-        note: external_exports.string().max(4e3).optional().describe("what you checked and found")
-      })).min(1).max(100).optional(),
+      entries: external_exports.array(
+        external_exports.object({
+          id: external_exports.string().min(1).describe("f1, u1, c1 ... from the result"),
+          verdict: external_exports.enum(VERDICTS),
+          effect: external_exports.string().max(4e3).optional().describe("what it changed, or why it is unverified"),
+          note: external_exports.string().max(4e3).optional().describe("what you checked and found")
+        })
+      ).min(1).max(100).optional(),
       reflection: external_exports.object({
         delta: external_exports.string().min(1).max(4e3).describe('what the answer added over what you expected ("nothing new" counts)'),
         related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("f1, u1, c1 ...")
@@ -41680,6 +41880,26 @@ function registration({ cmd, checks }) {
   }
   return ran ? "not registered" : `could not tell (${cmd} ${checks.map((a) => a.join(" ")).join(" / ")} failed)`;
 }
+function login(cli) {
+  const check2 = LOGIN[cli];
+  if (!check2) return "not checked (no login status command)";
+  if (!findCommand(check2.cmd)) return "not installed";
+  let out;
+  let ok = true;
+  try {
+    out = execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
+  } catch (err) {
+    if (typeof err.status !== "number") return `could not tell (${check2.cmd} ${check2.args.join(" ")} failed)`;
+    out = `${err.stdout ?? ""}`;
+    ok = false;
+  }
+  try {
+    const v = check2.read(out, ok);
+    return v === true ? "logged in" : v || "not logged in";
+  } catch {
+    return `could not tell (${check2.cmd} ${check2.args.join(" ")} answered in an unexpected form)`;
+  }
+}
 function status() {
   const lines = [`severally ${SEVERALLY_VERSION}`, ""];
   const problem = configProblem();
@@ -41688,42 +41908,86 @@ function status() {
   lines.push(`network: ${POLICY.network === "off" ? "off for every consultation (server.network)" : "per request"}`, "");
   lines.push("consultants:");
   for (const c of POLICY.consultants) {
-    lines.push(`  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? "available" : `not available: ${unavailableReason(c)}`}`);
+    lines.push(
+      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? "available" : `not available: ${unavailableReason(c)}`}`
+    );
   }
   for (const name of brokenConsultantNames()) lines.push(`  ${name}: not available: ${brokenConsultant(name)}`);
   lines.push("");
   const stale = staleInstall();
-  lines.push(stale ? `copies: ${Object.entries(stale.copies).map(([k, v]) => `${k} ${v}${stale.behind.includes(k) ? " (behind)" : ""}`).join(", ")}
-  ${stale.fix}` : "copies: every installed copy is this version", "");
+  lines.push(
+    stale ? `copies: ${Object.entries(stale.copies).map(([k, v]) => `${k} ${v}${stale.behind.includes(k) ? " (behind)" : ""}`).join(", ")}
+  ${stale.fix}` : "copies: every installed copy is this version",
+    ""
+  );
   lines.push("clients:");
   for (const client of CLIENTS) lines.push(`  ${client.label.padEnd(12)} ${registration(client)}`);
-  lines.push("", "login: not checked -- an installed, registered CLI may still be logged out or out of quota; the first consultation is what shows it");
+  lines.push("", "login (out of quota is not checked; the first consultation shows it):");
+  for (const cli of [...new Set(POLICY.consultants.map((c) => c.cli))]) lines.push(`  ${cli.padEnd(12)} ${login(cli)}`);
   process.stdout.write(`${lines.join("\n")}
 `);
   return problem ? 1 : 0;
 }
-var CLIENTS;
+var CLIENTS, LOGIN;
 var init_status = __esm({
   "src/status.mjs"() {
     init_policy();
     init_server();
     init_platform();
     CLIENTS = [
-      { label: "Claude Code", cmd: "claude", checks: [["plugin", "list"], ["mcp", "get", "severally"]] },
-      { label: "Codex", cmd: "codex", checks: [["plugin", "list"], ["mcp", "get", "severally"]] },
+      {
+        label: "Claude Code",
+        cmd: "claude",
+        checks: [
+          ["plugin", "list"],
+          ["mcp", "get", "severally"]
+        ]
+      },
+      {
+        label: "Codex",
+        cmd: "codex",
+        checks: [
+          ["plugin", "list"],
+          ["mcp", "get", "severally"]
+        ]
+      },
       { label: "Antigravity", cmd: "agy", checks: [["mcp", "list"]] },
       { label: "OpenCode", cmd: "opencode", checks: [["mcp", "list"]] }
     ];
+    LOGIN = {
+      "claude-code": { cmd: "claude", args: ["auth", "status", "--json"], read: (out) => JSON.parse(out).loggedIn === true },
+      // Codex prints its answer on stderr; the exit status carries the verdict.
+      codex: { cmd: "codex", args: ["login", "status"], read: (out, ok) => ok },
+      // OpenCode can also take keys from the environment, so no saved credential
+      // is a warning, not a verdict.
+      opencode: {
+        cmd: "opencode",
+        args: ["auth", "list"],
+        read: (out) => {
+          const n = out.split("\n").filter((l) => /\bstored\b/.test(l)).length;
+          return n ? `${n} saved credential${n > 1 ? "s" : ""}` : "no saved credentials (keys in the environment still work)";
+        }
+      }
+    };
   }
 });
 
 // bin/severally-mcp.mjs
-init_server();
 import fs12 from "node:fs";
+var major = Number(process.versions.node.split(".")[0]);
+if (major < 22) {
+  process.stderr.write(
+    `severally: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again
+`
+  );
+  process.exit(1);
+}
 if (process.argv[2] === "install") {
   const installer = new URL("../scripts/install.mjs", import.meta.url);
   if (!fs12.existsSync(installer)) {
-    process.stderr.write("severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n");
+    process.stderr.write(
+      "severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n"
+    );
     process.exit(1);
   }
   process.argv.splice(2, 1);
@@ -41732,7 +41996,8 @@ if (process.argv[2] === "install") {
   const { status: status2 } = await Promise.resolve().then(() => (init_status(), status_exports));
   process.exitCode = status2();
 } else {
-  main().catch((err) => {
+  const { main: main2 } = await Promise.resolve().then(() => (init_server(), server_exports));
+  main2().catch((err) => {
     process.stderr.write(`severally: fatal: ${err?.stack ?? err}
 `);
     process.exit(1);

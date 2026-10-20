@@ -7,7 +7,16 @@ import { DEFAULT_MODELS } from '../src/consultants.mjs';
 // A consultant definition as policy.mjs builds one, for calling an adapter
 // directly: the CLI's default model unless a test overrides a field.
 export const asConsultant = (cli, extra = {}) => ({
-  name: cli, cli, model: DEFAULT_MODELS[cli], effort: null, timeoutMs: null, maxBudgetUsd: null, vendor: null, enabled: true, note: null, ...extra,
+  name: cli,
+  cli,
+  model: DEFAULT_MODELS[cli],
+  effort: null,
+  timeoutMs: null,
+  maxBudgetUsd: null,
+  vendor: null,
+  enabled: true,
+  note: null,
+  ...extra,
 });
 
 export const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,10 +43,7 @@ export function sandboxEnv(overrides = {}) {
   // ~/.local/share/opencode/auth.json.
   const credHome = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-test-cred-'));
   fs.mkdirSync(path.join(credHome, '.gemini', 'antigravity-cli'), { recursive: true });
-  fs.writeFileSync(
-    path.join(credHome, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
-    'test-token',
-  );
+  fs.writeFileSync(path.join(credHome, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'), 'test-token');
   fs.mkdirSync(path.join(credHome, '.local', 'share', 'opencode'), { recursive: true });
   // The provider the shipped default model runs on, so the credential seed
   // finds an entry for it exactly as an operator's real auth.json would.

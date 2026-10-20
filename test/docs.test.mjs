@@ -7,8 +7,15 @@ import { fileURLToPath } from 'node:url';
 // The public documents: every relative link and anchor in them resolves, and
 // each English file and its Japanese translation have the same sections.
 const root = fileURLToPath(new URL('../', import.meta.url));
-const DOCS = ['README.md', 'README.ja.md', 'CONFIG.md',
-  ...fs.readdirSync(path.join(root, 'docs')).filter((n) => n.endsWith('.md')).map((n) => `docs/${n}`)];
+const DOCS = [
+  'README.md',
+  'README.ja.md',
+  'CONFIG.md',
+  ...fs
+    .readdirSync(path.join(root, 'docs'))
+    .filter((n) => n.endsWith('.md'))
+    .map((n) => `docs/${n}`),
+];
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const withoutCode = (s) => s.replace(/^```[\s\S]*?^```/gm, '');
 
@@ -16,12 +23,18 @@ const withoutCode = (s) => s.replace(/^```[\s\S]*?^```/gm, '');
 // script kept), spaces to hyphens, a repeat numbered.
 function anchors(rel) {
   const seen = new Map();
-  return new Set([...withoutCode(read(rel)).matchAll(/^#{1,6} (.+)$/gm)].map(([, title]) => {
-    const slug = title.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/ /g, '-');
-    const n = seen.get(slug) ?? 0;
-    seen.set(slug, n + 1);
-    return n ? `${slug}-${n}` : slug;
-  }));
+  return new Set(
+    [...withoutCode(read(rel)).matchAll(/^#{1,6} (.+)$/gm)].map(([, title]) => {
+      const slug = title
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+        .replace(/ /g, '-');
+      const n = seen.get(slug) ?? 0;
+      seen.set(slug, n + 1);
+      return n ? `${slug}-${n}` : slug;
+    }),
+  );
 }
 
 function links(rel) {
@@ -38,7 +51,10 @@ test('every relative link and anchor in the public documents resolves', () => {
     for (const link of links(rel)) {
       const [file, anchor] = link.split('#');
       const target = file ? path.posix.normalize(path.posix.join(path.posix.dirname(rel), file)) : rel;
-      if (!fs.existsSync(path.join(root, target))) { broken.push(`${rel}: ${link} (no such file)`); continue; }
+      if (!fs.existsSync(path.join(root, target))) {
+        broken.push(`${rel}: ${link} (no such file)`);
+        continue;
+      }
       if (anchor && target.endsWith('.md') && !anchors(target).has(decodeURIComponent(anchor))) {
         broken.push(`${rel}: ${link} (no such heading)`);
       }
@@ -62,7 +78,8 @@ test('each English document and its Japanese translation have the same headings,
 test('every file README.md links to ships in the npm package', () => {
   const pkg = JSON.parse(read('package.json'));
   const shipped = [...pkg.files, 'package.json', 'LICENSE'];
-  const missing = links('README.md').map((l) => l.split('#')[0])
+  const missing = links('README.md')
+    .map((l) => l.split('#')[0])
     .filter((f) => f && !/\.(png|svg|jpe?g|gif)$/i.test(f))
     .filter((f) => !shipped.some((s) => f === s || f.startsWith(`${s}/`)));
   assert.deepEqual(missing, []);

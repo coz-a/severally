@@ -23,7 +23,14 @@ function result(n, len, summaryLen = len) {
     stance: 'proceed',
     confidence: 'medium',
     evidence_basis: 'adequate',
-    findings: range('f').map((id) => ({ id, point: t('p'), grounds: t('g'), impact: t('i'), severity: 'high', confidence: 'high' })),
+    findings: range('f').map((id) => ({
+      id,
+      point: t('p'),
+      grounds: t('g'),
+      impact: t('i'),
+      severity: 'high',
+      confidence: 'high',
+    })),
     alternatives: range('a').map(() => ({ option: t('o'), tradeoffs: t('t'), when_preferred: t('w') })),
     unknowns: range('u').map((id) => ({ id, item: t('u'), why_it_matters: t('y'), how_to_obtain: t('h') })),
     decision_changers: range('d').map(() => ({ condition: t('c'), changes_to: t('x') })),
@@ -88,8 +95,16 @@ test('the most consultants a fan-out can hold still fit', async () => {
 test('a partly failed fan-out fits, and its failure is cut, not dropped', async () => {
   const mgr = new JobManager();
   const failed = {
-    result: null, quality: null, status: 'failed',
-    failure: { kind: 'cli_error', message: 'm'.repeat(4_000), detail: 'd'.repeat(1_200), retriable: true, delivered_advice: false },
+    result: null,
+    quality: null,
+    status: 'failed',
+    failure: {
+      kind: 'cli_error',
+      message: 'm'.repeat(4_000),
+      detail: 'd'.repeat(1_200),
+      retriable: true,
+      delivered_advice: false,
+    },
   };
   const s = await fanout(mgr, ALL, [maxed, failed, maxed]);
   const view = mgr.groupView(s.group_id);
@@ -100,7 +115,7 @@ test('a partly failed fan-out fits, and its failure is cut, not dropped', async 
   assert.equal(mgr.view(m.job_id).failure.message.length, 4_000, 'the job view keeps the whole message');
 });
 
-test('nothing the old view carried is lost: the group plus each member\'s own view hold all of it', async () => {
+test("nothing the old view carried is lost: the group plus each member's own view hold all of it", async () => {
   const mgr = new JobManager();
   const s = await fanout(mgr, ALL, [big, big, big]);
   const full = mgr.groupView(s.group_id, { detail: 'full' });
@@ -116,7 +131,11 @@ test('nothing the old view carried is lost: the group plus each member\'s own vi
     // against; a point left out is the tail, and the column says so.
     const col = compact.comparison.by_target.find((t) => t.job_id === m.job_id);
     const ids = col.finding_points.map((f) => f.id);
-    assert.deepEqual(ids, m.result.findings.map((f) => f.id), 'every finding keeps its id');
+    assert.deepEqual(
+      ids,
+      m.result.findings.map((f) => f.id),
+      'every finding keeps its id',
+    );
     assert.equal(col.truncated, true);
     assert.equal(col.points_without_verdict, 30);
   }
@@ -131,7 +150,9 @@ test('a question and failure messages that JSON escapes still fit, and every cut
   const mgr = new JobManager();
   const ids = [];
   const failed = {
-    result: null, quality: null, status: 'failed',
+    result: null,
+    quality: null,
+    status: 'failed',
     failure: { kind: 'cli_error', message: '\u001b'.repeat(4_000), detail: 'd', retriable: true, delivered_advice: false },
   };
   for (let i = 0; i < POLICY.maxConcurrent; i += 3) {
@@ -139,7 +160,12 @@ test('a question and failure messages that JSON escapes still fit, and every cut
     ids.push(...s.jobs.map((j) => j.job_id));
   }
   const groupId = 'group_000000000002';
-  mgr.groups.set(groupId, { group_id: groupId, mode: 'review', question: '\u0001'.repeat(4_000), job_ids: ids.slice(0, POLICY.maxConcurrent) });
+  mgr.groups.set(groupId, {
+    group_id: groupId,
+    mode: 'review',
+    question: '\u0001'.repeat(4_000),
+    job_ids: ids.slice(0, POLICY.maxConcurrent),
+  });
   const view = mgr.groupView(groupId);
   assert.ok(size(view) <= GROUP_MAX, `${size(view)} > ${GROUP_MAX}`);
   assert.match(view.question_full_with, /detail: "full"/);
@@ -155,11 +181,22 @@ test('a list that could not hold every item says how many it left out', async ()
   const view = mgr.groupView(s.group_id);
   const n = POLICY.output.listMax;
   for (const t of view.comparison.by_target) {
-    for (const k of ['finding_points', 'decision_changers', 'alternative_options', 'unknowns', 'next_checks', 'remaining_disagreements']) {
+    for (const k of [
+      'finding_points',
+      'decision_changers',
+      'alternative_options',
+      'unknowns',
+      'next_checks',
+      'remaining_disagreements',
+    ]) {
       assert.equal(t[k].length + (t.omitted?.[k] ?? 0), n, k);
     }
     // The ids the lead records against survive the cut, for every list that has them.
-    for (const k of ['finding_points', 'unknowns', 'next_checks']) assert.ok(t[k].every((x) => /^[fuc]\d+$/.test(x.id)), k);
+    for (const k of ['finding_points', 'unknowns', 'next_checks'])
+      assert.ok(
+        t[k].every((x) => /^[fuc]\d+$/.test(x.id)),
+        k,
+      );
   }
   assert.match(view.brief.full_with, new RegExp(`group_id: "${s.group_id}"`));
 });

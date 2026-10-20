@@ -25,7 +25,8 @@ const PEERS = {
   'claude-code': {
     label: 'Claude Code CLI',
     short: 'Claude Code',
-    reach: 'you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact',
+    reach:
+      'you want a careful reading of a design or a long brief, or the decision hinges on trade-offs rather than a single fact',
     en: 'Claude',
     jp: 'Claude',
     jpVerb: 'に聞いて',
@@ -41,7 +42,8 @@ const PEERS = {
   opencode: {
     label: 'OpenCode CLI (whichever models the operator set up: GLM, DeepSeek, ...)',
     short: 'OpenCode',
-    reach: 'you want another training lineage on the question (GLM by default; the operator may have set up others, such as DeepSeek), or a further reading when the first three stay neck and neck',
+    reach:
+      'you want another training lineage on the question (GLM by default; the operator may have set up others, such as DeepSeek), or a further reading when the first three stay neck and neck',
     en: 'GLM',
     jp: 'GLM',
     jpVerb: 'に聞いて',
@@ -70,12 +72,7 @@ const EVERYONE_TRIGGERS = [
 // this", the natural Japanese "XにVERBして" form, and "Xにレビューしてもらって".
 function triggersFor(peerId) {
   const p = PEERS[peerId];
-  return [
-    `"ask ${p.en}"`,
-    `"get ${p.en} to review this"`,
-    `"${p.jp}${p.jpVerb}"`,
-    `"${p.jp}にレビューしてもらって"`,
-  ];
+  return [`"ask ${p.en}"`, `"get ${p.en} to review this"`, `"${p.jp}${p.jpVerb}"`, `"${p.jp}にレビューしてもらって"`];
 }
 
 // Claude Code only: the tools that send nothing out run without a permission
@@ -89,7 +86,8 @@ const QUIET_TOOLS = ['consult_get', 'consult_list', 'consult_record', 'consult_e
 function withAllowedTools(text) {
   const names = QUIET_TOOLS.flatMap((t) => [`mcp__plugin_severally_severally__${t}`, `mcp__severally__${t}`]);
   // A one-line description is assumed; a folded one would swallow the new key.
-  if (!/^description: [^>|].*$/m.test(text)) throw new Error('SKILL.md template: expected a one-line description to put allowed-tools after');
+  if (!/^description: [^>|].*$/m.test(text))
+    throw new Error('SKILL.md template: expected a one-line description to put allowed-tools after');
   return text.replace(/^(description: .*)$/m, `$1\nallowed-tools: ${names.join(' ')}`);
 }
 
@@ -126,12 +124,14 @@ function renderTemplate(file) {
     const codexCaveat = peers.includes('codex')
       ? ' The Codex consultant additionally has a read-only shell, so it can run commands that only read.'
       : '';
-    const executionCaveat = '\n\nOne caveat on that list: a consultant can read local files. Its writes are blocked,'
-      + '\nits network reaches only web search and browsing (none with `network: "off"`), credential and history'
-      + '\npaths are refused where its CLI allows, and by default it starts in an empty working directory without being'
-      + '\ntold where your repository is, so it answers from the brief and from the files you hand it:'
-      + '\n`context.expose_paths` (absolute paths) or `context.expose_diff` (a change in progress), which are'
-      + '\ncopied read-only into its working directory.' + codexCaveat;
+    const executionCaveat =
+      '\n\nOne caveat on that list: a consultant can read local files. Its writes are blocked,' +
+      '\nits network reaches only web search and browsing (none with `network: "off"`), credential and history' +
+      '\npaths are refused where its CLI allows, and by default it starts in an empty working directory without being' +
+      '\ntold where your repository is, so it answers from the brief and from the files you hand it:' +
+      '\n`context.expose_paths` (absolute paths) or `context.expose_diff` (a change in progress), which are' +
+      '\ncopied read-only into its working directory.' +
+      codexCaveat;
     const text = tmpl
       .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
       .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))
@@ -188,19 +188,24 @@ export async function bundle() {
 function writeNotices(inputs, outDir) {
   const pkgDirs = new Set();
   for (const input of inputs) {
-    const m = input.split('/').join(path.sep).match(/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/);
+    const m = input
+      .split('/')
+      .join(path.sep)
+      .match(/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/);
     if (m) pkgDirs.add(path.resolve(process.cwd(), m[1]));
   }
-  const sections = [...pkgDirs].map((dir) => {
-    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-    const file = fs.readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\.|$)/i.test(f));
-    if (!file) throw new Error(`${meta.name} has no LICENSE file; add its notice by hand before bundling it`);
-    const license = typeof meta.license === 'string' ? meta.license : 'see the licence text';
-    // Apache-2.0 4(d): a NOTICE file travels with the work.
-    const notice = fs.readdirSync(dir).find((f) => /^notice(\.|$)/i.test(f));
-    const noticeText = notice ? `\n${fs.readFileSync(path.join(dir, notice), 'utf8').trim()}\n` : '';
-    return `${meta.name}@${meta.version} (${license})\n\n${fs.readFileSync(path.join(dir, file), 'utf8').trim()}\n${noticeText}`;
-  }).sort();
+  const sections = [...pkgDirs]
+    .map((dir) => {
+      const meta = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      const file = fs.readdirSync(dir).find((f) => /^(licen[cs]e|copying)(\.|$)/i.test(f));
+      if (!file) throw new Error(`${meta.name} has no LICENSE file; add its notice by hand before bundling it`);
+      const license = typeof meta.license === 'string' ? meta.license : 'see the licence text';
+      // Apache-2.0 4(d): a NOTICE file travels with the work.
+      const notice = fs.readdirSync(dir).find((f) => /^notice(\.|$)/i.test(f));
+      const noticeText = notice ? `\n${fs.readFileSync(path.join(dir, notice), 'utf8').trim()}\n` : '';
+      return `${meta.name}@${meta.version} (${license})\n\n${fs.readFileSync(path.join(dir, file), 'utf8').trim()}\n${noticeText}`;
+    })
+    .sort();
   const header = 'severally-mcp.mjs bundles the following packages. Their licences follow.\n';
   fs.writeFileSync(path.join(outDir, 'THIRD_PARTY_NOTICES'), [header, ...sections].join(`\n${'-'.repeat(72)}\n\n`));
   fs.copyFileSync(path.join(root, 'LICENSE'), path.join(outDir, '..', 'LICENSE'));

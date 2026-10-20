@@ -61,7 +61,8 @@ test('names that only look like keys, public keys and plain URLs are left alone'
     `pk${'_'}live_TESTONLYnotArealKey00000`,
     'https://example.com:8080/path/to/thing',
     'git@github.com:owner/repo.git',
-  ]) assert.equal(redact(text), text);
+  ])
+    assert.equal(redact(text), text);
 });
 
 test('short passwords, Azure keys and Slack webhooks are scrubbed', () => {
@@ -72,7 +73,10 @@ test('short passwords, Azure keys and Slack webhooks are scrubbed', () => {
     ['password=hunter2', 'hunter2'],
     ['PASSWORD=abcd', 'abcd'],
     ['"password": "p4ss"', 'p4ss'],
-    ['AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==', 'Eby8vdM02xNOcqFlqUwJ'],
+    [
+      'AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==',
+      'Eby8vdM02xNOcqFlqUwJ',
+    ],
     ['Endpoint=sb://x.servicebus.windows.net/;SharedAccessKey=abcdefghijklmnop1234=', 'abcdefghijklmnop1234'],
     // Joined at run time so the repository holds no string a secret scanner reads as a webhook.
     [['https://hooks.slack.com/services', 'T0123ABCD', 'B0123ABCD', 'abcdEFGH1234ijklMNOP5678'].join('/'), 'abcdEFGH1234'],
@@ -103,7 +107,8 @@ test('passwords that are only a flag, a type or a reference are left alone', () 
     'fn login(password: &str)',
     'password: bytes',
     'Password: None',
-  ]) assert.equal(redact(text), text);
+  ])
+    assert.equal(redact(text), text);
 });
 
 // A long value under a full password name is masked whatever it looks like:
@@ -114,5 +119,6 @@ test('a long password value is masked even when it reads like code', () => {
     ['password: "$3cr3t!x"', '$3cr3t!x'],
     ['PASSWORD=my.secret.pass', 'my.secret.pass'],
     ['const password = req.body.password;', 'req.body.password'],
-  ]) assert.ok(!redact(text).includes(secret), `leaked: ${redact(text)}`);
+  ])
+    assert.ok(!redact(text).includes(secret), `leaked: ${redact(text)}`);
 });

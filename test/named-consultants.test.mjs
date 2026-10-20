@@ -10,12 +10,15 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 // this file has its own.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-named-'));
 const config = path.join(dir, 'config.json');
-fs.writeFileSync(config, JSON.stringify({
-  consultants: {
-    glm: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
-    deepseek: { cli: 'opencode', model: 'opencode/deepseek-v4.1-flash-free' },
-  },
-}));
+fs.writeFileSync(
+  config,
+  JSON.stringify({
+    consultants: {
+      glm: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
+      deepseek: { cli: 'opencode', model: 'opencode/deepseek-v4.1-flash-free' },
+    },
+  }),
+);
 sandboxEnv({ SEVERALLY_CONFIG: config });
 const { JobManager } = await import('../src/jobs.mjs');
 
@@ -25,13 +28,28 @@ test('two consultants on one CLI each run on their own model', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   const started = mgr.start(reviewRequest({ target: undefined, targets: ['all'] }));
-  assert.deepEqual(started.jobs.map((j) => [j.target, j.cli, j.model]), [
-    ['glm', 'opencode', 'zai-coding-plan/glm-5.3'],
-    ['deepseek', 'opencode', 'opencode/deepseek-v4.1-flash-free'],
-  ]);
-  const views = await finishAll(mgr, started.jobs.map((j) => j.job_id));
-  assert.deepEqual(views.map((v) => v.status), ['completed', 'completed']);
-  assert.deepEqual(views.map((v) => [v.cli, v.vendor]), [['opencode', 'zai'], ['opencode', 'deepseek']]);
+  assert.deepEqual(
+    started.jobs.map((j) => [j.target, j.cli, j.model]),
+    [
+      ['glm', 'opencode', 'zai-coding-plan/glm-5.3'],
+      ['deepseek', 'opencode', 'opencode/deepseek-v4.1-flash-free'],
+    ],
+  );
+  const views = await finishAll(
+    mgr,
+    started.jobs.map((j) => j.job_id),
+  );
+  assert.deepEqual(
+    views.map((v) => v.status),
+    ['completed', 'completed'],
+  );
+  assert.deepEqual(
+    views.map((v) => [v.cli, v.vendor]),
+    [
+      ['opencode', 'zai'],
+      ['opencode', 'deepseek'],
+    ],
+  );
 });
 
 test('each consultant is launched with its own -m', async () => {
@@ -50,7 +68,7 @@ test('each consultant is launched with its own -m', async () => {
   assert.deepEqual(models, ['zai-coding-plan/glm-5.3#high', 'opencode/deepseek-v4.1-flash-free#high']);
 });
 
-test('the same-lineage caveat follows the consultant\'s model, not its CLI', async () => {
+test("the same-lineage caveat follows the consultant's model, not its CLI", async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   const ask = async (target) => {
@@ -71,22 +89,32 @@ test('a follow-up may name the consultant by its model, and not another one', as
   const ok = mgr.start(followup('glm-5.3'));
   assert.equal(ok.target, 'glm');
   await mgr.jobs.get(ok.job_id).promise;
-  assert.throws(() => mgr.start(reviewRequest({ target: 'deepseek', followup_to: ok.job_id })),
-    (e) => e.code === 'followup_target_mismatch');
+  assert.throws(
+    () => mgr.start(reviewRequest({ target: 'deepseek', followup_to: ok.job_id })),
+    (e) => e.code === 'followup_target_mismatch',
+  );
 });
 
 test('with a config mistake nothing can be started, but the history can still be read', () => {
   const bad = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-bad-')), 'config.json');
   fs.writeFileSync(bad, JSON.stringify({ targets: { codex: {} } }));
   const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
-  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     const { JobManager } = await import(${JSON.stringify(jobsUrl)});
     const mgr = new JobManager();
     let start;
     try { mgr.start(${JSON.stringify(reviewRequest())}); start = { threw: false }; }
     catch (err) { start = { code: err.code, message: err.message }; }
     console.log(JSON.stringify({ start, list: Array.isArray(mgr.list()) }));
-  `], { env: { ...process.env, SEVERALLY_CONFIG: bad }, encoding: 'utf8' });
+  `,
+    ],
+    { env: { ...process.env, SEVERALLY_CONFIG: bad }, encoding: 'utf8' },
+  );
   const r = JSON.parse(out.trim().split('\n').pop());
   assert.equal(r.start.code, 'config_invalid');
   assert.match(r.start.message, /targets/);
@@ -95,24 +123,35 @@ test('with a config mistake nothing can be started, but the history can still be
 
 test('a mistake in one consultant takes only that one out of use, and says why', () => {
   const cfg = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-part-')), 'config.json');
-  fs.writeFileSync(cfg, JSON.stringify({
-    clis: { 'claude-code': { enabled: 'no' } },
-    consultants: {
-      codex: { cli: 'codex', model: 'gpt-6-astra' },
-      gemini: { cli: 'antigravity', model: 'gemini-4-argon-high', effort: 'high' },
-      opus: { cli: 'claude-code', model: 'claude-opus-5-5' },
-    },
-  }));
+  fs.writeFileSync(
+    cfg,
+    JSON.stringify({
+      clis: { 'claude-code': { enabled: 'no' } },
+      consultants: {
+        codex: { cli: 'codex', model: 'gpt-6-astra' },
+        gemini: { cli: 'antigravity', model: 'gemini-4-argon-high', effort: 'high' },
+        opus: { cli: 'claude-code', model: 'claude-opus-5-5' },
+      },
+    }),
+  );
   const policyUrl = new URL('../src/policy.mjs', import.meta.url).href;
   const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
-  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     const { configProblem, configWarnings, limitsSummary } = await import(${JSON.stringify(policyUrl)});
     const { JobManager } = await import(${JSON.stringify(jobsUrl)});
     const mgr = new JobManager();
     const attempt = (target) => { try { const s = mgr.start({ ...${JSON.stringify(reviewRequest())}, target }); mgr.cancel(s.job_id); return { ok: true }; } catch (err) { return { code: err.code, message: err.message }; } };
     console.log(JSON.stringify({ problem: configProblem(), warnings: configWarnings(), available: limitsSummary().available_targets,
       codex: attempt('codex'), gemini: attempt('gemini'), opus: attempt('opus') }));
-  `], { env: { ...process.env, SEVERALLY_CONFIG: cfg }, encoding: 'utf8' });
+  `,
+    ],
+    { env: { ...process.env, SEVERALLY_CONFIG: cfg }, encoding: 'utf8' },
+  );
   const r = JSON.parse(out.trim().split('\n').pop());
   assert.equal(r.problem, null);
   assert.equal(r.warnings.length, 2);

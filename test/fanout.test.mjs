@@ -25,13 +25,19 @@ test('targets fans out to one job per consultant and returns a group', async () 
   const mgr = new JobManager();
   const started = mgr.start(reviewRequest({ target: undefined, targets: ['gpt', 'gemini'] }));
   assert.ok(started.group_id);
-  assert.deepEqual(started.jobs.map((j) => j.target), ['codex', 'antigravity']);
+  assert.deepEqual(
+    started.jobs.map((j) => j.target),
+    ['codex', 'antigravity'],
+  );
   assert.equal(started.jobs.length, 2);
 
   const view = await finishGroup(mgr, started.group_id);
   assert.equal(view.status, 'done');
   assert.equal(view.members.length, 2);
-  assert.deepEqual(view.comparison.by_target.map((t) => t.target), ['codex', 'antigravity']);
+  assert.deepEqual(
+    view.comparison.by_target.map((t) => t.target),
+    ['codex', 'antigravity'],
+  );
   assert.match(view.comparison.note, /not evidence of agreement|does not judge/i);
   assert.match(view.next_step, /diverge/i);
   // Consultants that share a finding can still land on opposite bottom lines,
@@ -108,8 +114,14 @@ test('naming the same consultant twice is refused', () => {
 
 test('target and targets together, or neither, is refused', () => {
   const mgr = new JobManager();
-  assert.throws(() => mgr.start(reviewRequest({ targets: ['codex'] })), (e) => e.code === 'invalid_request');
-  assert.throws(() => mgr.start(reviewRequest({ target: undefined })), (e) => e.code === 'target_required');
+  assert.throws(
+    () => mgr.start(reviewRequest({ targets: ['codex'] })),
+    (e) => e.code === 'invalid_request',
+  );
+  assert.throws(
+    () => mgr.start(reviewRequest({ target: undefined })),
+    (e) => e.code === 'target_required',
+  );
 });
 
 test('a group that would exceed the concurrency cap is refused before anything starts', async () => {
@@ -134,11 +146,16 @@ test('an everyone fan-out fits the default concurrency cap exactly', async () =>
   process.env.STUB_BEHAVIOR = 'ok';
   const { JobManager: M } = await import(`../src/jobs.mjs?everyone=${Date.now()}`);
   const mgr = new M();
-  const started = mgr.start(reviewRequest({
-    target: undefined,
-    targets: ['codex', 'claude-code', 'antigravity', 'opencode'],
-  }));
-  assert.deepEqual(started.jobs.map((j) => j.target), ['codex', 'claude-code', 'antigravity', 'opencode']);
+  const started = mgr.start(
+    reviewRequest({
+      target: undefined,
+      targets: ['codex', 'claude-code', 'antigravity', 'opencode'],
+    }),
+  );
+  assert.deepEqual(
+    started.jobs.map((j) => j.target),
+    ['codex', 'claude-code', 'antigravity', 'opencode'],
+  );
   const view = await finishGroup(mgr, started.group_id);
   assert.equal(view.members.length, 4);
   assert.equal(view.status, 'done');
@@ -150,11 +167,14 @@ test('a follow-up to one job cannot fan out', async () => {
   const first = mgr.start(reviewRequest());
   await mgr.jobs.get(first.job_id).promise;
   assert.throws(
-    () => mgr.start(reviewRequest({
-      target: undefined,
-      targets: ['codex', 'claude-code'],
-      followup_to: first.job_id,
-    })),
+    () =>
+      mgr.start(
+        reviewRequest({
+          target: undefined,
+          targets: ['codex', 'claude-code'],
+          followup_to: first.job_id,
+        }),
+      ),
     (e) => e.code === 'followup_fanout_not_allowed' && /group_id/.test(e.message),
   );
 });
@@ -175,9 +195,18 @@ test('a follow-up to a group goes to every member, each on its own chain with it
   assert.equal(next.round, 2);
   assert.equal(next.followup_to_group, first.group_id);
   assert.deepEqual(next.skipped, []);
-  assert.deepEqual(next.jobs.map((j) => j.target), ['codex', 'claude-code']);
-  assert.deepEqual(next.jobs.map((j) => j.chain_id), first.jobs.map((j) => j.chain_id));
-  assert.deepEqual(next.jobs.map((j) => mgr.view(j.job_id).followup_to), first.jobs.map((j) => j.job_id));
+  assert.deepEqual(
+    next.jobs.map((j) => j.target),
+    ['codex', 'claude-code'],
+  );
+  assert.deepEqual(
+    next.jobs.map((j) => j.chain_id),
+    first.jobs.map((j) => j.chain_id),
+  );
+  assert.deepEqual(
+    next.jobs.map((j) => mgr.view(j.job_id).followup_to),
+    first.jobs.map((j) => j.job_id),
+  );
   // The new question is the same for both; the earlier round each one sees is its own.
   const codexBrief = fs.readFileSync(path.join(briefDir, 'codex.txt'), 'utf8');
   const claudeBrief = fs.readFileSync(path.join(briefDir, 'claude-code.txt'), 'utf8');
@@ -205,7 +234,10 @@ test('a follow-up to a group skips members that cannot take one, and names why',
   assert.equal(next.target, 'codex', 'one member left: a group of one');
   assert.equal(next.round, 3);
   assert.equal(mgr.view(next.job_id).followup_to, solo.job_id);
-  assert.deepEqual(next.skipped.map((x) => [x.target, x.reason]), [['claude-code', 'failed, so there is no answer to follow up']]);
+  assert.deepEqual(
+    next.skipped.map((x) => [x.target, x.reason]),
+    [['claude-code', 'failed, so there is no answer to follow up']],
+  );
 });
 
 test('a follow-up to a group is refused when no member can take one, or when it names targets', async () => {
@@ -220,7 +252,10 @@ test('a follow-up to a group is refused when no member can take one, or when it 
   // A member whose consultant is no longer configured is skipped, not re-resolved.
   mgr.jobs.get(first.jobs[1].job_id).target = 'renamed-away';
   const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
-  assert.deepEqual(next.skipped.map((x) => x.target), ['renamed-away']);
+  assert.deepEqual(
+    next.skipped.map((x) => x.target),
+    ['renamed-away'],
+  );
   assert.match(next.skipped[0].reason, /no longer configured/);
   await mgr.jobs.get(next.job_id).promise;
   for (const jid of [...first.jobs.map((j) => j.job_id), next.job_id]) mgr.jobs.get(jid).status = 'cancelled';
@@ -241,14 +276,20 @@ test('cancelling a group stops every member', async () => {
   const mgr = new M();
   const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
   const cancelled = mgr.cancelGroup(started.group_id);
-  assert.equal(cancelled.members.every((m) => m.status === 'cancelling' || m.status === 'cancelled'), true);
+  assert.equal(
+    cancelled.members.every((m) => m.status === 'cancelling' || m.status === 'cancelled'),
+    true,
+  );
   assert.equal(cancelled.status, 'cancelling');
   assert.match(cancelled.cancel_effect, /every consultant process group/);
   // Nobody has finished yet, so there is no side-by-side to carry.
   assert.equal(cancelled.comparison, null);
   await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
   const after = mgr.groupView(started.group_id);
-  assert.equal(after.members.every((m) => m.status === 'cancelled'), true);
+  assert.equal(
+    after.members.every((m) => m.status === 'cancelled'),
+    true,
+  );
   // One payload must not report two different statuses for the same job: a
   // member's status is said once, in members.
   for (const t of after.comparison.by_target) assert.equal('status' in t, false);
@@ -280,11 +321,20 @@ test('a fan-out in which every member failed says no advice was obtained', async
   process.env.STUB_BEHAVIOR = 'ok';
 
   assert.equal(view.status, 'done');
-  assert.equal(view.members.every((m) => m.status === 'failed'), true);
-  assert.deepEqual(view.members.map((m) => m.failure.kind), ['usage_limit', 'usage_limit']);
+  assert.equal(
+    view.members.every((m) => m.status === 'failed'),
+    true,
+  );
+  assert.deepEqual(
+    view.members.map((m) => m.failure.kind),
+    ['usage_limit', 'usage_limit'],
+  );
   assert.match(view.next_step, /no advice was obtained/);
   assert.doesNotMatch(view.next_step, /diverge/);
-  assert.equal(view.comparison.by_target.every((t) => t.summary === null), true);
+  assert.equal(
+    view.comparison.by_target.every((t) => t.summary === null),
+    true,
+  );
 });
 
 test('a fan-out where only one member answered is still told to compare', async () => {
@@ -299,7 +349,11 @@ test('a fan-out where only one member answered is still told to compare', async 
   failed.result = null;
   failed.quality = null;
   failed.failure = {
-    kind: 'usage_limit', message: 'quota', detail: null, retriable: false, delivered_advice: false,
+    kind: 'usage_limit',
+    message: 'quota',
+    detail: null,
+    retriable: false,
+    delivered_advice: false,
   };
 
   const view = mgr.groupView(started.group_id);

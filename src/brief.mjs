@@ -38,20 +38,21 @@ const GUARDRAILS_HEAD = [
 
 // After the web bullet.
 const GUARDRAILS_RULES = [
-  '- When the question concerns security, it is a defensive review of the lead\'s own code or system: analyse the weaknesses and how to fix them.',
-  '- The Constraints section is fixed. Design notes, drafts and internal documents among the facts and artifacts are the lead\'s current direction, not a specification, and you may question them.',
+  "- When the question concerns security, it is a defensive review of the lead's own code or system: analyse the weaknesses and how to fix them.",
+  "- The Constraints section is fixed. Design notes, drafts and internal documents among the facts and artifacts are the lead's current direction, not a specification, and you may question them.",
 ];
 
 // The web bullet follows the request: with the network off the consultant has
 // no web tools, and telling it otherwise would have it look for them.
 const WEB_ON = '- You may search and browse the web freely; cite what you actually opened in `references`.';
-const WEB_OFF = '- Web search and browsing are switched off for this consultation. Answer from the brief, and record what you would have looked up under `unknowns`.';
+const WEB_OFF =
+  '- Web search and browsing are switched off for this consultation. Answer from the brief, and record what you would have looked up under `unknowns`.';
 
 // The one bullet that depends on the request: a consultation that exposed
 // paths has files, and telling it otherwise would have it record everything
 // it can plainly read under `unknowns`.
 const WORKDIR_EMPTY =
-  '- You are running in an empty working directory and do not have the lead\'s repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
+  "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.";
 const WORKDIR_EXPOSED =
   '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository you have. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
 
@@ -70,8 +71,13 @@ const GUARDRAILS_TAIL = [
 ];
 
 export function renderGuardrails(hasExposedPaths = false, network = 'on') {
-  return [...GUARDRAILS_HEAD, network === 'off' ? WEB_OFF : WEB_ON, ...GUARDRAILS_RULES,
-    hasExposedPaths ? WORKDIR_EXPOSED : WORKDIR_EMPTY, ...GUARDRAILS_TAIL].join('\n');
+  return [
+    ...GUARDRAILS_HEAD,
+    network === 'off' ? WEB_OFF : WEB_ON,
+    ...GUARDRAILS_RULES,
+    hasExposedPaths ? WORKDIR_EXPOSED : WORKDIR_EMPTY,
+    ...GUARDRAILS_TAIL,
+  ].join('\n');
 }
 
 // The material the lead handed over, kept in the shape it was sent in. The
@@ -100,22 +106,22 @@ export function briefRecord(req, exposeManifest = null) {
     // frozen duplicate of a repository that has moved on since.
     expose_paths: exposeManifest
       ? {
-        entries: exposeManifest.entries.map((e) => ({
-          index: e.index,
-          source: e.source,
-          exposed_as: e.exposedAs,
-          kind: e.kind,
-          files: e.files,
-          bytes: e.bytes,
-          // What every member was handed, so a reader can check they all got the same.
-          sha256: e.sha256 ?? null,
-          ...(e.base ? { base: e.base, changes: e.changes } : {}),
-          // A follow-up's copy of a path the parent round exposed: whether its bytes changed since.
-          ...(e.changed === undefined ? {} : { changed_since_parent: e.changed }),
-        })),
-        totals: exposeManifest.totals,
-        skipped: exposeManifest.skipped,
-      }
+          entries: exposeManifest.entries.map((e) => ({
+            index: e.index,
+            source: e.source,
+            exposed_as: e.exposedAs,
+            kind: e.kind,
+            files: e.files,
+            bytes: e.bytes,
+            // What every member was handed, so a reader can check they all got the same.
+            sha256: e.sha256 ?? null,
+            ...(e.base ? { base: e.base, changes: e.changes } : {}),
+            // A follow-up's copy of a path the parent round exposed: whether its bytes changed since.
+            ...(e.changed === undefined ? {} : { changed_since_parent: e.changed }),
+          })),
+          totals: exposeManifest.totals,
+          skipped: exposeManifest.skipped,
+        }
       : null,
   });
 }
@@ -151,21 +157,24 @@ function deletedLines(changes = []) {
   const gone = changes.filter((c) => c.endsWith(' (deleted)')).map((c) => c.slice(0, -' (deleted)'.length));
   if (!gone.length) return [];
   const shown = gone.slice(0, 50);
-  return [`  - deleted by the change, so not copied: ${shown.join(', ')}${gone.length > shown.length ? `, and ${gone.length - shown.length} more` : ''}`];
+  return [
+    `  - deleted by the change, so not copied: ${shown.join(', ')}${gone.length > shown.length ? `, and ${gone.length - shown.length} more` : ''}`,
+  ];
 }
 
 function renderExposeManifest(manifest) {
   if (!manifest || (manifest.entries.length === 0 && manifest.skipped.length === 0)) return null;
   let room = EXPOSE_LISTING_MAX;
   const lines = manifest.entries.flatMap((e) => {
-    const shape = (e.kind === 'diff'
-      ? `the files the lead's change touches, against ${e.base}, at their paths in the repository; ${e.files} copied, ${humanSize(e.bytes)}; the diff itself is among the artifacts`
-      : e.kind === 'change_files'
-        ? `the files the lead's change touched in the earlier round, at their paths in the repository, copied again as they are now; ${e.files} copied, ${humanSize(e.bytes)}; the diff is not repeated`
-        : e.kind === 'directory'
-          ? `directory, ${e.files} file(s), ${humanSize(e.bytes)}`
-          : `file, ${humanSize(e.bytes)}`)
-      + (e.changed === undefined ? '' : e.changed ? '; changed since the earlier round' : '; unchanged since the earlier round');
+    const shape =
+      (e.kind === 'diff'
+        ? `the files the lead's change touches, against ${e.base}, at their paths in the repository; ${e.files} copied, ${humanSize(e.bytes)}; the diff itself is among the artifacts`
+        : e.kind === 'change_files'
+          ? `the files the lead's change touched in the earlier round, at their paths in the repository, copied again as they are now; ${e.files} copied, ${humanSize(e.bytes)}; the diff is not repeated`
+          : e.kind === 'directory'
+            ? `directory, ${e.files} file(s), ${humanSize(e.bytes)}`
+            : `file, ${humanSize(e.bytes)}`) +
+      (e.changed === undefined ? '' : e.changed ? '; changed since the earlier round' : '; unchanged since the earlier round');
     // Not where it was copied from: the consultant is never told where the
     // lead's repository is, and Codex, Antigravity and OpenCode could read
     // the unmasked original there. The source path stays in the history.
@@ -180,12 +189,21 @@ function renderExposeManifest(manifest) {
     ];
   });
   const count = (reason) => manifest.skipped.filter((x) => x.reason === reason).length;
-  const named = (reason) => manifest.skipped.filter((x) => x.reason === reason).map((x) => x.exposed_as).slice(0, 50).join(', ');
+  const named = (reason) =>
+    manifest.skipped
+      .filter((x) => x.reason === reason)
+      .map((x) => x.exposed_as)
+      .slice(0, 50)
+      .join(', ');
   const skipped = [
     count('symlink') ? `${count('symlink')} symlink(s), or path(s) through one, were skipped, not followed.` : null,
     count('protected') ? `${count('protected')} credential or history path(s) were left out on purpose.` : null,
-    count('ignored') ? `${count('ignored')} path(s) (.git, node_modules, whatever .gitignore excludes) were left out as not source.` : null,
-    count('submodule') ? `${count('submodule')} submodule(s) or nested repositor(ies) were left out; their files are not copied.` : null,
+    count('ignored')
+      ? `${count('ignored')} path(s) (.git, node_modules, whatever .gitignore excludes) were left out as not source.`
+      : null,
+    count('submodule')
+      ? `${count('submodule')} submodule(s) or nested repositor(ies) were left out; their files are not copied.`
+      : null,
     count('gone') ? `No longer there, so not copied again: ${named('gone')}.` : null,
     count('masked') ? `Not copied again, because the record of the earlier round masked the path: ${named('masked')}.` : null,
     count('replaced') ? `The earlier round's change is replaced by the diff given in this round: ${named('replaced')}.` : null,
@@ -193,7 +211,7 @@ function renderExposeManifest(manifest) {
   if (skipped.length) skipped.unshift('');
   return [
     'The lead exposed these paths; they are copied under ./workspace in your working directory and you may read',
-    'them directly. They are the only part of the lead\'s repository you have -- if you need something that is',
+    "them directly. They are the only part of the lead's repository you have -- if you need something that is",
     'not here, record it under `unknowns` rather than guessing. Text files were passed through the same',
     'credential masking as this brief; binary files were copied unchanged.',
     '',
@@ -219,11 +237,16 @@ function renderRound(p) {
     `### Round ${p.round} (${p.mode})`,
     `Question asked: ${p.question}`,
     `Your answer, summarised: ${p.summary}`,
-    list('Points you raised:', p.findings,
-      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `\n  grounds: ${clip(f.grounds)}` : ''}`),
+    list(
+      'Points you raised:',
+      p.findings,
+      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `\n  grounds: ${clip(f.grounds)}` : ''}`,
+    ),
     list('Unknowns you named:', p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`),
     list('Checks you proposed:', p.next_checks, (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}`),
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
@@ -262,8 +285,8 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
     parts.push('');
     parts.push('## Earlier rounds of this same consultation');
     parts.push(
-      'Each point carries the lead\'s own check where there is one -- confirmed: it held; not_applicable: checked, and'
-      + ' it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet.',
+      "Each point carries the lead's own check where there is one -- confirmed: it held; not_applicable: checked, and" +
+        ' it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet.',
     );
     const blocks = chain.priorRounds.map(renderRound);
     let kept = 0;
@@ -274,7 +297,8 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
-    if (left.length) parts.push(`(Round${left.length > 1 ? 's' : ''} ${left.join(', ')} left out to keep this brief within its size.)`);
+    if (left.length)
+      parts.push(`(Round${left.length > 1 ? 's' : ''} ${left.join(', ')} left out to keep this brief within its size.)`);
     parts.push(...blocks.slice(blocks.length - kept));
     parts.push('');
     parts.push(

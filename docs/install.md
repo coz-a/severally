@@ -12,8 +12,10 @@ into that cache, so it can be cleared afterwards.
 
 Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 
-- macOS/Linux: npm's global executable directory on `PATH`. The default (plugin mode, below) installs a
-  `severally-mcp` command there for Codex to launch. `--manual` does without it.
+- macOS/Linux: nothing about npm's global folder is required. The default (plugin mode, below) runs
+  `npm install -g` to put a `severally-mcp` command on `PATH` for Codex's plugin to launch. When npm cannot install
+  it globally (for example it needs sudo, or npm's global folder is not on `PATH`), the installer registers Codex
+  directly instead, and nothing else is needed. `--manual` does without the command.
 - Windows runs natively from PowerShell or Command Prompt; WSL is not required. CLIs are found through
   `PATH`/`PATHEXT` (`.exe`, `.cmd`, `.bat`, paths with spaces included).
 
@@ -44,8 +46,11 @@ run `npm run init-config` (see [Configuration](../README.md#configuration) in th
 
 `npx -y severally-mcp@latest status` shows it all at once, without starting a consultation: whether the config
 file is valid, which consultants this machine can reach (and why the others cannot), whether every installed copy
-is the same version, and which clients have severally registered. It does not check that a CLI is logged in; the
-first consultation shows that.
+is the same version, which clients have severally registered, and whether each CLI is logged in. The login check
+reads each CLI's own status command and sends no prompt: `claude auth status` for Claude Code, `codex login status`
+for Codex, and for OpenCode the number of credentials saved by `opencode auth list` (keys in the environment also
+work, so none saved is only a warning). Antigravity has no such command, so it shows "not checked". Running out of
+quota is not checked; the first consultation shows that.
 
 To check one client yourself, after restarting it. Skip the lines for CLIs you don't have:
 
@@ -77,7 +82,8 @@ route has been tried on Linux only.
 To use severally from Codex, Antigravity or OpenCode as well, also run the installer from a clone
 ([From a clone](#from-a-clone)). It finds the marketplace plugin and leaves Claude Code to it. If you ran the installer before
 adding the marketplace plugin, run it once more: Claude Code would otherwise load severally twice, and the
-installer removes its own Claude Code copy and registration, backing them up first.
+installer removes its own Claude Code copy and registration, backing them up first. Once the marketplace plugin is
+there, the same installer run also updates it (see [Updating](#updating)).
 
 ## Two install modes
 
@@ -96,9 +102,13 @@ Windows. Pass `--manual` to use manual mode on macOS/Linux too.
 
 - It copies the server, with its dependencies, to `~/.severally/runtime/severally-mcp.mjs`. Every registration
   points at that copy, not at the cloned folder.
-- In plugin mode it also runs a global npm install, which provides the `severally-mcp` command that Codex
-  launches. `--skip-global` skips that step and is accepted only when `severally-mcp` on `PATH` already points
-  at the copied runtime. Manual mode needs no global install.
+- In plugin mode on macOS/Linux it also runs a global npm install of the runtime under the package name
+  `severally-runtime`, which provides the `severally-mcp` command that Codex's plugin launches. A global package
+  named `severally-mcp` that an earlier install left is removed with `npm uninstall -g severally-mcp` first.
+  If npm cannot install the command globally, or it is not first on `PATH`, the installer does not stop: it
+  registers Codex directly, with the same `codex mcp add` registration and long `consult_get` wait as `--manual`,
+  and says so. `--skip-global` skips the global install and is accepted only when `severally-mcp` on `PATH` already
+  points at the copied runtime. Manual mode needs no global install.
 - It changes client settings only through each CLI's own commands (`plugin add` / `mcp add`), with one
   exception: for a manually registered Codex it also writes one line, `tool_timeout_sec = 660`, into
   `config.toml` under `[mcp_servers.severally]` (the same long wait the Codex plugin has; `codex mcp add` cannot
@@ -110,20 +120,29 @@ Windows. Pass `--manual` to use manual mode on macOS/Linux too.
   naming each backup after its original path.
 - Switching modes backs up and then removes the duplicate registration left by the other mode.
 - If Claude Code already has severally from the marketplace, the installer does not register it with Claude Code,
-  and removes its own earlier Claude Code copy (`~/.claude/skills/severally`) and user-scope registration.
+  and removes its own earlier Claude Code copy (`~/.claude/skills/severally`) and user-scope registration. It also
+  updates the marketplace copy (see [Updating](#updating)).
+- At the end, if Claude Code is present and `~/.claude/settings.json` does not yet allow severally's five local
+  tools, it offers to add them (see the next section). It changes nothing else in that file.
 - For Codex, the marketplace file `.agents/plugins/marketplace.json` is copied from this repository; no public
   listing is involved.
 
 ## Skipping the permission prompt for tools that send nothing out
 
 Every tool except `consult_start` stays on your machine: `consult_get` (called repeatedly while a
-consultation runs), `consult_list`, `consult_cancel`, `consult_record` and `consult_export`. None of the clients has a command that adds tools to its allowlist, so the installer
-leaves this to you. Keep `consult_start` prompting: it is the point where material leaves for another vendor.
+consultation runs), `consult_list`, `consult_cancel`, `consult_record` and `consult_export`. Keep `consult_start` prompting: it is the point where
+material leaves for another vendor, and the installer never adds it.
 
 - **Claude Code**: the Skill already allows these five tools (its `allowed-tools`) for the turn it is invoked in, so
   polling a consultation does not prompt each time; the Skill itself asks for approval once. For the later turns
-  (recording verdicts, a follow-up), add them in `~/.claude/settings.json` (plugin installs; for `--manual` write
-  `mcp__severally__` instead of `mcp__plugin_severally_severally__`):
+  (recording verdicts, a follow-up), the installer offers to add them. At the end of the install, if Claude Code is
+  present and `~/.claude/settings.json` does not yet allow the five tools, it asks at the terminal "Let Claude Code
+  run ... without asking each time? [Y/n]" (the default is yes). With `--allow-local-tools` it adds them without
+  asking, for scripted installs. Without a terminal and without the flag it changes nothing and prints how to rerun
+  with the flag. It backs up `settings.json` first, keeps every other setting, and never adds a rule twice. The
+  rules use the prefix `mcp__plugin_severally_severally__` in plugin mode or for a marketplace install, and
+  `mcp__severally__` in manual mode. To do it by hand, add this to `~/.claude/settings.json` (write
+  `mcp__severally__` instead of `mcp__plugin_severally_severally__` for `--manual`):
   ```json
   { "permissions": { "allow": [
     "mcp__plugin_severally_severally__consult_get", "mcp__plugin_severally_severally__consult_list",
@@ -140,6 +159,8 @@ leaves this to you. Keep `consult_start` prompting: it is the point where materi
   ```
 - **OpenCode** allows MCP tools without asking unless your own `permission` settings say otherwise.
 - **Antigravity**: not covered here; the rule syntax for a single MCP tool has not been checked.
+
+The installer does not touch the permissions of Codex, Antigravity or OpenCode.
 
 ### Letting consultations start without the prompt too
 
@@ -164,11 +185,14 @@ and marketplace files under `~/.severally/backups/` before replacing them. Then 
 Installed with an older version that registered the cloned folder itself? Add `--force` once to switch the
 existing registrations to the copied runtime. Without it, existing registrations are left as they are.
 
-Installed from the marketplace: run `/plugin marketplace update severally` in Claude Code, then restart it.
-Automatic updates are off by default; to turn them on, select severally under Marketplaces in `/plugin`, then
-Enable auto-update. If Codex, Antigravity or OpenCode use severally too, run the installer again as well: they
-run their own copy in `~/.severally/runtime`, and both copies read the same `~/.severally/config.json`, so keep
-them on the same version when a release changes the config format. When the copy in `~/.severally/runtime` or
+Installed from the marketplace: when Claude Code already has severally from the marketplace, the installer also
+runs `claude plugin marketplace update severally` and `claude plugin update severally@<marketplace>`, so one
+`npx -y severally-mcp@latest install` brings every copy to the same version. If that fails, it prints the command to
+run inside Claude Code, `/plugin marketplace update severally`. Restart Claude Code afterwards. For Claude Code
+alone you can also run that command yourself instead of the installer. Automatic updates are off by default; to
+turn them on, select severally under Marketplaces in `/plugin`, then Enable auto-update. Codex, Antigravity and
+OpenCode run their own copy in `~/.severally/runtime`, and both copies read the same `~/.severally/config.json`;
+the installer keeps them on the same version, which matters when a release changes the config format. When the copy in `~/.severally/runtime` or
 `~/.claude/skills/severally` runs a different version from the server answering, `consult_start` says so under
 `stale_install`, with the copies' versions and the commands that bring them level.
 
@@ -193,7 +217,8 @@ Remove-Item -LiteralPath "$HOME/.codex/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.gemini/config/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.config/opencode/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.severally/runtime" -Recurse -Force
-# Only if you previously installed the global command:
+# Only if you installed the global command earlier (the old name is for an earlier install):
+npm.cmd uninstall -g severally-runtime
 npm.cmd uninstall -g severally-mcp
 ```
 
@@ -213,7 +238,8 @@ rm -rf ~/.gemini/config/skills/severally
 # so delete the "severally" entry from the "mcp" object by hand):
 #   edit ~/.config/opencode/opencode.json(c)
 rm -rf ~/.config/opencode/skills/severally
-npm uninstall -g severally-mcp
+npm uninstall -g severally-runtime
+npm uninstall -g severally-mcp    # only if an earlier install left it
 rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```
 
@@ -227,7 +253,8 @@ agy    mcp remove severally
 # ~/.config/opencode/opencode.json(c) by hand
 rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/skills/severally \
        ~/.config/opencode/skills/severally
-# Only if a global command was previously installed:
+# Only if a global command was installed earlier (the old name is for an earlier install):
+npm uninstall -g severally-runtime
 npm uninstall -g severally-mcp
 rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```

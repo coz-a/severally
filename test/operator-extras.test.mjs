@@ -10,20 +10,25 @@ import { sandboxEnv, reviewRequest, exploreRequest, opencodeRequest } from './he
 // import of jobs.mjs.
 const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-extras-'));
 const cfgFile = path.join(cfgDir, 'config.json');
-fs.writeFileSync(cfgFile, JSON.stringify({
-  clis: {
-    'claude-code': { args: ['--disallowedTools', 'WebFetch'], env: { HTTPS_PROXY: 'http://proxy:3128' } },
-    codex: { args: ['--sandbox', 'danger-full-access'] },
-    opencode: { env: { HOME: '/tmp/elsewhere' },
-      provider: { router: { npm: '@ai-sdk/openai-compatible', options: { apiKey: '{env:ROUTER_API_KEY}' } } } },
-  },
-  consultants: {
-    'claude-code': { cli: 'claude-code', model: 'claude-opus-5-5', effort: 'max' },
-    codex: { cli: 'codex', model: 'gpt-6-astra', effort: 'low' },
-    antigravity: { cli: 'antigravity', model: 'gemini-4-argon-high' },
-    opencode: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
-  },
-}));
+fs.writeFileSync(
+  cfgFile,
+  JSON.stringify({
+    clis: {
+      'claude-code': { args: ['--disallowedTools', 'WebFetch'], env: { HTTPS_PROXY: 'http://proxy:3128' } },
+      codex: { args: ['--sandbox', 'danger-full-access'] },
+      opencode: {
+        env: { HOME: '/tmp/elsewhere' },
+        provider: { router: { npm: '@ai-sdk/openai-compatible', options: { apiKey: '{env:ROUTER_API_KEY}' } } },
+      },
+    },
+    consultants: {
+      'claude-code': { cli: 'claude-code', model: 'claude-opus-5-5', effort: 'max' },
+      codex: { cli: 'codex', model: 'gpt-6-astra', effort: 'low' },
+      antigravity: { cli: 'antigravity', model: 'gemini-4-argon-high' },
+      opencode: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
+    },
+  }),
+);
 sandboxEnv({ SEVERALLY_CONFIG: cfgFile });
 const { JobManager, extraArgsProblem, withExtraArgs } = await import('../src/jobs.mjs');
 const { operatorEnvProblem } = await import('../src/run.mjs');
@@ -76,7 +81,8 @@ test('every consultant defaults to high effort, and the effort key overrides it'
   const codex = await import('../src/adapters/codex.mjs');
   const opencode = await import('../src/adapters/opencode.mjs');
   const claude = await import('../src/adapters/claude-code.mjs');
-  const args = (adapter, name) => adapter.buildInvocation({ consultant: consultantByName(name), workdir: '/tmp/w', schemaPath: '/tmp/s' }).args;
+  const args = (adapter, name) =>
+    adapter.buildInvocation({ consultant: consultantByName(name), workdir: '/tmp/w', schemaPath: '/tmp/s' }).args;
   assert.ok(args(codex, 'codex').includes('model_reasoning_effort="low"'));
   const c = args(claude, 'claude-code');
   assert.equal(c[c.indexOf('--effort') + 1], 'max');
@@ -86,14 +92,25 @@ test('every consultant defaults to high effort, and the effort key overrides it'
 
 test('extraArgsProblem refuses every spelling of a taken flag and passes the rest', () => {
   const codexArgs = ['exec', '-s', 'read-only', '-c', 'hooks.enabled=false', '-'];
-  for (const bad of [['-s', 'x'], ['--sandbox=x'], ['-sdanger-full-access'], ['-c', 'k=v'], ['--config', 'k=v'],
-    ['--dangerously-bypass-approvals-and-sandbox'], ['--full-auto'], ['--add-dir', '/']]) {
+  for (const bad of [
+    ['-s', 'x'],
+    ['--sandbox=x'],
+    ['-sdanger-full-access'],
+    ['-c', 'k=v'],
+    ['--config', 'k=v'],
+    ['--dangerously-bypass-approvals-and-sandbox'],
+    ['--full-auto'],
+    ['--add-dir', '/'],
+  ]) {
     assert.ok(extraArgsProblem('codex', codexArgs, bad), `codex must refuse ${bad.join(' ')}`);
   }
   assert.ok(extraArgsProblem('antigravity', ['--model', 'm'], ['-dangerously-skip-permissions']), 'Go-style single dash');
   assert.ok(extraArgsProblem('claude-code', ['-p', '--tools', 'Read'], ['--settings', '{}']));
   assert.equal(extraArgsProblem('claude-code', ['-p', '--tools', 'Read'], ['--disallowedTools', 'WebFetch']), null);
-  assert.ok(extraArgsProblem('claude-code', ['-p', '--effort', 'high'], ['--effort', 'max']), 'effort has one place: the effort key');
+  assert.ok(
+    extraArgsProblem('claude-code', ['-p', '--effort', 'high'], ['--effort', 'max']),
+    'effort has one place: the effort key',
+  );
   assert.ok(extraArgsProblem('antigravity', ['--model', 'm'], ['--effort', 'low']), 'agy takes effort from the model name');
   assert.equal(extraArgsProblem('codex', codexArgs, ['--oss']), null);
   assert.ok(extraArgsProblem('codex', codexArgs, '--oss'), 'a string is not an array');
@@ -121,12 +138,18 @@ test('operatorEnvProblem refuses what isolation strips and accepts the rest', ()
   assert.ok(operatorEnvProblem('codex', ['A=1']));
 });
 
-test('other services\' credentials do not reach a consultant, its own vendor\'s and the operator\'s do', async () => {
+test("other services' credentials do not reach a consultant, its own vendor's and the operator's do", async () => {
   const { childEnv } = await import('../src/run.mjs');
   const saved = { ...process.env };
   Object.assign(process.env, {
-    AWS_SECRET_ACCESS_KEY: 'a', GITHUB_TOKEN: 'b', SSH_AUTH_SOCK: '/tmp/agent', MY_SERVICE_API_KEY: 'c',
-    OPENAI_API_KEY: 'own', GEMINI_API_KEY: 'g', HTTPS_PROXY: 'http://proxy:3128', LANG: 'C.UTF-8',
+    AWS_SECRET_ACCESS_KEY: 'a',
+    GITHUB_TOKEN: 'b',
+    SSH_AUTH_SOCK: '/tmp/agent',
+    MY_SERVICE_API_KEY: 'c',
+    OPENAI_API_KEY: 'own',
+    GEMINI_API_KEY: 'g',
+    HTTPS_PROXY: 'http://proxy:3128',
+    LANG: 'C.UTF-8',
   });
   try {
     const codexEnv = childEnv('codex');

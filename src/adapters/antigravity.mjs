@@ -63,11 +63,15 @@ export function buildInvocation({ schemaPath, consultant }) {
   // it was. Ours has to fire first for the failure to be classified honestly.
   const budget = timeoutMs(consultant);
   const args = [
-    '--output-format', 'stream-json',
-    '--json-schema', schemaPath,
+    '--output-format',
+    'stream-json',
+    '--json-schema',
+    schemaPath,
     '--disable-slash-commands',
-    '--model', chosen,
-    '--print-timeout', `${Math.ceil((budget + 30_000) / 1000)}s`,
+    '--model',
+    chosen,
+    '--print-timeout',
+    `${Math.ceil((budget + 30_000) / 1000)}s`,
   ];
   return { command: t.cli, args, model: chosen };
 }
@@ -81,7 +85,9 @@ function events(stdout) {
     try {
       const parsed = JSON.parse(t);
       if (parsed && typeof parsed === 'object') out.push(parsed);
-    } catch { /* a partial line, e.g. when the child was killed mid-write */ }
+    } catch {
+      /* a partial line, e.g. when the child was killed mid-write */
+    }
   }
   return out;
 }
@@ -122,7 +128,8 @@ export function toolCalls({ stdout }) {
   const seen = new Map();
   for (const e of events(stdout)) {
     const s = e.event === 'step_update' ? e.step_update : null;
-    if (s?.tool_name) seen.set(s.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s.state ?? '') ? `${s.tool_name}:error` : s.tool_name);
+    if (s?.tool_name)
+      seen.set(s.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s.state ?? '') ? `${s.tool_name}:error` : s.tool_name);
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
@@ -136,7 +143,11 @@ export function toolCalls({ stdout }) {
 export function settleAfter(line) {
   if (!line.includes('"result"') && !line.includes('"finish"')) return null;
   let e;
-  try { e = JSON.parse(line); } catch { return null; }
+  try {
+    e = JSON.parse(line);
+  } catch {
+    return null;
+  }
   if (e?.event === 'result') return agyExitGraceMs().afterResult;
   if (e?.event === 'step_update' && e.step_update?.step_type === 'finish') return agyExitGraceMs().afterFinish;
   return null;
@@ -157,12 +168,20 @@ export function diagnostics({ run, sandbox }) {
   const tail = (s) => String(s ?? '').slice(-200_000);
   const dir = path.join(sandbox.root, '.gemini', 'antigravity-cli', 'log');
   let names = [];
-  try { names = fs.readdirSync(dir).sort(); } catch { /* agy wrote no log */ }
+  try {
+    names = fs.readdirSync(dir).sort();
+  } catch {
+    /* agy wrote no log */
+  }
   return [
     `--- agy stderr ---\n${tail(run.stderr)}`,
     ...names.map((n) => {
       let text = '';
-      try { text = fs.readFileSync(path.join(dir, n), 'utf8'); } catch { /* unreadable */ }
+      try {
+        text = fs.readFileSync(path.join(dir, n), 'utf8');
+      } catch {
+        /* unreadable */
+      }
       return `--- ${n} ---\n${tail(text)}`;
     }),
   ].join('\n');
@@ -171,14 +190,15 @@ export function diagnostics({ run, sandbox }) {
 export function interpret({ stdout, stderr, code }) {
   const payload = finalEnvelope(stdout);
   if (!payload) {
-    const msg = (stderr || '').trim() || (stdout || '').trim().slice(0, 2000) ||
+    const msg =
+      (stderr || '').trim() ||
+      (stdout || '').trim().slice(0, 2000) ||
       `agy exited with code ${code} and produced no JSON envelope`;
     return { ok: false, failureKind: code === 0 ? 'invalid_output' : classifyMessage(msg), message: msg, usageRaw: null };
   }
   if (payload.status && payload.status !== 'SUCCESS') {
-    const msg = typeof payload.error === 'string' && payload.error.trim()
-      ? payload.error
-      : JSON.stringify(payload).slice(0, 2000);
+    const msg =
+      typeof payload.error === 'string' && payload.error.trim() ? payload.error : JSON.stringify(payload).slice(0, 2000);
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: payload };
   }
   const structured = payload.structured_output ?? null;
@@ -204,9 +224,7 @@ export function usageRecord(payload) {
     turns: num(payload.num_turns),
     // Which permissions the sandbox refused. A denied read_url usually explains
     // a thin evidence basis, so it is worth keeping in the record.
-    denied_actions: Array.isArray(payload.denied_actions)
-      ? payload.denied_actions.map((d) => d?.action).filter(Boolean)
-      : null,
+    denied_actions: Array.isArray(payload.denied_actions) ? payload.denied_actions.map((d) => d?.action).filter(Boolean) : null,
   };
 }
 

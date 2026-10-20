@@ -30,4 +30,12 @@ jobs:
       # src: a change that was not rebuilt and committed would not ship.
       - run: git diff --exit-code -- plugins/severally
         if: matrix.os == 'ubuntu-latest'
+      # Formatting, lint and types are checked once: they do not depend on the
+      # OS, and Windows checks files out with CRLF.
+      - run: npm run format:check
+        if: matrix.os == 'ubuntu-latest'
+      - run: npm run lint
+        if: matrix.os == 'ubuntu-latest'
+      - run: npm run typecheck
+        if: matrix.os == 'ubuntu-latest'
       - run: npm test

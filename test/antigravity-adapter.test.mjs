@@ -10,7 +10,11 @@ const { POLICY, timeoutMs } = await import('../src/policy.mjs');
 const line = (o) => `${JSON.stringify(o)}\n`;
 
 test('the invocation pins the model, the schema and print-mode JSON', () => {
-  const inv = adapter.buildInvocation({ consultant: asConsultant('antigravity'), workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
+  const inv = adapter.buildInvocation({
+    consultant: asConsultant('antigravity'),
+    workdir: '/tmp/work',
+    schemaPath: '/tmp/schema.json',
+  });
   assert.equal(inv.command, POLICY.clis.antigravity.cli);
   // stream-json, so the step events before the final result survive a timeout.
   assert.deepEqual(inv.args.slice(0, 2), ['--output-format', 'stream-json']);
@@ -29,34 +33,55 @@ test('the invocation pins the model, the schema and print-mode JSON', () => {
   // envelope.
   const printTimeout = inv.args[inv.args.indexOf('--print-timeout') + 1];
   assert.match(printTimeout, /^\d+s$/);
-  assert.ok(Number.parseInt(printTimeout, 10) * 1000 > timeoutMs('antigravity'),
-    'agy must not be allowed to give up before we do');
+  assert.ok(
+    Number.parseInt(printTimeout, 10) * 1000 > timeoutMs('antigravity'),
+    'agy must not be allowed to give up before we do',
+  );
   // agy takes the brief on stdin; the brief must never be an argv value.
   assert.equal(inv.args.includes('-p'), false);
   assert.equal(inv.args.includes('--effort'), false, 'the effort is part of the model name');
 });
 
-test('--print-timeout follows the consultant\'s own budget, not only the server-wide one', () => {
+test("--print-timeout follows the consultant's own budget, not only the server-wide one", () => {
   const own = timeoutMs(null) + 600_000;
-  const inv = adapter.buildInvocation({ consultant: asConsultant('antigravity', { timeoutMs: own }), workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
+  const inv = adapter.buildInvocation({
+    consultant: asConsultant('antigravity', { timeoutMs: own }),
+    workdir: '/tmp/work',
+    schemaPath: '/tmp/schema.json',
+  });
   const printTimeout = inv.args[inv.args.indexOf('--print-timeout') + 1];
-  assert.ok(Number.parseInt(printTimeout, 10) * 1000 > own, 'agy must outlast a per-consultant budget longer than the server default');
+  assert.ok(
+    Number.parseInt(printTimeout, 10) * 1000 > own,
+    'agy must outlast a per-consultant budget longer than the server default',
+  );
 });
 
 test('every flag that would widen the consultant is refused', () => {
   const flags = [
-    '--dangerously-skip-permissions', '--add-dir', '--continue', '-c', '--conversation',
-    '--prompt-interactive', '-i', '--new-project',
+    '--dangerously-skip-permissions',
+    '--add-dir',
+    '--continue',
+    '-c',
+    '--conversation',
+    '--prompt-interactive',
+    '-i',
+    '--new-project',
     // Documented by `agy --help` at 1.1.28: --mode accept-edits widens the
     // permission posture, --agent brings another agent's tools and
     // instructions, --input-format stream-json makes print mode multi-turn.
-    '--mode', '--agent', '--input-format',
+    '--mode',
+    '--agent',
+    '--input-format',
   ];
   for (const flag of flags) {
     assert.ok(adapter.FORBIDDEN_FLAGS.includes(flag), `${flag} must be forbidden`);
   }
   // The invocation the adapter actually builds must survive the guard.
-  const inv = adapter.buildInvocation({ consultant: asConsultant('antigravity'), workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
+  const inv = adapter.buildInvocation({
+    consultant: asConsultant('antigravity'),
+    workdir: '/tmp/work',
+    schemaPath: '/tmp/schema.json',
+  });
   for (const flag of flags) {
     assert.equal(inv.args.includes(flag), false, `the adapter must not itself pass ${flag}`);
   }
@@ -64,7 +89,12 @@ test('every flag that would widen the consultant is refused', () => {
 
 test('structured_output is preferred over the prose response', () => {
   const out = adapter.interpret({
-    stdout: line({ status: 'SUCCESS', response: 'prose\n{"summary":"x"}', structured_output: { summary: 'from structured' }, usage: {} }),
+    stdout: line({
+      status: 'SUCCESS',
+      response: 'prose\n{"summary":"x"}',
+      structured_output: { summary: 'from structured' },
+      usage: {},
+    }),
     stderr: '',
     code: 0,
   });
@@ -108,7 +138,10 @@ test('usage is mapped onto the common record and no cost is invented', () => {
 test('the answer is read out of the stream-json result event', () => {
   const stream = [
     JSON.stringify({ event: 'init' }),
-    JSON.stringify({ event: 'step_update', step_update: { step_index: 1, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' } }),
+    JSON.stringify({
+      event: 'step_update',
+      step_update: { step_index: 1, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' },
+    }),
     JSON.stringify({ event: 'result', result: { status: 'SUCCESS', structured_output: { summary: 'from stream' }, usage: {} } }),
   ].join('\n');
   const out = adapter.interpret({ stdout: stream, stderr: '', code: 0 });
@@ -130,8 +163,11 @@ test('an ERROR result event is still classified, not treated as advice', () => {
 test('progress says how far a consultation has got', () => {
   const stream = [
     JSON.stringify({ event: 'step_update', step_update: { step_index: 1, step_type: 'agent_response', state: 'DONE' } }),
-    JSON.stringify({ event: 'step_update', step_update: { step_index: 2, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' } }),
-    '{"event":"step_update","step_upda',  // a line cut off mid-write, as a kill does
+    JSON.stringify({
+      event: 'step_update',
+      step_update: { step_index: 2, step_type: 'tool', tool_name: 'search_web', state: 'ACTIVE' },
+    }),
+    '{"event":"step_update","step_upda', // a line cut off mid-write, as a kill does
   ].join('\n');
 
   const summary = adapter.progress({ stdout: stream });

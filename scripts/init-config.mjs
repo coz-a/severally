@@ -45,7 +45,7 @@ export function renderConfig() {
     '  // e.g. "deepseek": { "cli": "opencode", "model": "opencode/deepseek-v4.1-flash-free" }',
     '  //   cli, model       required',
     '  //   effort           reasoning effort (default high); antigravity takes it from the model name instead',
-    '  //   timeout_ms       this consultant\'s own budget in ms (default: server timeout_ms, max 7200000)',
+    "  //   timeout_ms       this consultant's own budget in ms (default: server timeout_ms, max 7200000)",
     '  //   max_budget_usd   claude-code only: spending cap per consultation (default 10, 0.05-20)',
     '  //   vendor           the lineage, when the model name does not say (e.g. "nvidia")',
     '  //   enabled, note    as for clis, for this consultant alone',
@@ -94,8 +94,8 @@ function main() {
   const target = configPath();
   if (fs.existsSync(target) && !argv.has('--force')) {
     process.stderr.write(
-      `severally: ${target} already exists; not overwriting it.\n`
-      + '  --force to replace it, or --print to see the template without writing.\n',
+      `severally: ${target} already exists; not overwriting it.\n` +
+        '  --force to replace it, or --print to see the template without writing.\n',
     );
     process.exitCode = 1;
     return;
@@ -109,9 +109,11 @@ function main() {
   console.log(`wrote ${target}`);
   for (const id of CLI_IDS) {
     const bin = POLICY.clis[id].cli;
-    console.log(isInstalled(bin)
-      ? `   ${id.padEnd(12)} ${bin} found, consultant "${id}" on ${DEFAULT_MODELS[id]}`
-      : `   ${id.padEnd(12)} ${bin} not found -- unavailable until it is installed`);
+    console.log(
+      isInstalled(bin)
+        ? `   ${id.padEnd(12)} ${bin} found, consultant "${id}" on ${DEFAULT_MODELS[id]}`
+        : `   ${id.padEnd(12)} ${bin} not found -- unavailable until it is installed`,
+    );
   }
   console.log('');
   console.log('clis.<cli>: enabled  note  bin  args  env');

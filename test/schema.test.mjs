@@ -10,17 +10,20 @@ import { sandboxEnv, reviewRequest, exploreRequest, debateRequest } from './help
 // between: two GLM versions and DeepSeek on OpenCode, two GPTs on Codex.
 const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-schema-'));
 const CONFIG = path.join(cfgDir, 'config.json');
-fs.writeFileSync(CONFIG, JSON.stringify({
-  consultants: {
-    glm53: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
-    glm52: { cli: 'opencode', model: 'zai-coding-plan/glm-5.2' },
-    deepseek: { cli: 'opencode', model: 'opencode/deepseek-v4.1-flash-free' },
-    sol: { cli: 'codex', model: 'gpt-6.1-sol' },
-    astra: { cli: 'codex', model: 'gpt-6-astra' },
-    opus: { cli: 'claude-code', model: 'claude-opus-5-5' },
-    gem: { cli: 'antigravity', model: 'gemini-4-argon-high' },
-  },
-}));
+fs.writeFileSync(
+  CONFIG,
+  JSON.stringify({
+    consultants: {
+      glm53: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
+      glm52: { cli: 'opencode', model: 'zai-coding-plan/glm-5.2' },
+      deepseek: { cli: 'opencode', model: 'opencode/deepseek-v4.1-flash-free' },
+      sol: { cli: 'codex', model: 'gpt-6.1-sol' },
+      astra: { cli: 'codex', model: 'gpt-6-astra' },
+      opus: { cli: 'claude-code', model: 'claude-opus-5-5' },
+      gem: { cli: 'antigravity', model: 'gemini-4-argon-high' },
+    },
+  }),
+);
 sandboxEnv({ SEVERALLY_CONFIG: CONFIG });
 const { parseRequest, RequestError } = await import('../src/schema.mjs');
 const { POLICY } = await import('../src/policy.mjs');
@@ -65,7 +68,7 @@ test('review and debate require a proposal', () => {
   rejects(debateRequest({ context: { facts: ['f'], counterpoints: ['c'] } }), 'proposal_required');
 });
 
-test('debate requires the other side\'s claims', () => {
+test("debate requires the other side's claims", () => {
   rejects(debateRequest({ context: { facts: ['f'], proposal: 'p' } }), 'counterpoints_required');
 });
 
@@ -82,7 +85,10 @@ test('unknown fields are rejected rather than silently ignored', () => {
 });
 
 test('a mode left out is read from the context, and a mode given wins', () => {
-  const omit = (r) => { const { mode: _, ...rest } = r; return rest; };
+  const omit = (r) => {
+    const { mode: _, ...rest } = r;
+    return rest;
+  };
   assert.equal(parseRequest(omit(exploreRequest())).mode, 'explore');
   assert.equal(parseRequest(omit(reviewRequest())).mode, 'review');
   assert.equal(parseRequest(omit(debateRequest())).mode, 'debate');
@@ -162,11 +168,19 @@ function parseInChild(config, request) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-schema-')), 'config.json');
   fs.writeFileSync(file, JSON.stringify(config));
   const schemaUrl = new URL('../src/schema.mjs', import.meta.url).href;
-  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     const { parseRequest } = await import(${JSON.stringify(schemaUrl)});
     try { console.log(JSON.stringify({ targets: parseRequest(${JSON.stringify(request)}).targets })); }
     catch (err) { console.log(JSON.stringify({ code: err.code, message: err.message })); }
-  `], { env: { ...process.env, SEVERALLY_CONFIG: file }, encoding: 'utf8' });
+  `,
+    ],
+    { env: { ...process.env, SEVERALLY_CONFIG: file }, encoding: 'utf8' },
+  );
   return JSON.parse(out.trim().split('\n').pop());
 }
 
@@ -182,7 +196,9 @@ test('all leaves out consultants whose CLI is off; naming one is refused with th
   // deepseek turned off is the GLM that can run.
   const offOne = { consultants: { ...consultants, deepseek: { ...consultants.deepseek, enabled: false } } };
   assert.deepEqual(parseInChild(offOne, reviewRequest({ target: 'opencode' })).targets, ['glm53']);
-  const none = { clis: Object.fromEntries(['codex', 'claude-code', 'antigravity', 'opencode'].map((c) => [c, { enabled: false }])) };
+  const none = {
+    clis: Object.fromEntries(['codex', 'claude-code', 'antigravity', 'opencode'].map((c) => [c, { enabled: false }])),
+  };
   assert.equal(parseInChild(none, reviewRequest({ target: undefined, targets: ['all'] })).code, 'target_unavailable');
 });
 
@@ -211,9 +227,11 @@ test('caller_model must be a single printable line', () => {
 // the walk in expose-paths.mjs, which has to stat them anyway.
 test('expose_paths accepts absolute paths and refuses relative ones', () => {
   const abs = process.platform === 'win32' ? 'C:\\repo\\src\\index.mjs' : '/repo/src/index.mjs';
-  const req = parseRequest(reviewRequest({
-    context: { facts: ['f'], proposal: 'p', expose_paths: [abs] },
-  }));
+  const req = parseRequest(
+    reviewRequest({
+      context: { facts: ['f'], proposal: 'p', expose_paths: [abs] },
+    }),
+  );
   assert.deepEqual(req.context.expose_paths, [abs]);
   rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: ['src/index.mjs'] } }), 'invalid_request');
   rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: ['   '] } }), 'invalid_request');
@@ -244,7 +262,7 @@ test('the advertised limits name the caps a lead has to plan against', async () 
   assert.match(limitsSummary().consultant_permissions, /expose_paths/);
 });
 
-test('constraints and success_criteria put inside context are taken as the request\'s own', () => {
+test("constraints and success_criteria put inside context are taken as the request's own", () => {
   const { context, constraints, success_criteria, ...rest } = reviewRequest();
   const req = parseRequest({ ...rest, context: { ...context, constraints, success_criteria } });
   assert.deepEqual(req.constraints, constraints);

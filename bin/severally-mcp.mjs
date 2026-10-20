@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
-import { main } from '../src/server.mjs';
+
+// Checked before anything else loads, so an older Node says what to do
+// instead of failing somewhere inside the server or the installer.
+const major = Number(process.versions.node.split('.')[0]);
+if (major < 22) {
+  process.stderr.write(
+    `severally: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again\n`,
+  );
+  process.exit(1);
+}
 
 // `npx -y severally-mcp@latest install` runs the installer, so installing and
 // updating name the package once. Only the npm package has the installer
@@ -10,7 +19,9 @@ import { main } from '../src/server.mjs';
 if (process.argv[2] === 'install') {
   const installer = new URL('../scripts/install.mjs', import.meta.url);
   if (!fs.existsSync(installer)) {
-    process.stderr.write('severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n');
+    process.stderr.write(
+      'severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n',
+    );
     process.exit(1);
   }
   process.argv.splice(2, 1);
@@ -19,6 +30,7 @@ if (process.argv[2] === 'install') {
   const { status } = await import('../src/status.mjs');
   process.exitCode = status();
 } else {
+  const { main } = await import('../src/server.mjs');
   main().catch((err) => {
     process.stderr.write(`severally: fatal: ${err?.stack ?? err}\n`);
     process.exit(1);

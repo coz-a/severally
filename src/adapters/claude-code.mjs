@@ -55,11 +55,35 @@ export const FORBIDDEN_FLAGS = [
 // (settings, agents, a replaced system prompt, an old session, an IDE or
 // browser link, a remote session).
 export const RESERVED_FLAGS = [
-  '--print', '--allowed-tools', '--settings', '--agent', '--agents',
-  '--system-prompt', '--system-prompt-file', '--append-system-prompt-file',
-  '--continue', '-c', '--resume', '-r', '--session-id', '--fork-session', '--from-pr', '--teleport',
-  '--input-format', '--file', '--worktree', '-w', '--tmux', '--background', '--bg',
-  '--chrome', '--ide', '--remote-control', '--cloud', '--environment', '--desktop',
+  '--print',
+  '--allowed-tools',
+  '--settings',
+  '--agent',
+  '--agents',
+  '--system-prompt',
+  '--system-prompt-file',
+  '--append-system-prompt-file',
+  '--continue',
+  '-c',
+  '--resume',
+  '-r',
+  '--session-id',
+  '--fork-session',
+  '--from-pr',
+  '--teleport',
+  '--input-format',
+  '--file',
+  '--worktree',
+  '-w',
+  '--tmux',
+  '--background',
+  '--bg',
+  '--chrome',
+  '--ide',
+  '--remote-control',
+  '--cloud',
+  '--environment',
+  '--desktop',
 ];
 
 /** Read deny rules for the paths no consultant may read. */
@@ -69,7 +93,8 @@ export const posixAbsolute = (p) => p.replaceAll('\\', '/').replace(/^([A-Za-z])
 
 export function protectedReadRules() {
   const home = os.homedir().replaceAll('\\', '/');
-  const spec = (root) => (root.startsWith(`${home}/`) ? `~/${root.slice(home.length + 1)}` : `//${posixAbsolute(root).replace(/^\/+/, '')}`);
+  const spec = (root) =>
+    root.startsWith(`${home}/`) ? `~/${root.slice(home.length + 1)}` : `//${posixAbsolute(root).replace(/^\/+/, '')}`;
   return [
     ...protectedRoots().flatMap((r) => [`Read(${spec(r)})`, `Read(${spec(r)}/**)`]),
     ...PROTECTED_FILE_NAMES.map((n) => `Read(//**/${n})`),
@@ -82,15 +107,20 @@ export function buildInvocation({ workdir, guardrails, consultant, hasExposedPat
   const web = network !== 'off';
   const args = [
     '-p',
-    '--model', chosen,
-    '--effort', consultant.effort ?? 'high',
+    '--model',
+    chosen,
+    '--effort',
+    consultant.effort ?? 'high',
     '--restricted',
     '--strict-mcp-config',
-    '--setting-sources', '',
+    '--setting-sources',
+    '',
     '--disable-slash-commands',
-    '--tools', web ? 'WebSearch,WebFetch,Read,Glob,Grep' : 'Read,Glob,Grep',
+    '--tools',
+    web ? 'WebSearch,WebFetch,Read,Glob,Grep' : 'Read,Glob,Grep',
     ...(web ? ['--allowedTools', 'WebSearch,WebFetch'] : []),
-    '--settings', JSON.stringify({ permissions: { deny: protectedReadRules() } }),
+    '--settings',
+    JSON.stringify({ permissions: { deny: protectedReadRules() } }),
     // When the lead has exposed paths, they are already copied into the
     // working directory --restricted confines the file tools to, and the
     // lead has said what this consultation may see. Widening to the whole
@@ -98,13 +128,19 @@ export function buildInvocation({ workdir, guardrails, consultant, hasExposedPat
     // flag goes. Equal-reader parity is not lost: what every consultant now
     // has is the same copied tree, which is the material that exists.
     ...(hasExposedPaths ? [] : ['--add-dir', '/']),
-    '--permission-prompts', 'none',
-    '--permission-mode', 'manual',
+    '--permission-prompts',
+    'none',
+    '--permission-mode',
+    'manual',
     '--no-session-persistence',
-    '--output-format', 'json',
-    '--json-schema', JSON.stringify(CONSULT_RESULT_SCHEMA),
-    '--max-budget-usd', String(consultant.maxBudgetUsd ?? 10),
-    '--append-system-prompt', guardrails,
+    '--output-format',
+    'json',
+    '--json-schema',
+    JSON.stringify(CONSULT_RESULT_SCHEMA),
+    '--max-budget-usd',
+    String(consultant.maxBudgetUsd ?? 10),
+    '--append-system-prompt',
+    guardrails,
   ];
   return { command: t.cli, args, model: chosen, workdir };
 }
@@ -117,7 +153,9 @@ function lastJsonObject(stdout) {
     try {
       const parsed = JSON.parse(t);
       if (parsed && typeof parsed === 'object') return parsed;
-    } catch { /* not the result line */ }
+    } catch {
+      /* not the result line */
+    }
   }
   return null;
 }
@@ -125,9 +163,17 @@ function lastJsonObject(stdout) {
 export function interpret({ stdout, stderr, code }) {
   const payload = lastJsonObject(stdout);
   if (!payload) {
-    const msg = (stderr || '').trim() || (stdout || '').trim().slice(0, 2000) ||
+    const msg =
+      (stderr || '').trim() ||
+      (stdout || '').trim().slice(0, 2000) ||
       `claude exited with code ${code} and produced no JSON result`;
-    return { ok: false, failureKind: code === 0 ? 'invalid_output' : classifyMessage(msg), message: msg, payload: null, usageRaw: null };
+    return {
+      ok: false,
+      failureKind: code === 0 ? 'invalid_output' : classifyMessage(msg),
+      message: msg,
+      payload: null,
+      usageRaw: null,
+    };
   }
   if (payload.is_error) {
     const msg = typeof payload.result === 'string' ? payload.result : JSON.stringify(payload).slice(0, 2000);
@@ -136,7 +182,13 @@ export function interpret({ stdout, stderr, code }) {
   const structured = payload.structured_output ?? payload.structuredOutput ?? null;
   const text = structured ?? (typeof payload.result === 'string' ? payload.result : null);
   if (!text) {
-    return { ok: false, failureKind: 'invalid_output', message: 'result payload contained no answer', payload, usageRaw: payload };
+    return {
+      ok: false,
+      failureKind: 'invalid_output',
+      message: 'result payload contained no answer',
+      payload,
+      usageRaw: payload,
+    };
   }
   return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }

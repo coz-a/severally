@@ -9,7 +9,7 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
-export const SEVERALLY_VERSION = '2.3.1';
+export const SEVERALLY_VERSION = '2.4.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -22,7 +22,11 @@ const DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : M
 const PROGRESS_EVERY_MS = 15_000;
 
 const semver = (v) => String(v).split('.').map(Number);
-const older = (a, b) => { const [x, y] = [semver(a), semver(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
+const older = (a, b) => {
+  const [x, y] = [semver(a), semver(b)];
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+  return false;
+};
 
 /**
  * The other installed copies of severally, when one runs a different version
@@ -31,7 +35,13 @@ const older = (a, b) => { const [x, y] = [semver(a), semver(b)]; for (let i = 0;
  * version strings are compared. A copy that is missing is not reported.
  */
 export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
-  const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
+  const read = (file) => {
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch {
+      return null;
+    }
+  };
   // The runtime's version is read from its bundle, which every install mode
   // replaces; its package.json is written by plugin installs only.
   const bundle = read(path.join(severallyHome, 'runtime', 'severally-mcp.mjs'));
@@ -39,7 +49,13 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
   const found = {
     // This release names it SEVERALLY_VERSION; older ones only had it in the server info.
     runtime: bundle?.match(/(?:SEVERALLY_VERSION = |name: ["']severally["'], version: )["'](\d+\.\d+\.\d+)["']/)?.[1],
-    claude_skills_dir: (() => { try { return JSON.parse(plugin).version; } catch { return undefined; } })(),
+    claude_skills_dir: (() => {
+      try {
+        return JSON.parse(plugin).version;
+      } catch {
+        return undefined;
+      }
+    })(),
   };
   const copies = { this_server: SEVERALLY_VERSION };
   // Only plain x.y.z is compared; anything else is left out rather than guessed at.
@@ -50,9 +66,10 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
   return {
     copies,
     behind: Object.keys(copies).filter((k) => older(copies[k], newest)),
-    fix: `bring every copy to ${newest}: run \`npx -y severally-mcp@${newest} install\` (or \`node scripts/install.mjs\` from a checkout of that version) `
-      + '(it updates the runtime and the ~/.claude/skills copy), run `/plugin marketplace update severally` for a '
-      + 'marketplace install, then restart the clients',
+    fix:
+      `bring every copy to ${newest}: run \`npx -y severally-mcp@${newest} install\` (or \`node scripts/install.mjs\` from a checkout of that version) ` +
+      '(it updates the runtime and the ~/.claude/skills copy), run `/plugin marketplace update severally` for a ' +
+      'marketplace install, then restart the clients',
   };
 }
 
@@ -73,7 +90,11 @@ check the grounds behind a point before you adopt it, and record what you adopte
 const startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) at once; the work runs in the background.
 
 target: which consultant to ask. This machine can reach (name: CLI, model):
-${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`).join('\n') || '          (none -- no consultant CLI is installed)'}
+${
+  availableConsultants()
+    .map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
+    .join('\n') || '          (none -- no consultant CLI is installed)'
+}
         Pass the word the user used: a name, a CLI ("codex", "agy"), a vendor or a model ("claude opus"). One
         that fits several, unresolved by the operator's ranking, tier and version, is refused with the
         candidates (target_ambiguous); one not listed is refused (target_unavailable). Your own CLI on a fresh
@@ -107,29 +128,38 @@ Model, permissions, rounds, timeout and size caps are fixed by this server.`;
 // element of its `records`.
 const recordShape = {
   job_id: z.string().min(1).describe('the job_id consult_get returned'),
-  entries: z.array(z.object({
-    id: z.string().min(1).describe('f1, u1, c1 ... from the result'),
-    verdict: z.enum(VERDICTS),
-    effect: z.string().max(4000).optional().describe('what it changed, or why it is unverified'),
-    note: z.string().max(4000).optional().describe('what you checked and found'),
-  })).min(1).max(100).optional(),
-  reflection: z.object({
-    delta: z.string().min(1).max(4000).describe('what the answer added over what you expected ("nothing new" counts)'),
-    related_item_ids: z.array(z.string().min(1)).max(50).optional().describe('f1, u1, c1 ...'),
-  }).optional().describe('written after reading the answer'),
+  entries: z
+    .array(
+      z.object({
+        id: z.string().min(1).describe('f1, u1, c1 ... from the result'),
+        verdict: z.enum(VERDICTS),
+        effect: z.string().max(4000).optional().describe('what it changed, or why it is unverified'),
+        note: z.string().max(4000).optional().describe('what you checked and found'),
+      }),
+    )
+    .min(1)
+    .max(100)
+    .optional(),
+  reflection: z
+    .object({
+      delta: z.string().min(1).max(4000).describe('what the answer added over what you expected ("nothing new" counts)'),
+      related_item_ids: z.array(z.string().min(1)).max(50).optional().describe('f1, u1, c1 ...'),
+    })
+    .optional()
+    .describe('written after reading the answer'),
 };
 
 export function createServer(manager = new JobManager()) {
   // Read once: the copies on disk change only when someone reinstalls, and then
   // this server is the one to restart.
   const stale = staleInstall();
-  const server = new McpServer(
-    { name: 'severally', version: SEVERALLY_VERSION },
-    { instructions: SERVER_INSTRUCTIONS },
-  );
+  const server = new McpServer({ name: 'severally', version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
 
-  const ok = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] });
-  const fail = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], isError: true });
+  const ok = (payload) => ({ content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }] });
+  const fail = (payload) => ({
+    content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }],
+    isError: true,
+  });
 
   server.registerTool(
     'consult_start',
@@ -164,7 +194,7 @@ export function createServer(manager = new JobManager()) {
         'again while status is running. completed carries the structured answer; failed carries ' +
         'failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, ' +
         'spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence ' +
-        '(quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member\'s status, failure and ' +
+        "(quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and " +
         'job_id, and `comparison.by_target` with every stance, summary and finding id side by side, cut where ' +
         '`truncated` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds ' +
         'and your verdict (`recorded`). A finished consultation names its brief rather than repeating it; detail: ' +
@@ -174,8 +204,14 @@ export function createServer(manager = new JobManager()) {
         group_id: z.string().min(1).optional(),
         wait_ms: z.number().int().min(0).max(POLICY.maxWaitMs).optional(),
         detail: z.enum(['full']).optional(),
-        ids: z.array(z.string().min(1)).min(1).max(100).optional()
-          .describe('with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote'),
+        ids: z
+          .array(z.string().min(1))
+          .min(1)
+          .max(100)
+          .optional()
+          .describe(
+            'with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote',
+          ),
       }),
     },
     async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
@@ -183,16 +219,26 @@ export function createServer(manager = new JobManager()) {
         return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
       }
       if (ids && (group_id || detail)) {
-        return fail({ error: 'invalid_request', message: 'ids goes with job_id alone: a point id belongs to one consultant\'s answer' });
+        return fail({
+          error: 'invalid_request',
+          message: "ids goes with job_id alone: a point id belongs to one consultant's answer",
+        });
       }
       const req = ctx?.mcpReq;
       const token = req?._meta?.progressToken;
       let beats = 0;
-      const timer = token === undefined ? null : setInterval(() => {
-        beats += 1;
-        req.notify({ method: 'notifications/progress', params: { progressToken: token, progress: beats, message: 'the consultation is still running' } })
-          .catch(() => {});
-      }, PROGRESS_EVERY_MS);
+      const timer =
+        token === undefined
+          ? null
+          : setInterval(() => {
+              beats += 1;
+              req
+                .notify({
+                  method: 'notifications/progress',
+                  params: { progressToken: token, progress: beats, message: 'the consultation is still running' },
+                })
+                .catch(() => {});
+            }, PROGRESS_EVERY_MS);
       let view;
       try {
         // A request the client cancels stops the wait with it.
@@ -203,7 +249,10 @@ export function createServer(manager = new JobManager()) {
         clearInterval(timer);
       }
       if (!view) {
-        return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
+        return fail({
+          error: 'unknown_job',
+          message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"`,
+        });
       }
       // Still running: the poll answer as it is; ids applies once there is an answer.
       if (!ids || ['running', 'queued', 'cancelling'].includes(view.status)) return ok(view);
@@ -223,8 +272,8 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'Stop a running consultation and kill the consultant process and everything it spawned. ' +
-        'Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs '
-        + 'is asked to stop, and that server stops it within a second.',
+        'Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs ' +
+        'is asked to stop, and that server stops it within a second.',
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
@@ -236,7 +285,10 @@ export function createServer(manager = new JobManager()) {
       }
       const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
       if (!view) {
-        return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
+        return fail({
+          error: 'unknown_job',
+          message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"`,
+        });
       }
       return ok(view);
     },
@@ -248,35 +300,44 @@ export function createServer(manager = new JobManager()) {
       title: 'Record what checking a point showed',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description:
-        'Write your verdict on points of an answer after checking them: ids f1 ... (findings), u1 ... (unknowns), '
-        + 'c1 ... (next_checks). verdict is what checking showed -- confirmed (holds here), not_applicable (true in '
-        + 'general, not here), unverifiable, unverified (not checked yet; say why in effect) -- not whether you adopted '
-        + 'it. effect is what it changed about your decision, note the evidence. A follow-up shows the consultant each '
-        + 'verdict and effect (credential-masked), never the note. The same id again replaces the entry. Saved beside '
-        + 'the answer in ~/.severally/history, so a job from an earlier session can be recorded against; the server '
-        + 'never infers a verdict. Answers with counts; consult_get reads the entries back. reflection records what the '
-        + 'answer added over your consult_start prediction. records: [{ job_id, entries, reflection? }, ...] records '
-        + 'every member of a fan-out in one call; all are checked first and nothing is written if any job or id is '
-        + 'wrong. A job whose write fails is listed under results with its error.',
+        'Write your verdict on points of an answer after checking them: ids f1 ... (findings), u1 ... (unknowns), ' +
+        'c1 ... (next_checks). verdict is what checking showed -- confirmed (holds here), not_applicable (true in ' +
+        'general, not here), unverifiable, unverified (not checked yet; say why in effect) -- not whether you adopted ' +
+        'it. effect is what it changed about your decision, note the evidence. A follow-up shows the consultant each ' +
+        'verdict and effect (credential-masked), never the note. The same id again replaces the entry. Saved beside ' +
+        'the answer in ~/.severally/history, so a job from an earlier session can be recorded against; the server ' +
+        'never infers a verdict. Answers with counts; consult_get reads the entries back. reflection records what the ' +
+        'answer added over your consult_start prediction. records: [{ job_id, entries, reflection? }, ...] records ' +
+        'every member of a fan-out in one call; all are checked first and nothing is written if any job or id is ' +
+        'wrong. A job whose write fails is listed under results with its error.',
       inputSchema: z.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),
-        records: z.array(z.object(recordShape)).min(1).max(POLICY.maxConcurrent).optional()
+        records: z
+          .array(z.object(recordShape))
+          .min(1)
+          .max(POLICY.maxConcurrent)
+          .optional()
           .describe('one per fan-out member, instead of job_id/entries/reflection'),
       }),
     },
     async ({ job_id, entries, reflection, records }) => {
       try {
         if (records !== undefined) {
-          const out = manager.record(Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== undefined)));
+          const out = manager.record(
+            Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== undefined)),
+          );
           return out.not_saved ? fail(out) : ok(out);
         }
-        if (!job_id) return fail({ error: 'invalid_request', message: 'pass job_id (with entries and/or reflection), or records' });
-        return ok(manager.record({
-          job_id,
-          ...(entries === undefined ? {} : { entries }),
-          ...(reflection === undefined ? {} : { reflection }),
-        }));
+        if (!job_id)
+          return fail({ error: 'invalid_request', message: 'pass job_id (with entries and/or reflection), or records' });
+        return ok(
+          manager.record({
+            job_id,
+            ...(entries === undefined ? {} : { entries }),
+            ...(reflection === undefined ? {} : { reflection }),
+          }),
+        );
       } catch (err) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
@@ -292,10 +353,10 @@ export function createServer(manager = new JobManager()) {
       title: 'Export a consultation as a record to commit',
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
-        'Render one consultation (chain_id) or fan-out (group_id) as Markdown: the brief as sent, each answer as '
-        + 'it came back, and the verdicts on each point, unchecked ones marked. Nothing is summarised or scored. '
-        + 'The text is returned, not written: put it beside the code the decision is about. Reads the history, so '
-        + 'an earlier session\'s consultation can be exported.',
+        'Render one consultation (chain_id) or fan-out (group_id) as Markdown: the brief as sent, each answer as ' +
+        'it came back, and the verdicts on each point, unchecked ones marked. Nothing is summarised or scored. ' +
+        'The text is returned, not written: put it beside the code the decision is about. Reads the history, so ' +
+        "an earlier session's consultation can be exported.",
       inputSchema: z.object({
         chain_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
@@ -317,16 +378,17 @@ export function createServer(manager = new JobManager()) {
       title: 'List recent consultations',
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
-        'Recent consultations, earlier sessions\' too (this_session is false), newest first, with their ids, '
-        + 'status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, '
-        + 'retries included. A figure a CLI does not report is named under not_reported, not counted as zero.',
+        "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, " +
+        'status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, ' +
+        'retries included. A figure a CLI does not report is named under not_reported, not counted as zero.',
       inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional() }),
     },
-    async ({ limit }) => ok({
-      jobs: manager.list({ limit: limit ?? 20 }),
-      usage_totals: manager.usageTotals(),
-      limits: limitsSummary(),
-    }),
+    async ({ limit }) =>
+      ok({
+        jobs: manager.list({ limit: limit ?? 20 }),
+        usage_totals: manager.usageTotals(),
+        limits: limitsSummary(),
+      }),
   );
 
   return { server, manager };
@@ -336,17 +398,17 @@ export async function main() {
   // A config mistake is said here, at start, as well as on every refused
   // consult_start: the operator may be the only one who reads stderr.
   const problem = configProblem();
-  if (problem) process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}\n`);
-  for (const w of configWarnings()) process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}\n`);
+  if (problem)
+    process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}\n`);
+  for (const w of configWarnings())
+    process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}\n`);
   if (availableConsultants().length === 0) {
     process.stderr.write(
       'severally: no consultant CLI found on PATH (codex / claude / agy / opencode); every consultation will be refused\n',
     );
   }
   if (process.env.SEVERALLY_ACTIVE === '1') {
-    process.stderr.write(
-      'severally: refusing to start inside a severally consultant session (recursion barrier)\n',
-    );
+    process.stderr.write('severally: refusing to start inside a severally consultant session (recursion barrier)\n');
     process.exit(2);
   }
   // One manager for the process; serveStdio builds the server once the client's

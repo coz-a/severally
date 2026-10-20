@@ -6,7 +6,10 @@ sandboxEnv();
 const { normalizeResult, extractJson, OutputError } = await import('../src/parse-result.mjs');
 
 const full = {
-  summary: 'S', confidence: 'medium', evidence_basis: 'sufficient', stance: 'proceed',
+  summary: 'S',
+  confidence: 'medium',
+  evidence_basis: 'sufficient',
+  stance: 'proceed',
   findings: [{ point: 'p', grounds: 'g', impact: 'i', severity: 'low', confidence: 'high' }],
   alternatives: [{ option: 'o', tradeoffs: 't', when_preferred: 'w' }],
   unknowns: [{ item: 'u', why_it_matters: 'w', how_to_obtain: 'h' }],
@@ -38,7 +41,11 @@ test('rejects answers with no usable summary', () => {
 });
 
 test('drops malformed list entries instead of trusting them', () => {
-  const { result } = normalizeResult({ ...full, findings: [{ grounds: 'orphan grounds' }, full.findings[0]], references: ['bare title'] });
+  const { result } = normalizeResult({
+    ...full,
+    findings: [{ grounds: 'orphan grounds' }, full.findings[0]],
+    references: ['bare title'],
+  });
   assert.equal(result.findings.length, 1);
   assert.equal(result.references[0].title, 'bare title');
 });
@@ -71,9 +78,18 @@ test('findings, unknowns and next_checks carry stable ids a verdict can point at
     unknowns: [{ item: 'u1', why_it_matters: 'w', how_to_obtain: 'h' }],
     next_checks: [{ check: 'c1', method: 'm', expected_signal: 'e' }],
   });
-  assert.deepEqual(result.findings.map((f) => f.id), ['f1', 'f2']);
-  assert.deepEqual(result.unknowns.map((u) => u.id), ['u1']);
-  assert.deepEqual(result.next_checks.map((c) => c.id), ['c1']);
+  assert.deepEqual(
+    result.findings.map((f) => f.id),
+    ['f1', 'f2'],
+  );
+  assert.deepEqual(
+    result.unknowns.map((u) => u.id),
+    ['u1'],
+  );
+  assert.deepEqual(
+    result.next_checks.map((c) => c.id),
+    ['c1'],
+  );
   // The id is assigned once, when the answer is parsed, and travels with the
   // stored result -- so f2 names the same finding every time it is read back.
   assert.equal(result.findings[1].point, 'p2');
@@ -89,7 +105,10 @@ test('ids are not read from the consultant: it does not get to renumber its own 
 
 test('a list cut to its limit says how long it had been', () => {
   const n = 45;
-  const { result, quality } = normalizeResult({ ...full, findings: Array.from({ length: n }, (_, i) => ({ point: `p${i}`, grounds: 'g' })) });
+  const { result, quality } = normalizeResult({
+    ...full,
+    findings: Array.from({ length: n }, (_, i) => ({ point: `p${i}`, grounds: 'g' })),
+  });
   assert.equal(result.findings.length, 30);
   assert.deepEqual(quality.list_truncated, { findings: n });
   assert.equal('list_truncated' in normalizeResult(full).quality, false);

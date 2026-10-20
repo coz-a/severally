@@ -19,7 +19,11 @@ const { prepareSandbox, seedCredentialFromAuth } = await import('../src/adapters
 // allows older runtimes, where seeding degrades to a no-op -- and these tests
 // with it.
 let sqlite = null;
-try { sqlite = await import('node:sqlite'); } catch { sqlite = null; }
+try {
+  sqlite = await import('node:sqlite');
+} catch {
+  sqlite = null;
+}
 
 // The schema a failed `opencode run` leaves behind on 2.x: the migrations
 // have run, so the credential table exists even though the run never
@@ -28,7 +32,9 @@ function bootstrapCredentialTable(sandbox) {
   const dir = path.join(sandbox.root, '.local', 'share', 'opencode');
   fs.mkdirSync(dir, { recursive: true });
   const db = new sqlite.DatabaseSync(path.join(dir, 'opencode.db'));
-  db.exec('CREATE TABLE IF NOT EXISTS credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)');
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)',
+  );
   db.close();
 }
 
@@ -49,15 +55,25 @@ function makeWorkdir() {
 test('the synthesised home denies every write path and allows reading and the web', () => {
   const sandbox = prepareSandbox({ workdir: makeWorkdir() });
 
-  const cfg = JSON.parse(
-    fs.readFileSync(path.join(sandbox.root, '.config', 'opencode', 'opencode.json'), 'utf8'),
-  );
+  const cfg = JSON.parse(fs.readFileSync(path.join(sandbox.root, '.config', 'opencode', 'opencode.json'), 'utf8'));
   // opencode's shipped default posture is allow-all, so the deny list is the
   // isolation: nothing that changes state may be left unspecified. The list
   // carries both name generations -- 1.x (bash, task) and 2.x (shell,
   // subagent) -- because 2.x normalises the old names but a future version
   // may drop the aliases.
-  for (const name of ['edit', 'bash', 'task', 'skill', 'lsp', 'todowrite', 'question', 'plan_enter', 'plan_exit', 'shell', 'subagent']) {
+  for (const name of [
+    'edit',
+    'bash',
+    'task',
+    'skill',
+    'lsp',
+    'todowrite',
+    'question',
+    'plan_enter',
+    'plan_exit',
+    'shell',
+    'subagent',
+  ]) {
     assert.equal(cfg.permission[name], 'deny', `${name} must be denied`);
   }
   // read tools and web stay allowed so all consultants are equal readers.
@@ -66,8 +82,6 @@ test('the synthesised home denies every write path and allows reading and the we
   }
   // read carries path rules: allowed everywhere but the protected paths.
   assert.equal(cfg.permission.read['*'], 'allow', 'read must be allowed');
-  {
-  }
   assert.deepEqual(cfg.mcp, {}, 'no MCP server may be reachable: this is the recursion barrier');
   assert.equal(cfg.share, 'disabled', 'the session must never be uploaded');
   assert.equal(cfg.snapshot, false);
@@ -80,7 +94,7 @@ test('the synthesised home denies every write path and allows reading and the we
   assert.equal(sandbox.env.XDG_DATA_HOME, path.join(sandbox.root, '.local', 'share'));
   assert.equal(sandbox.env.OPENCODE_DISABLE_AUTOUPDATE, '1');
   // Windows uses ACLs and cannot represent Unix owner-only mode bits.
-  if (process.platform !== 'win32') assert.equal((fs.statSync(sandbox.root).mode & 0o777), 0o700);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(sandbox.root).mode & 0o777, 0o700);
   sandbox.cleanup();
 });
 
@@ -157,8 +171,11 @@ test('seedCredentialFromAuth falls back to the operator database when auth.json 
   const operatorDbDir = path.join(dbOnlyHome, '.local', 'share', 'opencode');
   fs.mkdirSync(operatorDbDir, { recursive: true });
   const operatorDb = new sqlite.DatabaseSync(path.join(operatorDbDir, 'opencode.db'));
-  operatorDb.exec('CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)');
-  operatorDb.prepare('INSERT INTO credential (id, integration_id, label, value) VALUES (?, ?, ?, ?)')
+  operatorDb.exec(
+    'CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)',
+  );
+  operatorDb
+    .prepare('INSERT INTO credential (id, integration_id, label, value) VALUES (?, ?, ?, ?)')
     .run('cred_operator', 'zai-coding-plan', 'API key', '{"type":"key","key":"db-only-key"}');
   operatorDb.close();
 
@@ -192,8 +209,12 @@ test('the operator database outranks a stale auth.json entry, latest row first',
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'auth.json'), '{"zai-coding-plan":{"type":"api","key":"stale-key"}}');
   const operatorDb = new sqlite.DatabaseSync(path.join(dir, 'opencode.db'));
-  operatorDb.exec('CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)');
-  const insert = operatorDb.prepare('INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)');
+  operatorDb.exec(
+    'CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)',
+  );
+  const insert = operatorDb.prepare(
+    'INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)',
+  );
   insert.run('cred_old', 'zai-coding-plan', 'API key', '{"type":"key","key":"old-rotated-away"}', 1, 1);
   insert.run('cred_live', 'zai-coding-plan', 'API key', '{"type":"key","key":"live-key"}', 2, 3);
   operatorDb.close();

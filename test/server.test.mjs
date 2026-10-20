@@ -16,16 +16,18 @@ async function connect() {
 
 const payload = (res) => JSON.parse(res.content[0].text);
 
-test('exposes the three protocol tools, the lead\'s record, and a history listing', async () => {
+test("exposes the three protocol tools, the lead's record, and a history listing", async () => {
   const { client, close } = await connect();
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, ['consult_cancel', 'consult_export', 'consult_get', 'consult_list', 'consult_record', 'consult_start']);
   const record = tools.find((t) => t.name === 'consult_record');
-  assert.deepEqual(
-    record.inputSchema.properties.entries.items.properties.verdict.enum,
-    ['unverified', 'confirmed', 'not_applicable', 'unverifiable'],
-  );
+  assert.deepEqual(record.inputSchema.properties.entries.items.properties.verdict.enum, [
+    'unverified',
+    'confirmed',
+    'not_applicable',
+    'unverifiable',
+  ]);
   const start = tools.find((t) => t.name === 'consult_start');
   const req = start.inputSchema.properties.request;
   // Which names reach a consultant depends on the operator's config, so
@@ -44,7 +46,10 @@ test('only the tools that change nothing are annotated read-only', async () => {
   // Codex's auto mode reads readOnlyHint to decide whether a call needs approval.
   const { client, close } = await connect();
   const { tools } = await client.listTools();
-  const readOnly = tools.filter((t) => t.annotations?.readOnlyHint === true).map((t) => t.name).sort();
+  const readOnly = tools
+    .filter((t) => t.annotations?.readOnlyHint === true)
+    .map((t) => t.name)
+    .sort();
   assert.deepEqual(readOnly, ['consult_export', 'consult_get', 'consult_list']);
   for (const t of tools) assert.equal(typeof t.annotations?.readOnlyHint, 'boolean', `${t.name} declares readOnlyHint`);
   await close();
@@ -73,8 +78,11 @@ test('start -> get -> structured result, over MCP', async () => {
   assert.equal(view.status, 'completed');
   assert.equal(view.result.findings[0].point, 'Retry storm risk');
   assert.match(view.next_step, /remaining round/);
-  assert.match(view.next_step, /one check that would change the decision/,
-    'a completed answer must send the lead to run the decisive check, not only to read');
+  assert.match(
+    view.next_step,
+    /one check that would change the decision/,
+    'a completed answer must send the lead to run the decisive check, not only to read',
+  );
 
   const listed = payload(await client.callTool({ name: 'consult_list', arguments: {} }));
   assert.equal(listed.jobs[0].job_id, started.job_id);
@@ -114,8 +122,10 @@ test('a waiting consult_get sends progress, and a request the client cancels sto
   // The interval is 15 s; mocked, so the test does not sit through it.
   t.mock.timers.enable({ apis: ['setInterval'] });
   const progress = [];
-  const pending = client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 1500 } },
-    { onprogress: (p) => progress.push(p) });
+  const pending = client.callTool(
+    { name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 1500 } },
+    { onprogress: (p) => progress.push(p) },
+  );
   await new Promise((r) => setTimeout(r, 100));
   t.mock.timers.tick(15_000);
   assert.equal(payload(await pending).status, 'running');
@@ -158,13 +168,18 @@ test('cancel over MCP reports the effect; unknown ids are handled', async () => 
 test('a fan-out is started, fetched and compared through group_id over MCP', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const { client, close } = await connect();
-  const started = payload(await client.callTool({
-    name: 'consult_start',
-    arguments: { request: reviewRequest({ target: undefined, targets: ['codex', 'gemini'] }) },
-  }));
+  const started = payload(
+    await client.callTool({
+      name: 'consult_start',
+      arguments: { request: reviewRequest({ target: undefined, targets: ['codex', 'gemini'] }) },
+    }),
+  );
   assert.ok(started.group_id);
   assert.equal(started.job_id, undefined, 'a fan-out has no single job_id to poll');
-  assert.deepEqual(started.jobs.map((j) => j.target), ['codex', 'antigravity']);
+  assert.deepEqual(
+    started.jobs.map((j) => j.target),
+    ['codex', 'antigravity'],
+  );
   assert.match(started.poll_with, /group_id/);
 
   // Poll exactly as the server told us to: no wait_ms, so consult_get's default wait does the waiting.
@@ -174,9 +189,12 @@ test('a fan-out is started, fetched and compared through group_id over MCP', asy
   const view = payload(polled);
   assert.equal(view.status, 'done');
   assert.equal(view.members_available, 2);
-  assert.deepEqual(view.comparison.by_target.map((t) => t.target), ['codex', 'antigravity']);
+  assert.deepEqual(
+    view.comparison.by_target.map((t) => t.target),
+    ['codex', 'antigravity'],
+  );
   assert.match(view.comparison.note, /does not judge/);
-  assert.equal(view.members[0].result, undefined, 'a member\'s full answer is one consult_get({ job_id }) away');
+  assert.equal(view.members[0].result, undefined, "a member's full answer is one consult_get({ job_id }) away");
   const full = payload(await client.callTool({ name: 'consult_get', arguments: { group_id: started.group_id, detail: 'full' } }));
   assert.ok(full.members[0].result.summary);
   assert.ok(full.brief.objective);
@@ -219,8 +237,14 @@ test('consult_get waits by default, and wait_ms: 0 answers at once', async () =>
   const { client, close } = await connect();
   const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
   assert.equal(started.poll_with, `consult_get({ job_id: "${started.job_id}" })`);
-  assert.equal(payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 0 } })).status, 'running');
-  assert.equal(payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id } })).status, 'completed');
+  assert.equal(
+    payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 0 } })).status,
+    'running',
+  );
+  assert.equal(
+    payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id } })).status,
+    'completed',
+  );
   await close();
 });
 
@@ -230,15 +254,18 @@ test('a verdict written over MCP lands on the consultation and comes back in the
   const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
   await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
 
-  const recorded = payload(await client.callTool({
-    name: 'consult_record',
-    arguments: { job_id: started.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Capped the retries.' }] },
-  }));
+  const recorded = payload(
+    await client.callTool({
+      name: 'consult_record',
+      arguments: { job_id: started.job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Capped the retries.' }] },
+    }),
+  );
   assert.deepEqual(recorded.record.verdicts, { confirmed: 1 });
   assert.deepEqual(recorded.record.coverage, { recordable: 3, recorded: 1 });
 
-  const listed = payload(await client.callTool({ name: 'consult_list', arguments: {} })).jobs
-    .find((j) => j.job_id === started.job_id);
+  const listed = payload(await client.callTool({ name: 'consult_list', arguments: {} })).jobs.find(
+    (j) => j.job_id === started.job_id,
+  );
   assert.equal(listed.recorded, true);
   await close();
 });
@@ -267,7 +294,10 @@ test('a finished consultation can be exported as a record to commit', async () =
   const view = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } }));
   await client.callTool({
     name: 'consult_record',
-    arguments: { job_id: started.job_id, entries: [{ id: 'f1', verdict: 'not_applicable', effect: 'That path is already capped upstream.' }] },
+    arguments: {
+      job_id: started.job_id,
+      entries: [{ id: 'f1', verdict: 'not_applicable', effect: 'That path is already capped upstream.' }],
+    },
   });
 
   const exported = payload(await client.callTool({ name: 'consult_export', arguments: { chain_id: view.chain_id } }));
@@ -289,16 +319,23 @@ test('exporting a consultation that is not in the history is refused', async () 
 test('a prediction goes in with the request and a reflection comes back with the record', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const { client, close } = await connect();
-  const started = payload(await client.callTool({
-    name: 'consult_start',
-    arguments: { request: reviewRequest({ prediction: { expected: 'proceed', worry: 'The cap is the only real risk.' } }) },
-  }));
+  const started = payload(
+    await client.callTool({
+      name: 'consult_start',
+      arguments: { request: reviewRequest({ prediction: { expected: 'proceed', worry: 'The cap is the only real risk.' } }) },
+    }),
+  );
   await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
 
-  const out = payload(await client.callTool({
-    name: 'consult_record',
-    arguments: { job_id: started.job_id, reflection: { delta: 'Expected the cap; the vacuum cost was new.', related_item_ids: ['f1'] } },
-  }));
+  const out = payload(
+    await client.callTool({
+      name: 'consult_record',
+      arguments: {
+        job_id: started.job_id,
+        reflection: { delta: 'Expected the cap; the vacuum cost was new.', related_item_ids: ['f1'] },
+      },
+    }),
+  );
   assert.equal(out.reflection_saved, true);
   const view = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 0 } }));
   assert.equal(view.prediction.expected, 'proceed');
@@ -325,7 +362,10 @@ test('an installed copy on another version is named, with how to bring it level'
   assert.equal(staleInstall(home, sevHome), null, 'no other copy: nothing to report');
   fsMod.mkdirSync(pathMod.join(sevHome, 'runtime'), { recursive: true });
   // A 1.8.1 bundle, as the runtime install leaves it, beside a package.json a later --manual install never rewrote.
-  fsMod.writeFileSync(pathMod.join(sevHome, 'runtime', 'severally-mcp.mjs'), "new McpServer({ name: 'severally', version: '1.8.1' })");
+  fsMod.writeFileSync(
+    pathMod.join(sevHome, 'runtime', 'severally-mcp.mjs'),
+    "new McpServer({ name: 'severally', version: '1.8.1' })",
+  );
   fsMod.writeFileSync(pathMod.join(sevHome, 'runtime', 'package.json'), JSON.stringify({ version: '0.0.1' }));
   const stale = staleInstall(home, sevHome);
   assert.deepEqual(stale.behind, ['runtime']);
@@ -348,7 +388,13 @@ test('consult_get with ids returns just those points, whole, with their verdicts
   const ids = [full.result.findings[0].id, full.result.unknowns[0].id];
   manager.record({ job_id: started.job_id, entries: [{ id: ids[0], verdict: 'confirmed', effect: 'checked' }] });
   const got = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, ids } }));
-  assert.deepEqual(got.points.map((p) => [p.id, p.kind]), [[ids[0], 'finding'], [ids[1], 'unknown']]);
+  assert.deepEqual(
+    got.points.map((p) => [p.id, p.kind]),
+    [
+      [ids[0], 'finding'],
+      [ids[1], 'unknown'],
+    ],
+  );
   const { kind, recorded, ...finding } = got.points[0];
   assert.deepEqual(finding, full.result.findings[0], 'the point comes back whole, grounds included');
   assert.equal(recorded.verdict, 'confirmed');

@@ -23,7 +23,9 @@ test('Windows detects a CLI through PATHEXT and a backslash path', { skip: !wind
   fs.writeFileSync(bin, '@echo off\r\n');
   const original = process.env.PATH;
   process.env.PATH = `${dir}${path.delimiter}${original}`;
-  t.after(() => { process.env.PATH = original; });
+  t.after(() => {
+    process.env.PATH = original;
+  });
   assert.equal(isInstalled('consultant'), true);
   assert.equal(isInstalled(bin), true);
   assert.equal(isInstalled(path.join(dir, 'missing')), false);
@@ -46,7 +48,10 @@ test('Windows launches a cmd shim with spaces and JSON arguments intact', { skip
 test('Windows resolves wrappers and relative PATH entries in the requested cwd', { skip: !windows }, (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-cwd-'));
   const previous = process.cwd();
-  t.after(() => { process.chdir(previous); fs.rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => {
+    process.chdir(previous);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
   const caller = path.join(dir, 'caller');
   const child = path.join(dir, 'child');
   for (const location of [caller, child]) {
@@ -109,12 +114,23 @@ function installerFixture(t) {
   for (const dependency of ['cross-spawn', 'which', 'path-key', 'shebang-command', 'shebang-regex', 'isexe']) {
     copyTree(path.join(root, 'node_modules', dependency), path.join(checkout, 'node_modules', dependency));
   }
-  const env = { ...childEnv('codex'), PATH: dir, HOME: dir, USERPROFILE: dir,
-    CODEX_HOME: path.join(dir, '.codex'), INSTALL_TEST_LOG: log,
-    INSTALL_TEST_REGISTRY: path.join(dir, 'registry.json') };
-  const install = (...args) => execFileSync(process.execPath, ['scripts/install.mjs', ...args], {
-    cwd: checkout, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env,
-  });
+  const env = {
+    ...childEnv('codex'),
+    PATH: dir,
+    HOME: dir,
+    USERPROFILE: dir,
+    CODEX_HOME: path.join(dir, '.codex'),
+    INSTALL_TEST_LOG: log,
+    INSTALL_TEST_REGISTRY: path.join(dir, 'registry.json'),
+  };
+  const install = (...args) =>
+    execFileSync(process.execPath, ['scripts/install.mjs', ...args], {
+      cwd: checkout,
+      windowsHide: true,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env,
+    });
   return { dir, log, checkout, install };
 }
 
@@ -122,7 +138,11 @@ test('Windows installation runs independently after deleting the source checkout
   const { dir, log, checkout, install } = installerFixture(t);
   install(); // No npm on PATH: the Windows install must not need it.
   const installed = path.join(dir, '.severally', 'runtime', 'severally-mcp.mjs');
-  const registrations = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse)
+  const registrations = fs
+    .readFileSync(log, 'utf8')
+    .trim()
+    .split('\n')
+    .map(JSON.parse)
     .filter((args) => args[1] === 'mcp' && args[2] === 'add');
   assert.equal(registrations.length, 4);
   for (const args of registrations) {
@@ -131,22 +151,39 @@ test('Windows installation runs independently after deleting the source checkout
   // Codex gets the long wait: the env on the server and tool_timeout_sec in its table.
   const codexAdd = registrations.find((args) => args[0] === 'codex');
   assert.ok(codexAdd.join(' ').includes('--env SEVERALLY_MAX_WAIT_MS=600000'));
-  assert.match(fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8'), /\[mcp_servers\.severally\]\ntool_timeout_sec = 660\n/);
-  for (const relative of ['.claude/skills/severally', '.codex/skills/severally', '.gemini/config/skills/severally', '.config/opencode/skills/severally']) {
+  assert.match(
+    fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8'),
+    /\[mcp_servers\.severally\]\ntool_timeout_sec = 660\n/,
+  );
+  for (const relative of [
+    '.claude/skills/severally',
+    '.codex/skills/severally',
+    '.gemini/config/skills/severally',
+    '.config/opencode/skills/severally',
+  ]) {
     assert.ok(fs.existsSync(path.join(dir, relative, 'SKILL.md')));
   }
   fs.rmSync(checkout, { recursive: true, force: true });
   const client = new Client({ name: 'installed-runtime-test', version: '1' });
   try {
-    await client.connect(new StdioClientTransport({ command: process.execPath, args: [installed],
-      cwd: dir, env: { ...process.env, STUB_BEHAVIOR: 'ok' }, stderr: 'pipe' }));
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [installed],
+        cwd: dir,
+        env: { ...process.env, STUB_BEHAVIOR: 'ok' },
+        stderr: 'pipe',
+      }),
+    );
     const { tools } = await client.listTools();
     assert.ok(tools.some((tool) => tool.name === 'consult_start'));
     const start = await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } });
     const started = JSON.parse(start.content[0].text);
     const result = await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
     assert.equal(JSON.parse(result.content[0].text).status, 'completed');
-  } finally { await client.close(); }
+  } finally {
+    await client.close();
+  }
 });
 
 test('Windows dry-run leaves the runtime and client skills untouched', { skip: !windows }, (t) => {
@@ -156,7 +193,10 @@ test('Windows dry-run leaves the runtime and client skills untouched', { skip: !
   assert.equal(fs.existsSync(path.join(dir, '.severally')), false);
   assert.equal(fs.existsSync(path.join(dir, '.claude')), false);
   const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
-  assert.equal(calls.some((args) => args[2] === 'add' || args[2] === 'remove'), false);
+  assert.equal(
+    calls.some((args) => args[2] === 'add' || args[2] === 'remove'),
+    false,
+  );
 });
 
 test('Windows runtime upgrades back up the previous bundle', { skip: !windows }, (t) => {
@@ -165,19 +205,25 @@ test('Windows runtime upgrades back up the previous bundle', { skip: !windows },
   fs.mkdirSync(path.dirname(installed), { recursive: true });
   fs.writeFileSync(installed, '// previous runtime\n');
   install('--skip-global', '--force');
-  assert.ok(fs.readFileSync(installed).equals(
-    fs.readFileSync(path.join(checkout, 'plugins', 'severally', 'dist', 'severally-mcp.mjs'))));
+  assert.ok(
+    fs.readFileSync(installed).equals(fs.readFileSync(path.join(checkout, 'plugins', 'severally', 'dist', 'severally-mcp.mjs'))),
+  );
   const backupRoot = path.join(dir, '.severally', 'backups');
-  const backups = fs.readdirSync(backupRoot).flatMap((stamp) =>
-    fs.readdirSync(path.join(backupRoot, stamp)).map((name) => path.join(backupRoot, stamp, name)));
+  const backups = fs
+    .readdirSync(backupRoot)
+    .flatMap((stamp) => fs.readdirSync(path.join(backupRoot, stamp)).map((name) => path.join(backupRoot, stamp, name)));
   assert.ok(backups.some((file) => fs.readFileSync(file, 'utf8') === '// previous runtime\n'));
 });
 
 test('Windows migration requires force to replace existing checkout registrations', { skip: !windows }, (t) => {
   const { dir, checkout, install } = installerFixture(t);
   const registryPath = path.join(dir, 'registry.json');
-  const old = Object.fromEntries(['claude', 'codex', 'agy', 'opencode'].map((cli) =>
-    [cli, [process.execPath, path.join(checkout, 'bin', 'severally-mcp.mjs')]]));
+  const old = Object.fromEntries(
+    ['claude', 'codex', 'agy', 'opencode'].map((cli) => [
+      cli,
+      [process.execPath, path.join(checkout, 'bin', 'severally-mcp.mjs')],
+    ]),
+  );
   fs.writeFileSync(registryPath, JSON.stringify(old));
   const output = install();
   assert.deepEqual(JSON.parse(fs.readFileSync(registryPath, 'utf8')), old);
@@ -201,22 +247,27 @@ test('invalid Windows bundle leaves the previous runtime and registrations intac
   assert.deepEqual(fs.readdirSync(path.dirname(installed)), ['severally-mcp.mjs']);
 });
 
-for (const [era, version, mode] of [['2025', '2025-11-25', 'legacy'], ['2026', '2026-07-28', { pin: '2026-07-28' }]]) test(`shipped bundle starts over stdio and completes a consultation (${era} protocol)`, async (t) => {
-  const client = new Client({ name: 'bundle-test', version: '1' }, { versionNegotiation: { mode } });
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [fileURLToPath(new URL('../plugins/severally/dist/severally-mcp.mjs', import.meta.url))],
-    env: { ...process.env, STUB_BEHAVIOR: 'ok' }, stderr: 'pipe',
+for (const [era, version, mode] of [
+  ['2025', '2025-11-25', 'legacy'],
+  ['2026', '2026-07-28', { pin: '2026-07-28' }],
+])
+  test(`shipped bundle starts over stdio and completes a consultation (${era} protocol)`, async (t) => {
+    const client = new Client({ name: 'bundle-test', version: '1' }, { versionNegotiation: { mode } });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [fileURLToPath(new URL('../plugins/severally/dist/severally-mcp.mjs', import.meta.url))],
+      env: { ...process.env, STUB_BEHAVIOR: 'ok' },
+      stderr: 'pipe',
+    });
+    t.after(() => client.close());
+    await client.connect(transport);
+    assert.equal(client.getNegotiatedProtocolVersion(), version);
+    const { reviewRequest } = await import('./helpers.mjs');
+    const start = await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } });
+    const started = JSON.parse(start.content[0].text);
+    const result = await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
+    assert.equal(JSON.parse(result.content[0].text).status, 'completed');
   });
-  t.after(() => client.close());
-  await client.connect(transport);
-  assert.equal(client.getNegotiatedProtocolVersion(), version);
-  const { reviewRequest } = await import('./helpers.mjs');
-  const start = await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } });
-  const started = JSON.parse(start.content[0].text);
-  const result = await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } });
-  assert.equal(JSON.parse(result.content[0].text).status, 'completed');
-});
 
 test('cancellation terminates a native child and its descendant', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-tree-'));
@@ -227,11 +278,30 @@ test('cancellation terminates a native child and its descendant', async (t) => {
     const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});
     fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid)); setInterval(()=>{},1000);`;
   const run = runChild({ command: process.execPath, args: ['-e', source], env: childEnv('codex'), timeoutMs: 10000 });
-  t.after(() => { run.handle.stop(); if (descendant) { try { process.kill(descendant); } catch {} } });
+  t.after(() => {
+    run.handle.stop();
+    if (descendant) {
+      try {
+        process.kill(descendant);
+      } catch {
+        // already gone
+      }
+    }
+  });
   descendant = Number(await waitFor(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8')));
   run.handle.stop();
   await run.done;
-  await waitFor(() => { try { process.kill(descendant, 0); return false; } catch { return true; } }, { timeoutMs: 3000 });
+  await waitFor(
+    () => {
+      try {
+        process.kill(descendant, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    { timeoutMs: 3000 },
+  );
 });
 
 test('Windows sandbox redirects native home and application config paths', { skip: !windows }, (t) => {

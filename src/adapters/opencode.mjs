@@ -110,12 +110,17 @@ export async function prepare() {
         // STUB_* observables (a stubbed CLI cannot tell it ran), keeping the
         // STUB_HELP knobs so a test can still shape the advertised flag list
         // and the probe's latency.
-        const env = Object.fromEntries(Object.entries(process.env)
-          .filter(([k]) => !k.startsWith('STUB_') || k === 'STUB_HELP' || k === 'STUB_HELP_DELAY_MS'));
+        const env = Object.fromEntries(
+          Object.entries(process.env).filter(([k]) => !k.startsWith('STUB_') || k === 'STUB_HELP' || k === 'STUB_HELP_DELAY_MS'),
+        );
         const child = spawnCommand(POLICY.clis.opencode.cli, ['run', '--help'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
         let out = '';
-        child.stdout.on('data', (c) => { out += c; });
-        child.stderr.on('data', (c) => { out += c; });
+        child.stdout.on('data', (c) => {
+          out += c;
+        });
+        child.stderr.on('data', (c) => {
+          out += c;
+        });
         child.on('error', () => finishProbe(false, false));
         child.on('close', (code) => {
           // A nonzero exit proves nothing either way -- a diagnostic that
@@ -123,7 +128,14 @@ export async function prepare() {
           if (code !== 0) return finishProbe(false, false);
           finishProbe(out.includes('--standalone'), true);
         });
-        timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } finishProbe(false, false); }, 10_000);
+        timer = setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* gone */
+          }
+          finishProbe(false, false);
+        }, 10_000);
         timer.unref();
       } catch {
         finishProbe(false, false);
@@ -170,7 +182,8 @@ export function buildInvocation({ consultant }) {
   const effort = consultant.effort ?? 'high';
   const args = [
     'run',
-    '--format', 'json',
+    '--format',
+    'json',
     ...(standaloneSupport ? ['--standalone'] : []),
     // A failing 2.x run can exit nonzero with no error event and an empty
     // stderr (observed on GLM after ~5 min), leaving nothing to say why. Its
@@ -183,8 +196,10 @@ export function buildInvocation({ consultant }) {
     // name the operator wrote with its own `#variant` is passed as is, and a
     // bare trailing `#` means "no variant", for models that have none
     // ("Variant unavailable for opencode/nemotron-3-ultra-free: high").
-    '-m', chosen.endsWith('#') ? chosen.slice(0, -1) : chosen.includes('#') ? chosen : `${chosen}#${effort}`,
-    '--title', 'severally',
+    '-m',
+    chosen.endsWith('#') ? chosen.slice(0, -1) : chosen.includes('#') ? chosen : `${chosen}#${effort}`,
+    '--title',
+    'severally',
   ];
   return { command: t.cli, args, model: chosen };
 }
@@ -198,7 +213,9 @@ export function events(stdout) {
     try {
       const parsed = JSON.parse(t);
       if (parsed && typeof parsed === 'object') out.push(parsed);
-    } catch { /* a partial line, e.g. when the child was killed mid-write */ }
+    } catch {
+      /* a partial line, e.g. when the child was killed mid-write */
+    }
   }
   return out;
 }
@@ -216,7 +233,10 @@ export function compactLine(line) {
   try {
     const e = JSON.parse(line);
     if (e?.type !== 'tool_use') return line;
-    return JSON.stringify({ type: e.type, part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } } });
+    return JSON.stringify({
+      type: e.type,
+      part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } },
+    });
   } catch {
     return line;
   }
@@ -230,9 +250,7 @@ function errorMessage(error) {
   // message are joined, as before. A CLI upgrade must degrade the wording and
   // never the classification.
   if (typeof error.message === 'string' && error.message) return error.message;
-  const detail = error.data && typeof error.data === 'object' && error.data.message
-    ? String(error.data.message)
-    : '';
+  const detail = error.data && typeof error.data === 'object' && error.data.message ? String(error.data.message) : '';
   return [error.name, detail].filter(Boolean).join(': ') || JSON.stringify(error);
 }
 
