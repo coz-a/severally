@@ -624,16 +624,19 @@ export function limitsSummary() {
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    // Stated so it is true of all three consultants. Reading is allowed for
-    // every one of them -- what keeps a consultation brief-only is that the
-    // child starts in an empty working directory and is never told where the
-    // repository is, not that it cannot read. Codex is additionally sandboxed
-    // read-only rather than execution-free, so do not advertise "no execution".
+    // Stated so it is true of all four CLIs. Reading is allowed for every one
+    // of them -- what keeps a consultation brief-only is that the child starts
+    // in an empty working directory and is never told where the repository
+    // is, not that it cannot read. Only Claude Code drops its whole-disk read
+    // when files are exposed (claude-code.mjs). Codex is additionally
+    // sandboxed read-only rather than execution-free, so do not advertise
+    // "no execution".
     consultant_permissions:
-      'web search/browse and reading local files allowed, but the consultant starts in an empty working ' +
-      'directory and is not told where your repository is -- unless context.expose_paths names files or ' +
-      'directories, which are copied read-only into that working directory and are then the only part of ' +
-      'your repository it has; file edits, network access, MCP tools and further consultations denied; the ' +
-      'Codex consultant additionally has a read-only shell',
+      'web search/browse and reading local files allowed; the consultant starts in an empty working ' +
+      'directory and is not told where your repository is. context.expose_paths copies the files or ' +
+      'directories it names read-only into that working directory, but that is not a read boundary: apart ' +
+      'from the protected credential paths, Codex, Antigravity and OpenCode can read any file your account ' +
+      'can, and so can Claude Code when nothing is exposed; file edits, network access, MCP tools and ' +
+      'further consultations denied; the Codex consultant additionally has a read-only shell',
   };
 }

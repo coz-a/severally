@@ -52,7 +52,8 @@ test('a consultation running in another process is reported as running and left 
   store.writeRunning({ ...marker, owner: { ...marker.owner, pid: process.ppid } });
   const v = b.view(s.job_id);
   assert.notEqual(v.status, 'failed');
-  assert.match(v.next_step, /another severally process/);
+  assert.match(v.next_step, /another severally process.*consult_cancel/);
+  assert.equal(v.cancellable, true, 'consult_cancel reaches the process running it');
   assert.match(b.cancel(s.job_id).cancel_effect, /asked the severally process running it/);
   assert.ok(store.loadRunning(s.job_id), 'a live owner keeps its marker');
 

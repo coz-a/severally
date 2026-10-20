@@ -50,7 +50,7 @@ test('the agy hook answers every call, and denies what it cannot read or check',
 
 test('the agy hook allows only the read and web tools, and refuses agent tools and new ones', () => {
   const sandbox = agySandbox({ workdir: workdir() });
-  for (const name of ['view_file', 'search_web', 'read_url_content', 'finish'])
+  for (const name of ['view_file', 'read_file', 'search_web', 'read_url_content', 'finish'])
     assert.equal(hook(sandbox, { name }), 'allow', name);
   for (const name of [
     'invoke_subagent',
@@ -104,6 +104,9 @@ test('the agy hook refuses credential and history paths, symlinks resolved, and 
     'deny',
     'relative to the workspace',
   );
+  // agy 1.4.3 reads with read_file; its paths are checked the same way.
+  assert.equal(hook(sandbox, { name: 'read_file', args: { AbsolutePath: path.join(os.homedir(), '.ssh', 'id_rsa') } }), 'deny');
+  assert.equal(hook(sandbox, { name: 'read_file', args: { AbsolutePath: '/etc/hostname' } }), 'allow');
   // Older releases sent `parameters`; still checked.
   assert.equal(hook(sandbox, { name: 'view_file', parameters: { AbsolutePath: '/srv/.env' } }), 'deny');
   // The final answer is text, not a path: naming a protected file in it must not block the answer.

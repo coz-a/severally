@@ -16,7 +16,7 @@ A plugin that lets your AI agent ask other coding agents for independent opinion
 The consultants are Codex, Claude Code, Antigravity and OpenCode. When the agent gets stuck in an investigation, or faces two options that look equally good, it asks the
 consultants for their opinions. It checks the findings that come back itself, and carries on from what it found.
 For an important decision, such as a change that is hard to reverse, it consults before asking you to approve it,
-and asks you only about what is yours to decide. You can also ask yourself: "ask Codex".
+and asks you only about what is yours to decide. You can also ask for one yourself: "ask Codex".
 
 The plugin puts the question to several independent consultants, and returns each one's answer on its own
 instead of merging them into one, because a disagreement means something too. The agent checks why they disagree
@@ -92,24 +92,51 @@ routes and the real CLIs have been tried on Linux only.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.4.1 install
+npx -y severally-mcp@2.4.2 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
-would change without changing anything. Then restart the clients: a running session does not reload the new
-registration.
-
-If you use only Claude Code, you can install from its plugin marketplace instead: run `/plugin marketplace add coz-a/severally`
-and then `/plugin install severally@severally` in Claude Code, and restart it. The one line above is the main route,
-since it registers every CLI it finds. Details are in
-[docs/install.md](docs/install.md#from-the-claude-code-plugin-marketplace).
+would change without changing anything.
 
 On macOS and Linux, the default install also runs `npm install -g` to put a `severally-mcp` command on `PATH`, which
 only Codex's plugin needs. If npm cannot install it globally (for example it needs sudo, or npm's global folder is
 not on `PATH`), the installer registers Codex directly instead and says so. Nothing else is needed.
 
-Installing from the Claude Code plugin marketplace or from a clone, checking the registration, and what the
-installer changes are in [docs/install.md](docs/install.md).
+Then restart the clients: a running session does not reload the new registration. To check the setup without
+starting a consultation, run:
+
+```bash
+npx -y severally-mcp@latest status
+```
+
+It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
+have severally registered and whether each CLI is logged in. The login check reads the CLI's own status command and
+sends no prompt; running out of quota is not checked, and the first consultation shows it.
+
+Part of the output on a machine with Codex and Claude Code:
+
+```text
+config: ok
+
+consultants:
+  codex: codex, <model>  available
+  claude-code: claude-code, <model>  available
+
+clients:
+  Claude Code  registered (listed by the client)
+  Codex        registered (listed by the client)
+
+login (out of quota is not checked; the first consultation shows it):
+  codex        logged in
+  claude-code  logged in
+```
+
+Then ask your agent for a first consultation, as in [Usage](#usage).
+
+If you use only Claude Code, you can install from its plugin marketplace instead: run `/plugin marketplace add coz-a/severally`
+and then `/plugin install severally@severally` in Claude Code, and restart it. The one line above is the main route,
+since it registers every CLI it finds. Installing from the marketplace or from a clone, checking the registration,
+and what the installer changes are in [docs/install.md](docs/install.md).
 
 ### Command line
 
@@ -126,11 +153,6 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 | `--allow-local-tools` | adds severally's five local tools to Claude Code's allow list without asking; `consult_start` still asks |
 
 What each mode changes is in [docs/install.md](docs/install.md#two-install-modes).
-
-`npx -y severally-mcp@latest status` shows what is set up without starting a consultation: the config file, the
-consultants this machine can reach, the installed copies' versions, which clients have severally registered and
-whether each CLI is logged in. The login check reads the CLI's own status command and sends no prompt; running out
-of quota is not checked, and the first consultation shows it.
 
 ### Updating
 
@@ -320,11 +342,13 @@ history is never sent. No consultant can:
 |---|---|---|---|---|---|
 | Codex | yes | blocked by path (permission profile), not by file name such as `.env` | yes, in its sandbox (commands run, but cannot write or reach the network) | no | yes, unless `network: "off"` |
 | Claude Code | yes (`Read` / `Glob` / `Grep`) | blocked (permission rules) | none | no | yes, unless `network: "off"` |
-| Antigravity | yes (`view_file`) | blocked (tool hook) | none | no | yes, unless `network: "off"` |
+| Antigravity | yes (`view_file`, `read_file`) | blocked (tool hook) | none | no | yes, unless `network: "off"` |
 | OpenCode | yes (`read` / `glob` / `grep`) | blocked (permission rules) | none (its Code Mode `execute` is refused) | no | yes, unless `network: "off"` |
 
 Every consultant starts in a working directory of its own that holds only copies of the files you handed it, and
-the server does not tell it where your repository is. It can still read any file your user account can read, except the credential paths the table marks blocked.
+the server does not tell it where your repository is. It can still read any file your user account can read, except
+the credential paths the table marks blocked. The one exception is Claude Code in a consultation that exposes files:
+it can then read only those copies.
 Codex does not block by file name, so a `.env` in your repository is readable to it.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
@@ -364,6 +388,8 @@ a large change, open an issue first so we can talk it over. Everyone taking part
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
 - `npm install`, then `npm test`. The tests run offline against stand-in CLIs and make no real API calls.
+- CI also runs `npm run lint`, `npm run typecheck` and `npm run format:check`. Run them before you open a pull
+  request.
 - After changing the source or the Skill template, run `npm run build`. The built server in
   `plugins/severally/dist/` and the generated Skills are committed, and CI fails when they are out of date.
 - `npm run live-check` and `npm run doctor` run real consultations against the CLIs you have installed, and spend

@@ -40,7 +40,10 @@ export const SANDBOX_DENY = Object.freeze(['write_file(*)', 'command(*)', 'mcp(*
 // call also passes a PreToolUse hook that allows these names and denies the
 // rest -- an allowlist, so a tool a later agy release adds is refused until it
 // is added here. The names are agy's own (its init toolset), not rule names.
-export const ALLOWED_TOOLS = Object.freeze(['view_file', 'search_web', 'read_url_content', 'finish']);
+// agy 1.4.3 reads files with read_file; earlier releases called it view_file.
+// With only view_file listed, every read on 1.4.3 was refused and the
+// consultant answered from the brief alone (2026-10-20).
+export const ALLOWED_TOOLS = Object.freeze(['view_file', 'read_file', 'search_web', 'read_url_content', 'finish']);
 const WEB_TOOLS = new Set(['search_web', 'read_url_content']);
 
 // agy pipes the pending call to the hook as {"toolCall":{"name":...,
@@ -59,7 +62,7 @@ const WEB_TOOLS = new Set(['search_web', 'read_url_content']);
 // expanded: a consultant that can browse must not read a credential and
 // carry it out in a URL. Other tools' parameters -- the final answer passed
 // to finish among them -- are text, not paths, and are not inspected.
-const PATH_TOOLS = ['view_file', 'read_url_content'];
+const PATH_TOOLS = ['view_file', 'read_file', 'read_url_content'];
 
 // read_url_content does not hand a long page to the model: it saves it inside
 // the sandbox home and tells the model to view_file that copy (agy 1.4.0,

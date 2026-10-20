@@ -435,6 +435,9 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
   return { ok: true, text, earlierTextParts, usageRaw };
 }
 
+/** The tools that read a file's contents (glob only lists names); a consultation whose calls to them all failed read none of its exposed files. */
+export const FILE_READ_TOOLS = ['read', 'grep'];
+
 /**
  * What this consultation has done so far -- read while it runs. Separates
  * "working steadily through tool calls" from "wedged on one call", which is

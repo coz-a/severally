@@ -18,7 +18,7 @@ import path from 'node:path';
 import { POLICY, agyExitGraceMs, timeoutMs } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 
-export { prepareSandbox } from './antigravity-sandbox.mjs';
+export { prepareSandbox, ALLOWED_TOOLS } from './antigravity-sandbox.mjs';
 
 /** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
 /** @typedef {import('../run.mjs').Invocation} Invocation */
@@ -157,6 +157,9 @@ export function progress({ stdout }) {
   const what = last.tool_name ? `tool ${last.tool_name}` : (last.step_type ?? 'a step');
   return `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
 }
+
+/** The tools that read a file; a consultation whose calls to them all failed read none of its exposed files. */
+export const FILE_READ_TOOLS = ['view_file', 'read_file'];
 
 /**
  * Tool calls seen in the step stream, one per step index; `:error` when the step failed or was refused.
