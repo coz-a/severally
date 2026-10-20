@@ -131,7 +131,7 @@ question to every member of a fan-out, each continuing from its own latest round
 that is still running, never answered or has used its rounds is listed under `skipped` and not asked.
 
 A follow-up needs only `followup_to` and the new `question`:
-`consult_start({ request: { followup_to: "<job_id>", question: "..." } })`. The consultant, the mode and what
+`consult_start({ request: { followup_to: "<job_id>", question: "..." } })`. The consultant, the mode, `network` and what
 the earlier round was given (objective, constraints, success criteria, facts, proposal, counterpoints,
 artifacts) carry over, and the brief restates them; a field you pass replaces the earlier one, an empty list
 included. A follow-up starts in a fresh working directory with no files: pass

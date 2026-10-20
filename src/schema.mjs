@@ -100,7 +100,7 @@ export const requestSchema = z
     // "off" takes web search and browsing away from every consultant in this
     // round, for a brief that must not leave the machine through a URL. The
     // consultant still reads the brief and the disk; it reaches nothing else.
-    network: z.enum(NETWORK_MODES).default('on'),
+    network: z.enum(NETWORK_MODES).optional(),
     question: trimmed(L.questionMax, 'question'),
     // Optional: most consultations state what they are after in the question
     // itself, and a second field that repeats it is friction, not information.
@@ -160,6 +160,7 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   // Left without a default in the schema, so that a follow-up can tell a list
   // it left out (inherited from the round before, jobs.mjs) from one it
   // emptied on purpose: the tool layer applies the schema's defaults first.
+  req.network ??= 'on';
   req.success_criteria ??= [];
   req.constraints ??= [];
   for (const k of ['facts', 'counterpoints', 'artifacts']) req.context[k] ??= [];

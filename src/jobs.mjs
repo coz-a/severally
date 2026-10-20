@@ -338,7 +338,7 @@ export class JobManager {
       rawRequest = { ...rawRequest, target: parent.target };
     }
     // A fan-out's members were all handed the same brief, so any one of them holds it.
-    if (parent || fromGroup) rawRequest = inherit(rawRequest, (fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent).brief);
+    if (parent || fromGroup) rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
 
     const req = parseRequest(rawRequest, {
       isFollowup: Boolean(parent || fromGroup),
@@ -1514,9 +1514,11 @@ function text(value) {
 // a key left out is inherited -- one passed, even as an empty list, replaces
 // it -- and the validation that follows sees the result. Files are not:
 // copying them again stays expose_from_parent, named in the call (schema.mjs).
-function inherit(raw, brief) {
-  if (!brief) return raw;
-  const out = { ...raw };
+function inherit(raw, round) {
+  const { brief } = round;
+  // A round kept off the web stays off: the material it carries over is the same.
+  const out = raw.network === undefined && round.network ? { ...raw, network: round.network } : { ...raw };
+  if (!brief) return out;
   for (const k of ['objective', 'success_criteria', 'constraints']) {
     if (out[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
   }
@@ -1526,8 +1528,10 @@ function inherit(raw, brief) {
   }
   // The diff expose_diff added is not the lead's material: it is taken again
   // (or replaced) through expose_from_parent, against the files as they are now.
-  const generatedDiff = brief.expose_paths?.entries?.some((e) => e.kind === 'diff');
-  const artifacts = (brief.artifacts ?? []).filter((a) => !(generatedDiff && a.kind === 'diff' && a.name.startsWith('git diff ')));
+  // It is the last artifact (appended after the lead's own), so only that one is dropped.
+  const artifacts = [...(brief.artifacts ?? [])];
+  const last = artifacts.at(-1);
+  if (brief.expose_paths?.entries?.some((e) => e.kind === 'diff') && last?.kind === 'diff' && last.name.startsWith('git diff ')) artifacts.pop();
   if (ctx.artifacts === undefined && artifacts.length) {
     // Stored with null for an absent language or source; the request schema takes them as optional strings.
     ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));

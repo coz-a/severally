@@ -176,7 +176,9 @@ export class ProcHandle {
     if (!pid) return;
     if (process.platform === 'win32') {
       // Negative PIDs/process groups are POSIX-only. Kill the Windows tree
-      // before its parent exits and its descendants become unreachable.
+      // before its parent exits and its descendants become unreachable. Once
+      // it has exited, its pid may already be another process's: leave it.
+      if (this.child.exitCode !== null || this.child.signalCode !== null) return;
       const killer = spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
         ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
       const fallback = () => { try { this.child.kill('SIGKILL'); } catch { /* gone */ } };

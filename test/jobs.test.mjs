@@ -1360,3 +1360,19 @@ test('an answer without a bottom line or an evidence basis comes back completed,
   const clean = await finish(mgr, mgr.start(reviewRequest()).job_id);
   assert.doesNotMatch(clean.quality.caveat ?? '', /bottom line|evidence supports/);
 });
+
+test('a follow-up that leaves out network keeps the earlier round\'s; a caller\'s own diff artifact carries over', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const req = reviewRequest({ network: 'off' });
+  req.context = { ...req.context, artifacts: [{ name: 'git diff of the fix', kind: 'diff', excerpt: '+cap retries' }] };
+  const r1 = mgr.start(req);
+  await finish(mgr, r1.job_id);
+  const r2 = mgr.start({ followup_to: r1.job_id, question: 'q' });
+  const view = await finish(mgr, r2.job_id);
+  assert.equal(view.network, 'off');
+  const r3 = mgr.start({ followup_to: r2.job_id, question: 'q', network: 'on' });
+  assert.equal((await finish(mgr, r3.job_id)).network, 'on');
+  const full = mgr.view(r2.job_id, { detail: 'full' });
+  assert.ok(full.brief.artifacts.some((a) => a.name === 'git diff of the fix'));
+});

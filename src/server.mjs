@@ -83,8 +83,8 @@ targets: several consultants, the same question (not with target, no duplicates)
         and consult_cancel. A fan-out over the concurrency cap is refused before any member starts.
 followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
         (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
-        followup_to and question: the consultant, mode, objective, constraints, success_criteria, facts,
-        proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
+        followup_to and question: the consultant, mode, network, objective, constraints, success_criteria,
+        facts, proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
         even empty, replaces it. Files are not carried over: context.expose_from_parent: true copies again,
         as they are now, what the earlier round exposed. A job's follow-up cannot change the consultant.
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with

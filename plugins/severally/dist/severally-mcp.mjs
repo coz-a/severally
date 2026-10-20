@@ -35740,7 +35740,7 @@ var requestSchema = external_exports.object({
   // "off" takes web search and browsing away from every consultant in this
   // round, for a brief that must not leave the machine through a URL. The
   // consultant still reads the brief and the disk; it reaches nothing else.
-  network: external_exports.enum(NETWORK_MODES).default("on"),
+  network: external_exports.enum(NETWORK_MODES).optional(),
   question: trimmed(L.questionMax, "question"),
   // Optional: most consultations state what they are after in the question
   // itself, and a second field that repeats it is friction, not information.
@@ -35785,6 +35785,7 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     throw new RequestError(`request failed validation: ${issues.join("; ")}`, "invalid_request", issues);
   }
   const req = parsed.data;
+  req.network ??= "on";
   req.success_criteria ??= [];
   req.constraints ??= [];
   for (const k of ["facts", "counterpoints", "artifacts"]) req.context[k] ??= [];
@@ -36982,6 +36983,7 @@ var ProcHandle = class {
     const pid = this.child.pid;
     if (!pid) return;
     if (process.platform === "win32") {
+      if (this.child.exitCode !== null || this.child.signalCode !== null) return;
       const killer = spawnCommand(
         path5.join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
         ["/pid", String(pid), "/T", "/F"],
@@ -38840,7 +38842,7 @@ var JobManager = class {
     if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
       rawRequest = { ...rawRequest, target: parent.target };
     }
-    if (parent || fromGroup) rawRequest = inherit(rawRequest, (fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent).brief);
+    if (parent || fromGroup) rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
     const req = parseRequest(rawRequest, {
       isFollowup: Boolean(parent || fromGroup),
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -39779,9 +39781,10 @@ function text(value) {
   return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}
 \u2026[truncated by severally]` : t;
 }
-function inherit(raw, brief) {
-  if (!brief) return raw;
-  const out = { ...raw };
+function inherit(raw, round) {
+  const { brief } = round;
+  const out = raw.network === void 0 && round.network ? { ...raw, network: round.network } : { ...raw };
+  if (!brief) return out;
   for (const k of ["objective", "success_criteria", "constraints"]) {
     if (out[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
   }
@@ -39789,8 +39792,9 @@ function inherit(raw, brief) {
   for (const k of ["facts", "proposal", "counterpoints"]) {
     if (ctx[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
   }
-  const generatedDiff = brief.expose_paths?.entries?.some((e) => e.kind === "diff");
-  const artifacts = (brief.artifacts ?? []).filter((a) => !(generatedDiff && a.kind === "diff" && a.name.startsWith("git diff ")));
+  const artifacts = [...brief.artifacts ?? []];
+  const last = artifacts.at(-1);
+  if (brief.expose_paths?.entries?.some((e) => e.kind === "diff") && last?.kind === "diff" && last.name.startsWith("git diff ")) artifacts.pop();
   if (ctx.artifacts === void 0 && artifacts.length) {
     ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));
   }
@@ -40379,8 +40383,8 @@ targets: several consultants, the same question (not with target, no duplicates)
         and consult_cancel. A fan-out over the concurrency cap is refused before any member starts.
 followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
         (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
-        followup_to and question: the consultant, mode, objective, constraints, success_criteria, facts,
-        proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
+        followup_to and question: the consultant, mode, network, objective, constraints, success_criteria,
+        facts, proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
         even empty, replaces it. Files are not carried over: context.expose_from_parent: true copies again,
         as they are now, what the earlier round exposed. A job's follow-up cannot change the consultant.
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
