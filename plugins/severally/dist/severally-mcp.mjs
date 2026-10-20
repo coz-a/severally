@@ -38251,6 +38251,23 @@ function releaseSeat(jobId) {
     fs4.rmSync(seatFile(jobId), { force: true });
   } catch {
   }
+  clearCancel(jobId);
+}
+function requestCancel(jobId) {
+  if (!JOB_ID.test(jobId)) return false;
+  try {
+    fs4.mkdirSync(seatsDir(), { recursive: true, mode: 448 });
+    fs4.writeFileSync(cancelFile(jobId), "", { mode: 384 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function clearCancel(jobId) {
+  if (JOB_ID.test(jobId)) try {
+    fs4.rmSync(cancelFile(jobId), { force: true });
+  } catch {
+  }
 }
 function loadGroup(groupId) {
   if (!GROUP_ID.test(groupId)) return null;
@@ -38273,7 +38290,7 @@ function cleanupJobDir(jobId) {
     }
   }
 }
-var roundPath, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS;
+var roundPath, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS, cancelFile, cancelRequested;
 var init_store = __esm({
   "src/store.mjs"() {
     init_policy();
@@ -38286,6 +38303,8 @@ var init_store = __esm({
     seatFile = (jobId) => path6.join(seatsDir(), `${jobId}.json`);
     LOCK_WAIT_MS = 2e3;
     LOCK_STALE_MS = 1e4;
+    cancelFile = (jobId) => path6.join(seatsDir(), `${jobId}.cancel`);
+    cancelRequested = (jobId) => JOB_ID.test(jobId) && fs4.existsSync(cancelFile(jobId));
   }
 });
 
@@ -39888,7 +39907,7 @@ function assertNoForbiddenFlags(target, args) {
   if (addDirs.length > 0 && !allowed) throw new Error("refusing to widen consultant file access");
   return true;
 }
-var ADAPTERS, MIN_RETRY_MS, API_KEY_VARS, CREDENTIAL_FILE_VARS, ALL_API_CREDENTIAL_VARS, USAGE_FIGURES, id, LIVE_HERE, JobManager, PARTIAL_TAIL_CHARS, GROUP_CHARS, COLUMN_FIXED_CHARS, COMPARISON_NOTE_CHARS, QUESTION_CHARS, FAILURE_MESSAGE_CHARS, SUMMARY_CHARS, CAVEAT_CHARS, ITEM_CHARS, MIN_TEXT_CHARS, flagNames;
+var ADAPTERS, MIN_RETRY_MS, CANCEL_POLL_MS, API_KEY_VARS, CREDENTIAL_FILE_VARS, ALL_API_CREDENTIAL_VARS, USAGE_FIGURES, id, LIVE_HERE, JobManager, PARTIAL_TAIL_CHARS, GROUP_CHARS, COLUMN_FIXED_CHARS, COMPARISON_NOTE_CHARS, QUESTION_CHARS, FAILURE_MESSAGE_CHARS, SUMMARY_CHARS, CAVEAT_CHARS, ITEM_CHARS, MIN_TEXT_CHARS, flagNames;
 var init_jobs = __esm({
   "src/jobs.mjs"() {
     init_policy();
@@ -39908,6 +39927,7 @@ var init_jobs = __esm({
     init_opencode();
     ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports, opencode: opencode_exports };
     MIN_RETRY_MS = 5e3;
+    CANCEL_POLL_MS = 1e3;
     API_KEY_VARS = ["GEMINI_API_KEY", "GOOGLE_API_KEY"];
     CREDENTIAL_FILE_VARS = ["GOOGLE_APPLICATION_CREDENTIALS"];
     ALL_API_CREDENTIAL_VARS = [...API_KEY_VARS, ...CREDENTIAL_FILE_VARS];
@@ -40366,6 +40386,7 @@ var init_jobs = __esm({
           this.jobs.set(jobId, job);
           this.order.push(jobId);
           LIVE_HERE.add(jobId);
+          this.#watchCancels();
           job._owner = seats[i].owner;
           this.#mark(job);
           return job;
@@ -40886,14 +40907,28 @@ var init_jobs = __esm({
         }
         return view;
       }
+      // Cancels another server asked for (store.requestCancel), checked while
+      // this one runs anything. ponytail: polled once a second, not signalled;
+      // a watch on the slots directory if that delay ever matters.
+      #watchCancels() {
+        this._cancelWatch ??= setInterval(() => {
+          for (const job of this.jobs.values()) {
+            if ((job.status === "running" || job.status === "queued") && cancelRequested(job.job_id)) {
+              clearCancel(job.job_id);
+              this.cancel(job.job_id);
+            }
+          }
+        }, CANCEL_POLL_MS).unref();
+      }
       cancel(jobId) {
         const job = this.jobs.get(jobId);
         if (!job) {
           const view = this.view(jobId);
           if (!view) return null;
+          if (view.status !== "running" && view.status !== "queued") return { ...view, cancel_effect: `job was already ${view.status}` };
           return {
             ...view,
-            cancel_effect: view.status === "running" || view.status === "queued" ? "nothing signalled: this consultation runs in another severally process, and only that process can cancel it" : `job was already ${view.status}`
+            cancel_effect: requestCancel(jobId) ? `asked the severally process running it to stop it; that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing signalled: the request to the severally process running it could not be written"
           };
         }
         if (job.status !== "running" && job.status !== "queued") {
@@ -41406,7 +41441,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Cancel a running consultation",
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
-      description: "Stop a running consultation and kill the consultant process and everything it spawned. Pass group_id instead of job_id to stop every consultant in a fan-out.",
+      description: "Stop a running consultation and kill the consultant process and everything it spawned. Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs is asked to stop, and that server stops it within a second.",
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional()

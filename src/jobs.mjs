@@ -27,6 +27,9 @@ const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity, opencode };
 // anyway would silently extend the job's advertised wall-clock deadline.
 const MIN_RETRY_MS = 5_000;
 
+// How often a server looks for a cancel another server asked for.
+const CANCEL_POLL_MS = 1_000;
+
 // The second way a consultant can be authenticated. A linked token file and an
 // API key / ADC file are alternatives, not both required, so the presence of
 // either has to satisfy the credential check below. These are the names
@@ -591,6 +594,7 @@ export class JobManager {
       this.jobs.set(jobId, job);
       this.order.push(jobId);
       LIVE_HERE.add(jobId);
+      this.#watchCancels();
       job._owner = seats[i].owner;
       this.#mark(job);
       return job;
@@ -1230,16 +1234,31 @@ export class JobManager {
     return view;
   }
 
+  // Cancels another server asked for (store.requestCancel), checked while
+  // this one runs anything. ponytail: polled once a second, not signalled;
+  // a watch on the slots directory if that delay ever matters.
+  #watchCancels() {
+    this._cancelWatch ??= setInterval(() => {
+      for (const job of this.jobs.values()) {
+        if ((job.status === 'running' || job.status === 'queued') && store.cancelRequested(job.job_id)) {
+          store.clearCancel(job.job_id);
+          this.cancel(job.job_id);
+        }
+      }
+    }, CANCEL_POLL_MS).unref();
+  }
+
   cancel(jobId) {
     const job = this.jobs.get(jobId);
     if (!job) {
       const view = this.view(jobId);
       if (!view) return null;
+      if (view.status !== 'running' && view.status !== 'queued') return { ...view, cancel_effect: `job was already ${view.status}` };
       return {
         ...view,
-        cancel_effect: view.status === 'running' || view.status === 'queued'
-          ? 'nothing signalled: this consultation runs in another severally process, and only that process can cancel it'
-          : `job was already ${view.status}`,
+        cancel_effect: store.requestCancel(jobId)
+          ? `asked the severally process running it to stop it; that takes up to ${CANCEL_POLL_MS / 1000} s, and consult_get shows when it has`
+          : 'nothing signalled: the request to the severally process running it could not be written',
       };
     }
     if (job.status !== 'running' && job.status !== 'queued') {

@@ -223,7 +223,8 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'Stop a running consultation and kill the consultant process and everything it spawned. ' +
-        'Pass group_id instead of job_id to stop every consultant in a fan-out.',
+        'Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs '
+        + 'is asked to stop, and that server stops it within a second.',
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),

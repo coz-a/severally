@@ -242,6 +242,19 @@ export function takeSeats(seats, cap, held) {
 export function releaseSeat(jobId) {
   if (!JOB_ID.test(jobId)) return;
   try { fs.rmSync(seatFile(jobId), { force: true }); } catch { /* best effort */ }
+  clearCancel(jobId);
+}
+
+// A cancel asked for by a server that does not run the consultation: left
+// beside its seat, for the server that does to find and act on.
+const cancelFile = (jobId) => path.join(seatsDir(), `${jobId}.cancel`);
+export function requestCancel(jobId) {
+  if (!JOB_ID.test(jobId)) return false;
+  try { fs.mkdirSync(seatsDir(), { recursive: true, mode: 0o700 }); fs.writeFileSync(cancelFile(jobId), '', { mode: 0o600 }); return true; } catch { return false; }
+}
+export const cancelRequested = (jobId) => JOB_ID.test(jobId) && fs.existsSync(cancelFile(jobId));
+export function clearCancel(jobId) {
+  if (JOB_ID.test(jobId)) try { fs.rmSync(cancelFile(jobId), { force: true }); } catch { /* best effort */ }
 }
 
 export function loadGroup(groupId) {

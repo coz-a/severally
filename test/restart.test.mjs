@@ -43,7 +43,7 @@ test('a consultation running in another process is reported as running and left 
   const v = b.view(s.job_id);
   assert.notEqual(v.status, 'failed');
   assert.match(v.next_step, /another severally process/);
-  assert.match(b.cancel(s.job_id).cancel_effect, /nothing signalled/);
+  assert.match(b.cancel(s.job_id).cancel_effect, /asked the severally process running it/);
   assert.ok(store.loadRunning(s.job_id), 'a live owner keeps its marker');
 
   a.cancel(s.job_id);
@@ -268,4 +268,37 @@ test('consult_list shows earlier sessions\' consultations too, newest first, eac
   // What it lists can be used: recorded against from this session.
   b.record({ job_id: member.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }] });
   assert.deepEqual(b.list({ limit: 4 }).find((j) => j.job_id === member.job_id).verdicts, { confirmed: 1 });
+});
+
+test('another server can cancel a consultation: it asks, and the server running it stops it', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const a = new JobManager();
+  const s = a.start(reviewRequest());
+  const b = new JobManager();
+  // b holds nothing of a's in memory, as a separate process would not.
+  const asked = b.cancel(s.job_id);
+  assert.match(asked.cancel_effect, /asked the severally process running it/);
+  const view = await a.jobs.get(s.job_id).promise.then(() => a.view(s.job_id));
+  assert.equal(view.status, 'cancelled');
+  assert.equal(store.cancelRequested(s.job_id), false, 'the request is consumed');
+});
+
+test('the cancel reaches a consultation that a separate server process runs', async () => {
+  const { spawn } = await import('node:child_process');
+  const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+    const { JobManager } = await import(${JSON.stringify(jobsUrl)});
+    const mgr = new JobManager();
+    const s = mgr.start(${JSON.stringify(reviewRequest())});
+    console.log(s.job_id);
+    await mgr.jobs.get(s.job_id).promise;
+    console.log(mgr.view(s.job_id).status);
+  `], { env: { ...process.env, STUB_BEHAVIOR: 'hang' } });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  await waitFor(() => /job_\w+\n/.test(out), { timeoutMs: 8000 });
+  const jobId = out.trim().split('\n')[0];
+  assert.match(new JobManager().cancel(jobId).cancel_effect, /asked/);
+  await new Promise((r) => child.on('exit', r));
+  assert.equal(out.trim().split('\n').pop(), 'cancelled');
 });
