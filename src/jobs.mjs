@@ -244,7 +244,9 @@ export class JobManager {
       if (!live) continue;
       seen.add(jobId);
       const state = ownerState(jobId, live.owner);
-      elsewhere.push({ rec: state === 'alive' ? live : { ...live, status: 'failed', failure: { kind: 'interrupted' } } });
+      // A round saved just before its owner died is the answer, whatever the marker says.
+      const saved = state === 'alive' ? null : store.loadRoundAt(live);
+      elsewhere.push({ rec: state === 'alive' ? live : saved ?? { ...live, status: 'failed', failure: { kind: 'interrupted' } } });
     }
     for (const row of store.indexRows()) if (!seen.has(row.job_id)) { seen.add(row.job_id); elsewhere.push({ row }); }
     const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? '';
@@ -1379,7 +1381,12 @@ export class JobManager {
     if (!group) {
       const view = this.groupView(groupId);
       if (!view) return null;
-      return { ...view, cancel_effect: 'nothing signalled: this fan-out was started by another severally process or before a restart, and only a live process can cancel its own consultants' };
+      // Started by another server: each member still running there is asked to stop.
+      const asked = (store.loadGroup(groupId)?.job_ids ?? [])
+        .map((jid) => this.cancel(jid)).filter((r) => /^asked/.test(r?.cancel_effect ?? '')).length;
+      return { ...view, cancel_effect: asked
+        ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1000} s, and consult_get shows when it has`
+        : 'nothing to signal: no consultant in this fan-out is still running' };
     }
     // Count what is actually about to be signalled before signalling it:
     // cancel() short-circuits on a member that has already finished, so a

@@ -214,7 +214,12 @@ function withSeatLock(fn) {
 export function takeSeats(seats, cap, held) {
   return withSeatLock(() => {
     const live = [];
-    for (const name of fs.readdirSync(seatsDir())) {
+    const names = fs.readdirSync(seatsDir());
+    // A cancel asked for after its consultation ended has no seat left to go with.
+    for (const name of names.filter((n) => n.endsWith('.cancel'))) {
+      if (!names.includes(name.replace(/\.cancel$/, '.json'))) try { fs.rmSync(path.join(seatsDir(), name), { force: true }); } catch { /* best effort */ }
+    }
+    for (const name of names) {
       if (!name.endsWith('.json')) continue;
       let seat = null;
       try { seat = JSON.parse(fs.readFileSync(path.join(seatsDir(), name), 'utf8')); } catch { /* half-written or damaged: free */ }

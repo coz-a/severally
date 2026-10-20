@@ -42,7 +42,7 @@ test('status says what is set up, without starting a consultation', { skip: proc
   assert.match(out, /codex: codex, gpt-6-astra +available/);
   assert.match(out, /gemini: .*not available: .*consultants\.gemini\.effort/);
   assert.match(out, /runtime 0\.0\.1 .*behind/);
-  assert.match(out, /Claude Code +registered/);
+  assert.match(out, /Claude Code +registered \(listed/);
   assert.match(out, /Codex +not registered/);
   assert.match(out, /Antigravity +not installed/);
   assert.match(out, /not checked/i, 'it never claims a CLI is logged in');

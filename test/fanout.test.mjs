@@ -332,7 +332,7 @@ test('a group whose members age out of memory is read back from history', async 
   const fromHistory = mgr.groupView(group.group_id);
   assert.equal(fromHistory.members_available, 2);
   assert.equal(fromHistory.status, 'done');
-  assert.match(mgr.cancelGroup(group.group_id).cancel_effect, /nothing signalled/);
+  assert.match(mgr.cancelGroup(group.group_id).cancel_effect, /nothing to signal/);
 });
 
 test('the side-by-side shows what would change each judgement, and how heavy the findings are', async () => {

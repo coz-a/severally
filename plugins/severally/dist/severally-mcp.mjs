@@ -36268,6 +36268,9 @@ var init_policy = __esm({
     })();
     BUILT = buildConsultants(CONFIG);
     if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join("; ")}`;
+    if (!configError && ![void 0, "", "on", "off"].includes(process.env.SEVERALLY_NETWORK)) {
+      configError = `SEVERALLY_NETWORK must be "on" or "off", not ${JSON.stringify(process.env.SEVERALLY_NETWORK)}`;
+    }
     FROM = configError ? buildConsultants({}) : BUILT;
     LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
     usable = configError ? {} : CONFIG;
@@ -36399,7 +36402,8 @@ var init_policy = __esm({
       // that is known to wait longer raises it (scripts/install.mjs).
       // "off" takes the web away from every consultation, whatever the request
       // asks; "on" leaves it to each request's own network.
-      network: (process.env.SEVERALLY_NETWORK || cfgServer.network) === "off" ? "off" : "on",
+      // Either source can close it; neither can reopen what the other closed.
+      network: [process.env.SEVERALLY_NETWORK, cfgServer.network].includes("off") ? "off" : "on",
       maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
       input: Object.freeze({
         questionMax: 4e3,
@@ -38223,7 +38227,14 @@ function withSeatLock(fn) {
 function takeSeats(seats, cap, held) {
   return withSeatLock(() => {
     const live = [];
-    for (const name of fs4.readdirSync(seatsDir())) {
+    const names = fs4.readdirSync(seatsDir());
+    for (const name of names.filter((n) => n.endsWith(".cancel"))) {
+      if (!names.includes(name.replace(/\.cancel$/, ".json"))) try {
+        fs4.rmSync(path6.join(seatsDir(), name), { force: true });
+      } catch {
+      }
+    }
+    for (const name of names) {
       if (!name.endsWith(".json")) continue;
       let seat = null;
       try {
@@ -40093,7 +40104,8 @@ var init_jobs = __esm({
           if (!live) continue;
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
-          elsewhere.push({ rec: state === "alive" ? live : { ...live, status: "failed", failure: { kind: "interrupted" } } });
+          const saved = state === "alive" ? null : loadRoundAt(live);
+          elsewhere.push({ rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } } });
         }
         for (const row of indexRows()) if (!seen.has(row.job_id)) {
           seen.add(row.job_id);
@@ -41025,7 +41037,8 @@ var init_jobs = __esm({
         if (!group) {
           const view = this.groupView(groupId);
           if (!view) return null;
-          return { ...view, cancel_effect: "nothing signalled: this fan-out was started by another severally process or before a restart, and only a live process can cancel its own consultants" };
+          const asked = (loadGroup(groupId)?.job_ids ?? []).map((jid) => this.cancel(jid)).filter((r) => /^asked/.test(r?.cancel_effect ?? "")).length;
+          return { ...view, cancel_effect: asked ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing to signal: no consultant in this fan-out is still running" };
         }
         const signalled = group.job_ids.filter((jid) => {
           const j = this.jobs.get(jid);
@@ -41655,14 +41668,17 @@ __export(status_exports, {
 });
 function registration({ cmd, checks }) {
   if (!findCommand(cmd)) return "not installed";
+  let ran = false;
   for (const args of checks) {
     try {
       const out = execCommandSync(cmd, args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
-      if (/severally/.test(out)) return "registered";
-    } catch {
+      ran = true;
+      if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return "registered (listed by the client)";
+    } catch (err) {
+      if (typeof err.status === "number") ran = true;
     }
   }
-  return "not registered";
+  return ran ? "not registered" : `could not tell (${cmd} ${checks.map((a) => a.join(" ")).join(" / ")} failed)`;
 }
 function status() {
   const lines = [`severally ${SEVERALLY_VERSION}`, ""];

@@ -37,3 +37,14 @@ test('server.network takes only "on" or "off"', () => {
   assert.deepEqual(buildConsultants({ server: { network: 'off' } }).global, []);
   assert.match(buildConsultants({ server: { network: 'no' } }).global.join(), /server\.network/);
 });
+
+test('SEVERALLY_NETWORK can close the web but not reopen it, and a value that is neither is refused', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const policyUrl = new URL('../src/policy.mjs', import.meta.url).href;
+  const read = (value) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+    const p = await import(${JSON.stringify(policyUrl)});
+    console.log(JSON.stringify({ network: p.POLICY.network, problem: p.configProblem() }));
+  `], { env: { ...process.env, SEVERALLY_NETWORK: value }, encoding: 'utf8' }).trim().split('\n').pop());
+  assert.equal(read('on').network, 'off', 'the config file says off');
+  assert.match(read('OFF').problem, /SEVERALLY_NETWORK/);
+});

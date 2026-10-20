@@ -318,3 +318,13 @@ test('consult_list only reads: a dead server\'s consultation shows as interrupte
   a.cancel(s.job_id);
   await a.jobs.get(s.job_id).promise;
 });
+
+test('another server can cancel a whole fan-out it did not start', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const a = new JobManager();
+  const fan = a.start(reviewRequest({ target: undefined, targets: ['codex', 'gemini'] }));
+  const asked = new JobManager().cancelGroup(fan.group_id);
+  assert.match(asked.cancel_effect, /asked the severally process running it to stop 2/);
+  const views = await Promise.all(fan.jobs.map((j) => a.jobs.get(j.job_id).promise.then(() => a.view(j.job_id))));
+  assert.deepEqual(views.map((v) => v.status), ['cancelled', 'cancelled']);
+});

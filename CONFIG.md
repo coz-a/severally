@@ -207,7 +207,7 @@ server only from Claude Code and Antigravity.
 | `timeout_ms` | 1800000 | 1000–7200000 | `SEVERALLY_TIMEOUT_MS` | Wall-clock budget per consultation, for every consultant without its own `timeout_ms`. |
 | `kill_grace_ms` | 5000 | 500–60000 | `SEVERALLY_KILL_GRACE_MS` | Time between asking a stopped consultant to exit and killing it; also how long the server waits for running consultants when it shuts down. |
 | `max_auto_retries` | 2 | 0–3 | `SEVERALLY_MAX_AUTO_RETRIES` | How many times a consultation that failed with `rate_limited` or `cli_error` is run again automatically, inside its original time budget. `0` turns it off. |
-| `network` | `"on"` | `"on"` or `"off"` | `SEVERALLY_NETWORK` | `"off"` takes web search and browsing away from every consultation, whatever the request's own `network` says; `"on"` leaves it to each request. Any other value is a config mistake that refuses every consultation. |
+| `network` | `"on"` | `"on"` or `"off"` | `SEVERALLY_NETWORK` | `"off"` takes web search and browsing away from every consultation, whatever the request's own `network` says; `"on"` leaves it to each request. Unlike the other keys, `"off"` from either the file or the environment wins, so one cannot reopen what the other closed. Any other value is a config mistake that refuses every consultation. |
 | `retry_backoff_ms` | 5000 | 0–60000 | `SEVERALLY_RETRY_BACKOFF_MS` | Wait before the first automatic re-run; each later one waits three times longer. |
 
 A number outside its range is clamped to it.
