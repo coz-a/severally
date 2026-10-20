@@ -345,6 +345,8 @@ export class JobManager {
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
       groupFollowup: Boolean(fromGroup),
     });
+    // The operator's setting only ever closes: a request cannot reopen the web.
+    if (POLICY.network === 'off') req.network = 'off';
 
     if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
       throw new RequestError(

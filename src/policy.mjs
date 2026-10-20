@@ -238,6 +238,9 @@ export const POLICY = Object.freeze({
   // clients allow a tool call, so a long wait does not blow up as a client-side
   // timeout while the consultation is still healthy; a client registration
   // that is known to wait longer raises it (scripts/install.mjs).
+  // "off" takes the web away from every consultation, whatever the request
+  // asks; "on" leaves it to each request's own network.
+  network: (process.env.SEVERALLY_NETWORK || cfgServer.network) === 'off' ? 'off' : 'on',
   maxWaitMs: limit('SEVERALLY_MAX_WAIT_MS', cfgServer.max_wait_ms, 45_000, 0, 600_000),
 
   input: Object.freeze({
@@ -416,6 +419,8 @@ export function limitsSummary() {
     // Per consultant, because they no longer share one budget.
     timeout_ms: by(timeoutMs),
     max_rounds_per_chain: POLICY.maxRounds,
+    // "off": the operator has taken the web away from every consultation.
+    network: POLICY.network,
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,

@@ -316,7 +316,9 @@ Codex does not block by file name, so a `.env` in your repository is readable to
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
-has no web search or browsing. The brief, and whatever a consultant reads, still goes to that CLI's model.
+has no web search or browsing. To make that the rule for every consultation, set `"server": { "network": "off" }`
+in the [config file](CONFIG.md#server-wide-keys); a request cannot turn it back on. The brief, and whatever a
+consultant reads, still goes to that CLI's model.
 
 How each CLI is held to this is in [docs/how-it-works.md](docs/how-it-works.md#how-a-consultant-is-kept-to-reading).
 
