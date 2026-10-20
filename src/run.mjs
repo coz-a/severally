@@ -348,6 +348,7 @@ export class ProcHandle {
  * @property {(run: { stdout: string }) => string | null} [progress]
  * @property {(run: { stdout: string }) => Record<string, number> | null} [toolCalls]
  * @property {readonly string[]} [FILE_READ_TOOLS] the names toolCalls reports for reading a file
+ * @property {readonly string[]} [ALLOWED_TOOLS] the only tools the consultant may call; any other is refused
  * @property {() => Promise<void>} [prepare]
  * @property {(args: { workdir: string, network?: 'on' | 'off' | undefined }) => Sandbox} [prepareSandbox]
  * @property {(args: { run: ChildResult, sandbox: Sandbox }) => string} [diagnostics]

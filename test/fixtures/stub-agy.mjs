@@ -99,6 +99,10 @@ function run() {
     // agy 1.4.3 on a severally hook that knew only view_file: the read is refused, the answer still arrives.
     envelope({ event: 'step_update', step_update: { step_index: 1, tool_name: 'read_file', state: 'ERROR' } });
   }
+  if (behavior === 'unknown_tool') {
+    // A later agy release that renamed its read tool again: the hook refuses the new name.
+    envelope({ event: 'step_update', step_update: { step_index: 1, tool_name: 'open_file', state: 'ERROR' } });
+  }
   if (behavior === 'denied') {
     envelope({
       conversation_id: 'stub',

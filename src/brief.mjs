@@ -100,7 +100,7 @@ const WEB_OFF =
 const WORKDIR_EMPTY =
   "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.";
 const WORKDIR_EXPOSED =
-  '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository you have. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
+  '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository the lead gave you. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
 
 const GUARDRAILS_TAIL = [
   '- Never include credentials, API keys, tokens, or environment variable values in your answer.',
@@ -275,7 +275,7 @@ function renderExposeManifest(manifest) {
   if (skipped.length) skipped.unshift('');
   return [
     'The lead exposed these paths; they are copied under ./workspace in your working directory and you may read',
-    "them directly. They are the only part of the lead's repository you have -- if you need something that is",
+    "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     'not here, record it under `unknowns` rather than guessing. Text files were passed through the same',
     'credential masking as this brief; binary files were copied unchanged.',
     '',

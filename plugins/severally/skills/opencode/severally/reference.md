@@ -29,8 +29,8 @@ gets a vague answer.
    already in the question.
 2. **Write down what a useful answer looks like** (`success_criteria`) — e.g. "a concrete failure scenario with
    numbers, or a clear all-clear with its conditions".
-3. **Supply the evidence**: `context.expose_paths` for the files (copied read-only under `./workspace`, and then
-   the only part of your repository the consultant has), `context.facts` for the load-bearing facts,
+3. **Supply the evidence**: `context.expose_paths` for the files (copied read-only under `./workspace`; not a read
+   boundary -- apart from the protected credential paths, most consultants can still read other files on the disk), `context.facts` for the load-bearing facts,
    `context.artifacts` for what is not a file here. For a change you are making,
    `context.expose_diff: { repo, base? }` puts the diff in the brief and copies every file it touches, untracked
    ones included, under `./workspace/repo/` at their repository paths; add `expose_paths` for a caller or the

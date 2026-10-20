@@ -445,6 +445,41 @@ test('a consultation that hands over no file says so, and one that does counts t
   await finish(mgr, exposed.job_id);
 });
 
+test('a verdict written by one server keeps the verdicts and reflection another wrote', async () => {
+  const briefOut = path.join(os.tmpdir(), `pc-brief5-${Date.now()}.txt`);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const a = new JobManager();
+  const r1 = a.start(reviewRequest());
+  await finish(a, r1.job_id);
+  // A still holds the job in memory while another server records on disk.
+  const b = new JobManager();
+  b.record({
+    job_id: r1.job_id,
+    entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Reproduced the storm.' }],
+    reflection: { delta: 'The cap was new to me.' },
+  });
+  a.record({ job_id: r1.job_id, entries: [{ id: 'c1', verdict: 'unverifiable', effect: 'No staging load.' }] });
+
+  for (const view of [a.view(r1.job_id), new JobManager().view(r1.job_id)]) {
+    assert.deepEqual(
+      view.record.entries.map((e) => [e.id, e.verdict]),
+      [
+        ['f1', 'confirmed'],
+        ['c1', 'unverifiable'],
+      ],
+    );
+    assert.equal(view.reflection.delta, 'The cap was new to me.');
+  }
+  process.env.STUB_BRIEF_OUT = briefOut;
+  const r2 = a.start(reviewRequest({ followup_to: r1.job_id }));
+  await finish(a, r2.job_id);
+  const brief = fs.readFileSync(briefOut, 'utf8');
+  assert.match(brief, /r1\.f1: .*lead's verdict: confirmed \(Reproduced the storm\.\)/);
+  assert.match(brief, /r1\.c1: .*lead's verdict: unverifiable \(No staging load\.\)/);
+  delete process.env.STUB_BRIEF_OUT;
+  fs.rmSync(briefOut, { force: true });
+});
+
 test('a follow-up survives a server restart and tells the consultant how its points were checked', async () => {
   const briefOut = path.join(os.tmpdir(), `pc-brief3-${Date.now()}.txt`);
   process.env.STUB_BEHAVIOR = 'ok';
@@ -601,12 +636,15 @@ test('an answer whose consultant read none of the exposed files says so', async 
   process.env.STUB_BEHAVIOR = 'read_refused';
   const refused = await finish(mgr, mgr.start({ ...req, context: { ...req.context, expose_paths: [dir] } }).job_id);
   assert.equal(refused.status, 'completed');
-  assert.match(refused.quality.caveat, /files were exposed, but all 1 of its file reads failed or were refused/);
+  assert.match(refused.quality.caveat, /files were exposed, but no call to read one succeeded \(1 failed or were refused\)/);
+  assert.doesNotMatch(refused.quality.caveat, /does not allow/, 'read_file is allowed');
+  process.env.STUB_BEHAVIOR = 'unknown_tool';
+  const renamed = await finish(mgr, mgr.start({ ...req, context: { ...req.context, expose_paths: [dir] } }).job_id);
+  assert.match(renamed.quality.caveat, /none was made/);
+  assert.match(renamed.quality.caveat, /called open_file, which severally does not allow/);
   process.env.STUB_BEHAVIOR = 'ok';
-  const unopened = await finish(mgr, mgr.start({ ...req, context: { ...req.context, expose_paths: [dir] } }).job_id);
-  assert.match(unopened.quality.caveat, /it did not open any of them/);
   const bare = await finish(mgr, mgr.start(req).job_id);
-  assert.doesNotMatch(bare.quality.caveat ?? '', /files were exposed/);
+  assert.doesNotMatch(bare.quality.caveat ?? '', /files were exposed|does not allow/);
 });
 
 test('antigravity: the synthesised home is handed over as HOME and removed afterwards', async () => {

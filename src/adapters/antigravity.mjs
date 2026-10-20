@@ -18,7 +18,7 @@ import path from 'node:path';
 import { POLICY, agyExitGraceMs, timeoutMs } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 
-export { prepareSandbox } from './antigravity-sandbox.mjs';
+export { prepareSandbox, ALLOWED_TOOLS } from './antigravity-sandbox.mjs';
 
 /** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
 /** @typedef {import('../run.mjs').Invocation} Invocation */

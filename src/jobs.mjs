@@ -95,7 +95,7 @@ import * as opencode from './adapters/opencode.mjs';
  * @typedef {{job_id?: any, entries?: Array<{id?: unknown, verdict?: unknown, effect?: unknown, note?: unknown} | null>, reflection?: {delta?: unknown, related_item_ids?: unknown} | null, [key: string]: unknown}} RawRecord
  */
 
-/** @typedef {{job: Round, live: Job | undefined, record?: JobRecord | undefined, reflection?: Reflection | undefined}} RecordChange What a record call would write, checked and not yet written. */
+/** @typedef {{job: Round, live: Job | undefined, entries?: RecordEntry[] | undefined, reflection?: Reflection | undefined}} RecordChange What a record call would write, checked and not yet written: only the entries this call names. */
 
 /** @typedef {import('./expose-paths.mjs').ExposeManifest} ExposeManifest */
 
@@ -297,13 +297,14 @@ export class JobManager {
     const { owner, ...view } = rec;
     return {
       ...view,
-      cancellable: false,
+      // consult_cancel asks the process that owns it to stop it.
+      cancellable: Boolean(owner) && (view.status === 'running' || view.status === 'queued'),
       progress: null,
       record: view.record ? recordSummary(view) : null,
       brief: owner ? null : view.brief,
       limits: owner ? null : limitsSummary(),
       next_step: owner
-        ? `running in another severally process (pid ${owner.pid}); poll again later -- it can only be cancelled from that process`
+        ? `running in another severally process (pid ${owner.pid}); poll again later, or stop it with consult_cancel`
         : nextStep(view),
     };
   }
@@ -1319,6 +1320,7 @@ export class JobManager {
         leftover &&
           'the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)',
         req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
+        refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS),
       ].filter(Boolean);
       // No `advice_usable` verdict here. It was always true, so it carried no
       // information -- and worse, it read as the server vouching for advice it
@@ -1496,7 +1498,7 @@ export class JobManager {
     const ids = recordableIds(job.result);
     const now = new Date().toISOString();
     /** @type {Map<string, RecordEntry>} */
-    const merged = new Map((job.record?.entries ?? []).map((e) => [e.id, e]));
+    const written = new Map();
 
     for (const entry of entries ?? []) {
       const id = typeof entry?.id === 'string' ? entry.id.trim() : '';
@@ -1513,7 +1515,7 @@ export class JobManager {
           'invalid_verdict',
         );
       }
-      merged.set(id, {
+      written.set(id, {
         id,
         verdict,
         effect: text(entry?.effect),
@@ -1546,21 +1548,27 @@ export class JobManager {
       newReflection = { delta, related_item_ids: related, recorded_at: now };
     }
 
-    const newRecord =
-      entries === undefined
-        ? undefined
-        : {
-            updated_at: now,
-            entries: ids.flatMap((id) => merged.get(id) ?? []),
-          };
-    return { job, live, record: newRecord, reflection: newReflection };
+    return { job, live, entries: entries === undefined ? undefined : [...written.values()], reflection: newReflection };
   }
 
   /** @param {RecordChange} change */
-  #saveRecord({ job, live, record, reflection }) {
+  #saveRecord({ job, live, entries, reflection }) {
     const was = { record: job.record, reflection: job.reflection };
-    if (reflection !== undefined) job.reflection = reflection;
-    if (record !== undefined) job.record = record;
+    // Another server may have written verdicts or a reflection to this round
+    // since this one loaded it. Start from the file, so this call replaces
+    // only the ids it names (and the reflection, if it passes one) and keeps
+    // the rest; the merge goes back into memory too, so consult_get and a
+    // follow-up's brief show the same record.
+    // ponytail: read-then-write, not locked; two writes in the same instant can still lose one.
+    const disk = store.loadRoundAt(job);
+    const base = disk?.result ? disk : job;
+    job.reflection = reflection ?? base.reflection;
+    if (entries !== undefined) {
+      const merged = new Map((base.record?.entries ?? []).map((e) => [e.id, e]));
+      for (const e of entries) merged.set(e.id, e);
+      const ids = job.result ? recordableIds(job.result) : [];
+      job.record = { updated_at: new Date().toISOString(), entries: ids.flatMap((id) => merged.get(id) ?? []) };
+    } else if (base.record) job.record = base.record;
     // An update to a round that already happened, so the index line stays as it
     // was: the history has one line per consultation, not one per edit.
     // Unlike the round itself, a verdict exists nowhere else once this server
@@ -2081,8 +2089,7 @@ function adviceCaveat(normalized) {
   return notes.length ? notes.join('; ') : null;
 }
 
-// Files were handed over, but no call to a file-reading tool succeeded: the
-// answer rests on the brief alone, however confidently it cites the code. On
+// Files were handed over, but no call to a file-reading tool succeeded. On
 // 2026-10-20 an agy release renamed its read tool, every read was refused,
 // and the answer still cited line numbers. Only for a CLI that reports its
 // tool calls and names its reading tools; the others say nothing here.
@@ -2095,8 +2102,25 @@ function unreadCaveat(calls, readTools) {
   if (!calls || !readTools) return null;
   if (readTools.some((t) => calls[t])) return null;
   const failed = readTools.reduce((n, t) => n + (calls[`${t}:error`] ?? 0), 0);
-  const how = failed ? `all ${failed} of its file reads failed or were refused` : 'it did not open any of them';
-  return `files were exposed, but ${how}: its claims about that code rest on the brief alone`;
+  const how = failed ? `${failed} failed or were refused` : 'none was made';
+  return `files were exposed, but no call to read one succeeded (${how})`;
+}
+
+// A refused call to a tool outside the allowlist is most often a tool the CLI
+// renamed in a new release; naming it lets one consultation show the cause.
+/**
+ * @param {Record<string, number> | null | undefined} calls
+ * @param {readonly string[] | undefined} allowed
+ * @returns {string | null}
+ */
+function refusedToolCaveat(calls, allowed) {
+  if (!calls || !allowed) return null;
+  const names = Object.keys(calls)
+    .filter((k) => k.endsWith(':error'))
+    .map((k) => k.slice(0, -':error'.length))
+    .filter((t) => !allowed.includes(t));
+  if (!names.length) return null;
+  return `the consultant's CLI called ${names.join(', ')}, which severally does not allow, and was refused; a new CLI release may have renamed a tool`;
 }
 
 // A lead may legitimately name its own CLI as the consultant: a fresh child

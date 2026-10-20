@@ -1082,12 +1082,14 @@ function limitsSummary() {
     max_concurrent_jobs: POLICY.maxConcurrent,
     max_wait_ms: POLICY.maxWaitMs,
     input_char_budget: POLICY.input.totalCharsMax,
-    // Stated so it is true of all three consultants. Reading is allowed for
-    // every one of them -- what keeps a consultation brief-only is that the
-    // child starts in an empty working directory and is never told where the
-    // repository is, not that it cannot read. Codex is additionally sandboxed
-    // read-only rather than execution-free, so do not advertise "no execution".
-    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is -- unless context.expose_paths names files or directories, which are copied read-only into that working directory and are then the only part of your repository it has; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
+    // Stated so it is true of all four CLIs. Reading is allowed for every one
+    // of them -- what keeps a consultation brief-only is that the child starts
+    // in an empty working directory and is never told where the repository
+    // is, not that it cannot read. Only Claude Code drops its whole-disk read
+    // when files are exposed (claude-code.mjs). Codex is additionally
+    // sandboxed read-only rather than execution-free, so do not advertise
+    // "no execution".
+    consultant_permissions: "web search/browse and reading local files allowed; the consultant starts in an empty working directory and is not told where your repository is. context.expose_paths copies the files or directories it names read-only into that working directory, but that is not a read boundary: apart from the protected credential paths, Codex, Antigravity and OpenCode can read any file your account can, and so can Claude Code when nothing is exposed; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
   };
 }
 var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
@@ -37528,7 +37530,7 @@ function renderExposeManifest(manifest) {
   if (skipped.length) skipped.unshift("");
   return [
     "The lead exposed these paths; they are copied under ./workspace in your working directory and you may read",
-    "them directly. They are the only part of the lead's repository you have -- if you need something that is",
+    "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     "not here, record it under `unknowns` rather than guessing. Text files were passed through the same",
     "credential masking as this brief; binary files were copied unchanged.",
     "",
@@ -37653,7 +37655,7 @@ var init_brief = __esm({
     WEB_ON = "- You may search and browse the web freely; cite what you actually opened in `references`.";
     WEB_OFF = "- Web search and browsing are switched off for this consultation. Answer from the brief, and record what you would have looked up under `unknowns`.";
     WORKDIR_EMPTY = "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.";
-    WORKDIR_EXPOSED = '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository you have. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
+    WORKDIR_EXPOSED = '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository the lead gave you. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
     GUARDRAILS_TAIL = [
       "- Never include credentials, API keys, tokens, or environment variable values in your answer.",
       "- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.",
@@ -39109,6 +39111,7 @@ var init_antigravity_sandbox = __esm({
 // src/adapters/antigravity.mjs
 var antigravity_exports = {};
 __export(antigravity_exports, {
+  ALLOWED_TOOLS: () => ALLOWED_TOOLS,
   FILE_READ_TOOLS: () => FILE_READ_TOOLS,
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS3,
   RESERVED_FLAGS: () => RESERVED_FLAGS3,
@@ -39772,7 +39775,7 @@ var init_opencode = __esm({
     standaloneSupport = null;
     probePromise = null;
     RESERVED_FLAGS4 = ["--model", "--standalone", "--wizard"];
-    FILE_READ_TOOLS2 = ["read", "glob", "grep"];
+    FILE_READ_TOOLS2 = ["read", "grep"];
   }
 });
 
@@ -39938,8 +39941,14 @@ function unreadCaveat(calls, readTools) {
   if (!calls || !readTools) return null;
   if (readTools.some((t) => calls[t])) return null;
   const failed = readTools.reduce((n, t) => n + (calls[`${t}:error`] ?? 0), 0);
-  const how = failed ? `all ${failed} of its file reads failed or were refused` : "it did not open any of them";
-  return `files were exposed, but ${how}: its claims about that code rest on the brief alone`;
+  const how = failed ? `${failed} failed or were refused` : "none was made";
+  return `files were exposed, but no call to read one succeeded (${how})`;
+}
+function refusedToolCaveat(calls, allowed) {
+  if (!calls || !allowed) return null;
+  const names = Object.keys(calls).filter((k) => k.endsWith(":error")).map((k) => k.slice(0, -":error".length)).filter((t) => !allowed.includes(t));
+  if (!names.length) return null;
+  return `the consultant's CLI called ${names.join(", ")}, which severally does not allow, and was refused; a new CLI release may have renamed a tool`;
 }
 function sameVendorCaveat(caller, callerModel, consultant) {
   const callerCli = CLI_IDS.find((c) => c === caller);
@@ -40296,12 +40305,13 @@ var init_jobs = __esm({
         const { owner, ...view } = rec;
         return {
           ...view,
-          cancellable: false,
+          // consult_cancel asks the process that owns it to stop it.
+          cancellable: Boolean(owner) && (view.status === "running" || view.status === "queued"),
           progress: null,
           record: view.record ? recordSummary(view) : null,
           brief: owner ? null : view.brief,
           limits: owner ? null : limitsSummary(),
-          next_step: owner ? `running in another severally process (pid ${owner.pid}); poll again later -- it can only be cancelled from that process` : nextStep(view)
+          next_step: owner ? `running in another severally process (pid ${owner.pid}); poll again later, or stop it with consult_cancel` : nextStep(view)
         };
       }
       get running() {
@@ -41091,7 +41101,8 @@ var init_jobs = __esm({
             sameVendorCaveat(job.caller, job.caller_model, consultant),
             interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
             leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)",
-            req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS)
+            req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
+            refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS)
           ].filter(Boolean);
           job.quality = {
             ...normalized.quality,
@@ -41243,7 +41254,7 @@ var init_jobs = __esm({
         }
         const ids = recordableIds(job.result);
         const now = (/* @__PURE__ */ new Date()).toISOString();
-        const merged = new Map((job.record?.entries ?? []).map((e) => [e.id, e]));
+        const written = /* @__PURE__ */ new Map();
         for (const entry of entries ?? []) {
           const id2 = typeof entry?.id === "string" ? entry.id.trim() : "";
           if (!ids.includes(id2)) {
@@ -41259,7 +41270,7 @@ var init_jobs = __esm({
               "invalid_verdict"
             );
           }
-          merged.set(id2, {
+          written.set(id2, {
             id: id2,
             verdict,
             effect: text(entry?.effect),
@@ -41284,17 +41295,20 @@ var init_jobs = __esm({
           }
           newReflection = { delta, related_item_ids: related, recorded_at: now };
         }
-        const newRecord = entries === void 0 ? void 0 : {
-          updated_at: now,
-          entries: ids.flatMap((id2) => merged.get(id2) ?? [])
-        };
-        return { job, live, record: newRecord, reflection: newReflection };
+        return { job, live, entries: entries === void 0 ? void 0 : [...written.values()], reflection: newReflection };
       }
       /** @param {RecordChange} change */
-      #saveRecord({ job, live, record: record2, reflection }) {
+      #saveRecord({ job, live, entries, reflection }) {
         const was = { record: job.record, reflection: job.reflection };
-        if (reflection !== void 0) job.reflection = reflection;
-        if (record2 !== void 0) job.record = record2;
+        const disk = loadRoundAt(job);
+        const base = disk?.result ? disk : job;
+        job.reflection = reflection ?? base.reflection;
+        if (entries !== void 0) {
+          const merged = new Map((base.record?.entries ?? []).map((e) => [e.id, e]));
+          for (const e of entries) merged.set(e.id, e);
+          const ids = job.result ? recordableIds(job.result) : [];
+          job.record = { updated_at: (/* @__PURE__ */ new Date()).toISOString(), entries: ids.flatMap((id2) => merged.get(id2) ?? []) };
+        } else if (base.record) job.record = base.record;
         try {
           persistRound(live ? this.#record(live) : job, { appendIndex: false });
         } catch (e) {

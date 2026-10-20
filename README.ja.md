@@ -94,20 +94,48 @@ npx -y severally-mcp@2.4.2 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
-変えずに変更内容だけを表示します。終わったら、クライアントを再起動してください。動いているセッションは、新しい
-登録を読み直しません。
-
-Claude Code だけで使うなら、プラグインマーケットプレイスから入れることもできます。Claude Code で
-`/plugin marketplace add coz-a/severally`、続けて `/plugin install severally@severally` を実行し、Claude Code を
-再起動します。見つかった CLI すべてに登録できる上の 1 行が基本の方法です。詳しくは
-[docs/install.ja.md](docs/install.ja.md#claude-code-のプラグインマーケットプレイスから入れる) にあります。
+変えずに変更内容だけを表示します。
 
 macOS と Linux の既定のインストールは、`npm install -g` で `severally-mcp` コマンドを `PATH` に置きます。要るのは
 Codex のプラグインだけです。npm がグローバルに入れられないとき（たとえば sudo が要る、npm のグローバルのフォルダが
 `PATH` に無い）は、インストーラが代わりに Codex を直接登録し、そう表示します。ほかに必要なことはありません。
 
-Claude Code のプラグインマーケットプレイスから入れる方法、クローンから入れる方法、登録の確かめ方、インストーラが
-変えるものは、[docs/install.ja.md](docs/install.ja.md) にあります。
+終わったら、クライアントを再起動してください。動いているセッションは、新しい登録を読み直しません。相談を始めずに
+設定を確かめるには、次を実行します。
+
+```bash
+npx -y severally-mcp@latest status
+```
+
+設定ファイル・この機械から使える相談相手・入っている写しの版・どのクライアントに登録されているか・各 CLI に
+ログインしているかを表示します。ログインの確認は CLI 自身の状態確認コマンドを読むだけで、プロンプトは送りません。
+使用枠を使い切っていないかは確かめません。それは最初の相談で分かります。
+
+Codex と Claude Code がある機械での出力の一部を示します。
+
+```text
+config: ok
+
+consultants:
+  codex: codex, <model>  available
+  claude-code: claude-code, <model>  available
+
+clients:
+  Claude Code  registered (listed by the client)
+  Codex        registered (listed by the client)
+
+login (out of quota is not checked; the first consultation shows it):
+  codex        logged in
+  claude-code  logged in
+```
+
+ここまで済んだら、[使い方](#使い方)のようにエージェントに最初の相談を頼んでください。
+
+Claude Code だけで使うなら、プラグインマーケットプレイスから入れることもできます。Claude Code で
+`/plugin marketplace add coz-a/severally`、続けて `/plugin install severally@severally` を実行し、Claude Code を
+再起動します。見つかった CLI すべてに登録できる上の 1 行が基本の方法です。プラグインマーケットプレイスから入れる
+方法、クローンから入れる方法、登録の確かめ方、インストーラが変えるものは、[docs/install.ja.md](docs/install.ja.md)
+にあります。
 
 ### コマンドライン
 
@@ -124,11 +152,6 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 | `--allow-local-tools` | severally の手元で完結する 5 つのツールを、確認なしで Claude Code の許可リストに足す。`consult_start` は確認を残す |
 
 方式ごとに何が変わるかは [docs/install.ja.md](docs/install.ja.md#2-つのインストール方式) にあります。
-
-`npx -y severally-mcp@latest status` を実行すると、相談を始めずに、設定ファイル・この機械から使える相談相手・
-入っている写しの版・どのクライアントに登録されているか・各 CLI にログインしているかを表示します。ログインの確認は
-CLI 自身の状態確認コマンドを読むだけで、プロンプトは送りません。使用枠を使い切っていないかは確かめません。それは
-最初の相談で分かります。
 
 ### 更新
 
@@ -317,9 +340,9 @@ API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの 
 | OpenCode | できる（`read` / `glob` / `grep`） | 拒否（権限の規則） | なし（Code Mode の `execute` は拒否） | できない | できる（`network: "off"` のときを除く） |
 
 どの相談相手も、渡したファイルの写しだけが入った専用の作業ディレクトリで始まり、サーバはあなたのリポジトリの
-場所を伝えません。それでも、あなたの
-ユーザーアカウントで読めるファイルは、表で「拒否」とした秘密のパスを除いて読めます。Codex はファイルの名前では
-拒否しないので、あなたのリポジトリにある `.env` は Codex から読めます。
+場所を伝えません。それでも、あなたのユーザーアカウントで読めるファイルは、表で「拒否」とした秘密のパスを除いて
+読めます。例外は、ファイルを渡した相談での Claude Code です。そのときは、渡したファイルの写ししか読めません。
+Codex はファイルの名前では拒否しないので、あなたのリポジトリにある `.env` は Codex から読めます。
 
 **ディスクを読めて Web も閲覧できる相談相手は、読んだ内容を URL に載せて外に持ち出せます**。開いたページに、
 そうするよう書かれていた場合などです。それを防ぎたいときは、エージェントが `network: "off"` を渡します。その回の
@@ -359,6 +382,8 @@ CLI ごとにどう守らせているかは [docs/how-it-works.ja.md](docs/how-i
 
 - `npm install` のあと `npm test` を実行します。テストは本物の代わりに用意した CLI を相手にオフラインで動き、
   実際の API は呼びません。
+- CI では `npm run lint`・`npm run typecheck`・`npm run format:check` も確かめています。プルリクエストを出す前に
+  実行してください。
 - ソースか Skill のテンプレートを変えたら、`npm run build` を実行してください。ビルド済みのサーバ
   （`plugins/severally/dist/`）と生成した Skill はコミットしてあり、古いままだと CI が失敗します。
 - `npm run live-check` と `npm run doctor` は、入っている CLI を相手に本物の相談を実行するので、実際の使用量がかかります。
