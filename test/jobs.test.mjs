@@ -3,21 +3,32 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { sandboxEnv, reviewRequest, exploreRequest, debateRequest, antigravityRequest, opencodeRequest, waitFor } from './helpers.mjs';
+import {
+  sandboxEnv,
+  reviewRequest,
+  exploreRequest,
+  debateRequest,
+  antigravityRequest,
+  opencodeRequest,
+  waitFor,
+} from './helpers.mjs';
 
 // The four default consultants plus a second one on Codex, so a test can ask
 // a consultant that shares its CLI with another. POLICY freezes at first
 // import, so the config has to be in place here rather than inside the test.
 const cfgFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-jobs-')), 'config.json');
-fs.writeFileSync(cfgFile, JSON.stringify({
-  consultants: {
-    codex: { cli: 'codex', model: 'gpt-6-astra' },
-    'claude-code': { cli: 'claude-code', model: 'claude-opus-5-5' },
-    antigravity: { cli: 'antigravity', model: 'gemini-4-argon-high' },
-    opencode: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
-    mini: { cli: 'codex', model: 'gpt-6-astra-mini' },
-  },
-}));
+fs.writeFileSync(
+  cfgFile,
+  JSON.stringify({
+    consultants: {
+      codex: { cli: 'codex', model: 'gpt-6-astra' },
+      'claude-code': { cli: 'claude-code', model: 'claude-opus-5-5' },
+      antigravity: { cli: 'antigravity', model: 'gemini-4-argon-high' },
+      opencode: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
+      mini: { cli: 'codex', model: 'gpt-6-astra-mini' },
+    },
+  }),
+);
 const home = sandboxEnv({ SEVERALLY_CONFIG: cfgFile });
 const { JobManager } = await import('../src/jobs.mjs');
 const { consultantByName } = await import('../src/policy.mjs');
@@ -26,7 +37,11 @@ const { consultantByName } = await import('../src/policy.mjs');
 // credential seeding behind the opencode retry is a no-op, and so are the
 // tests that rely on it.
 let sqlite = null;
-try { sqlite = await import('node:sqlite'); } catch { sqlite = null; }
+try {
+  sqlite = await import('node:sqlite');
+} catch {
+  sqlite = null;
+}
 
 const finish = async (mgr, jobId) => {
   const job = mgr.jobs.get(jobId);
@@ -121,7 +136,10 @@ test('the consultant is launched with the restriction flags and none that widen 
   assert.match(fsRules, /":root" = "read"/);
   assert.ok(fsRules.includes(`${JSON.stringify(path.join(os.homedir(), '.ssh').replaceAll('\\', '/'))} = "none"`));
   assert.ok(fsRules.includes(`${JSON.stringify(path.join(home, 'homes').replaceAll('\\', '/'))} = "none"`));
-  assert.ok(!fsRules.includes(`"${path.join(os.homedir(), '.codex').replaceAll('\\', '/')}" =`), '~/.codex holds the binary the sandbox re-executes');
+  assert.ok(
+    !fsRules.includes(`"${path.join(os.homedir(), '.codex').replaceAll('\\', '/')}" =`),
+    '~/.codex holds the binary the sandbox re-executes',
+  );
   assert.ok(codexArgs.includes('tools.web_search=true'));
   assert.ok(codexArgs.includes('hooks.enabled=false'));
   assert.ok(codexArgs.includes('shell_environment_policy.inherit="core"'));
@@ -129,7 +147,7 @@ test('the consultant is launched with the restriction flags and none that widen 
   // from its shell, so it has to be put back explicitly.
   assert.ok(
     codexArgs.includes('shell_environment_policy.set={SEVERALLY_ACTIVE="1"}'),
-    'the recursion marker must reach the consultant\'s own shell',
+    "the recursion marker must reach the consultant's own shell",
   );
   for (const flag of ['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--add-dir']) {
     assert.ok(!codexArgs.includes(flag), `codex must never be launched with ${flag}`);
@@ -299,9 +317,17 @@ test('cancel stops the consultant and every process it spawned', async () => {
   assert.equal(view.status, 'cancelled');
   assert.equal(view.failure.kind, 'cancelled');
 
-  await waitFor(() => {
-    try { process.kill(grandchildPid, 0); return false; } catch { return true; }
-  }, { timeoutMs: 8000 });
+  await waitFor(
+    () => {
+      try {
+        process.kill(grandchildPid, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    { timeoutMs: 8000 },
+  );
   delete process.env.STUB_GRANDCHILD_PID_OUT;
   fs.rmSync(pidOut, { force: true });
 });
@@ -368,9 +394,19 @@ test('earlier rounds past their budget are left out oldest first, and the brief 
   const { renderBrief } = await import('../src/brief.mjs');
   const { parseRequest } = await import('../src/schema.mjs');
   const round = (n) => ({
-    round: n, mode: 'review', question: `question ${n}`, summary: `summary ${n} ${'x'.repeat(7_900)}`,
-    findings: Array.from({ length: 30 }, (_, i) => ({ id: `f${i + 1}`, point: 'p'.repeat(400), grounds: 'g'.repeat(400), verdict: 'confirmed', effect: null })),
-    unknowns: [], next_checks: [],
+    round: n,
+    mode: 'review',
+    question: `question ${n}`,
+    summary: `summary ${n} ${'x'.repeat(7_900)}`,
+    findings: Array.from({ length: 30 }, (_, i) => ({
+      id: `f${i + 1}`,
+      point: 'p'.repeat(400),
+      grounds: 'g'.repeat(400),
+      verdict: 'confirmed',
+      effect: null,
+    })),
+    unknowns: [],
+    next_checks: [],
   });
   const brief = renderBrief(parseRequest(reviewRequest()), { round: 5, priorRounds: [1, 2, 3, 4].map(round) });
   assert.match(brief, /Rounds 1, 2, 3 left out/);
@@ -378,7 +414,7 @@ test('earlier rounds past their budget are left out oldest first, and the brief 
   assert.doesNotMatch(brief, /### Round 1 /);
 });
 
-test('a follow-up that leaves out the mode keeps its chain\'s', async () => {
+test("a follow-up that leaves out the mode keeps its chain's", async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   const { mode: _, ...first } = exploreRequest({ target: 'codex' });
@@ -416,7 +452,10 @@ test('a follow-up survives a server restart and tells the consultant how its poi
   const r1 = before.start(reviewRequest());
   await finish(before, r1.job_id);
   const f = before.view(r1.job_id).result.findings[0];
-  before.record({ job_id: r1.job_id, entries: [{ id: f.id, verdict: 'not_applicable', effect: 'The client already caps retries at 2.' }] });
+  before.record({
+    job_id: r1.job_id,
+    entries: [{ id: f.id, verdict: 'not_applicable', effect: 'The client already caps retries at 2.' }],
+  });
 
   // A new manager has nothing in memory: the parent and its verdict come from the history.
   const after = new JobManager();
@@ -440,7 +479,10 @@ test('only the latest round can be followed up, and a failed later round does no
   const r2 = mgr.start(reviewRequest({ followup_to: r1.job_id }));
   await finish(mgr, r2.job_id);
   // Read back after a restart too: round 2 lives in the history only.
-  assert.throws(() => new JobManager().start(reviewRequest({ followup_to: r1.job_id })), (e) => e.code === 'followup_not_latest' && e.message.includes(r2.job_id));
+  assert.throws(
+    () => new JobManager().start(reviewRequest({ followup_to: r1.job_id })),
+    (e) => e.code === 'followup_not_latest' && e.message.includes(r2.job_id),
+  );
 
   process.env.STUB_BEHAVIOR = 'usage_limit';
   const r3 = mgr.start(reviewRequest({ followup_to: r2.job_id }));
@@ -457,8 +499,14 @@ test('follow-up to an unfinished or unknown job is refused', async () => {
   const { JobManager: M } = await import(`../src/jobs.mjs?fu=${Date.now()}`);
   const mgr = new M();
   const r1 = mgr.start(reviewRequest());
-  assert.throws(() => mgr.start(reviewRequest({ followup_to: r1.job_id })), (e) => e.code === 'followup_not_completed');
-  assert.throws(() => mgr.start(reviewRequest({ followup_to: 'job_nope' })), (e) => e.code === 'unknown_job');
+  assert.throws(
+    () => mgr.start(reviewRequest({ followup_to: r1.job_id })),
+    (e) => e.code === 'followup_not_completed',
+  );
+  assert.throws(
+    () => mgr.start(reviewRequest({ followup_to: 'job_nope' })),
+    (e) => e.code === 'unknown_job',
+  );
   mgr.cancel(r1.job_id);
   await finish(mgr, r1.job_id);
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
@@ -470,7 +518,10 @@ test('concurrency is capped server-side', async () => {
   const { JobManager: M } = await import(`../src/jobs.mjs?cc=${Date.now()}`);
   const mgr = new M();
   const started = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(() => mgr.start(reviewRequest()));
-  assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'concurrency_limit');
+  assert.throws(
+    () => mgr.start(reviewRequest()),
+    (e) => e.code === 'concurrency_limit',
+  );
   mgr.shutdown();
   await Promise.all(started.map((s) => finish(mgr, s.job_id)));
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
@@ -481,7 +532,10 @@ test('a consultation cannot be started from inside a consultant session', async 
   const mgr = new JobManager();
   process.env.SEVERALLY_ACTIVE = '1';
   try {
-    assert.throws(() => mgr.start(reviewRequest()), (e) => e.code === 'recursion_blocked');
+    assert.throws(
+      () => mgr.start(reviewRequest()),
+      (e) => e.code === 'recursion_blocked',
+    );
   } finally {
     delete process.env.SEVERALLY_ACTIVE;
   }
@@ -505,12 +559,18 @@ test('history is persisted and the working directory is cleaned up', async () =>
 test('the launch guard refuses permission-widening flags outright', async () => {
   const { assertNoForbiddenFlags } = await import('../src/jobs.mjs');
   assert.equal(assertNoForbiddenFlags('codex', ['exec', '-s', 'read-only']), true);
-  assert.throws(() => assertNoForbiddenFlags('codex', ['exec', '--dangerously-bypass-approvals-and-sandbox']), /permission-widening/);
+  assert.throws(
+    () => assertNoForbiddenFlags('codex', ['exec', '--dangerously-bypass-approvals-and-sandbox']),
+    /permission-widening/,
+  );
   assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--dangerously-skip-permissions']), /permission-widening/);
   // --add-dir is accepted in exactly one shape: Claude Code, once, with `/`.
   assert.equal(assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/']), true);
   assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/home']), /widen consultant file access/);
-  assert.throws(() => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/', '--add-dir', '/tmp']), /widen consultant file access/);
+  assert.throws(
+    () => assertNoForbiddenFlags('claude-code', ['-p', '--add-dir', '/', '--add-dir', '/tmp']),
+    /widen consultant file access/,
+  );
   assert.throws(() => assertNoForbiddenFlags('codex', ['exec', '--add-dir', '/']), /permission-widening/);
   assert.throws(() => assertNoForbiddenFlags('antigravity', ['--add-dir', '/']), /permission-widening/);
   assert.throws(() => assertNoForbiddenFlags('opencode', ['run', '--auto']), /permission-widening/);
@@ -558,7 +618,7 @@ test('antigravity: an agy that answered but did not exit is stopped, and the ans
   assert.match(view.result.summary, /Stub antigravity summary/);
   const { loadRound } = await import('../src/store.mjs');
   const kept = fs.readFileSync(loadRound(view.job_id).diagnostics, 'utf8');
-  assert.match(kept, /stub agy log/, 'agy\'s own log is kept although its HOME is removed');
+  assert.match(kept, /stub agy log/, "agy's own log is kept although its HOME is removed");
   // Windows has no SIGQUIT: the process tree is ended with taskkill, so no dump.
   if (process.platform !== 'win32') assert.match(kept, /goroutine 1 \[select\]/, 'the SIGQUIT dump is kept');
   assert.doesNotMatch(kept, /sk-ant-api03-AAAA/, 'what is kept is redacted');
@@ -575,10 +635,13 @@ test('antigravity: a finish step with no result and no exit fails as such instea
   assert.match(view.failure.message, /finish step but neither returned a result nor exited/);
   assert.equal(view.retries.length, 0, 'not re-run: it may have spent its quota already');
   const { loadRound } = await import('../src/store.mjs');
-  assert.match(fs.readFileSync(loadRound(view.job_id).diagnostics, 'utf8'), process.platform === 'win32' ? /stub agy log/ : /goroutine 1/);
+  assert.match(
+    fs.readFileSync(loadRound(view.job_id).diagnostics, 'utf8'),
+    process.platform === 'win32' ? /stub agy log/ : /goroutine 1/,
+  );
 });
 
-test('antigravity: a consultation the lead cancels keeps agy\'s log too', async () => {
+test("antigravity: a consultation the lead cancels keeps agy's log too", async () => {
   process.env.STUB_BEHAVIOR = 'finish_no_result';
   const mgr = new JobManager();
   const started = mgr.start(antigravityRequest());
@@ -587,7 +650,10 @@ test('antigravity: a consultation the lead cancels keeps agy\'s log too', async 
   const view = await finish(mgr, started.job_id);
   assert.equal(view.status, 'cancelled');
   const { loadRound } = await import('../src/store.mjs');
-  assert.match(fs.readFileSync(loadRound(view.job_id).diagnostics, 'utf8'), process.platform === 'win32' ? /stub agy log/ : /goroutine 1/);
+  assert.match(
+    fs.readFileSync(loadRound(view.job_id).diagnostics, 'utf8'),
+    process.platform === 'win32' ? /stub agy log/ : /goroutine 1/,
+  );
 });
 
 test('antigravity: an ERROR envelope becomes a classified failure, not advice', async () => {
@@ -691,8 +757,7 @@ test('opencode: a job that needed its retry reports the full duration', { skip: 
     const mgr = new JobManager();
     const view = await finish(mgr, mgr.start(opencodeRequest()).job_id);
     assert.equal(view.status, 'completed');
-    assert.ok(view.duration_ms >= 4000,
-      `duration must cover both attempts (first ~2.5s + retry ~2s), got ${view.duration_ms}`);
+    assert.ok(view.duration_ms >= 4000, `duration must cover both attempts (first ~2.5s + retry ~2s), got ${view.duration_ms}`);
   } finally {
     process.env.STUB_BEHAVIOR = 'ok';
     delete process.env.STUB_DELAY_MS;
@@ -774,7 +839,7 @@ test('the OpenCode consultant gets no config-redirecting variable', async () => 
     for (const key of ['OPENCODE_CONFIG', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_PERMISSION']) {
       assert.equal(seen[key], undefined, `${key} must not survive into the consultant`);
     }
-    assert.equal(seen.ANTHROPIC_API_KEY, undefined, 'another vendor\'s key must not cross');
+    assert.equal(seen.ANTHROPIC_API_KEY, undefined, "another vendor's key must not cross");
     assert.equal(seen.OPENCODE_DISABLE_AUTOUPDATE, '1', 'the sandbox belt-and-braces still lands');
   } finally {
     delete process.env.STUB_ENV_OUT;
@@ -862,7 +927,8 @@ test('the Antigravity consultant gets no config-redirecting variable', async () 
     assert.equal(seen.ANTIGRAVITY_EXECUTABLE_DATA_DIR, undefined);
     assert.match(seen.HOME, /homes[\\/]job_[0-9a-f]+$/, 'HOME must still be the synthesised one');
     assert.equal(
-      seen.GOOGLE_APPLICATION_CREDENTIALS, '/tmp/adc.json',
+      seen.GOOGLE_APPLICATION_CREDENTIALS,
+      '/tmp/adc.json',
       'an API-key/ADC credential is how some operators authenticate: it must survive',
     );
   } finally {
@@ -885,9 +951,7 @@ test('a credential pasted into the question never reaches the history file', asy
 
   assert.ok(!view.question.includes(secret), 'the recorded question must not carry the token');
   assert.match(view.question, /REDACTED/);
-  const record = JSON.parse(
-    fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8'),
-  );
+  const record = JSON.parse(fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8'));
   assert.ok(!record.question.includes(secret), 'the history file must not carry the token');
   assert.match(record.question, /REDACTED/);
 });
@@ -913,10 +977,7 @@ test('a missing Antigravity credential fails the job as auth, before the child s
     assert.equal(view.failure.kind, 'auth');
     assert.equal(view.failure.retriable, false);
     assert.equal(view.result, null);
-    assert.ok(
-      view.failure.message.includes(emptyCredHome),
-      'the failure must name the path that was searched',
-    );
+    assert.ok(view.failure.message.includes(emptyCredHome), 'the failure must name the path that was searched');
     assert.match(view.failure.message, /antigravity-oauth-token/);
     assert.match(view.failure.message, /GOOGLE_API_KEY/, 'the API-key alternative must be named');
     assert.equal(fs.existsSync(envOut), false, 'the consultant must not have been spawned at all');
@@ -989,8 +1050,11 @@ test('a timeout reports how far the consultant got', async () => {
   assert.equal(view.status, 'failed');
   assert.equal(view.failure.kind, 'timeout');
   assert.equal(view.failure.retriable, true);
-  assert.match(view.failure.detail ?? '', /still working when the budget ran out/,
-    'the trail the consultant left before it was killed');
+  assert.match(
+    view.failure.detail ?? '',
+    /still working when the budget ran out/,
+    'the trail the consultant left before it was killed',
+  );
 
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
@@ -1006,10 +1070,13 @@ test('a running consultation reports what it is doing', async () => {
   const mgr = new M();
   const started = mgr.start(reviewRequest());
 
-  const seen = await waitFor(() => {
-    const v = mgr.view(started.job_id);
-    return v.status === 'running' && v.progress ? v : null;
-  }, { timeoutMs: 4000, intervalMs: 25 });
+  const seen = await waitFor(
+    () => {
+      const v = mgr.view(started.job_id);
+      return v.status === 'running' && v.progress ? v : null;
+    },
+    { timeoutMs: 4000, intervalMs: 25 },
+  );
 
   assert.match(seen.progress, /item event\(s\)/, 'the trail, while it is still being made');
   assert.match(seen.progress, /web_search/);
@@ -1033,7 +1100,7 @@ test('the delivered result carries no verdict from the server', async () => {
 
   assert.equal(view.status, 'completed');
   assert.equal(Object.hasOwn(view.quality, 'advice_usable'), false, 'no "this is usable" stamp');
-  assert.equal(view.quality.evidence_basis, 'sufficient', 'the consultant\'s own claim, passed through');
+  assert.equal(view.quality.evidence_basis, 'sufficient', "the consultant's own claim, passed through");
   assert.equal(typeof view.quality.findings_without_grounds, 'number', 'a count, not an opinion');
 });
 
@@ -1056,7 +1123,10 @@ test('a same-vendor consultation on a different model names both models in the c
   assert.match(view.quality.caveat, /lineage|blind spots/i);
   // A declared name that is part of the launched one ("claude-opus-5" in
   // "claude-opus-5-5") could be either: relay both, assert neither.
-  const unsure = await finish(mgr, mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'claude-opus-5' })).job_id);
+  const unsure = await finish(
+    mgr,
+    mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'claude-opus-5' })).job_id,
+  );
   assert.match(unsure.quality.caveat, /You declared claude-opus-5; it ran claude-opus-5-5/, 'both names, side by side');
   assert.doesNotMatch(unsure.quality.caveat, /different model|and the same model/i, 'the server cannot establish either');
 });
@@ -1087,12 +1157,22 @@ test('caller_model is recorded on a cross-vendor consultation without adding a c
 test('a same-vendor caveat resolves the declared caller model before comparing', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
-  const spelled = await finish(mgr, mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'Claude Opus 5.5' })).job_id);
+  const spelled = await finish(
+    mgr,
+    mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'Claude Opus 5.5' })).job_id,
+  );
   assert.match(spelled.quality.caveat, /same model/i, 'a spelling variant of the launched model is the same model');
   assert.doesNotMatch(spelled.quality.caveat, /different model/i);
   // "Opus 5" could be Opus 5.5 written short, or an older Opus: unplaceable.
-  const unknown = await finish(mgr, mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'Opus 5' })).job_id);
-  assert.match(unknown.quality.caveat, /cannot tell whether those are one model/i, 'an unplaceable name must not be reported as a different model');
+  const unknown = await finish(
+    mgr,
+    mgr.start(reviewRequest({ target: 'claude-code', caller: 'claude-code', caller_model: 'Opus 5' })).job_id,
+  );
+  assert.match(
+    unknown.quality.caveat,
+    /cannot tell whether those are one model/i,
+    'an unplaceable name must not be reported as a different model',
+  );
   assert.doesNotMatch(unknown.quality.caveat, /different model/i);
   assert.doesNotMatch(unknown.quality.caveat, /and the same model/i);
   assert.match(unknown.quality.caveat, /Opus 5;/, 'the declaration itself is still relayed');
@@ -1112,13 +1192,15 @@ test('exposed paths reach the consultant working directory and are named in the 
   fs.writeFileSync(path.join(repo, 'README.md'), '# demo');
 
   const mgr = new JobManager();
-  const started = mgr.start(reviewRequest({
-    context: {
-      facts: ['The client retries 5 times.'],
-      proposal: 'Add jitter.',
-      expose_paths: [path.join(repo, 'src'), path.join(repo, 'README.md')],
-    },
-  }));
+  const started = mgr.start(
+    reviewRequest({
+      context: {
+        facts: ['The client retries 5 times.'],
+        proposal: 'Add jitter.',
+        expose_paths: [path.join(repo, 'src'), path.join(repo, 'README.md')],
+      },
+    }),
+  );
   const view = await finish(mgr, started.job_id);
   assert.equal(view.status, 'completed');
 
@@ -1148,14 +1230,14 @@ test('the history keeps what was exposed as a manifest, not as content', async (
   fs.writeFileSync(path.join(repo, 'secret-plan.md'), 'the whole plan, in full');
 
   const mgr = new JobManager();
-  const started = mgr.start(reviewRequest({
-    context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'secret-plan.md')] },
-  }));
+  const started = mgr.start(
+    reviewRequest({
+      context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'secret-plan.md')] },
+    }),
+  );
   await finish(mgr, started.job_id);
 
-  const record = JSON.parse(
-    fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8'),
-  );
+  const record = JSON.parse(fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8'));
   const exposed = record.brief.expose_paths;
   assert.equal(exposed.entries.length, 1);
   assert.equal(exposed.entries[0].exposed_as, 'workspace/0-secret-plan.md');
@@ -1220,11 +1302,19 @@ test('the Claude Code consultant loses its whole-disk read scope once paths are 
 
   await finish(mgr, mgr.start(exploreRequest()).job_id);
   const wide = JSON.parse(fs.readFileSync(argvOut, 'utf8'));
-  assert.deepEqual(wide.flatMap((a, i) => (a === '--add-dir' ? [wide[i + 1]] : [])), ['/']);
+  assert.deepEqual(
+    wide.flatMap((a, i) => (a === '--add-dir' ? [wide[i + 1]] : [])),
+    ['/'],
+  );
 
-  await finish(mgr, mgr.start(exploreRequest({
-    context: { facts: ['f'], expose_paths: [path.join(repo, 'index.mjs')] },
-  })).job_id);
+  await finish(
+    mgr,
+    mgr.start(
+      exploreRequest({
+        context: { facts: ['f'], expose_paths: [path.join(repo, 'index.mjs')] },
+      }),
+    ).job_id,
+  );
   const scoped = JSON.parse(fs.readFileSync(argvOut, 'utf8'));
   assert.ok(!scoped.includes('--add-dir'), 'a scoped consultation must not widen to the whole disk');
   // Everything else about the consultant is unchanged.
@@ -1301,47 +1391,75 @@ const orphanCase = async (behavior, env = {}) => {
   const mgr = new M();
   const t0 = Date.now();
   const started = mgr.start(reviewRequest());
-  return { mgr, started, t0, pidOut, gone: async () => {
-    const pid = Number(fs.readFileSync(pidOut, 'utf8'));
-    await waitFor(() => { try { process.kill(pid, 0); return false; } catch { return true; } }, { timeoutMs: 8000 });
-    delete process.env.STUB_GRANDCHILD_PID_OUT;
-    fs.rmSync(pidOut, { force: true });
-  } };
+  return {
+    mgr,
+    started,
+    t0,
+    pidOut,
+    gone: async () => {
+      const pid = Number(fs.readFileSync(pidOut, 'utf8'));
+      await waitFor(
+        () => {
+          try {
+            process.kill(pid, 0);
+            return false;
+          } catch {
+            return true;
+          }
+        },
+        { timeoutMs: 8000 },
+      );
+      delete process.env.STUB_GRANDCHILD_PID_OUT;
+      fs.rmSync(pidOut, { force: true });
+    },
+  };
 };
 
-test('a consultant that exits leaving a process on its pipes still closes, its answer kept with a caveat', { skip: process.platform === 'win32' }, async () => {
-  for (const behavior of ['orphan_pipe', 'orphan_pipe_stubborn']) {
-    const c = await orphanCase(behavior);
+test(
+  'a consultant that exits leaving a process on its pipes still closes, its answer kept with a caveat',
+  { skip: process.platform === 'win32' },
+  async () => {
+    for (const behavior of ['orphan_pipe', 'orphan_pipe_stubborn']) {
+      const c = await orphanCase(behavior);
+      const view = await finish(c.mgr, c.started.job_id);
+      assert.ok(Date.now() - c.t0 < 8000, `${behavior} closed in ${Date.now() - c.t0} ms`);
+      assert.equal(view.status, 'completed', behavior);
+      assert.match(view.quality.caveat, /kept its output open/);
+      await c.gone();
+    }
+  },
+);
+
+test(
+  'a leftover process with no answer behind it is a cli_error, not advice',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const c = await orphanCase('orphan_pipe_invalid');
     const view = await finish(c.mgr, c.started.job_id);
-    assert.ok(Date.now() - c.t0 < 8000, `${behavior} closed in ${Date.now() - c.t0} ms`);
-    assert.equal(view.status, 'completed', behavior);
-    assert.match(view.quality.caveat, /kept its output open/);
+    assert.equal(view.status, 'failed');
+    assert.equal(view.failure.kind, 'cli_error');
     await c.gone();
-  }
-});
+  },
+);
 
-test('a leftover process with no answer behind it is a cli_error, not advice', { skip: process.platform === 'win32' }, async () => {
-  const c = await orphanCase('orphan_pipe_invalid');
-  const view = await finish(c.mgr, c.started.job_id);
-  assert.equal(view.status, 'failed');
-  assert.equal(view.failure.kind, 'cli_error');
-  await c.gone();
-});
-
-test('a deadline or a cancel ends a consultant whose pipes a leftover process holds', { skip: process.platform === 'win32' }, async () => {
-  const c = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '1500' });
-  const view = await finish(c.mgr, c.started.job_id);
-  assert.equal(view.failure.kind, 'timeout');
-  await c.gone();
-  const d = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '20000' });
-  await new Promise((r) => setTimeout(r, 400));
-  d.mgr.cancel(d.started.job_id);
-  const cancelled = await finish(d.mgr, d.started.job_id);
-  assert.equal(cancelled.status, 'cancelled');
-  assert.ok(Date.now() - d.t0 < 8000);
-  await d.gone();
-  process.env.SEVERALLY_TIMEOUT_MS = '20000';
-});
+test(
+  'a deadline or a cancel ends a consultant whose pipes a leftover process holds',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const c = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '1500' });
+    const view = await finish(c.mgr, c.started.job_id);
+    assert.equal(view.failure.kind, 'timeout');
+    await c.gone();
+    const d = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '20000' });
+    await new Promise((r) => setTimeout(r, 400));
+    d.mgr.cancel(d.started.job_id);
+    const cancelled = await finish(d.mgr, d.started.job_id);
+    assert.equal(cancelled.status, 'cancelled');
+    assert.ok(Date.now() - d.t0 < 8000);
+    await d.gone();
+    process.env.SEVERALLY_TIMEOUT_MS = '20000';
+  },
+);
 
 test('an answer without a bottom line or an evidence basis comes back completed, with a caveat that says so', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
@@ -1361,7 +1479,7 @@ test('an answer without a bottom line or an evidence basis comes back completed,
   assert.doesNotMatch(clean.quality.caveat ?? '', /bottom line|evidence supports/);
 });
 
-test('a follow-up that leaves out network keeps the earlier round\'s; a caller\'s own diff artifact carries over', async () => {
+test("a follow-up that leaves out network keeps the earlier round's; a caller's own diff artifact carries over", async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   const req = reviewRequest({ network: 'off' });

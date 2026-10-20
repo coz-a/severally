@@ -34,13 +34,23 @@ test('expose_diff copies the touched files at their repository paths and puts th
   process.env.STUB_BEHAVIOR = 'hang';
   const dir = repo();
   const mgr = new JobManager();
-  const s = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'], context: { proposal: 'p', expose_diff: { repo: dir } } }));
+  const s = mgr.start(
+    reviewRequest({
+      target: undefined,
+      targets: ['codex', 'claude-code'],
+      context: { proposal: 'p', expose_diff: { repo: dir } },
+    }),
+  );
   const [j1, j2] = s.jobs.map((j) => mgr.jobs.get(j.job_id));
   assert.ok(!fs.existsSync(store.jobDir(s.group_id)), 'the shared snapshot is gone once start() returns');
   await waitFor(() => j1.status === 'running' && j2.status === 'running');
   const ws = path.join(store.jobDir(j1.job_id), 'work', 'workspace', 'repo');
   assert.equal(fs.readFileSync(path.join(ws, 'a', 'util.mjs'), 'utf8'), 'export const a = 2;\n');
-  assert.equal(fs.readFileSync(path.join(ws, 'b', 'util.mjs'), 'utf8'), 'export const b = 2;\n', 'same names in two directories stay apart');
+  assert.equal(
+    fs.readFileSync(path.join(ws, 'b', 'util.mjs'), 'utf8'),
+    'export const b = 2;\n',
+    'same names in two directories stay apart',
+  );
   assert.ok(fs.existsSync(path.join(ws, 'new.mjs')), 'an untracked file is copied');
   assert.ok(!fs.existsSync(path.join(ws, '.env')), 'a protected file is not copied');
   assert.ok(!fs.existsSync(path.join(ws, 'gone.txt')));
@@ -54,7 +64,11 @@ test('expose_diff copies the touched files at their repository paths and puts th
   const diff = brief.artifacts.find((a) => a.kind === 'diff');
   assert.match(diff.excerpt, /\+export const a = 2;/);
   assert.doesNotMatch(diff.excerpt, /sk-live-new-secret|\.env/, 'a protected file is left out of the diff too');
-  assert.doesNotMatch(JSON.stringify(brief.artifacts), new RegExp(dir.replaceAll('/', '\\/')), 'the repository location is not sent');
+  assert.doesNotMatch(
+    JSON.stringify(brief.artifacts),
+    new RegExp(dir.replaceAll('/', '\\/')),
+    'the repository location is not sent',
+  );
 
   mgr.cancelGroup(s.group_id);
   await Promise.all([j1.promise, j2.promise]);
@@ -63,8 +77,10 @@ test('expose_diff copies the touched files at their repository paths and puts th
 test('a clean tree is refused before any job exists', () => {
   const { dir } = bare();
   const mgr = new JobManager();
-  assert.throws(() => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } })),
-    (e) => e.code === 'expose_path_invalid' && /no change against HEAD/.test(e.message));
+  assert.throws(
+    () => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } })),
+    (e) => e.code === 'expose_path_invalid' && /no change against HEAD/.test(e.message),
+  );
 });
 
 test('a change of many files does not put them all on the command line', () => {
@@ -85,15 +101,19 @@ test('a change of many files does not put them all on the command line', () => {
 test('expose_diff on a path that is not a repository is refused before any job exists', () => {
   const mgr = new JobManager();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sev-norepo-'));
-  assert.throws(() => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } })),
-    (e) => e.code === 'expose_path_invalid');
+  assert.throws(
+    () => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } })),
+    (e) => e.code === 'expose_path_invalid',
+  );
   assert.equal(mgr.jobs.size, 0);
 });
 
 test('expose_diff refuses a base that looks like an option', () => {
   const mgr = new JobManager();
-  assert.throws(() => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: '/tmp', base: '--output=/tmp/x' } } })),
-    (e) => e.code === 'invalid_request');
+  assert.throws(
+    () => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: '/tmp', base: '--output=/tmp/x' } } })),
+    (e) => e.code === 'invalid_request',
+  );
 });
 
 function bare() {
@@ -135,8 +155,10 @@ test('a file over the size cap is refused before the request is accepted', () =>
   const { dir } = bare();
   fs.writeFileSync(path.join(dir, 'big.bin'), Buffer.alloc(6 * 1024 * 1024));
   const mgr = new JobManager();
-  assert.throws(() => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } })),
-    (e) => e.code === 'expose_paths_too_large');
+  assert.throws(
+    () => mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } })),
+    (e) => e.code === 'expose_paths_too_large',
+  );
 });
 
 test('the brief lists the copies as paths a consultant can open, and the deletions apart', async () => {
@@ -151,7 +173,11 @@ test('the brief lists the copies as paths a consultant can open, and the deletio
   const entry = manifest.entries[0];
   assert.deepEqual(entry.paths, ['a/util.mjs', 'b/util.mjs', 'new.mjs']);
   assert.ok(!entry.changes.some((c) => c.startsWith('link.mjs')), 'a skipped symlink is not listed as shown');
-  const text = renderBrief(parseRequest(reviewRequest({ context: { proposal: 'p', facts: ['f'] } })), { round: 1, priorRounds: [] }, manifest);
+  const text = renderBrief(
+    parseRequest(reviewRequest({ context: { proposal: 'p', facts: ['f'] } })),
+    { round: 1, priorRounds: [] },
+    manifest,
+  );
   assert.match(text, /- workspace\/repo\/a\/util\.mjs\n/);
   assert.doesNotMatch(text, /workspace\/repo\/\S+ \(/);
   assert.match(text, /deleted by the change, so not copied: gone\.txt/);

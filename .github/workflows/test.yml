@@ -30,4 +30,7 @@ jobs:
       # src: a change that was not rebuilt and committed would not ship.
       - run: git diff --exit-code -- plugins/severally
         if: matrix.os == 'ubuntu-latest'
+      # Formatting is checked once: Windows checks files out with CRLF.
+      - run: npm run format:check
+        if: matrix.os == 'ubuntu-latest'
       - run: npm test

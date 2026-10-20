@@ -49,7 +49,11 @@ import { sandboxHome } from '../store.mjs';
 // allows older runtimes, where credential seeding degrades to a no-op and the
 // job fails with the CLI's own auth error instead.
 let DatabaseSync = null;
-try { ({ DatabaseSync } = sqliteRequire(import.meta.url)('node:sqlite')); } catch { /* unavailable */ }
+try {
+  ({ DatabaseSync } = sqliteRequire(import.meta.url)('node:sqlite'));
+} catch {
+  /* unavailable */
+}
 
 // Reading is allowed, not denied: every consultant is an equal reader (Codex
 // runs a read-only shell; Claude Code and Antigravity can read the whole
@@ -93,10 +97,7 @@ const SANDBOX_TOOLS_OFF = Object.freeze({ edit: false, write: false, patch: fals
 // workdir, and a run that cannot ask refuses -- so this consultant read less
 // than the others. The last matching rule wins, so "*" comes first.
 function readRules() {
-  const deny = [
-    ...protectedRoots().flatMap((r) => [r, `${r}/**`]),
-    ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`]),
-  ];
+  const deny = [...protectedRoots().flatMap((r) => [r, `${r}/**`]), ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])];
   return { '*': 'allow', ...Object.fromEntries(deny.map((p) => [p, 'deny'])) };
 }
 
@@ -180,16 +181,22 @@ export function prepareSandbox({ workdir, network = 'on' }) {
       // parent directories of the (empty) working directory.
       OPENCODE_DISABLE_AUTOUPDATE: '1',
       OPENCODE_DISABLE_PROJECT_CONFIG: '1',
-      ...(process.platform === 'win32' ? {
-        USERPROFILE: root,
-        HOMEDRIVE: path.parse(root).root.replace(/[\\/]$/, ''),
-        HOMEPATH: root.slice(path.parse(root).root.length - 1),
-        APPDATA: path.join(root, 'AppData', 'Roaming'),
-        LOCALAPPDATA: path.join(root, 'AppData', 'Local'),
-      } : {}),
+      ...(process.platform === 'win32'
+        ? {
+            USERPROFILE: root,
+            HOMEDRIVE: path.parse(root).root.replace(/[\\/]$/, ''),
+            HOMEPATH: root.slice(path.parse(root).root.length - 1),
+            APPDATA: path.join(root, 'AppData', 'Roaming'),
+            LOCALAPPDATA: path.join(root, 'AppData', 'Local'),
+          }
+        : {}),
     },
     cleanup() {
-      try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* best effort */ }
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
     },
   };
   sandbox.seed = (provider) => seedCredentialFromAuth(sandbox, provider);
@@ -231,7 +238,9 @@ export function seedCredentialFromAuth(sandbox, provider) {
     try {
       const db = new DatabaseSync(operatorDb, { readOnly: true });
       try {
-        const found = db.prepare('SELECT label, value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1').get(provider);
+        const found = db
+          .prepare('SELECT label, value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1')
+          .get(provider);
         if (found && typeof found.value === 'string') {
           const parsed = JSON.parse(found.value);
           if (parsed && typeof parsed === 'object' && typeof parsed.key === 'string' && parsed.key) {
@@ -241,23 +250,33 @@ export function seedCredentialFromAuth(sandbox, provider) {
       } finally {
         db.close();
       }
-    } catch { /* unreadable or reshaped: try the auth.json source */ }
+    } catch {
+      /* unreadable or reshaped: try the auth.json source */
+    }
   }
   if (!row && fs.existsSync(authPath)) {
     try {
       const entry = JSON.parse(fs.readFileSync(authPath, 'utf8'))[provider];
-      if (entry && typeof entry === 'object' && typeof entry.key === 'string' && entry.key
-        && (!entry.type || entry.type === 'api')) {
+      if (
+        entry &&
+        typeof entry === 'object' &&
+        typeof entry.key === 'string' &&
+        entry.key &&
+        (!entry.type || entry.type === 'api')
+      ) {
         row = { label: 'API key', value: JSON.stringify({ type: 'key', key: entry.key }) };
       }
-    } catch { /* unreadable auth.json: nothing seedable */ }
+    } catch {
+      /* unreadable auth.json: nothing seedable */
+    }
   }
   if (!row) return false;
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      db.prepare('INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(`cred_${crypto.randomBytes(18).toString('base64url')}`, provider, row.label, row.value, Date.now(), Date.now());
+      db.prepare(
+        'INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(`cred_${crypto.randomBytes(18).toString('base64url')}`, provider, row.label, row.value, Date.now(), Date.now());
     } finally {
       db.close();
     }

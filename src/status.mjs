@@ -2,15 +2,37 @@
 // consultation, so it spends no quota. It says what it can see and no more:
 // login is read from each CLI's own status command where it has one, and where
 // it has none it is reported as not checked rather than as working.
-import { POLICY, configProblem, configWarnings, unavailableReason, consultantAvailable, brokenConsultantNames, brokenConsultant } from './policy.mjs';
+import {
+  POLICY,
+  configProblem,
+  configWarnings,
+  unavailableReason,
+  consultantAvailable,
+  brokenConsultantNames,
+  brokenConsultant,
+} from './policy.mjs';
 import { SEVERALLY_VERSION, staleInstall } from './server.mjs';
 import { findCommand, execCommandSync } from './platform.mjs';
 
 // How each client lists severally, plugin installs first. A command that exits 0
 // and names severally counts as registered.
 const CLIENTS = [
-  { label: 'Claude Code', cmd: 'claude', checks: [['plugin', 'list'], ['mcp', 'get', 'severally']] },
-  { label: 'Codex', cmd: 'codex', checks: [['plugin', 'list'], ['mcp', 'get', 'severally']] },
+  {
+    label: 'Claude Code',
+    cmd: 'claude',
+    checks: [
+      ['plugin', 'list'],
+      ['mcp', 'get', 'severally'],
+    ],
+  },
+  {
+    label: 'Codex',
+    cmd: 'codex',
+    checks: [
+      ['plugin', 'list'],
+      ['mcp', 'get', 'severally'],
+    ],
+  },
   { label: 'Antigravity', cmd: 'agy', checks: [['mcp', 'list']] },
   { label: 'OpenCode', cmd: 'opencode', checks: [['mcp', 'list']] },
 ];
@@ -44,10 +66,14 @@ const LOGIN = {
   codex: { cmd: 'codex', args: ['login', 'status'], read: (out, ok) => ok },
   // OpenCode can also take keys from the environment, so no saved credential
   // is a warning, not a verdict.
-  opencode: { cmd: 'opencode', args: ['auth', 'list'], read: (out) => {
-    const n = out.split('\n').filter((l) => /\bstored\b/.test(l)).length;
-    return n ? `${n} saved credential${n > 1 ? 's' : ''}` : 'no saved credentials (keys in the environment still work)';
-  } },
+  opencode: {
+    cmd: 'opencode',
+    args: ['auth', 'list'],
+    read: (out) => {
+      const n = out.split('\n').filter((l) => /\bstored\b/.test(l)).length;
+      return n ? `${n} saved credential${n > 1 ? 's' : ''}` : 'no saved credentials (keys in the environment still work)';
+    },
+  },
 };
 
 function login(cli) {
@@ -66,7 +92,9 @@ function login(cli) {
   try {
     const v = check.read(out, ok);
     return v === true ? 'logged in' : v || 'not logged in';
-  } catch { return `could not tell (${check.cmd} ${check.args.join(' ')} answered in an unexpected form)`; }
+  } catch {
+    return `could not tell (${check.cmd} ${check.args.join(' ')} answered in an unexpected form)`;
+  }
 }
 
 export function status() {
@@ -78,15 +106,22 @@ export function status() {
 
   lines.push('consultants:');
   for (const c of POLICY.consultants) {
-    lines.push(`  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? 'available' : `not available: ${unavailableReason(c)}`}`);
+    lines.push(
+      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? 'available' : `not available: ${unavailableReason(c)}`}`,
+    );
   }
   for (const name of brokenConsultantNames()) lines.push(`  ${name}: not available: ${brokenConsultant(name)}`);
   lines.push('');
 
   const stale = staleInstall();
-  lines.push(stale
-    ? `copies: ${Object.entries(stale.copies).map(([k, v]) => `${k} ${v}${stale.behind.includes(k) ? ' (behind)' : ''}`).join(', ')}\n  ${stale.fix}`
-    : 'copies: every installed copy is this version', '');
+  lines.push(
+    stale
+      ? `copies: ${Object.entries(stale.copies)
+          .map(([k, v]) => `${k} ${v}${stale.behind.includes(k) ? ' (behind)' : ''}`)
+          .join(', ')}\n  ${stale.fix}`
+      : 'copies: every installed copy is this version',
+    '',
+  );
 
   lines.push('clients:');
   for (const client of CLIENTS) lines.push(`  ${client.label.padEnd(12)} ${registration(client)}`);

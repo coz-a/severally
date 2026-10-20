@@ -21,15 +21,20 @@ test('prepare() probes --standalone support and buildInvocation follows it', asy
   delete process.env.STUB_HELP;
   await adapter.resetProbe?.();
   await adapter.prepare();
-  assert.equal(adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'), false,
-    'a CLI whose help hides --standalone (1.18.31) must not receive it');
+  assert.equal(
+    adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'),
+    false,
+    'a CLI whose help hides --standalone (1.18.31) must not receive it',
+  );
 
   process.env.STUB_HELP = 'standalone';
   try {
     await adapter.resetProbe?.();
     await adapter.prepare();
-    assert.ok(adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'),
-      'a CLI that advertises --standalone (2.x) must run on a private server');
+    assert.ok(
+      adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'),
+      'a CLI that advertises --standalone (2.x) must run on a private server',
+    );
   } finally {
     delete process.env.STUB_HELP;
     await adapter.resetProbe?.();
@@ -37,7 +42,11 @@ test('prepare() probes --standalone support and buildInvocation follows it', asy
 });
 
 test('the invocation pins print mode, the event stream and the model', () => {
-  const inv = adapter.buildInvocation({ consultant: asConsultant('opencode'), workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
+  const inv = adapter.buildInvocation({
+    consultant: asConsultant('opencode'),
+    workdir: '/tmp/work',
+    schemaPath: '/tmp/schema.json',
+  });
   assert.equal(inv.command, POLICY.clis.opencode.cli);
   assert.deepEqual(inv.args.slice(0, 3), ['run', '--format', 'json']);
   // opencode 2.0 removed --pure (it was accepted through 1.18.31). Passing it
@@ -59,21 +68,40 @@ test('every flag that would widen or re-attach the consultant is refused', () =>
   const flags = [
     // Widening: opencode's default posture is allow-all, so these undo the
     // sandbox's deny rules in one word.
-    '--auto', '--yolo', '--dangerously-skip-permissions',
+    '--auto',
+    '--yolo',
+    '--dangerously-skip-permissions',
     // Attaching: an outside server brings the user's config, MCP servers and
     // session store back. --server is the 2.x form (--attach was 1.x and is
     // gone); both stay forbidden so an older or newer CLI is covered either way.
-    '--attach', '--server', '--continue', '-c', '--session', '-s', '--fork',
+    '--attach',
+    '--server',
+    '--continue',
+    '-c',
+    '--session',
+    '-s',
+    '--fork',
     // External configuration and exfiltration.
-    '--share', '--agent', '--command', '--file', '-f',
+    '--share',
+    '--agent',
+    '--command',
+    '--file',
+    '-f',
     // TUI modes break the one-shot event stream.
-    '--interactive', '-i', '--mini', '--demo',
+    '--interactive',
+    '-i',
+    '--mini',
+    '--demo',
   ];
   for (const flag of flags) {
     assert.ok(adapter.FORBIDDEN_FLAGS.includes(flag), `${flag} must be forbidden`);
   }
   // The invocation the adapter actually builds must survive the guard.
-  const inv = adapter.buildInvocation({ consultant: asConsultant('opencode'), workdir: '/tmp/work', schemaPath: '/tmp/schema.json' });
+  const inv = adapter.buildInvocation({
+    consultant: asConsultant('opencode'),
+    workdir: '/tmp/work',
+    schemaPath: '/tmp/schema.json',
+  });
   for (const flag of flags) {
     assert.equal(inv.args.includes(flag), false, `the adapter must not itself pass ${flag}`);
   }
@@ -97,8 +125,8 @@ test('the answer is the LAST completed text part, not the first', () => {
 
 test('a text part without a completion time is ignored', () => {
   const out = adapter.interpret({
-    stdout: line({ type: 'text', part: { type: 'text', text: 'still streaming' } })
-      + textEvent(JSON.stringify({ summary: 'done' })),
+    stdout:
+      line({ type: 'text', part: { type: 'text', text: 'still streaming' } }) + textEvent(JSON.stringify({ summary: 'done' })),
     stderr: '',
     code: 0,
   });
@@ -113,10 +141,7 @@ test('a text part without a completion time is ignored', () => {
 test('earlier completed text parts are kept for a fallback pass', () => {
   const contract = JSON.stringify({ summary: 'the real answer' });
   const out = adapter.interpret({
-    stdout: textEvent('Interim prose.')
-      + textEvent(contract)
-      + textEvent('Done. Hope this helps!')
-      + finishEvent({}, null),
+    stdout: textEvent('Interim prose.') + textEvent(contract) + textEvent('Done. Hope this helps!') + finishEvent({}, null),
     stderr: '',
     code: 0,
   });
@@ -127,7 +152,10 @@ test('earlier completed text parts are kept for a fallback pass', () => {
 
 test('an error-only stream is classified, not treated as advice', () => {
   const out = adapter.interpret({
-    stdout: line({ type: 'error', error: { name: 'ProviderAuthError', data: { message: 'You have reached your usage limit for this model.' } } }),
+    stdout: line({
+      type: 'error',
+      error: { name: 'ProviderAuthError', data: { message: 'You have reached your usage limit for this model.' } },
+    }),
     stderr: '',
     code: 1,
   });
@@ -182,8 +210,9 @@ test('a model error is classified as model_unavailable', () => {
 
 test('an error the CLI recovered from does not invalidate the answer', () => {
   const out = adapter.interpret({
-    stdout: line({ type: 'error', error: { name: 'ProviderAuthError', data: { message: 'rate limited, retrying' } } })
-      + textEvent(JSON.stringify({ summary: 'the answer stands' })),
+    stdout:
+      line({ type: 'error', error: { name: 'ProviderAuthError', data: { message: 'rate limited, retrying' } } }) +
+      textEvent(JSON.stringify({ summary: 'the answer stands' })),
     stderr: '',
     code: 0,
   });
@@ -199,8 +228,9 @@ test('an error the CLI recovered from does not invalidate the answer', () => {
 // failure into a misleading invalid_output retry.
 test('an error after the final text part fails the job, even on exit 0', () => {
   const out = adapter.interpret({
-    stdout: textEvent('Planning: I will check the schema next.')
-      + line({ type: 'error', error: { type: 'provider.auth', message: 'not logged in: invalid api key (401)' } }),
+    stdout:
+      textEvent('Planning: I will check the schema next.') +
+      line({ type: 'error', error: { type: 'provider.auth', message: 'not logged in: invalid api key (401)' } }),
     stderr: '',
     code: 0,
   });
@@ -211,8 +241,12 @@ test('an error after the final text part fails the job, even on exit 0', () => {
 
 test('an error after the final answer with a nonzero exit fails too', () => {
   const out = adapter.interpret({
-    stdout: textEvent(JSON.stringify({ summary: 'looks done' }))
-      + line({ type: 'error', error: { name: 'ProviderAuthError', data: { message: 'You have reached your usage limit for this model.' } } }),
+    stdout:
+      textEvent(JSON.stringify({ summary: 'looks done' })) +
+      line({
+        type: 'error',
+        error: { name: 'ProviderAuthError', data: { message: 'You have reached your usage limit for this model.' } },
+      }),
     stderr: '',
     code: 1,
   });
@@ -241,8 +275,7 @@ test('a run with no JSON at all is a failure, not an empty answer', () => {
 // stands and the record keeps the truncated flag.
 test('a truncated stream that never finished fails instead of returning interim prose', () => {
   const out = adapter.interpret({
-    stdout: textEvent('Working on it, the findings so far are...')
-      + line({ type: 'step_start', part: { type: 'step-start' } }),
+    stdout: textEvent('Working on it, the findings so far are...') + line({ type: 'step_start', part: { type: 'step-start' } }),
     stderr: '',
     code: 0,
     truncated: true,
@@ -285,8 +318,10 @@ test('a truncated stream fails when a later text part has no finish after it', (
 // step-finish may be trusted.
 test('a truncated stream fails when work continued past the last finish', () => {
   const out = adapter.interpret({
-    stdout: textEvent(JSON.stringify({ summary: 'step one answer' })) + finishEvent({}, null)
-      + line({ type: 'step_start', part: { type: 'step-start' } }),
+    stdout:
+      textEvent(JSON.stringify({ summary: 'step one answer' })) +
+      finishEvent({}, null) +
+      line({ type: 'step_start', part: { type: 'step-start' } }),
     stderr: '',
     code: 0,
     truncated: true,
@@ -304,12 +339,17 @@ test('a transient probe failure is not cached, and a nonzero-exit help proves no
   process.env.STUB_HELP = 'fail';
   await adapter.resetProbe();
   await adapter.prepare();
-  assert.equal(adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'), false,
-    'a failed probe yields no flag for this job');
+  assert.equal(
+    adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'),
+    false,
+    'a failed probe yields no flag for this job',
+  );
   process.env.STUB_HELP = 'standalone';
   await adapter.prepare(); // no resetProbe: the failure must not have been cached
-  assert.ok(adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'),
-    'a later job must re-probe and find the flag');
+  assert.ok(
+    adapter.buildInvocation({ consultant: asConsultant('opencode') }).args.includes('--standalone'),
+    'a later job must re-probe and find the flag',
+  );
   delete process.env.STUB_HELP;
   await adapter.resetProbe();
 });
@@ -329,9 +369,10 @@ test('a nonzero exit fails the job even when a completed answer exists', () => {
 
 test('an error before the answer with a nonzero exit fails too, not recovers', () => {
   const out = adapter.interpret({
-    stdout: line({ type: 'error', error: { name: 'ProviderAuthError', data: { message: 'rate limited, retrying' } } })
-      + textEvent(JSON.stringify({ summary: 'the answer stands' }))
-      + finishEvent({}, null),
+    stdout:
+      line({ type: 'error', error: { name: 'ProviderAuthError', data: { message: 'rate limited, retrying' } } }) +
+      textEvent(JSON.stringify({ summary: 'the answer stands' })) +
+      finishEvent({}, null),
     stderr: '',
     code: 1,
   });
@@ -379,7 +420,7 @@ test('progress says how far a consultation has got', () => {
   const stream = [
     line({ type: 'step_start', part: { type: 'step-start' } }),
     line({ type: 'tool_use', part: { type: 'tool', tool: 'grep', state: { status: 'running' } } }),
-    '{"type":"text","part":{"type":"te',  // a line cut off mid-write, as a kill does
+    '{"type":"text","part":{"type":"te', // a line cut off mid-write, as a kill does
   ].join('');
   const summary = adapter.progress({ stdout: stream });
   assert.match(summary, /2 event\(s\)/);
@@ -398,7 +439,12 @@ test('progress is null when there is nothing to report', () => {
 test('recoverAuthFailure seeds and reports readiness only for a no-route failure', () => {
   const noRoute = { ok: false, failureKind: 'model_unavailable' };
   let seededFor = null;
-  const sandbox = { seed: (provider) => { seededFor = provider; return true; } };
+  const sandbox = {
+    seed: (provider) => {
+      seededFor = provider;
+      return true;
+    },
+  };
   assert.equal(
     adapter.recoverAuthFailure({ interpreted: noRoute, sandbox, model: 'zai-coding-plan/glm-5.3' }),
     true,
@@ -419,7 +465,10 @@ test('recoverAuthFailure seeds and reports readiness only for a no-route failure
 });
 
 test('compactLine strips tool results but keeps what progress reads', () => {
-  const big = JSON.stringify({ type: 'tool_use', part: { type: 'tool', tool: 'read', state: { status: 'completed', output: 'x'.repeat(1000), metadata: { preview: 'y' } } } });
+  const big = JSON.stringify({
+    type: 'tool_use',
+    part: { type: 'tool', tool: 'read', state: { status: 'completed', output: 'x'.repeat(1000), metadata: { preview: 'y' } } },
+  });
   const out = JSON.parse(adapter.compactLine(big));
   assert.deepEqual(out, { type: 'tool_use', part: { type: 'tool', tool: 'read', state: { status: 'completed' } } });
   const text = JSON.stringify({ type: 'text', part: { type: 'text', text: 'hi' } });
@@ -431,9 +480,10 @@ test('compactLine strips tool results but keeps what progress reads', () => {
 // stderr. The message used to be the head of stdout, which hid how the run
 // ended and let a token count ("reasoning":403) classify as auth.
 test('a silent nonzero exit reports status and progress, never raw stdout', () => {
-  const stdout = line({ type: 'step_start', part: { type: 'step-start' } })
-    + line({ type: 'step_finish', part: { type: 'step-finish', tokens: { input: 5846, output: 46, reasoning: 403 } } })
-    + line({ type: 'tool_use', part: { type: 'tool', tool: 'glob', state: { status: 'completed' } } });
+  const stdout =
+    line({ type: 'step_start', part: { type: 'step-start' } }) +
+    line({ type: 'step_finish', part: { type: 'step-finish', tokens: { input: 5846, output: 46, reasoning: 403 } } }) +
+    line({ type: 'tool_use', part: { type: 'tool', tool: 'glob', state: { status: 'completed' } } });
   const out = adapter.interpret({ stdout, stderr: '', code: 1 });
   assert.equal(out.ok, false);
   assert.equal(out.failureKind, 'cli_error');
@@ -457,10 +507,14 @@ test('the invocation sends opencode logs to stderr, at a level each CLI accepts'
     process.env.STUB_HELP = 'standalone';
     await adapter.prepare();
     const v2 = adapter.buildInvocation({ consultant: asConsultant('opencode') }).args;
-    assert.deepEqual(v2.slice(v2.indexOf('--log-level'), v2.indexOf('--log-level') + 2), ['--log-level', 'warn'],
-      '2.x rejects "WARN"; only lowercase levels parse');
+    assert.deepEqual(
+      v2.slice(v2.indexOf('--log-level'), v2.indexOf('--log-level') + 2),
+      ['--log-level', 'warn'],
+      '2.x rejects "WARN"; only lowercase levels parse',
+    );
   } finally {
-    if (prev === undefined) delete process.env.STUB_HELP; else process.env.STUB_HELP = prev;
+    if (prev === undefined) delete process.env.STUB_HELP;
+    else process.env.STUB_HELP = prev;
     await adapter.resetProbe();
   }
 });

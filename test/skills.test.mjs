@@ -23,21 +23,26 @@ test('every host has a skill that names its peers and not itself as the default'
     const text = read(host);
     for (const peer of peers) assert.match(text, new RegExp(peer), `${host} skill must offer ${peer}`);
     assert.match(text.split('\n')[2], /^description:/, `${host} skill needs frontmatter description`);
-    assert.ok(!new RegExp(`independent opinion, review or structured debate from ${self}`).test(text),
-      `${host} skill must not advertise consulting itself`);
+    assert.ok(
+      !new RegExp(`independent opinion, review or structured debate from ${self}`).test(text),
+      `${host} skill must not advertise consulting itself`,
+    );
   }
 });
 
 test('the trigger phrases cover the vendor aliases in both languages', () => {
   for (const host of Object.keys(HOSTS)) {
-    const description = read(host).split('\n').find((l) => l.startsWith('description:'));
-    const expected = host === 'codex'
-      ? ['Claudeに聞いて', 'Geminiと相談して', 'GLMに聞いて', 'ask Claude', 'ask Gemini', 'ask GLM']
-      : host === 'claude'
-        ? ['gptと相談して', 'Geminiと相談して', 'GLMに聞いて', 'ask GPT', 'ask Gemini', 'ask GLM']
-        : host === 'antigravity'
-          ? ['gptと相談して', 'Claudeに聞いて', 'GLMに聞いて', 'ask GPT', 'ask Claude', 'ask GLM']
-          : ['gptと相談して', 'Claudeに聞いて', 'Geminiと相談して', 'ask GPT', 'ask Claude', 'ask Gemini'];
+    const description = read(host)
+      .split('\n')
+      .find((l) => l.startsWith('description:'));
+    const expected =
+      host === 'codex'
+        ? ['Claudeに聞いて', 'Geminiと相談して', 'GLMに聞いて', 'ask Claude', 'ask Gemini', 'ask GLM']
+        : host === 'claude'
+          ? ['gptと相談して', 'Geminiと相談して', 'GLMに聞いて', 'ask GPT', 'ask Gemini', 'ask GLM']
+          : host === 'antigravity'
+            ? ['gptと相談して', 'Claudeに聞いて', 'GLMに聞いて', 'ask GPT', 'ask Claude', 'ask GLM']
+            : ['gptと相談して', 'Claudeに聞いて', 'Geminiと相談して', 'ask GPT', 'ask Claude', 'ask Gemini'];
     for (const phrase of expected) {
       assert.ok(description.includes(phrase), `${host} description must contain ${phrase}`);
     }
@@ -51,17 +56,11 @@ test('the trigger phrases cover the vendor aliases in both languages', () => {
 // from reading as "not covered".
 test('the description says its trigger phrases are examples rather than an exact list', () => {
   for (const host of Object.keys(HOSTS)) {
-    const description = read(host).split('\n').find((l) => l.startsWith('description:'));
-    assert.match(
-      description,
-      /examples, not an exact list/i,
-      `${host} description must say the phrases are examples`,
-    );
-    assert.match(
-      description,
-      /any wording|any phrasing/i,
-      `${host} description must invite wordings it does not list`,
-    );
+    const description = read(host)
+      .split('\n')
+      .find((l) => l.startsWith('description:'));
+    assert.match(description, /examples, not an exact list/i, `${host} description must say the phrases are examples`);
+    assert.match(description, /any wording|any phrasing/i, `${host} description must invite wordings it does not list`);
     assert.ok(
       description.includes('みんなに聞いて'),
       `${host} description should carry a particle variant of the everyone phrasing`,
@@ -81,8 +80,11 @@ test('every skill teaches the fan-out: targets, group_id, and that agreement is 
     assert.match(text, /consult_cancel\(\{ group_id/, `${host} skill must show how to cancel a fan-out`);
     assert.match(text, /comparison\.by_target/, `${host} skill must point at the side-by-side`);
     assert.match(text, /identical brief/i, `${host} skill must say every consultant gets the same brief`);
-    assert.match(text, /not agreement|not evidence of agreement/i,
-      `${host} skill must warn that matching summaries are not agreement`);
+    assert.match(
+      text,
+      /not agreement|not evidence of agreement/i,
+      `${host} skill must warn that matching summaries are not agreement`,
+    );
   }
 });
 
@@ -110,18 +112,19 @@ test('every skill answers "ask everyone" with all, its own CLI included', () => 
     assert.match(text, /your own CLI on a fresh session included/, `${host} skill must include itself in everyone`);
     // The default second-opinion rule asks a fresh self session too, and no
     // longer drops it when the lead already runs its lineage's top tier.
-    assert.doesNotMatch(text, /leave\s+the\s+fan-out\s+at\s+the\s+three\s+peers|drops it when you are already running/i,
-      `${host} skill must not drop its own CLI from the default fan-out`);
+    assert.doesNotMatch(
+      text,
+      /leave\s+the\s+fan-out\s+at\s+the\s+three\s+peers|drops it when you are already running/i,
+      `${host} skill must not drop its own CLI from the default fan-out`,
+    );
     // The plain two-reading fan-out is still a pair of peers.
     assert.match(
       text,
       new RegExp(`targets: \\["${p0}", "${p1}"\\]`),
       `${host} skill must keep a two-peer fan-out for "two independent readings"`,
     );
-    assert.match(text, /not another lineage/i,
-      `${host} skill must keep the self member's caveat`);
-    assert.match(text, /concurrency cap/i,
-      `${host} skill must tell the lead how a fan-out relates to the concurrency cap`);
+    assert.match(text, /not another lineage/i, `${host} skill must keep the self member's caveat`);
+    assert.match(text, /concurrency cap/i, `${host} skill must tell the lead how a fan-out relates to the concurrency cap`);
   }
 });
 
@@ -151,7 +154,11 @@ test('SKILL.md is the three-call routine, small, and points at reference.md for 
     assert.match(text, /before you ask the user to approve/i);
     assert.doesNotMatch(text, /wait_ms/, 'consult_get waits by default');
     assert.doesNotMatch(text, /^\s*mode: "/m, 'the mode is read from the context');
-    assert.doesNotMatch(text, /consult_export\(|reflection: \{|Asking one consultant to answer another/, `${host} SKILL.md carries reference material`);
+    assert.doesNotMatch(
+      text,
+      /consult_export\(|reflection: \{|Asking one consultant to answer another/,
+      `${host} SKILL.md carries reference material`,
+    );
   }
 });
 
@@ -210,7 +217,11 @@ test('every skill points at the stance column and forbids discarding a same-vend
   for (const host of Object.keys(HOSTS)) {
     const text = read(host);
     assert.match(text, /`stance`/, `${host} skill must point at the stance column`);
-    assert.match(text, /same finding|share a finding|shared finding/i, `${host} skill must warn about shared findings with opposite stances`);
+    assert.match(
+      text,
+      /same finding|share a finding|shared finding/i,
+      `${host} skill must warn about shared findings with opposite stances`,
+    );
     assert.doesNotMatch(text, /for nothing/, `${host} skill must not call a same-vendor slot worthless`);
     assert.match(text, /not a reason to (skip|discard|dismiss)/i, `${host} skill must say the caveat is not a reason to discard`);
   }
@@ -259,8 +270,11 @@ test('every skill closes by running the decision-critical check and naming what 
     assert.match(text, /## Before you hand the decision back/, `${host} skill must have the hand-back section`);
     assert.match(text, /one check that would change the decision/i, `${host} skill must ask for one decisive check`);
     assert.match(text, /still unverified/i, `${host} skill must ask the lead to name what is still unverified`);
-    assert.match(text, /consult_record\(\{ job_id: "\.\.\.", entries: \[\s*\{ id: "c1", verdict: "confirmed"/,
-      `${host} skill must show recording the check it ran`);
+    assert.match(
+      text,
+      /consult_record\(\{ job_id: "\.\.\.", entries: \[\s*\{ id: "c1", verdict: "confirmed"/,
+      `${host} skill must show recording the check it ran`,
+    );
   }
 });
 
@@ -274,7 +288,11 @@ test('every skill consults before asking approval of a hard-to-reverse change, w
     assert.match(text, /before you ask the user to approve/i, `${host} skill must attach to the approval moment`);
     assert.match(text, /consult first/i, `${host} skill must consult before asking`);
     assert.match(text, /Do not ask whether to consult/, `${host} skill must not offer instead of consulting`);
-    assert.match(text, /must\s+not reach another vendor's model/, `${host} skill must still ask before sending material that must stay`);
+    assert.match(
+      text,
+      /must\s+not reach another vendor's model/,
+      `${host} skill must still ask before sending material that must stay`,
+    );
   }
 });
 
@@ -312,7 +330,7 @@ test('no skill recommends a smaller default than the one consultant-count rule',
   }
 });
 
-test('the README\'s npx line names the version being released', async () => {
+test("the README's npx line names the version being released", async () => {
   const fs = await import('node:fs');
   const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   for (const readme of ['README.md', 'README.ja.md']) {
@@ -325,7 +343,7 @@ test('the README\'s npx line names the version being released', async () => {
 
 // The one-line description is the same sentence in the README and in
 // package.json, so npm and the repository say one thing.
-test('the README\'s short description is package.json\'s description', async () => {
+test("the README's short description is package.json's description", async () => {
   const fs = await import('node:fs');
   const { description } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const lines = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8').split(/\r?\n/);

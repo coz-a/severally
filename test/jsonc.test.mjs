@@ -11,10 +11,9 @@ test('line and block comments are ignored', () => {
 });
 
 test('trailing commas are allowed, in objects and in arrays', () => {
-  assert.deepEqual(
-    parseJsonc('{ "targets": { "codex": { "models": ["a", "b",], }, }, }'),
-    { targets: { codex: { models: ['a', 'b'] } } },
-  );
+  assert.deepEqual(parseJsonc('{ "targets": { "codex": { "models": ["a", "b",], }, }, }'), {
+    targets: { codex: { models: ['a', 'b'] } },
+  });
 });
 
 // The reason this is a scanner and not a regex: a value may contain the very

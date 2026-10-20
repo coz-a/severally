@@ -42,9 +42,18 @@ while (view.status === 'running') {
 console.log(`status=${view.status} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 if (view.status === 'completed') {
   console.log('summary:', view.result.summary.slice(0, 400));
-  console.log('findings:', view.result.findings.length, '| alternatives:', view.result.alternatives.length,
-    '| decision_changers:', view.result.decision_changers.length, '| next_checks:', view.result.next_checks.length,
-    '| remaining_disagreements:', view.result.remaining_disagreements.length);
+  console.log(
+    'findings:',
+    view.result.findings.length,
+    '| alternatives:',
+    view.result.alternatives.length,
+    '| decision_changers:',
+    view.result.decision_changers.length,
+    '| next_checks:',
+    view.result.next_checks.length,
+    '| remaining_disagreements:',
+    view.result.remaining_disagreements.length,
+  );
   console.log('usage:', JSON.stringify(view.usage));
   console.log('quality:', JSON.stringify(view.quality));
 } else {
@@ -52,10 +61,23 @@ if (view.status === 'completed') {
 }
 
 console.log('\n--- 2. follow-up round on the same chain ---');
-const fu = P(await client.callTool({ name: 'consult_start', arguments: { request: { ...request, mode: 'debate',
-  question: 'Given your answer, does anything change if ids are only ever copied by the model, never typed by a human?',
-  context: { ...request.context, facts: [...request.context.facts, 'The lead pastes the id back verbatim from the tool result.'] },
-  followup_to: started.job_id } } }));
+const fu = P(
+  await client.callTool({
+    name: 'consult_start',
+    arguments: {
+      request: {
+        ...request,
+        mode: 'debate',
+        question: 'Given your answer, does anything change if ids are only ever copied by the model, never typed by a human?',
+        context: {
+          ...request.context,
+          facts: [...request.context.facts, 'The lead pastes the id back verbatim from the tool result.'],
+        },
+        followup_to: started.job_id,
+      },
+    },
+  }),
+);
 console.log('followup job:', fu.job_id, '| round:', fu.round, '| chain matches:', fu.chain_id === started.chain_id);
 
 console.log('\n--- 3. cancel it mid-flight; confirm the child CLI dies ---');
@@ -78,11 +100,19 @@ await client.close();
 
 function countClaudeChildren() {
   try {
-    const out = process.platform === 'win32'
-      ? execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        'Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine'],
-      { encoding: 'utf8', windowsHide: true })
-      : execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
+    const out =
+      process.platform === 'win32'
+        ? execFileSync(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              'Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine',
+            ],
+            { encoding: 'utf8', windowsHide: true },
+          )
+        : execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
     return out.split('\n').filter((l) => l.includes('--no-session-persistence') && l.includes('--restricted')).length;
   } catch (error) {
     console.warn(`Could not inspect consultant processes: ${error.message}`);

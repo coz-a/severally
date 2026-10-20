@@ -50,9 +50,20 @@ test('the agy hook answers every call, and denies what it cannot read or check',
 
 test('the agy hook allows only the read and web tools, and refuses agent tools and new ones', () => {
   const sandbox = agySandbox({ workdir: workdir() });
-  for (const name of ['view_file', 'search_web', 'read_url_content', 'finish']) assert.equal(hook(sandbox, { name }), 'allow', name);
-  for (const name of ['invoke_subagent', 'define_subagent', 'manage_subagents', 'send_message', 'schedule',
-    'manage_task', 'ask_question', 'write_to_file', 'run_command', 'some_tool_added_next_release']) {
+  for (const name of ['view_file', 'search_web', 'read_url_content', 'finish'])
+    assert.equal(hook(sandbox, { name }), 'allow', name);
+  for (const name of [
+    'invoke_subagent',
+    'define_subagent',
+    'manage_subagents',
+    'send_message',
+    'schedule',
+    'manage_task',
+    'ask_question',
+    'write_to_file',
+    'run_command',
+    'some_tool_added_next_release',
+  ]) {
     assert.equal(hook(sandbox, { name }), 'deny', name);
   }
   sandbox.cleanup();
@@ -73,9 +84,26 @@ test('the agy hook refuses credential and history paths, symlinks resolved, and 
   assert.equal(hook(sandbox, { name: 'read_url_content', args: { Url: 'https://example.com/.env' } }), 'allow');
   // Description text is not a path, even though the hook runs inside the protected sandbox home.
   const controlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-control-'));
-  assert.equal(hook(sandbox, { name: 'view_file', args: { AbsolutePath: path.join(controlDir, 'control.txt'), toolAction: 'Reading control.txt', toolSummary: 'Read control.txt' } },
-    { workspacePaths: [work] }), 'allow');
-  assert.equal(hook(sandbox, { name: 'view_file', args: { AbsolutePath: '.env' } }, { workspacePaths: ['/srv/app'] }), 'deny', 'relative to the workspace');
+  assert.equal(
+    hook(
+      sandbox,
+      {
+        name: 'view_file',
+        args: {
+          AbsolutePath: path.join(controlDir, 'control.txt'),
+          toolAction: 'Reading control.txt',
+          toolSummary: 'Read control.txt',
+        },
+      },
+      { workspacePaths: [work] },
+    ),
+    'allow',
+  );
+  assert.equal(
+    hook(sandbox, { name: 'view_file', args: { AbsolutePath: '.env' } }, { workspacePaths: ['/srv/app'] }),
+    'deny',
+    'relative to the workspace',
+  );
   // Older releases sent `parameters`; still checked.
   assert.equal(hook(sandbox, { name: 'view_file', parameters: { AbsolutePath: '/srv/.env' } }), 'deny');
   // The final answer is text, not a path: naming a protected file in it must not block the answer.
@@ -89,8 +117,29 @@ test('the agy hook refuses credential and history paths, symlinks resolved, and 
   const brain = path.join(sandbox.root, '.gemini', 'antigravity-cli', 'brain', '59d3eb97-f8de-40f7-b3f1-2ff19bc7a68d');
   assert.equal(view(path.join(brain, '.system_generated', 'steps', '2', 'content.md')), 'allow');
   assert.equal(view(path.join(brain, '.system_generated', 'logs', 'transcript.jsonl')), 'deny');
-  assert.equal(view(path.join(brain, '.system_generated', 'steps', '2', '..', '..', '..', '..', 'antigravity-oauth-token')), 'deny');
-  assert.equal(view(path.join(home, 'homes', 'job_other', '.gemini', 'antigravity-cli', 'brain', 'x', '.system_generated', 'steps', '1', 'content.md')), 'deny', 'another sandbox');
+  assert.equal(
+    view(path.join(brain, '.system_generated', 'steps', '2', '..', '..', '..', '..', 'antigravity-oauth-token')),
+    'deny',
+  );
+  assert.equal(
+    view(
+      path.join(
+        home,
+        'homes',
+        'job_other',
+        '.gemini',
+        'antigravity-cli',
+        'brain',
+        'x',
+        '.system_generated',
+        'steps',
+        '1',
+        'content.md',
+      ),
+    ),
+    'deny',
+    'another sandbox',
+  );
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-link-'));
   fs.writeFileSync(path.join(dir, '.env'), 'X=1');
   fs.symlinkSync(path.join(dir, '.env'), path.join(dir, 'innocent.txt'));
@@ -129,7 +178,12 @@ test('claude-code is launched with read deny rules, and without web tools when t
   assert.ok(settings.permissions.deny.includes('Read(//**/.env)'));
   assert.equal(on[on.indexOf('--tools') + 1], 'WebSearch,WebFetch,Read,Glob,Grep');
 
-  const off = claude.buildInvocation({ consultant: asConsultant('claude-code'), workdir: '/w', guardrails: 'g', network: 'off' }).args;
+  const off = claude.buildInvocation({
+    consultant: asConsultant('claude-code'),
+    workdir: '/w',
+    guardrails: 'g',
+    network: 'off',
+  }).args;
   assert.equal(off[off.indexOf('--tools') + 1], 'Read,Glob,Grep');
   assert.ok(!off.includes('--allowedTools'), 'no allow rule for web tools that are not there');
   assert.equal(claude.boundary({ args: off, hasExposedPaths: false }).web, false);
@@ -156,7 +210,10 @@ test('a transient refusal is rate_limited, a used-up quota stays usage_limit', (
   assert.equal(classifyMessage("You've hit your usage limit"), 'usage_limit');
   assert.equal(classifyMessage('quota exceeded (429)'), 'usage_limit');
   // agy, 2026-10-18: retried twice as cli_error before this was matched.
-  assert.equal(classifyMessage('Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 145h4m57s.'), 'usage_limit');
+  assert.equal(
+    classifyMessage('Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 145h4m57s.'),
+    'usage_limit',
+  );
   assert.equal(classifyMessage('Variant unavailable for opencode/nemotron-3-ultra-free: high'), 'model_unavailable');
   assert.equal(isRetriable('rate_limited'), true);
   assert.equal(isRetriable('usage_limit'), false);
@@ -300,7 +357,7 @@ test('opencode refuses unnamed tools and Code Mode, and reads everywhere but the
   sandbox.cleanup();
 });
 
-test('every consultant gets its own working directory as PWD, not the server\'s', async () => {
+test("every consultant gets its own working directory as PWD, not the server's", async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'env-pwd.json');
   process.env.STUB_ENV_OUT = envOut;
@@ -320,28 +377,46 @@ test('tool calls are counted from each CLI event stream, refused ones marked', a
   const agy = await import('../src/adapters/antigravity.mjs');
   const oc = await import('../src/adapters/opencode.mjs');
   const lines = (...o) => o.map((x) => JSON.stringify(x)).join('\n');
-  assert.deepEqual(codex.toolCalls({ stdout: lines(
-    { type: 'item.started', item: { id: 'a', type: 'command_execution' } },
-    { type: 'item.completed', item: { id: 'a', type: 'command_execution' } },
-    { type: 'item.completed', item: { id: 'b', type: 'collab_tool_call', tool: 'spawn_agent', status: 'failed' } },
-    { type: 'item.completed', item: { id: 'c', type: 'agent_message', text: 'x' } },
-  ) }), { command_execution: 1, 'collab_tool_call:spawn_agent:error': 1 });
-  assert.deepEqual(agy.toolCalls({ stdout: lines(
-    { event: 'step_update', step_update: { step_index: 1, tool_name: 'view_file', state: 'RUNNING' } },
-    { event: 'step_update', step_update: { step_index: 1, tool_name: 'view_file', state: 'DONE' } },
-    { event: 'step_update', step_update: { step_index: 2, tool_name: 'invoke_subagent', state: 'ERROR' } },
-  ) }), { view_file: 1, 'invoke_subagent:error': 1 });
-  assert.deepEqual(oc.toolCalls({ stdout: lines(
-    { type: 'tool_use', part: { callID: 'x', tool: 'read', state: { status: 'completed' } } },
-    { type: 'tool_use', part: { callID: 'y', tool: 'task', state: { status: 'error' } } },
-  ) }), { read: 1, 'task:error': 1 });
+  assert.deepEqual(
+    codex.toolCalls({
+      stdout: lines(
+        { type: 'item.started', item: { id: 'a', type: 'command_execution' } },
+        { type: 'item.completed', item: { id: 'a', type: 'command_execution' } },
+        { type: 'item.completed', item: { id: 'b', type: 'collab_tool_call', tool: 'spawn_agent', status: 'failed' } },
+        { type: 'item.completed', item: { id: 'c', type: 'agent_message', text: 'x' } },
+      ),
+    }),
+    { command_execution: 1, 'collab_tool_call:spawn_agent:error': 1 },
+  );
+  assert.deepEqual(
+    agy.toolCalls({
+      stdout: lines(
+        { event: 'step_update', step_update: { step_index: 1, tool_name: 'view_file', state: 'RUNNING' } },
+        { event: 'step_update', step_update: { step_index: 1, tool_name: 'view_file', state: 'DONE' } },
+        { event: 'step_update', step_update: { step_index: 2, tool_name: 'invoke_subagent', state: 'ERROR' } },
+      ),
+    }),
+    { view_file: 1, 'invoke_subagent:error': 1 },
+  );
+  assert.deepEqual(
+    oc.toolCalls({
+      stdout: lines(
+        { type: 'tool_use', part: { callID: 'x', tool: 'read', state: { status: 'completed' } } },
+        { type: 'tool_use', part: { callID: 'y', tool: 'task', state: { status: 'error' } } },
+      ),
+    }),
+    { read: 1, 'task:error': 1 },
+  );
 });
 
 test('codex runs under a permission profile that denies the protected roots, not -s read-only', () => {
   const { args } = codex.buildInvocation({ consultant: asConsultant('codex'), workdir: '/tmp/w/work', schemaPath: '/tmp/s' });
   assert.ok(!args.includes('-s'));
   const rules = args.find((a) => a.startsWith('permissions.severally.filesystem='));
-  assert.ok(rules.includes(`"${path.join(home, 'homes').replaceAll('\\', '/')}" = "none"`), 'every synthesised home, including later ones');
+  assert.ok(
+    rules.includes(`"${path.join(home, 'homes').replaceAll('\\', '/')}" = "none"`),
+    'every synthesised home, including later ones',
+  );
   assert.match(codex.boundary({ args }).protected_paths, /^denied by path/);
   const { extraArgsProblem } = JobManagerModule;
   assert.ok(extraArgsProblem('codex', args, ['-s', 'read-only']), '-s would replace the profile');
@@ -386,7 +461,10 @@ test('a running poll leaves out the limits; a fan-out carries one copy, on the g
 
 test('an OpenCode model listed with a bare trailing # runs with no variant', async () => {
   const oc = await import('../src/adapters/opencode.mjs');
-  const m = (model) => { const a = oc.buildInvocation({ consultant: asConsultant('opencode', { model }) }).args; return a[a.indexOf('-m') + 1]; };
+  const m = (model) => {
+    const a = oc.buildInvocation({ consultant: asConsultant('opencode', { model }) }).args;
+    return a[a.indexOf('-m') + 1];
+  };
   assert.equal(m('opencode/nemotron-3-ultra-free#'), 'opencode/nemotron-3-ultra-free');
   assert.equal(m('zai-coding-plan/glm-5.3#max'), 'zai-coding-plan/glm-5.3#max');
   assert.match(m('zai-coding-plan/glm-5.3'), /^zai-coding-plan\/glm-5\.3#/);

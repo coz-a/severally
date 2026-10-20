@@ -26,7 +26,11 @@ const table = (entries) => Object.freeze(Object.assign(Object.create(null), entr
 // deliberately absent: they name model families, and a Claude model hosted on
 // OpenCode should answer to "claude" too.
 export const CLI_ALIASES = table({
-  codex: 'codex', 'claude-code': 'claude-code', antigravity: 'antigravity', agy: 'antigravity', opencode: 'opencode',
+  codex: 'codex',
+  'claude-code': 'claude-code',
+  antigravity: 'antigravity',
+  agy: 'antigravity',
+  opencode: 'opencode',
 });
 
 // Names that mean "that vendor's consultants, on any CLI".
@@ -34,7 +38,12 @@ export const VENDOR_WORDS = table({ openai: 'openai', chatgpt: 'openai', anthrop
 
 // The lineage of a model, read off the first word of its stem.
 const STEM_VENDORS = table({
-  gpt: 'openai', claude: 'anthropic', gemini: 'google', glm: 'zai', deepseek: 'deepseek', nemotron: 'nvidia',
+  gpt: 'openai',
+  claude: 'anthropic',
+  gemini: 'google',
+  glm: 'zai',
+  deepseek: 'deepseek',
+  nemotron: 'nvidia',
 });
 
 // Built-in "higher first" orders, each used only inside one model family: an
@@ -53,13 +62,19 @@ export const RESERVED_NAMES = Object.freeze(['all']);
 /** Case, runs of spaces and underscores folded away: "Claude Code" -> "claude-code". */
 export function normalizeName(raw) {
   if (typeof raw !== 'string') return raw;
-  return raw.trim().toLowerCase().replace(/[\s_]+/g, '-');
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
 }
 
 /** "zai-coding-plan/glm-5.3" -> ["glm", "5", "3"]: the provider prefix is not part of the model. */
 export function modelWords(model) {
   const s = String(model ?? '').toLowerCase();
-  return s.slice(s.lastIndexOf('/') + 1).split(/[-._#:\s]+/).filter(Boolean);
+  return s
+    .slice(s.lastIndexOf('/') + 1)
+    .split(/[-._#:\s]+/)
+    .filter(Boolean);
 }
 
 const isDigitWord = (w) => /^v?\d+$/.test(w);
@@ -89,8 +104,7 @@ export function vendorOf(model, explicit = null) {
   return STEM_VENDORS[first] ?? null;
 }
 
-const containsRun = (hay, needle) => needle.length > 0
-  && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
+const containsRun = (hay, needle) => needle.length > 0 && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
 
 /** Does the name appear in the model id as whole words? "claude opus" in "claude-opus-5-5": yes; "g" in "gpt-6": no. */
 export function matchesWords(model, wanted) {
@@ -221,7 +235,10 @@ export function buildConsultants(config) {
   const global = [];
   const broken = {};
   const brokenClis = {};
-  const fault = (msg) => { problems.push(msg); global.push(msg); };
+  const fault = (msg) => {
+    problems.push(msg);
+    global.push(msg);
+  };
   const cfg = isObject(config) ? config : {};
   if (!isObject(config)) fault('the config file must hold a JSON object');
   for (const key of Object.keys(cfg)) {
@@ -236,7 +253,8 @@ export function buildConsultants(config) {
 
   let ranking = [];
   if (cfg.ranking !== undefined) {
-    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === 'string' && r.trim() !== '')) ranking = cfg.ranking.map((r) => r.trim());
+    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === 'string' && r.trim() !== ''))
+      ranking = cfg.ranking.map((r) => r.trim());
     else fault('ranking must be an array of non-empty strings');
   }
 
@@ -244,19 +262,32 @@ export function buildConsultants(config) {
     if (!isObject(cfg.clis)) fault('clis must be an object keyed by CLI');
     else {
       for (const [id, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(id)) { problems.push(`clis.${id}: unknown CLI (known: ${CLI_IDS.join(', ')})`); continue; }
+        if (!CLI_IDS.includes(id)) {
+          problems.push(`clis.${id}: unknown CLI (known: ${CLI_IDS.join(', ')})`);
+          continue;
+        }
         const before = problems.length;
-        if (!isObject(def)) { problems.push(`clis.${id} must be an object`); brokenClis[id] = problems.slice(before); continue; }
-        for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id}.${k}: unknown key (allowed: ${CLI_KEYS.join(', ')})`);
+        if (!isObject(def)) {
+          problems.push(`clis.${id} must be an object`);
+          brokenClis[id] = problems.slice(before);
+          continue;
+        }
+        for (const k of Object.keys(def))
+          if (!CLI_KEYS.includes(k)) problems.push(`clis.${id}.${k}: unknown key (allowed: ${CLI_KEYS.join(', ')})`);
         // A wrong type must not fall back to a default: enabled: "false"
         // read as "unset" would turn on the CLI the operator meant to stop.
-        if (def.enabled !== undefined && typeof def.enabled !== 'boolean') problems.push(`clis.${id}.enabled: must be true or false`);
-        for (const k of ['bin', 'note']) if (def[k] !== undefined && typeof def[k] !== 'string') problems.push(`clis.${id}.${k}: must be a string`);
-        if (def.args !== undefined && !(Array.isArray(def.args) && def.args.every((a) => typeof a === 'string'))) problems.push(`clis.${id}.args: must be an array of strings`);
-        if (def.env !== undefined && !(isObject(def.env) && Object.values(def.env).every((v) => typeof v === 'string'))) problems.push(`clis.${id}.env: must be an object of strings`);
+        if (def.enabled !== undefined && typeof def.enabled !== 'boolean')
+          problems.push(`clis.${id}.enabled: must be true or false`);
+        for (const k of ['bin', 'note'])
+          if (def[k] !== undefined && typeof def[k] !== 'string') problems.push(`clis.${id}.${k}: must be a string`);
+        if (def.args !== undefined && !(Array.isArray(def.args) && def.args.every((a) => typeof a === 'string')))
+          problems.push(`clis.${id}.args: must be an array of strings`);
+        if (def.env !== undefined && !(isObject(def.env) && Object.values(def.env).every((v) => typeof v === 'string')))
+          problems.push(`clis.${id}.env: must be an object of strings`);
         if (def.provider !== undefined) {
           if (id !== 'opencode') problems.push(`clis.${id}.provider: only OpenCode takes provider definitions`);
-          else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject))) problems.push(`clis.${id}.provider: must be an object of provider objects, as in opencode.json`);
+          else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject)))
+            problems.push(`clis.${id}.provider: must be an object of provider objects, as in opencode.json`);
         }
         if (problems.length > before) brokenClis[id] = problems.slice(before);
       }
@@ -272,11 +303,22 @@ export function buildConsultants(config) {
     const seen = new Map();
     for (const [name, def] of Object.entries(cfg.consultants)) {
       const at = `consultants.${name}`;
-      if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) { problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`); continue; }
-      if (RESERVED_NAMES.includes(name)) { problems.push(`${at}: "${name}" is reserved`); continue; }
+      if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) {
+        problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`);
+        continue;
+      }
+      if (RESERVED_NAMES.includes(name)) {
+        problems.push(`${at}: "${name}" is reserved`);
+        continue;
+      }
       const before = problems.length;
-      if (!isObject(def)) { problems.push(`${at} must be an object`); broken[name] = problems.slice(before); continue; }
-      for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(', ')})`);
+      if (!isObject(def)) {
+        problems.push(`${at} must be an object`);
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      for (const k of Object.keys(def))
+        if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(', ')})`);
       if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
       if (typeof def.model !== 'string' || def.model.trim() === '') problems.push(`${at}.model: required`);
       for (const k of ['effort', 'vendor', 'note']) {
@@ -284,12 +326,18 @@ export function buildConsultants(config) {
       }
       if (def.enabled !== undefined && typeof def.enabled !== 'boolean') problems.push(`${at}.enabled: must be true or false`);
       for (const k of ['timeout_ms', 'max_budget_usd']) {
-        if (def[k] !== undefined && !(typeof def[k] === 'number' && Number.isFinite(def[k]))) problems.push(`${at}.${k}: must be a number`);
+        if (def[k] !== undefined && !(typeof def[k] === 'number' && Number.isFinite(def[k])))
+          problems.push(`${at}.${k}: must be a number`);
       }
-      if (def.max_budget_usd !== undefined && def.cli !== 'claude-code') problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
+      if (def.max_budget_usd !== undefined && def.cli !== 'claude-code')
+        problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
       // agy takes the effort from the model name and rejects --effort.
-      if (def.effort !== undefined && def.cli === 'antigravity') problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
-      if (problems.length > before) { broken[name] = problems.slice(before); continue; }
+      if (def.effort !== undefined && def.cli === 'antigravity')
+        problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
+      if (problems.length > before) {
+        broken[name] = problems.slice(before);
+        continue;
+      }
       const pair = `${def.cli}\n${def.model.trim()}`;
       if (seen.has(pair)) {
         problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);

@@ -17,10 +17,10 @@ import { buildConsultants, normalizeName } from './consultants.mjs';
 const CONFIG_HOME = process.env.SEVERALLY_HOME || path.join(os.homedir(), '.severally');
 // .jsonc first, for operators whose editor treats comments in a .json file as
 // an error; both are read the same way, comments and all.
-const CONFIG_PATH = process.env.SEVERALLY_CONFIG
-  || [path.join(CONFIG_HOME, 'config.jsonc'), path.join(CONFIG_HOME, 'config.json')]
-    .find((p) => fs.existsSync(p))
-  || path.join(CONFIG_HOME, 'config.json');
+const CONFIG_PATH =
+  process.env.SEVERALLY_CONFIG ||
+  [path.join(CONFIG_HOME, 'config.jsonc'), path.join(CONFIG_HOME, 'config.json')].find((p) => fs.existsSync(p)) ||
+  path.join(CONFIG_HOME, 'config.json');
 
 let configError = null;
 const CONFIG = (() => {
@@ -75,9 +75,12 @@ const usable = configError ? {} : CONFIG;
 // A CLI whose own section has a mistake is off, whatever else the section says.
 const cfgCli = (id) => {
   if (Object.hasOwn(BUILT.brokenClis, id) && !configError) {
-    return { enabled: false, note: `turned off: the config file has a mistake in clis.${id}: ${BUILT.brokenClis[id].join('; ')}` };
+    return {
+      enabled: false,
+      note: `turned off: the config file has a mistake in clis.${id}: ${BUILT.brokenClis[id].join('; ')}`,
+    };
   }
-  return usable.clis && typeof usable.clis === 'object' ? usable.clis[id] ?? {} : {};
+  return usable.clis && typeof usable.clis === 'object' ? (usable.clis[id] ?? {}) : {};
 };
 const cfgServer = usable.server && typeof usable.server === 'object' ? usable.server : {};
 
@@ -117,12 +120,23 @@ const str = (name, dflt) => {
 // The CLI a lead runs in, by any everyday name. Only `caller` uses this:
 // which consultant a name reaches is consultants.mjs's resolveConsultant.
 // Object.create(null) so 'constructor' is an unknown name, not a function.
-export const CALLER_ALIASES = Object.freeze(Object.assign(Object.create(null), {
-  codex: 'codex', gpt: 'codex', chatgpt: 'codex', openai: 'codex',
-  'claude-code': 'claude-code', claude: 'claude-code', anthropic: 'claude-code',
-  antigravity: 'antigravity', agy: 'antigravity', gemini: 'antigravity', google: 'antigravity',
-  opencode: 'opencode', glm: 'opencode',
-}));
+export const CALLER_ALIASES = Object.freeze(
+  Object.assign(Object.create(null), {
+    codex: 'codex',
+    gpt: 'codex',
+    chatgpt: 'codex',
+    openai: 'codex',
+    'claude-code': 'claude-code',
+    claude: 'claude-code',
+    anthropic: 'claude-code',
+    antigravity: 'antigravity',
+    agy: 'antigravity',
+    gemini: 'antigravity',
+    google: 'antigravity',
+    opencode: 'opencode',
+    glm: 'opencode',
+  }),
+);
 
 export const CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
 
@@ -205,18 +219,34 @@ export const POLICY = Object.freeze({
   // a consultant's business.
   clis: Object.freeze({
     codex: Object.freeze({
-      cli: CODEX_BIN, available: isEnabled('codex', CODEX_BIN), note: disabledNote('codex'), label: 'Codex CLI', ...extras('codex'),
+      cli: CODEX_BIN,
+      available: isEnabled('codex', CODEX_BIN),
+      note: disabledNote('codex'),
+      label: 'Codex CLI',
+      ...extras('codex'),
     }),
     'claude-code': Object.freeze({
-      cli: CLAUDE_BIN, available: isEnabled('claude-code', CLAUDE_BIN), note: disabledNote('claude-code'), label: 'Claude Code CLI', ...extras('claude-code'),
+      cli: CLAUDE_BIN,
+      available: isEnabled('claude-code', CLAUDE_BIN),
+      note: disabledNote('claude-code'),
+      label: 'Claude Code CLI',
+      ...extras('claude-code'),
     }),
     // Where the real Antigravity credentials live is credentialsHome() below,
     // not a field here: the sandbox reads it per job (see timeoutMs()).
     antigravity: Object.freeze({
-      cli: AGY_BIN, available: isEnabled('antigravity', AGY_BIN), note: disabledNote('antigravity'), label: 'Antigravity CLI', ...extras('antigravity'),
+      cli: AGY_BIN,
+      available: isEnabled('antigravity', AGY_BIN),
+      note: disabledNote('antigravity'),
+      label: 'Antigravity CLI',
+      ...extras('antigravity'),
     }),
     opencode: Object.freeze({
-      cli: OPENCODE_BIN, available: isEnabled('opencode', OPENCODE_BIN), note: disabledNote('opencode'), label: 'OpenCode CLI', ...extras('opencode'),
+      cli: OPENCODE_BIN,
+      available: isEnabled('opencode', OPENCODE_BIN),
+      note: disabledNote('opencode'),
+      label: 'OpenCode CLI',
+      ...extras('opencode'),
       // opencode.json `provider` definitions copied into the sandbox config:
       // the only way to reach a provider the sandbox's empty HOME would not
       // know, such as a local OpenAI-compatible server.
@@ -338,18 +368,53 @@ export function opencodeCredentialsHome() {
 // and never copied by expose_paths; Codex's read-only sandbox cannot express
 // path rules, which the boundary record says.
 export const PROTECTED_HOME_PATHS = Object.freeze([
-  '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gcloud', '.config/gh', '.config/hub',
-  '.netrc', '.npmrc', '.pypirc', '.git-credentials', '.cargo/credentials', '.cargo/credentials.toml',
-  '.terraform.d', '.vault-token', 'Library/Keychains',
-  '.codex', '.claude', '.claude.json', '.gemini', '.config/opencode', '.local/share/opencode',
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.azure',
+  '.kube',
+  '.docker',
+  '.config/gcloud',
+  '.config/gh',
+  '.config/hub',
+  '.netrc',
+  '.npmrc',
+  '.pypirc',
+  '.git-credentials',
+  '.cargo/credentials',
+  '.cargo/credentials.toml',
+  '.terraform.d',
+  '.vault-token',
+  'Library/Keychains',
+  '.codex',
+  '.claude',
+  '.claude.json',
+  '.gemini',
+  '.config/opencode',
+  '.local/share/opencode',
 ]);
 // Under POLICY.home, wherever the operator moved it.
-const PROTECTED_SEVERALLY_PATHS = Object.freeze(['history', 'backups', 'config.json', 'config.jsonc', 'homes',
+const PROTECTED_SEVERALLY_PATHS = Object.freeze([
+  'history',
+  'backups',
+  'config.json',
+  'config.jsonc',
+  'homes',
   // Where homes lived before 1.7: one left by an interrupted run can still hold an auth.json copy.
-  'jobs/*/home']);
+  'jobs/*/home',
+]);
 // File names protected wherever they are.
 export const PROTECTED_FILE_NAMES = Object.freeze([
-  '.env', '.env.*', '.npmrc', '.netrc', '.pypirc', '.git-credentials', 'id_rsa', 'id_ed25519', 'id_ecdsa', 'id_dsa',
+  '.env',
+  '.env.*',
+  '.npmrc',
+  '.netrc',
+  '.pypirc',
+  '.git-credentials',
+  'id_rsa',
+  'id_ed25519',
+  'id_ecdsa',
+  'id_dsa',
 ]);
 
 /** Absolute protected roots, with forward slashes; `*` stands for one path segment. */
@@ -366,8 +431,9 @@ const escapeRe = (s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 export const PATHS_CASE_INSENSITIVE = process.platform === 'win32' || process.platform === 'darwin';
 /** Regex sources: one per protected root, matching it and anything under it. */
 export function protectedRootPatterns(extraRoots = []) {
-  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll('\\', '/'))]
-    .map((r) => `^${escapeRe(r.replace(/\/+$/, '')).replaceAll('*', '[^/]+')}(/|$)`);
+  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll('\\', '/'))].map(
+    (r) => `^${escapeRe(r.replace(/\/+$/, '')).replaceAll('*', '[^/]+')}(/|$)`,
+  );
 }
 /** Regex sources for PROTECTED_FILE_NAMES, matched against a base name. */
 export function protectedNamePatterns() {
@@ -380,7 +446,11 @@ export function isProtectedPath(abs) {
   const roots = protectedRootPatterns().map((p) => new RegExp(p, flags));
   const names = protectedNamePatterns().map((p) => new RegExp(p, flags));
   let real = abs;
-  try { real = fs.realpathSync.native(abs); } catch { /* missing: check the name as given */ }
+  try {
+    real = fs.realpathSync.native(abs);
+  } catch {
+    /* missing: check the name as given */
+  }
   return [abs, real].some((p) => {
     const fwd = p.replaceAll('\\', '/');
     return roots.some((re) => re.test(fwd)) || names.some((re) => re.test(path.basename(fwd)));

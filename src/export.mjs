@@ -24,13 +24,21 @@ export class ExportError extends Error {
 const historyDir = () => path.join(POLICY.home, 'history');
 
 function readJson(p) {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function roundsOf(chainId) {
   const dir = path.join(historyDir(), chainId);
   let names = [];
-  try { names = fs.readdirSync(dir); } catch { return []; }
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
   return names
     .filter((n) => /^round-\d+\.json$/.test(n))
     .sort()
@@ -51,7 +59,9 @@ function chainsOfGroup(groupId) {
       const row = JSON.parse(line);
       byJob.set(row.job_id, row.chain_id);
     }
-  } catch { /* an unreadable index leaves the group unresolvable, handled below */ }
+  } catch {
+    /* an unreadable index leaves the group unresolvable, handled below */
+  }
   const chains = [];
   for (const jobId of group.job_ids ?? []) {
     const chainId = byJob.get(jobId);
@@ -80,11 +90,23 @@ function briefSection(brief) {
     out.push('');
   };
   block('Objective', brief.objective);
-  block('Success criteria', bullets(brief.success_criteria, (c) => `- ${c}`));
-  block('Constraints', bullets(brief.constraints, (c) => `- ${c}`));
-  block('Facts as given', bullets(brief.facts, (f) => `- ${f}`));
+  block(
+    'Success criteria',
+    bullets(brief.success_criteria, (c) => `- ${c}`),
+  );
+  block(
+    'Constraints',
+    bullets(brief.constraints, (c) => `- ${c}`),
+  );
+  block(
+    'Facts as given',
+    bullets(brief.facts, (f) => `- ${f}`),
+  );
   block('Proposal', brief.proposal);
-  block('Opposing claims', bullets(brief.counterpoints, (c) => `- ${c}`));
+  block(
+    'Opposing claims',
+    bullets(brief.counterpoints, (c) => `- ${c}`),
+  );
   for (const a of brief.artifacts ?? []) {
     out.push(`**Material: ${a.name}** (${[a.kind, a.language, a.source].filter(Boolean).join(', ')})`, '');
     out.push(...fence(a.excerpt, a.language));
@@ -98,15 +120,21 @@ function briefSection(brief) {
   if (exposed?.entries?.length || exposed?.skipped?.length) {
     out.push('**Files exposed to the consultant**', '');
     for (const e of exposed.entries) {
-      const since = e.changed_since_parent === undefined ? '' : e.changed_since_parent ? ', changed since the earlier round' : ', unchanged since the earlier round';
+      const since =
+        e.changed_since_parent === undefined
+          ? ''
+          : e.changed_since_parent
+            ? ', changed since the earlier round'
+            : ', unchanged since the earlier round';
       out.push(`- ${e.exposed_as} (${e.kind}, ${e.files} file(s), ${humanSize(e.bytes)}${since}) -- from ${e.source}`);
     }
     const count = (reason) => (exposed.skipped ?? []).filter((x) => x.reason === reason).length;
     if (count('symlink')) out.push(`- ${count('symlink')} symlink(s) inside those directories were skipped, not followed`);
     if (count('protected')) out.push(`- ${count('protected')} credential or history path(s) were left out on purpose`);
     if (count('gone')) out.push(`- ${count('gone')} path(s) from the earlier round no longer existed and were not copied again`);
-    if (count('masked')) out.push(`- ${count('masked')} path(s) from the earlier round were masked in its record and were not copied again`);
-    if (count('replaced')) out.push('- the earlier round\'s change was replaced by the diff given in this round');
+    if (count('masked'))
+      out.push(`- ${count('masked')} path(s) from the earlier round were masked in its record and were not copied again`);
+    if (count('replaced')) out.push("- the earlier round's change was replaced by the diff given in this round");
     out.push('');
   }
   return out;
@@ -209,7 +237,9 @@ function roundSection(round, previousBrief) {
   ];
   if (round.result) {
     head.push(`- stance as declared: ${round.result.stance ?? 'not declared'}`);
-    head.push(`- the consultant's own confidence: ${round.result.confidence ?? 'not declared'}, evidence basis: ${round.result.evidence_basis ?? 'not declared'}`);
+    head.push(
+      `- the consultant's own confidence: ${round.result.confidence ?? 'not declared'}, evidence basis: ${round.result.evidence_basis ?? 'not declared'}`,
+    );
   }
   head.push('');
   head.push('### Question', '', round.question, '');
@@ -273,5 +303,12 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
       if (round.brief) previousBrief = round.brief;
     }
   }
-  return { markdown: `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`, rounds: total, chain_ids: chainIds };
+  return {
+    markdown: `${lines
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd()}\n`,
+    rounds: total,
+    chain_ids: chainIds,
+  };
 }

@@ -5,10 +5,7 @@ import { spawnCommand as spawn } from './platform.mjs';
 import path from 'node:path';
 import { POLICY } from './policy.mjs';
 
-const DROP_EXACT = new Set([
-  'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'AI_AGENT',
-  'ANTHROPIC_LOG', 'NODE_OPTIONS',
-]);
+const DROP_EXACT = new Set(['CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT', 'AI_AGENT', 'ANTHROPIC_LOG', 'NODE_OPTIONS']);
 const DROP_PREFIX = ['CLAUDE_CODE_', 'SEVERALLY_', 'MCP_'];
 
 // Each consultant sees only its own vendor's credentials.
@@ -179,14 +176,33 @@ export class ProcHandle {
       // before its parent exits and its descendants become unreachable. Once
       // it has exited, its pid may already be another process's: leave it.
       if (this.child.exitCode !== null || this.child.signalCode !== null) return;
-      const killer = spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
-        ['/pid', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-      const fallback = () => { try { this.child.kill('SIGKILL'); } catch { /* gone */ } };
+      const killer = spawn(
+        path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+        ['/pid', String(pid), '/T', '/F'],
+        { windowsHide: true, stdio: 'ignore' },
+      );
+      const fallback = () => {
+        try {
+          this.child.kill('SIGKILL');
+        } catch {
+          /* gone */
+        }
+      };
       killer.on('error', fallback);
-      killer.on('exit', (code) => { if (code !== 0) fallback(); });
+      killer.on('exit', (code) => {
+        if (code !== 0) fallback();
+      });
       return;
     }
-    try { process.kill(-pid, signal); } catch { try { this.child.kill(signal); } catch { /* gone */ } }
+    try {
+      process.kill(-pid, signal);
+    } catch {
+      try {
+        this.child.kill(signal);
+      } catch {
+        /* gone */
+      }
+    }
     setTimeout(() => this.forceKill(), POLICY.killGraceMs).unref();
   }
 
@@ -200,7 +216,11 @@ export class ProcHandle {
   forceKill() {
     const pid = this.child?.pid;
     if (!pid || process.platform === 'win32') return;
-    try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ }
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      /* gone */
+    }
   }
 }
 
@@ -213,8 +233,18 @@ export class ProcHandle {
  * pipes closed from this side. A descendant outside the group (setsid, or on
  * Windows once the parent is gone) may still be running.
  */
-export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSignal, compactLine = null,
-  settleAfter = null, stopSignal = 'SIGTERM' }) {
+export function runChild({
+  command,
+  args,
+  cwd,
+  env,
+  input,
+  timeoutMs,
+  onCancelSignal,
+  compactLine = null,
+  settleAfter = null,
+  stopSignal = 'SIGTERM',
+}) {
   const child = spawn(command, args, {
     cwd,
     // PWD is the parent's otherwise, and opencode takes its project root from
@@ -244,17 +274,26 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
     if (ms == null || Date.now() + ms >= settleAt) return;
     settleAt = Date.now() + ms;
     clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => { stalled = true; handle.stop(stopSignal); }, ms);
+    settleTimer = setTimeout(() => {
+      stalled = true;
+      handle.stop(stopSignal);
+    }, ms);
   };
 
   const append = (which, chunk) => {
     const text = chunk.toString('utf8');
     if (which === 'out') {
-      if (stdout.length >= cap) { truncated = true; return; }
+      if (stdout.length >= cap) {
+        truncated = true;
+        return;
+      }
       stdout += text.slice(0, cap - stdout.length);
       if (stdout.length >= cap) truncated = true;
     } else {
-      if (stderr.length >= cap) { truncated = true; return; }
+      if (stderr.length >= cap) {
+        truncated = true;
+        return;
+      }
       stderr += text.slice(0, cap - stderr.length);
       if (stderr.length >= cap) truncated = true;
     }
@@ -273,7 +312,10 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
       if (settleAfter) watch(l);
       append('out', `${compact(l)}\n`);
     }
-    if (pending.length > cap) { append('out', pending); pending = ''; }
+    if (pending.length > cap) {
+      append('out', pending);
+      pending = '';
+    }
   };
   // Decode as a stream: a multibyte character split across two chunks would
   // otherwise turn into replacement characters inside the answer text.
@@ -310,7 +352,12 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
       clearTimeout(orphanTimer);
       resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
     };
-    const flushPending = () => { if (byLine && pending) { append('out', compact(pending)); pending = ''; } };
+    const flushPending = () => {
+      if (byLine && pending) {
+        append('out', compact(pending));
+        pending = '';
+      }
+    };
     child.on('error', (err) => finish({ code: null, signal: null, spawnError: err.message }));
     // 'close' waits for the pipes as well as the child. Once the child has
     // exited, a grace later the rest of its group is stopped, and a grace
@@ -336,7 +383,9 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
   });
 
   if (input !== undefined && input !== null) {
-    child.stdin.on('error', () => { /* child may exit before draining stdin */ });
+    child.stdin.on('error', () => {
+      /* child may exit before draining stdin */
+    });
     child.stdin.end(input);
   } else {
     child.stdin.end();

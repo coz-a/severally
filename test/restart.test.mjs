@@ -9,11 +9,21 @@ const home = sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
 const store = await import('../src/store.mjs');
 
-const indexLines = (jobId) => fs.readFileSync(path.join(home, 'history', 'index.jsonl'), 'utf8')
-  .split('\n').filter((l) => l.includes(jobId)).length;
+const indexLines = (jobId) =>
+  fs
+    .readFileSync(path.join(home, 'history', 'index.jsonl'), 'utf8')
+    .split('\n')
+    .filter((l) => l.includes(jobId)).length;
 // A pid that belonged to a process which has already exited.
 const deadPid = () => spawnSync(process.execPath, ['-e', '']).pid;
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 test('a finished consultation is still found by another server process', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
@@ -103,7 +113,14 @@ test('shutdown kills a consultant that ignores SIGTERM before it returns', async
 
 test('an id shaped like a path is not looked up on disk', () => {
   const outside = path.join(home, 'outside.json');
-  fs.writeFileSync(outside, JSON.stringify({ job_id: 'job_000000000000', status: 'running', owner: { pid: deadPid(), deadline_at: new Date(0).toISOString() } }));
+  fs.writeFileSync(
+    outside,
+    JSON.stringify({
+      job_id: 'job_000000000000',
+      status: 'running',
+      owner: { pid: deadPid(), deadline_at: new Date(0).toISOString() },
+    }),
+  );
   const mgr = new JobManager();
   assert.equal(mgr.view('../../outside'), null);
   assert.equal(mgr.cancel('../../outside'), null);
@@ -137,7 +154,7 @@ test('an overdue owner is reported as interrupted, keeps its directory, and may 
   assert.ok(fs.existsSync(store.jobDir(s.job_id)), 'a pid that is still alive keeps its working directory');
   a.cancel(s.job_id);
   await a.jobs.get(s.job_id).promise;
-  assert.equal(store.loadRound(s.job_id).status, 'cancelled', 'the owner\'s own close-out replaces it');
+  assert.equal(store.loadRound(s.job_id).status, 'cancelled', "the owner's own close-out replaces it");
   assert.equal(indexLines(s.job_id), 1);
 });
 
@@ -171,11 +188,20 @@ test('the concurrency cap counts consultations other severally processes are run
   othersHold(Array.from({ length: POLICY.maxConcurrent - 1 }, () => seat(process.ppid)));
   process.env.STUB_BEHAVIOR = 'ok';
   const a = new JobManager();
-  assert.throws(() => a.start(reviewRequest({ target: undefined, targets: ['codex', 'gemini'] })), (err) => err.code === 'concurrency_limit'
-    && new RegExp(`${POLICY.maxConcurrent - 1} of the ${POLICY.maxConcurrent - 1} running are in other severally processes`).test(err.message));
+  assert.throws(
+    () => a.start(reviewRequest({ target: undefined, targets: ['codex', 'gemini'] })),
+    (err) =>
+      err.code === 'concurrency_limit' &&
+      new RegExp(`${POLICY.maxConcurrent - 1} of the ${POLICY.maxConcurrent - 1} running are in other severally processes`).test(
+        err.message,
+      ),
+  );
   // Refused whole: the seat the first member would have taken is free again.
   const s = a.start(reviewRequest());
-  assert.throws(() => a.start(reviewRequest()), (err) => err.code === 'concurrency_limit');
+  assert.throws(
+    () => a.start(reviewRequest()),
+    (err) => err.code === 'concurrency_limit',
+  );
   await a.jobs.get(s.job_id).promise;
   // Finished, its seat is given back.
   const t = a.start(reviewRequest());
@@ -195,7 +221,11 @@ test('a seat whose process died, or that is past its deadline, is taken back', a
   const a = new JobManager();
   const s = a.start(reviewRequest({ target: undefined, targets: ['codex', 'gemini'] }));
   await Promise.all(s.jobs.map((j) => a.jobs.get(j.job_id).promise));
-  assert.deepEqual(fs.readdirSync(path.join(home, 'slots')).filter((n) => n.endsWith('.json')), [], 'the stale seats were removed');
+  assert.deepEqual(
+    fs.readdirSync(path.join(home, 'slots')).filter((n) => n.endsWith('.json')),
+    [],
+    'the stale seats were removed',
+  );
 });
 
 test('two processes taking the last seats at once cannot both get them', async () => {
@@ -212,12 +242,20 @@ test('two processes taking the last seats at once cannot both get them', async (
     process.stdout.write(JSON.stringify(r) + '\\n');
     process.stdin.resume(); process.stdin.on('end', () => process.exit(0));`;
   const children = [0, 1].map(() => spawn(process.execPath, ['--input-type=module', '-e', script], { env: process.env }));
-  const results = await Promise.all(children.map((c) => new Promise((resolve, reject) => {
-    let out = '';
-    c.stdout.on('data', (d) => { out += d; if (out.includes('\n')) resolve(JSON.parse(out)); });
-    c.on('error', reject);
-    c.on('exit', (code) => reject(new Error(`child exited ${code} before answering`)));
-  })));
+  const results = await Promise.all(
+    children.map(
+      (c) =>
+        new Promise((resolve, reject) => {
+          let out = '';
+          c.stdout.on('data', (d) => {
+            out += d;
+            if (out.includes('\n')) resolve(JSON.parse(out));
+          });
+          c.on('error', reject);
+          c.on('exit', (code) => reject(new Error(`child exited ${code} before answering`)));
+        }),
+    ),
+  );
   for (const c of children) c.stdin.end();
   assert.deepEqual(results.map((r) => r.ok).sort(), [false, true], JSON.stringify(results));
   await Promise.all(children.map((c) => new Promise((resolve) => (c.exitCode !== null ? resolve() : c.on('exit', resolve)))));
@@ -233,8 +271,10 @@ test('two servers cannot both continue one consultation at once: the second foll
   const r2 = a.start(reviewRequest({ followup_to: r1.job_id }));
   // Another server: nothing of A's in memory, and A's round 2 not yet on disk.
   const b = new JobManager();
-  assert.throws(() => b.start(reviewRequest({ followup_to: r1.job_id })),
-    (e) => e.code === 'followup_not_latest' && e.message.includes(r2.job_id));
+  assert.throws(
+    () => b.start(reviewRequest({ followup_to: r1.job_id })),
+    (e) => e.code === 'followup_not_latest' && e.message.includes(r2.job_id),
+  );
   a.cancel(r2.job_id);
   await a.jobs.get(r2.job_id).promise;
   // Once it is over, the retry from round 1 is allowed again, numbered after it.
@@ -244,7 +284,7 @@ test('two servers cannot both continue one consultation at once: the second foll
   await b.jobs.get(r3.job_id).promise;
 });
 
-test('consult_list shows earlier sessions\' consultations too, newest first, each once', async () => {
+test("consult_list shows earlier sessions' consultations too, newest first, each once", async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const a = new JobManager();
   const one = a.start(reviewRequest());
@@ -256,10 +296,10 @@ test('consult_list shows earlier sessions\' consultations too, newest first, eac
   const mine = b.start(reviewRequest());
   await b.jobs.get(mine.job_id).promise;
   const listed = b.list({ limit: 4 });
-  assert.equal(listed[0].job_id, mine.job_id, 'this session\'s newest first');
+  assert.equal(listed[0].job_id, mine.job_id, "this session's newest first");
   const ids = listed.map((j) => j.job_id);
   assert.equal(new Set(ids).size, ids.length, 'each consultation once');
-  for (const j of fan.jobs) assert.ok(ids.includes(j.job_id), 'an earlier session\'s fan-out is listed');
+  for (const j of fan.jobs) assert.ok(ids.includes(j.job_id), "an earlier session's fan-out is listed");
   const member = listed.find((j) => j.job_id === fan.jobs[0].job_id);
   assert.equal(member.group_id, fan.group_id);
   assert.match(member.summary, /Stub consultant summary/);
@@ -286,16 +326,26 @@ test('another server can cancel a consultation: it asks, and the server running 
 test('the cancel reaches a consultation that a separate server process runs', async () => {
   const { spawn } = await import('node:child_process');
   const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
-  const child = spawn(process.execPath, ['--input-type=module', '-e', `
+  const child = spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     const { JobManager } = await import(${JSON.stringify(jobsUrl)});
     const mgr = new JobManager();
     const s = mgr.start(${JSON.stringify(reviewRequest())});
     console.log(s.job_id);
     await mgr.jobs.get(s.job_id).promise;
     console.log(mgr.view(s.job_id).status);
-  `], { env: { ...process.env, STUB_BEHAVIOR: 'hang' } });
+  `,
+    ],
+    { env: { ...process.env, STUB_BEHAVIOR: 'hang' } },
+  );
   let out = '';
-  child.stdout.on('data', (d) => { out += d; });
+  child.stdout.on('data', (d) => {
+    out += d;
+  });
   await waitFor(() => /job_\w+\n/.test(out), { timeoutMs: 8000 });
   const jobId = out.trim().split('\n')[0];
   assert.match(new JobManager().cancel(jobId).cancel_effect, /asked/);
@@ -303,7 +353,7 @@ test('the cancel reaches a consultation that a separate server process runs', as
   assert.equal(out.trim().split('\n').pop(), 'cancelled');
 });
 
-test('consult_list only reads: a dead server\'s consultation shows as interrupted and its marker stays', async () => {
+test("consult_list only reads: a dead server's consultation shows as interrupted and its marker stays", async () => {
   process.env.STUB_BEHAVIOR = 'hang';
   const a = new JobManager();
   const s = a.start(reviewRequest());
@@ -326,5 +376,8 @@ test('another server can cancel a whole fan-out it did not start', async () => {
   const asked = new JobManager().cancelGroup(fan.group_id);
   assert.match(asked.cancel_effect, /asked the severally process running it to stop 2/);
   const views = await Promise.all(fan.jobs.map((j) => a.jobs.get(j.job_id).promise.then(() => a.view(j.job_id))));
-  assert.deepEqual(views.map((v) => v.status), ['cancelled', 'cancelled']);
+  assert.deepEqual(
+    views.map((v) => v.status),
+    ['cancelled', 'cancelled'],
+  );
 });

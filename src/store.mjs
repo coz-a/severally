@@ -12,7 +12,11 @@ export function ensureDirs() {
   fs.mkdirSync(path.join(home, 'history'), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(home, 'jobs'), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(home, 'homes'), { recursive: true, mode: 0o700 });
-  try { fs.chmodSync(home, 0o700); } catch { /* best effort */ }
+  try {
+    fs.chmodSync(home, 0o700);
+  } catch {
+    /* best effort */
+  }
   return home;
 }
 
@@ -45,7 +49,11 @@ export function writeJobArtifact(jobId, name, content) {
 }
 
 export function readIfExists(p) {
-  try { return fs.readFileSync(p, 'utf8'); } catch { return ''; }
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 // A consultation from an earlier server session, found through the index and
@@ -58,24 +66,34 @@ function indexRow(jobId) {
     try {
       const parsed = JSON.parse(line);
       if (parsed.job_id === jobId) return parsed;
-    } catch { /* a damaged line is skipped, not fatal */ }
+    } catch {
+      /* a damaged line is skipped, not fatal */
+    }
   }
   return null;
 }
 
 /** Every row of the history index, in the order written; a damaged line is skipped. */
 export function indexRows() {
-  return readIfExists(path.join(POLICY.home, 'history', 'index.jsonl')).split('\n').flatMap((line) => {
-    try {
-      const row = line.trim() ? JSON.parse(line) : null;
-      return row && typeof row === 'object' && JOB_ID.test(row.job_id) ? [row] : [];
-    } catch { return []; }
-  });
+  return readIfExists(path.join(POLICY.home, 'history', 'index.jsonl'))
+    .split('\n')
+    .flatMap((line) => {
+      try {
+        const row = line.trim() ? JSON.parse(line) : null;
+        return row && typeof row === 'object' && JOB_ID.test(row.job_id) ? [row] : [];
+      } catch {
+        return [];
+      }
+    });
 }
 
 /** The round file an index row points at, or null. */
 export function loadRoundAt(row) {
-  try { return JSON.parse(fs.readFileSync(roundPath(row.chain_id, row.round), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(roundPath(row.chain_id, row.round), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 export const roundPath = (chainId, round) =>
@@ -92,7 +110,11 @@ export function writeDiagnostics(chainId, round, text) {
 export function loadRound(jobId) {
   const row = indexRow(jobId);
   if (!row) return null;
-  try { return JSON.parse(fs.readFileSync(roundPath(row.chain_id, row.round), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(roundPath(row.chain_id, row.round), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 // Every round file of one chain, oldest first: a follow-up to a consultation
@@ -100,9 +122,20 @@ export function loadRound(jobId) {
 export function loadChain(chainId) {
   const dir = path.join(POLICY.home, 'history', chainId);
   let names = [];
-  try { names = fs.readdirSync(dir).filter((n) => /^round-\d+\.json$/.test(n)).sort(); } catch { return []; }
+  try {
+    names = fs
+      .readdirSync(dir)
+      .filter((n) => /^round-\d+\.json$/.test(n))
+      .sort();
+  } catch {
+    return [];
+  }
   return names.flatMap((n) => {
-    try { return [JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))]; } catch { return []; }
+    try {
+      return [JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))];
+    } catch {
+      return [];
+    }
   });
 }
 
@@ -169,18 +202,31 @@ export function writeRunning(record) {
 
 export function loadRunning(jobId) {
   if (!JOB_ID.test(jobId)) return null;
-  try { return JSON.parse(fs.readFileSync(runningFile(jobId), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(runningFile(jobId), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 export function listRunning() {
   try {
-    return fs.readdirSync(runningDir()).map((n) => n.replace(/\.json$/, '')).filter((id) => JOB_ID.test(id));
-  } catch { return []; }
+    return fs
+      .readdirSync(runningDir())
+      .map((n) => n.replace(/\.json$/, ''))
+      .filter((id) => JOB_ID.test(id));
+  } catch {
+    return [];
+  }
 }
 
 export function removeRunning(jobId) {
   if (!JOB_ID.test(jobId)) return;
-  try { fs.rmSync(runningFile(jobId), { force: true }); } catch { /* best effort */ }
+  try {
+    fs.rmSync(runningFile(jobId), { force: true });
+  } catch {
+    /* best effort */
+  }
 }
 
 // Seats: the concurrency cap is shared by every severally process on one
@@ -198,16 +244,31 @@ function withSeatLock(fn) {
   fs.mkdirSync(seatsDir(), { recursive: true, mode: 0o700 });
   const until = Date.now() + LOCK_WAIT_MS;
   for (;;) {
-    try { fs.mkdirSync(lock); break; } catch (err) {
+    try {
+      fs.mkdirSync(lock);
+      break;
+    } catch (err) {
       if (err.code !== 'EEXIST') throw err;
       // Held for a few file operations at most: one this old was left by a
       // process that died holding it.
-      try { if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.rmdirSync(lock); } catch { /* gone already */ }
+      try {
+        if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.rmdirSync(lock);
+      } catch {
+        /* gone already */
+      }
       if (Date.now() > until) throw new Error('the seat lock stayed taken; try again');
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
   }
-  try { return fn(); } finally { try { fs.rmdirSync(lock); } catch { /* best effort */ } }
+  try {
+    return fn();
+  } finally {
+    try {
+      fs.rmdirSync(lock);
+    } catch {
+      /* best effort */
+    }
+  }
 }
 
 /** Takes one seat per entry of `seats` ({ job_id, owner }), all or none. */
@@ -217,14 +278,28 @@ export function takeSeats(seats, cap, held) {
     const names = fs.readdirSync(seatsDir());
     // A cancel asked for after its consultation ended has no seat left to go with.
     for (const name of names.filter((n) => n.endsWith('.cancel'))) {
-      if (!names.includes(name.replace(/\.cancel$/, '.json'))) try { fs.rmSync(path.join(seatsDir(), name), { force: true }); } catch { /* best effort */ }
+      if (!names.includes(name.replace(/\.cancel$/, '.json')))
+        try {
+          fs.rmSync(path.join(seatsDir(), name), { force: true });
+        } catch {
+          /* best effort */
+        }
     }
     for (const name of names) {
       if (!name.endsWith('.json')) continue;
       let seat = null;
-      try { seat = JSON.parse(fs.readFileSync(path.join(seatsDir(), name), 'utf8')); } catch { /* half-written or damaged: free */ }
+      try {
+        seat = JSON.parse(fs.readFileSync(path.join(seatsDir(), name), 'utf8'));
+      } catch {
+        /* half-written or damaged: free */
+      }
       if (seat && held(seat)) live.push(seat);
-      else try { fs.rmSync(path.join(seatsDir(), name), { force: true }); } catch { /* best effort */ }
+      else
+        try {
+          fs.rmSync(path.join(seatsDir(), name), { force: true });
+        } catch {
+          /* best effort */
+        }
     }
     // A chain runs one round at a time, across processes: a live seat on the
     // same chain, or a round file already at the number chosen, means another
@@ -232,7 +307,11 @@ export function takeSeats(seats, cap, held) {
     for (const mine of seats.filter((x) => x.chain_id)) {
       let other = live.find((x) => x.chain_id === mine.chain_id);
       if (!other && fs.existsSync(roundPath(mine.chain_id, mine.round))) {
-        try { other = { job_id: JSON.parse(fs.readFileSync(roundPath(mine.chain_id, mine.round), 'utf8')).job_id, round: mine.round }; } catch { other = { job_id: '(unreadable)', round: mine.round }; }
+        try {
+          other = { job_id: JSON.parse(fs.readFileSync(roundPath(mine.chain_id, mine.round), 'utf8')).job_id, round: mine.round };
+        } catch {
+          other = { job_id: '(unreadable)', round: mine.round };
+        }
       }
       if (other) return { ok: false, chainBusy: { live: other, mine } };
     }
@@ -249,7 +328,11 @@ export function takeSeats(seats, cap, held) {
 
 export function releaseSeat(jobId) {
   if (!JOB_ID.test(jobId)) return;
-  try { fs.rmSync(seatFile(jobId), { force: true }); } catch { /* best effort */ }
+  try {
+    fs.rmSync(seatFile(jobId), { force: true });
+  } catch {
+    /* best effort */
+  }
   clearCancel(jobId);
 }
 
@@ -258,16 +341,31 @@ export function releaseSeat(jobId) {
 const cancelFile = (jobId) => path.join(seatsDir(), `${jobId}.cancel`);
 export function requestCancel(jobId) {
   if (!JOB_ID.test(jobId)) return false;
-  try { fs.mkdirSync(seatsDir(), { recursive: true, mode: 0o700 }); fs.writeFileSync(cancelFile(jobId), '', { mode: 0o600 }); return true; } catch { return false; }
+  try {
+    fs.mkdirSync(seatsDir(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(cancelFile(jobId), '', { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 export const cancelRequested = (jobId) => JOB_ID.test(jobId) && fs.existsSync(cancelFile(jobId));
 export function clearCancel(jobId) {
-  if (JOB_ID.test(jobId)) try { fs.rmSync(cancelFile(jobId), { force: true }); } catch { /* best effort */ }
+  if (JOB_ID.test(jobId))
+    try {
+      fs.rmSync(cancelFile(jobId), { force: true });
+    } catch {
+      /* best effort */
+    }
 }
 
 export function loadGroup(groupId) {
   if (!GROUP_ID.test(groupId)) return null;
-  try { return JSON.parse(fs.readFileSync(path.join(POLICY.home, 'history', 'groups', `${groupId}.json`), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(POLICY.home, 'history', 'groups', `${groupId}.json`), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 // A fan-out is recorded as its own record so a later reader can tell which
@@ -281,6 +379,10 @@ export function persistGroup(group) {
 
 export function cleanupJobDir(jobId) {
   for (const dir of [jobDir(jobId), sandboxHome(jobId)]) {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
   }
 }

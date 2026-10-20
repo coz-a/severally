@@ -1,14 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  modelWords, modelStem, modelVersion, vendorOf, matchesWords, resolveConsultant, sameModel, buildConsultants,
-  DEFAULT_MODELS, CLI_IDS,
+  modelWords,
+  modelStem,
+  modelVersion,
+  vendorOf,
+  matchesWords,
+  resolveConsultant,
+  sameModel,
+  buildConsultants,
+  DEFAULT_MODELS,
+  CLI_IDS,
 } from '../src/consultants.mjs';
 
-const c = (name, cli, model, extra = {}) => Object.freeze({
-  name, cli, model, effort: null, timeoutMs: null, maxBudgetUsd: null,
-  vendor: vendorOf(model, extra.vendor ?? null), enabled: true, note: null, ...extra,
-});
+const c = (name, cli, model, extra = {}) =>
+  Object.freeze({
+    name,
+    cli,
+    model,
+    effort: null,
+    timeoutMs: null,
+    maxBudgetUsd: null,
+    vendor: vendorOf(model, extra.vendor ?? null),
+    enabled: true,
+    note: null,
+    ...extra,
+  });
 const pick = (r) => r.consultant?.name;
 
 test('a model id splits into words after its provider prefix', () => {
@@ -37,7 +54,7 @@ test('a name matches a model by whole words, not by substring', () => {
   assert.equal(matchesWords('gpt-6.1-sol', 'g'), false);
 });
 
-test('a consultant\'s own name wins over a CLI name it happens to share', () => {
+test("a consultant's own name wins over a CLI name it happens to share", () => {
   const list = [c('codex', 'opencode', 'x/glm-5.3'), c('astra', 'codex', 'gpt-6-astra')];
   assert.equal(pick(resolveConsultant('codex', list, [])), 'codex');
 });
@@ -47,7 +64,7 @@ test('a CLI name reaches the consultants on that CLI', () => {
   assert.equal(pick(resolveConsultant('agy', list, [])), 'g');
 });
 
-test('a vendor word reaches that vendor\'s consultants on any CLI', () => {
+test("a vendor word reaches that vendor's consultants on any CLI", () => {
   const list = [c('o', 'opencode', 'anthropic/claude-sonnet-5-5'), c('x', 'codex', 'gpt-6-astra')];
   assert.equal(pick(resolveConsultant('anthropic', list, [])), 'o');
 });
@@ -71,7 +88,7 @@ test('the tier wins over the version, and effort words rank too', () => {
   assert.equal(pick(resolveConsultant('gemini', gemini, [])), 'hi');
 });
 
-test('the operator\'s ranking comes first, and an entry that matches nothing changes nothing', () => {
+test("the operator's ranking comes first, and an entry that matches nothing changes nothing", () => {
   const claude = [c('sonnet', 'claude-code', 'claude-sonnet-6'), c('opus', 'claude-code', 'claude-opus-5-5')];
   assert.equal(pick(resolveConsultant('claude', claude, ['sonnet'])), 'sonnet');
   assert.equal(pick(resolveConsultant('claude', claude, ['nonexistent'])), 'opus');
@@ -80,7 +97,10 @@ test('the operator\'s ranking comes first, and an entry that matches nothing cha
 test('candidates that no rule can order are refused as ambiguous', () => {
   const mixed = [c('glm', 'opencode', 'zai-coding-plan/glm-5.3'), c('ds', 'opencode', 'opencode/deepseek-v4.1-flash-free')];
   const r = resolveConsultant('opencode', mixed, []);
-  assert.deepEqual(r.ambiguous.map((x) => x.name), ['glm', 'ds']);
+  assert.deepEqual(
+    r.ambiguous.map((x) => x.name),
+    ['glm', 'ds'],
+  );
   const tie = [c('one', 'opencode', 'zai-coding-plan/glm-5.3'), c('two', 'opencode', 'other/glm-5.3')];
   assert.ok(resolveConsultant('glm', tie, []).ambiguous);
 });
@@ -98,14 +118,19 @@ test('same model, unknown and different are told apart without guessing', () => 
 test('with no consultants configured, each CLI gets one on its default model', () => {
   const r = buildConsultants({});
   assert.deepEqual(r.problems, []);
-  assert.deepEqual(r.consultants.map((x) => [x.name, x.cli, x.model]),
-    CLI_IDS.map((id) => [id, id, DEFAULT_MODELS[id]]));
+  assert.deepEqual(
+    r.consultants.map((x) => [x.name, x.cli, x.model]),
+    CLI_IDS.map((id) => [id, id, DEFAULT_MODELS[id]]),
+  );
 });
 
 test('configured consultants are the whole list, with no defaults added', () => {
   const r = buildConsultants({ consultants: { glm: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' } } });
   assert.deepEqual(r.problems, []);
-  assert.deepEqual(r.consultants.map((x) => x.name), ['glm']);
+  assert.deepEqual(
+    r.consultants.map((x) => x.name),
+    ['glm'],
+  );
   assert.equal(r.consultants[0].vendor, 'zai');
 });
 
@@ -122,12 +147,18 @@ test('each config mistake is reported, naming the key', () => {
   ];
   for (const [config, pattern] of cases) {
     const r = buildConsultants(config);
-    assert.ok(r.problems.some((p) => pattern.test(p)), `${JSON.stringify(config)} -> ${JSON.stringify(r.problems)}`);
+    assert.ok(
+      r.problems.some((p) => pattern.test(p)),
+      `${JSON.stringify(config)} -> ${JSON.stringify(r.problems)}`,
+    );
   }
 });
 
 test('the built-in tiers only order models of one family', () => {
-  const free = [c('nemotron', 'opencode', 'opencode/nemotron-3-ultra-free#'), c('deepseek', 'opencode', 'opencode/deepseek-v4.1-flash-free')];
+  const free = [
+    c('nemotron', 'opencode', 'opencode/nemotron-3-ultra-free#'),
+    c('deepseek', 'opencode', 'opencode/deepseek-v4.1-flash-free'),
+  ];
   assert.ok(resolveConsultant('free', free, []).ambiguous, 'gemini tiers must not order nemotron against deepseek');
   const effort = [c('ds', 'opencode', 'x/deepseek-v4-high'), c('glm', 'opencode', 'x/glm-5-low')];
   assert.ok(resolveConsultant('opencode', effort, []).ambiguous, 'effort words only within one stem');
@@ -145,7 +176,10 @@ test('a clis value of the wrong type is a problem, not a silent default', () => 
   ];
   for (const [config, pattern] of cases) {
     const r = buildConsultants(config);
-    assert.ok(r.problems.some((p) => pattern.test(p)), `${JSON.stringify(config)} -> ${JSON.stringify(r.problems)}`);
+    assert.ok(
+      r.problems.some((p) => pattern.test(p)),
+      `${JSON.stringify(config)} -> ${JSON.stringify(r.problems)}`,
+    );
   }
 });
 
@@ -154,10 +188,19 @@ test('doctor checks each CLI once, and a CLI name picks its first available cons
   const glm = c('glm', 'opencode', 'zai-coding-plan/glm-5.3');
   const ds = c('deepseek', 'opencode', 'opencode/deepseek-v4.1-flash-free');
   const sol = c('sol', 'codex', 'gpt-6.1-sol');
-  assert.deepEqual(checkTargets(null, [glm, ds, sol], [glm, ds, sol], []).map((x) => x.name), ['glm', 'sol']);
-  assert.deepEqual(checkTargets('opencode', [ds, sol], [glm, ds, sol], []).map((x) => x.name), ['deepseek'],
-    'the first one that can run, not an ambiguity');
-  assert.deepEqual(checkTargets('glm', [glm, ds], [glm, ds], []).map((x) => x.name), ['glm']);
+  assert.deepEqual(
+    checkTargets(null, [glm, ds, sol], [glm, ds, sol], []).map((x) => x.name),
+    ['glm', 'sol'],
+  );
+  assert.deepEqual(
+    checkTargets('opencode', [ds, sol], [glm, ds, sol], []).map((x) => x.name),
+    ['deepseek'],
+    'the first one that can run, not an ambiguity',
+  );
+  assert.deepEqual(
+    checkTargets('glm', [glm, ds], [glm, ds], []).map((x) => x.name),
+    ['glm'],
+  );
   assert.equal(checkTargets('mistral', [glm], [glm], []), null);
 });
 
@@ -171,7 +214,10 @@ test('a mistake inside one consultant or one CLI is kept to it; a mistake in the
     },
   });
   assert.deepEqual(r.global, []);
-  assert.deepEqual(r.consultants.map((x) => x.name), ['glm']);
+  assert.deepEqual(
+    r.consultants.map((x) => x.name),
+    ['glm'],
+  );
   assert.deepEqual(Object.keys(r.broken).sort(), ['gemini', 'twin']);
   assert.match(r.broken.gemini.join(), /effort/);
   assert.deepEqual(Object.keys(r.brokenClis), ['codex']);

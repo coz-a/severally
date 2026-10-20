@@ -27,21 +27,33 @@ test('every member of a fan-out is recorded in one call', async () => {
   const out = mgr.record({ records: ids.map((id) => verdict(id)) });
   assert.equal(out.saved, 3);
   assert.equal(out.not_saved, 0);
-  assert.deepEqual(out.results.map((r) => r.job_id), ids);
+  assert.deepEqual(
+    out.results.map((r) => r.job_id),
+    ids,
+  );
   for (const id of ids) assert.equal(onDisk(mgr, id).entries[0].verdict, 'confirmed');
 });
 
 test('one bad entry and nothing is written; every bad one is named', async () => {
   const { mgr, ids } = await finishedGroup();
   assert.throws(
-    () => mgr.record({ records: [
-      verdict(ids[0]),
-      { job_id: ids[1], entries: [{ id: 'f99', verdict: 'confirmed' }] },
-      { job_id: 'job_000000000000', entries: [{ id: 'f1', verdict: 'confirmed' }] },
-    ] }),
+    () =>
+      mgr.record({
+        records: [
+          verdict(ids[0]),
+          { job_id: ids[1], entries: [{ id: 'f99', verdict: 'confirmed' }] },
+          { job_id: 'job_000000000000', entries: [{ id: 'f1', verdict: 'confirmed' }] },
+        ],
+      }),
     (e) => {
       assert.equal(e.code, 'invalid_records');
-      assert.deepEqual(e.details.map((d) => [d.index, d.error]), [[1, 'unknown_entry_id'], [2, 'unknown_job']]);
+      assert.deepEqual(
+        e.details.map((d) => [d.index, d.error]),
+        [
+          [1, 'unknown_entry_id'],
+          [2, 'unknown_job'],
+        ],
+      );
       assert.match(e.message, /nothing was recorded/);
       return true;
     },
@@ -51,8 +63,10 @@ test('one bad entry and nothing is written; every bad one is named', async () =>
 
 test('a job named twice in one call is refused', async () => {
   const { mgr, ids } = await finishedGroup();
-  assert.throws(() => mgr.record({ records: [verdict(ids[0]), verdict(ids[0])] }), (e) => e.code === 'invalid_records'
-    && e.details[0].error === 'duplicate_job');
+  assert.throws(
+    () => mgr.record({ records: [verdict(ids[0]), verdict(ids[0])] }),
+    (e) => e.code === 'invalid_records' && e.details[0].error === 'duplicate_job',
+  );
 });
 
 test('recording the same id again replaces it, and a reflection can go alone', async () => {

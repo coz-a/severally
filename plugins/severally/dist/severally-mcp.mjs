@@ -636,10 +636,7 @@ function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   const windows = process.platform === "win32";
   const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
   const explicit = command.includes("/") || windows && command.includes("\\");
-  const dirs = explicit ? [cwd] : [
-    ...windows ? [cwd] : [],
-    ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)
-  ];
+  const dirs = explicit ? [cwd] : [...windows ? [cwd] : [], ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)];
   for (const dir of dirs) {
     const candidate = path.resolve(cwd, dir.replace(/^"(.*)"$/, "$1"), command);
     const found = import_which.default.sync(candidate, { nothrow: true, pathExt: value("PATHEXT") });
@@ -781,7 +778,8 @@ function buildConsultants(config2) {
   }
   let ranking = [];
   if (cfg.ranking !== void 0) {
-    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== "")) ranking = cfg.ranking.map((r) => r.trim());
+    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== ""))
+      ranking = cfg.ranking.map((r) => r.trim());
     else fault("ranking must be an array of non-empty strings");
   }
   if (cfg.clis !== void 0) {
@@ -798,14 +796,20 @@ function buildConsultants(config2) {
           brokenClis[id2] = problems.slice(before);
           continue;
         }
-        for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
-        if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`clis.${id2}.enabled: must be true or false`);
-        for (const k of ["bin", "note"]) if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`clis.${id2}.${k}: must be a string`);
-        if (def.args !== void 0 && !(Array.isArray(def.args) && def.args.every((a) => typeof a === "string"))) problems.push(`clis.${id2}.args: must be an array of strings`);
-        if (def.env !== void 0 && !(isObject(def.env) && Object.values(def.env).every((v) => typeof v === "string"))) problems.push(`clis.${id2}.env: must be an object of strings`);
+        for (const k of Object.keys(def))
+          if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
+        if (def.enabled !== void 0 && typeof def.enabled !== "boolean")
+          problems.push(`clis.${id2}.enabled: must be true or false`);
+        for (const k of ["bin", "note"])
+          if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`clis.${id2}.${k}: must be a string`);
+        if (def.args !== void 0 && !(Array.isArray(def.args) && def.args.every((a) => typeof a === "string")))
+          problems.push(`clis.${id2}.args: must be an array of strings`);
+        if (def.env !== void 0 && !(isObject(def.env) && Object.values(def.env).every((v) => typeof v === "string")))
+          problems.push(`clis.${id2}.env: must be an object of strings`);
         if (def.provider !== void 0) {
           if (id2 !== "opencode") problems.push(`clis.${id2}.provider: only OpenCode takes provider definitions`);
-          else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject))) problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
+          else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject)))
+            problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
         }
         if (problems.length > before) brokenClis[id2] = problems.slice(before);
       }
@@ -834,7 +838,8 @@ function buildConsultants(config2) {
         broken[name] = problems.slice(before);
         continue;
       }
-      for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
+      for (const k of Object.keys(def))
+        if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
       if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
       if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
       for (const k of ["effort", "vendor", "note"]) {
@@ -842,10 +847,13 @@ function buildConsultants(config2) {
       }
       if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`${at}.enabled: must be true or false`);
       for (const k of ["timeout_ms", "max_budget_usd"]) {
-        if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k]))) problems.push(`${at}.${k}: must be a number`);
+        if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k])))
+          problems.push(`${at}.${k}: must be a number`);
       }
-      if (def.max_budget_usd !== void 0 && def.cli !== "claude-code") problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
-      if (def.effort !== void 0 && def.cli === "antigravity") problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
+      if (def.max_budget_usd !== void 0 && def.cli !== "claude-code")
+        problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
+      if (def.effort !== void 0 && def.cli === "antigravity")
+        problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
       if (problems.length > before) {
         broken[name] = problems.slice(before);
         continue;
@@ -988,7 +996,9 @@ function protectedRoots() {
   ];
 }
 function protectedRootPatterns(extraRoots = []) {
-  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map((r) => `^${escapeRe(r.replace(/\/+$/, "")).replaceAll("*", "[^/]+")}(/|$)`);
+  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map(
+    (r) => `^${escapeRe(r.replace(/\/+$/, "")).replaceAll("*", "[^/]+")}(/|$)`
+  );
 }
 function protectedNamePatterns() {
   return PROTECTED_FILE_NAMES.map((n) => `^${escapeRe(n).replaceAll("*", ".*")}$`);
@@ -1076,7 +1086,10 @@ var init_policy = __esm({
     usable = configError ? {} : CONFIG;
     cfgCli = (id2) => {
       if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
-        return { enabled: false, note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}` };
+        return {
+          enabled: false,
+          note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}`
+        };
       }
       return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
     };
@@ -1098,21 +1111,23 @@ var init_policy = __esm({
       const raw = process.env[name];
       return raw === void 0 || raw === "" ? dflt : raw;
     };
-    CALLER_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
-      codex: "codex",
-      gpt: "codex",
-      chatgpt: "codex",
-      openai: "codex",
-      "claude-code": "claude-code",
-      claude: "claude-code",
-      anthropic: "claude-code",
-      antigravity: "antigravity",
-      agy: "antigravity",
-      gemini: "antigravity",
-      google: "antigravity",
-      opencode: "opencode",
-      glm: "opencode"
-    }));
+    CALLER_ALIASES = Object.freeze(
+      Object.assign(/* @__PURE__ */ Object.create(null), {
+        codex: "codex",
+        gpt: "codex",
+        chatgpt: "codex",
+        openai: "codex",
+        "claude-code": "claude-code",
+        claude: "claude-code",
+        anthropic: "claude-code",
+        antigravity: "antigravity",
+        agy: "antigravity",
+        gemini: "antigravity",
+        google: "antigravity",
+        opencode: "opencode",
+        glm: "opencode"
+      })
+    );
     CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
     MODES = ["explore", "review", "debate"];
     VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
@@ -36541,7 +36556,10 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
   if (isAll[0]) {
     chosen = availableConsultants();
     if (!chosen.length) {
-      throw new RequestError("no consultant is available on this machine -- install one of the CLIs, or check the config file", "target_unavailable");
+      throw new RequestError(
+        "no consultant is available on this machine -- install one of the CLIs, or check the config file",
+        "target_unavailable"
+      );
     }
   } else {
     const reachable = availableConsultants();
@@ -36549,7 +36567,10 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
       let r = resolveConsultant(name, reachable, POLICY.ranking);
       if (r.none) r = resolveConsultant(name, POLICY.consultants, POLICY.ranking);
       if (r.none && brokenConsultant(name)) {
-        throw new RequestError(`consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`, "target_unavailable");
+        throw new RequestError(
+          `consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`,
+          "target_unavailable"
+        );
       }
       if (r.none) {
         throw new RequestError(`no consultant answers to ${JSON.stringify(name)}; available: ${listed()}`, "unknown_target");
@@ -36821,7 +36842,8 @@ var init_result_schema = __esm({
 
 // src/redact.mjs
 function looksLikeCode(name, value) {
-  if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value)) return true;
+  if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value))
+    return true;
   if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split("_").at(-1))) return false;
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith("&");
 }
@@ -36843,7 +36865,20 @@ function redact(value) {
 var CODE_WORDS, PATTERNS;
 var init_redact = __esm({
   "src/redact.mjs"() {
-    CODE_WORDS = /* @__PURE__ */ new Set(["true", "false", "null", "none", "undefined", "string", "str", "number", "boolean", "bool", "int", "bytes"]);
+    CODE_WORDS = /* @__PURE__ */ new Set([
+      "true",
+      "false",
+      "null",
+      "none",
+      "undefined",
+      "string",
+      "str",
+      "number",
+      "boolean",
+      "bool",
+      "int",
+      "bytes"
+    ]);
     PATTERNS = [
       // Provider API keys
       [/\bsk-ant-[A-Za-z0-9_\-]{12,}/g, "[REDACTED:anthropic-key]"],
@@ -37167,7 +37202,10 @@ function planInheritance(parentEntries, exposePaths) {
   let next = parentEntries.reduce((n, e) => Math.max(n, e.index + 1), 0);
   for (const p of exposePaths) if (!paths.some((x) => x.source === p)) paths.push({ source: p, index: next++ });
   if (paths.length > POLICY.input.exposePathsMax) {
-    throw new ExposeError(`expose_from_parent and expose_paths together name ${paths.length} entries, over the cap of ${POLICY.input.exposePathsMax}; name fewer new paths`, "too_large");
+    throw new ExposeError(
+      `expose_from_parent and expose_paths together name ${paths.length} entries, over the cap of ${POLICY.input.exposePathsMax}; name fewer new paths`,
+      "too_large"
+    );
   }
   return { paths, skipped, diffs };
 }
@@ -37182,11 +37220,12 @@ function reexposeChange(workdir, entry, manifest) {
     }
     const deleted = m?.[2] === "deleted";
     let back = false;
-    if (deleted) try {
-      fs3.lstatSync(path4.join(entry.source, p));
-      back = true;
-    } catch {
-    }
+    if (deleted)
+      try {
+        fs3.lstatSync(path4.join(entry.source, p));
+        back = true;
+      } catch {
+      }
     changes.push({ path: p, status: deleted ? back ? "restored" : "D" : m?.[2] ?? "M" });
   }
   const before = { ...manifest.totals };
@@ -37237,25 +37276,21 @@ function git(cwd, args) {
 function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
   const top = git(repo, ["rev-parse", "--show-toplevel"]).toString("utf8").trim();
   git(top, ["rev-parse", "--verify", `${base}^{commit}`]);
-  const tokens = nulSplit(git(top, [
-    "diff",
-    "--name-status",
-    "-z",
-    "--no-renames",
-    "--no-relative",
-    "--no-ext-diff",
-    "--no-textconv",
-    base,
-    "--"
-  ]));
+  const tokens = nulSplit(
+    git(top, ["diff", "--name-status", "-z", "--no-renames", "--no-relative", "--no-ext-diff", "--no-textconv", base, "--"])
+  );
   const changes = [];
   for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
-  for (const p of nulSplit(git(top, ["ls-files", "--others", "--exclude-standard", "-z"]))) changes.push({ status: "untracked", path: p });
+  for (const p of nulSplit(git(top, ["ls-files", "--others", "--exclude-standard", "-z"])))
+    changes.push({ status: "untracked", path: p });
   const before = { ...manifest.totals };
   const shown = [];
   const { copied, sha256 } = copyRepoFiles(workdir, top, changes, manifest, (c) => shown.push(c));
   if (shown.length === 0) {
-    throw new ExposeError(`context.expose_diff: no change against ${base} to show` + (changes.length ? " (every changed file is a protected path)" : ""), "not_found");
+    throw new ExposeError(
+      `context.expose_diff: no change against ${base} to show` + (changes.length ? " (every changed file is a protected path)" : ""),
+      "not_found"
+    );
   }
   manifest.entries.push({
     index: manifest.entries.reduce((n, e) => Math.max(n, e.index + 1), 0),
@@ -37285,11 +37320,13 @@ function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
     base,
     "--"
   ]).toString("utf8") : "";
-  let text2 = redact(full.split(/^(?=diff --git )/m).filter((sec) => {
-    const rest = sec.slice("diff --git ".length, sec.indexOf("\n"));
-    const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
-    return tracked.has(p) && rest === `a/${p} b/${p}`;
-  }).join(""));
+  let text2 = redact(
+    full.split(/^(?=diff --git )/m).filter((sec) => {
+      const rest = sec.slice("diff --git ".length, sec.indexOf("\n"));
+      const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
+      return tracked.has(p) && rest === `a/${p} b/${p}`;
+    }).join("")
+  );
   if (text2.length > maxChars) {
     text2 = maxChars < 500 ? "" : `${text2.slice(0, maxChars - 200)}
 ... [diff cut by severally: ${text2.length} characters in all; every changed file is under workspace/repo/]`;
@@ -37385,7 +37422,9 @@ function deletedLines(changes = []) {
   const gone = changes.filter((c) => c.endsWith(" (deleted)")).map((c) => c.slice(0, -" (deleted)".length));
   if (!gone.length) return [];
   const shown = gone.slice(0, 50);
-  return [`  - deleted by the change, so not copied: ${shown.join(", ")}${gone.length > shown.length ? `, and ${gone.length - shown.length} more` : ""}`];
+  return [
+    `  - deleted by the change, so not copied: ${shown.join(", ")}${gone.length > shown.length ? `, and ${gone.length - shown.length} more` : ""}`
+  ];
 }
 function renderExposeManifest(manifest) {
   if (!manifest || manifest.entries.length === 0 && manifest.skipped.length === 0) return null;
@@ -37481,7 +37520,8 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
-    if (left.length) parts.push(`(Round${left.length > 1 ? "s" : ""} ${left.join(", ")} left out to keep this brief within its size.)`);
+    if (left.length)
+      parts.push(`(Round${left.length > 1 ? "s" : ""} ${left.join(", ")} left out to keep this brief within its size.)`);
     parts.push(...blocks.slice(blocks.length - kept));
     parts.push("");
     parts.push(
@@ -37655,40 +37695,68 @@ function normalizeResult(raw) {
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
     stance: stance(src.stance),
-    findings: mapList(src.findings, {
-      point: "text",
-      grounds: "text",
-      impact: "text",
-      severity: "level",
-      confidence: "level"
-    }, { requiredField: "point", idPrefix: "f" }),
-    alternatives: mapList(src.alternatives, {
-      option: "text",
-      tradeoffs: "text",
-      when_preferred: "text"
-    }, { requiredField: "option" }),
-    unknowns: mapList(src.unknowns, {
-      item: "text",
-      why_it_matters: "text",
-      how_to_obtain: "text"
-    }, { requiredField: "item", idPrefix: "u" }),
-    decision_changers: mapList(src.decision_changers, {
-      condition: "text",
-      changes_to: "text"
-    }, { requiredField: "condition" }),
-    next_checks: mapList(src.next_checks, {
-      check: "text",
-      method: "text",
-      expected_signal: "text"
-    }, { requiredField: "check", idPrefix: "c" }),
-    remaining_disagreements: mapList(src.remaining_disagreements, {
-      topic: "text",
-      your_position: "text",
-      why_unresolved: "text"
-    }, { requiredField: "topic" }),
-    references: (Array.isArray(src.references) ? src.references : []).slice(0, O.referencesMax).map((r) => r && typeof r === "object" ? { title: clampText(r.title, 300), url: clampText(r.url, 1e3), relevance: clampText(r.relevance, 600) } : { title: clampText(r, 300), url: null, relevance: null }).filter((r) => r.title || r.url)
+    findings: mapList(
+      src.findings,
+      {
+        point: "text",
+        grounds: "text",
+        impact: "text",
+        severity: "level",
+        confidence: "level"
+      },
+      { requiredField: "point", idPrefix: "f" }
+    ),
+    alternatives: mapList(
+      src.alternatives,
+      {
+        option: "text",
+        tradeoffs: "text",
+        when_preferred: "text"
+      },
+      { requiredField: "option" }
+    ),
+    unknowns: mapList(
+      src.unknowns,
+      {
+        item: "text",
+        why_it_matters: "text",
+        how_to_obtain: "text"
+      },
+      { requiredField: "item", idPrefix: "u" }
+    ),
+    decision_changers: mapList(
+      src.decision_changers,
+      {
+        condition: "text",
+        changes_to: "text"
+      },
+      { requiredField: "condition" }
+    ),
+    next_checks: mapList(
+      src.next_checks,
+      {
+        check: "text",
+        method: "text",
+        expected_signal: "text"
+      },
+      { requiredField: "check", idPrefix: "c" }
+    ),
+    remaining_disagreements: mapList(
+      src.remaining_disagreements,
+      {
+        topic: "text",
+        your_position: "text",
+        why_unresolved: "text"
+      },
+      { requiredField: "topic" }
+    ),
+    references: (Array.isArray(src.references) ? src.references : []).slice(0, O.referencesMax).map(
+      (r) => r && typeof r === "object" ? { title: clampText(r.title, 300), url: clampText(r.url, 1e3), relevance: clampText(r.relevance, 600) } : { title: clampText(r, 300), url: null, relevance: null }
+    ).filter((r) => r.title || r.url)
   };
-  const listTruncated = Object.fromEntries(["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax).map((k) => [k, src[k].length]));
+  const listTruncated = Object.fromEntries(
+    ["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax).map((k) => [k, src[k].length])
+  );
   const missing = RESULT_KEYS.filter((k) => {
     const v = result[k];
     return v === null || v === void 0 || Array.isArray(v) && v.length === 0;
@@ -37736,10 +37804,19 @@ var RULES, AUTO_RETRY_KINDS;
 var init_failures = __esm({
   "src/failures.mjs"() {
     RULES = [
-      [/\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i, "usage_limit"],
-      [/\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i, "rate_limited"],
+      [
+        /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
+        "usage_limit"
+      ],
+      [
+        /\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i,
+        "rate_limited"
+      ],
       [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
-      [/\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i, "model_unavailable"]
+      [
+        /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i,
+        "model_unavailable"
+      ]
     ];
     AUTO_RETRY_KINDS = Object.freeze(["rate_limited", "cli_error"]);
   }
@@ -37941,14 +38018,7 @@ var init_run = __esm({
   "src/run.mjs"() {
     init_platform();
     init_policy();
-    DROP_EXACT = /* @__PURE__ */ new Set([
-      "CLAUDECODE",
-      "CLAUDE_PID",
-      "CLAUDE_EFFORT",
-      "AI_AGENT",
-      "ANTHROPIC_LOG",
-      "NODE_OPTIONS"
-    ]);
+    DROP_EXACT = /* @__PURE__ */ new Set(["CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT", "ANTHROPIC_LOG", "NODE_OPTIONS"]);
     DROP_PREFIX = ["CLAUDE_CODE_", "SEVERALLY_", "MCP_"];
     TARGET_DROP_PREFIX = {
       codex: ["ANTHROPIC_", "GEMINI_", "GOOGLE_", "AGY_", "ANTIGRAVITY_", "ZAI_"],
@@ -38229,10 +38299,11 @@ function takeSeats(seats, cap, held) {
     const live = [];
     const names = fs4.readdirSync(seatsDir());
     for (const name of names.filter((n) => n.endsWith(".cancel"))) {
-      if (!names.includes(name.replace(/\.cancel$/, ".json"))) try {
-        fs4.rmSync(path6.join(seatsDir(), name), { force: true });
-      } catch {
-      }
+      if (!names.includes(name.replace(/\.cancel$/, ".json")))
+        try {
+          fs4.rmSync(path6.join(seatsDir(), name), { force: true });
+        } catch {
+        }
     }
     for (const name of names) {
       if (!name.endsWith(".json")) continue;
@@ -38242,10 +38313,11 @@ function takeSeats(seats, cap, held) {
       } catch {
       }
       if (seat && held(seat)) live.push(seat);
-      else try {
-        fs4.rmSync(path6.join(seatsDir(), name), { force: true });
-      } catch {
-      }
+      else
+        try {
+          fs4.rmSync(path6.join(seatsDir(), name), { force: true });
+        } catch {
+        }
     }
     for (const mine of seats.filter((x) => x.chain_id)) {
       let other = live.find((x) => x.chain_id === mine.chain_id);
@@ -38287,10 +38359,11 @@ function requestCancel(jobId) {
   }
 }
 function clearCancel(jobId) {
-  if (JOB_ID.test(jobId)) try {
-    fs4.rmSync(cancelFile(jobId), { force: true });
-  } catch {
-  }
+  if (JOB_ID.test(jobId))
+    try {
+      fs4.rmSync(cancelFile(jobId), { force: true });
+    } catch {
+    }
 }
 function loadGroup(groupId) {
   if (!GROUP_ID.test(groupId)) return null;
@@ -38351,7 +38424,8 @@ function filesystemPermissions() {
   fs5.mkdirSync(path7.join(POLICY.home, "homes"), { recursive: true, mode: 448 });
   const codexHome = path7.join(os2.homedir(), ".codex").replaceAll("\\", "/");
   const denied = protectedRoots().flatMap((p) => {
-    if (p === codexHome) return listDir(codexHome).filter((n) => n !== "packages").map((n) => `${codexHome}/${n}`);
+    if (p === codexHome)
+      return listDir(codexHome).filter((n) => n !== "packages").map((n) => `${codexHome}/${n}`);
     const star = p.indexOf("/*/");
     if (star === -1) return [p];
     const [parent, rest] = [p.slice(0, star), p.slice(star + 3)];
@@ -38636,7 +38710,13 @@ function interpret2({ stdout, stderr, code }) {
   const payload = lastJsonObject(stdout);
   if (!payload) {
     const msg = (stderr || "").trim() || (stdout || "").trim().slice(0, 2e3) || `claude exited with code ${code} and produced no JSON result`;
-    return { ok: false, failureKind: code === 0 ? "invalid_output" : classifyMessage(msg), message: msg, payload: null, usageRaw: null };
+    return {
+      ok: false,
+      failureKind: code === 0 ? "invalid_output" : classifyMessage(msg),
+      message: msg,
+      payload: null,
+      usageRaw: null
+    };
   }
   if (payload.is_error) {
     const msg = typeof payload.result === "string" ? payload.result : JSON.stringify(payload).slice(0, 2e3);
@@ -38645,7 +38725,13 @@ function interpret2({ stdout, stderr, code }) {
   const structured = payload.structured_output ?? payload.structuredOutput ?? null;
   const text2 = structured ?? (typeof payload.result === "string" ? payload.result : null);
   if (!text2) {
-    return { ok: false, failureKind: "invalid_output", message: "result payload contained no answer", payload, usageRaw: payload };
+    return {
+      ok: false,
+      failureKind: "invalid_output",
+      message: "result payload contained no answer",
+      payload,
+      usageRaw: payload
+    };
   }
   return { ok: true, text: text2, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
@@ -38832,7 +38918,17 @@ function prepareSandbox({ workdir, network = "on" }) {
   fs6.writeFileSync(path8.join(cfgDir, "mcp_config.json"), "{}\n", { mode: 384 });
   const tools = allowedTools(network);
   const hookScript = path8.join(root, "tool-allowlist.mjs");
-  fs6.writeFileSync(hookScript, hookSource(tools, protectedRootPatterns([root, path8.join(credentialsHome(), ".gemini")]), protectedNamePatterns(), os4.homedir(), spillPattern(root)), { mode: 384 });
+  fs6.writeFileSync(
+    hookScript,
+    hookSource(
+      tools,
+      protectedRootPatterns([root, path8.join(credentialsHome(), ".gemini")]),
+      protectedNamePatterns(),
+      os4.homedir(),
+      spillPattern(root)
+    ),
+    { mode: 384 }
+  );
   const hooks = {
     severally: {
       PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: hookCommand(hookScript), timeout: 10 }] }]
@@ -38891,13 +38987,7 @@ var init_antigravity_sandbox = __esm({
     init_policy();
     init_store();
     SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
-    SANDBOX_DENY = Object.freeze([
-      "write_file(*)",
-      "command(*)",
-      "mcp(*)",
-      "execute_url(*)",
-      "unsandboxed(*)"
-    ]);
+    SANDBOX_DENY = Object.freeze(["write_file(*)", "command(*)", "mcp(*)", "execute_url(*)", "unsandboxed(*)"]);
     ALLOWED_TOOLS = Object.freeze(["view_file", "search_web", "read_url_content", "finish"]);
     WEB_TOOLS = /* @__PURE__ */ new Set(["search_web", "read_url_content"]);
     PATH_TOOLS = ["view_file", "read_url_content"];
@@ -38974,7 +39064,8 @@ function toolCalls2({ stdout }) {
   const seen = /* @__PURE__ */ new Map();
   for (const e of events(stdout)) {
     const s2 = e.event === "step_update" ? e.step_update : null;
-    if (s2?.tool_name) seen.set(s2.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s2.state ?? "") ? `${s2.tool_name}:error` : s2.tool_name);
+    if (s2?.tool_name)
+      seen.set(s2.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s2.state ?? "") ? `${s2.tool_name}:error` : s2.tool_name);
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
@@ -39096,10 +39187,7 @@ import path10 from "node:path";
 import crypto3 from "node:crypto";
 import { createRequire as sqliteRequire } from "node:module";
 function readRules() {
-  const deny = [
-    ...protectedRoots().flatMap((r) => [r, `${r}/**`]),
-    ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])
-  ];
+  const deny = [...protectedRoots().flatMap((r) => [r, `${r}/**`]), ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])];
   return { "*": "allow", ...Object.fromEntries(deny.map((p) => [p, "deny"])) };
 }
 function prepareSandbox2({ workdir, network = "on" }) {
@@ -39225,7 +39313,9 @@ function seedCredentialFromAuth(sandbox, provider) {
   try {
     const db = new DatabaseSync(dbPath);
     try {
-      db.prepare("INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)").run(`cred_${crypto3.randomBytes(18).toString("base64url")}`, provider, row.label, row.value, Date.now(), Date.now());
+      db.prepare(
+        "INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES (?, ?, ?, ?, ?, ?)"
+      ).run(`cred_${crypto3.randomBytes(18).toString("base64url")}`, provider, row.label, row.value, Date.now(), Date.now());
     } finally {
       db.close();
     }
@@ -39303,7 +39393,9 @@ async function prepare() {
         resolve();
       };
       try {
-        const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP" || k === "STUB_HELP_DELAY_MS"));
+        const env = Object.fromEntries(
+          Object.entries(process.env).filter(([k]) => !k.startsWith("STUB_") || k === "STUB_HELP" || k === "STUB_HELP_DELAY_MS")
+        );
         const child = spawnCommand(POLICY.clis.opencode.cli, ["run", "--help"], { env, stdio: ["ignore", "pipe", "pipe"] });
         let out = "";
         child.stdout.on("data", (c) => {
@@ -39388,7 +39480,10 @@ function compactLine(line) {
   try {
     const e = JSON.parse(line);
     if (e?.type !== "tool_use") return line;
-    return JSON.stringify({ type: e.type, part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } } });
+    return JSON.stringify({
+      type: e.type,
+      part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } }
+    });
   } catch {
     return line;
   }
@@ -39559,12 +39654,13 @@ function ownerState(jobId, owner) {
   if (!owner) return "dead";
   let pidAlive;
   if (owner.pid === process.pid) pidAlive = LIVE_HERE.has(jobId);
-  else try {
-    process.kill(owner.pid, 0);
-    pidAlive = true;
-  } catch (err) {
-    pidAlive = err.code === "EPERM";
-  }
+  else
+    try {
+      process.kill(owner.pid, 0);
+      pidAlive = true;
+    } catch (err) {
+      pidAlive = err.code === "EPERM";
+    }
   if (!pidAlive) return "dead";
   return Date.now() > Date.parse(owner.deadline_at) ? "overdue" : "alive";
 }
@@ -39657,7 +39753,8 @@ function inherit(raw, round) {
   const out = raw.network === void 0 && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
   for (const k of ["objective", "success_criteria", "constraints"]) {
-    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length))
+      out[k] = brief[k];
   }
   const ctx = { ...raw.context ?? {} };
   for (const k of ["facts", "proposal", "counterpoints"]) {
@@ -39665,7 +39762,8 @@ function inherit(raw, round) {
   }
   const artifacts = [...brief.artifacts ?? []];
   const last = artifacts.at(-1);
-  if (brief.expose_paths?.entries?.some((e) => e.kind === "diff") && last?.kind === "diff" && last.name.startsWith("git diff ")) artifacts.pop();
+  if (brief.expose_paths?.entries?.some((e) => e.kind === "diff") && last?.kind === "diff" && last.name.startsWith("git diff "))
+    artifacts.pop();
   if (ctx.artifacts === void 0 && artifacts.length) {
     ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));
   }
@@ -39682,7 +39780,8 @@ function adviceCaveat(normalized) {
   } else if (!result.evidence_basis) {
     notes.push("the consultant did not say how well its evidence supports the answer (evidence_basis)");
   }
-  if (!result.stance) notes.push("the answer gives no bottom line (stance): read the summary and findings for one before relying on it");
+  if (!result.stance)
+    notes.push("the answer gives no bottom line (stance): read the summary and findings for one before relying on it");
   if (quality.findings_without_grounds > 0) {
     notes.push(`${quality.findings_without_grounds} finding(s) arrived without grounds: do not adopt them without checking`);
   }
@@ -39828,7 +39927,10 @@ function pointsOf(view, ids) {
   const known = recordableIds(r);
   const unknown2 = ids.filter((id2) => !known.includes(id2));
   if (unknown2.length) {
-    throw new RequestError(`${unknown2.map((id2) => `"${id2}"`).join(", ")} not in this answer; it has: ${known.join(", ")}`, "unknown_entry_id");
+    throw new RequestError(
+      `${unknown2.map((id2) => `"${id2}"`).join(", ")} not in this answer; it has: ${known.join(", ")}`,
+      "unknown_entry_id"
+    );
   }
   const verdicts = new Map((view.record?.entries ?? []).map((e) => [e.id, e]));
   const lists = { finding: r.findings, unknown: r.unknowns, next_check: r.next_checks };
@@ -39899,11 +40001,16 @@ function nextStep(job) {
     const close = open2 > 0 ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict.` : "";
     return (left > 0 ? `check the grounds behind the points that matter, run the one check that would change the decision, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
   }
-  if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error") return "retriable: narrow the brief and start a new consultation";
-  if (job.failure?.kind === "interrupted") return "the severally process running it exited before the consultant answered; start the consultation again if you still need it";
-  if (job.failure?.kind === "rate_limited") return "the consultant was rate-limited and the server already re-ran it (see retries); try again in a few minutes, or proceed on your own judgement";
-  if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth") return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
-  if (job.failure?.kind === "invalid_output") return "the consultant answered but not in the required shape; retry once with a shorter brief before giving up";
+  if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error")
+    return "retriable: narrow the brief and start a new consultation";
+  if (job.failure?.kind === "interrupted")
+    return "the severally process running it exited before the consultant answered; start the consultation again if you still need it";
+  if (job.failure?.kind === "rate_limited")
+    return "the consultant was rate-limited and the server already re-ran it (see retries); try again in a few minutes, or proceed on your own judgement";
+  if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth")
+    return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
+  if (job.failure?.kind === "invalid_output")
+    return "the consultant answered but not in the required shape; retry once with a shorter brief before giving up";
   return "proceed on your own judgement and note that no peer input was obtained";
 }
 function extraArgsProblem(target, adapterArgs, extra) {
@@ -40105,12 +40212,15 @@ var init_jobs = __esm({
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
           const saved = state === "alive" ? null : loadRoundAt(live);
-          elsewhere.push({ rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } } });
+          elsewhere.push({
+            rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } }
+          });
         }
-        for (const row of indexRows()) if (!seen.has(row.job_id)) {
-          seen.add(row.job_id);
-          elsewhere.push({ row });
-        }
+        for (const row of indexRows())
+          if (!seen.has(row.job_id)) {
+            seen.add(row.job_id);
+            elsewhere.push({ row });
+          }
         const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? "";
         const picked = [];
         for (const x of [...here, ...elsewhere].sort((p, q) => at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0)) {
@@ -40159,10 +40269,11 @@ var init_jobs = __esm({
           t.consultations += 1;
           t.attempts += attempts.length;
           for (const u of attempts) {
-            for (const [k, v] of Object.entries(u)) if (typeof v === "number") {
-              t[k] = (t[k] ?? 0) + v;
-              seen.add(k);
-            }
+            for (const [k, v] of Object.entries(u))
+              if (typeof v === "number") {
+                t[k] = (t[k] ?? 0) + v;
+                seen.add(k);
+              }
           }
         }
         for (const [target, t] of Object.entries(by)) {
@@ -40177,7 +40288,8 @@ var init_jobs = __esm({
             "recursion_blocked"
           );
         }
-        if (configProblem()) throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
+        if (configProblem())
+          throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
         const followupTo = typeof rawRequest?.followup_to === "string" && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
         let parent = null;
         let fromGroup = null;
@@ -40212,7 +40324,8 @@ var init_jobs = __esm({
         if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
           rawRequest = { ...rawRequest, target: parent.target };
         }
-        if (parent || fromGroup) rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
+        if (parent || fromGroup)
+          rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
         const req = parseRequest(rawRequest, {
           isFollowup: Boolean(parent || fromGroup),
           parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -40246,7 +40359,9 @@ var init_jobs = __esm({
           // not, so a suspended laptop must not make a live owner look overdue.
           owner: {
             pid: process.pid,
-            deadline_at: new Date(Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 36e5).toISOString()
+            deadline_at: new Date(
+              Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 36e5
+            ).toISOString()
           }
         }));
         const taken = takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === "alive");
@@ -40283,7 +40398,11 @@ var init_jobs = __esm({
         for (const jid of group.job_ids) {
           const member = this.jobs.get(jid) ?? loadRound(jid);
           if (!member) {
-            skipped.push({ job_id: jid, target: null, reason: "not found: aged out of the history, or still running in another severally process" });
+            skipped.push({
+              job_id: jid,
+              target: null,
+              reason: "not found: aged out of the history, or still running in another severally process"
+            });
             continue;
           }
           const rounds = this.#chainRounds(member.chain_id);
@@ -40318,7 +40437,11 @@ var init_jobs = __esm({
           try {
             fs9.mkdirSync(path11.join(snapshot, "workspace"), { recursive: true, mode: 448 });
             const plan = planInheritance(parentEntries, req.context.expose_paths);
-            exposeManifest = materializeExposedPaths(snapshot, plan.paths) ?? { entries: [], totals: { files: 0, bytes: 0 }, skipped: [] };
+            exposeManifest = materializeExposedPaths(snapshot, plan.paths) ?? {
+              entries: [],
+              totals: { files: 0, bytes: 0 },
+              skipped: []
+            };
             exposeManifest.skipped.push(...plan.skipped);
             const parentSources = new Set(parentEntries.map((e) => e.source));
             for (const e of exposeManifest.entries) if (parentSources.has(e.source)) e.inherited = true;
@@ -40495,10 +40618,12 @@ var init_jobs = __esm({
       #chainHistory(chainId) {
         return this.#chainRounds(chainId).filter((j) => j.status === "completed" && j.result).sort((a, b) => a.round - b.round).map((j) => {
           const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
-          const ordered = (items, shape) => [
-            ...items.filter((x) => verdicts.has(x.id)),
-            ...items.filter((x) => !verdicts.has(x.id))
-          ].map((x) => ({ id: x.id, ...shape(x), verdict: verdicts.get(x.id)?.verdict ?? null, effect: verdicts.get(x.id)?.effect ?? null }));
+          const ordered = (items, shape) => [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
+            id: x.id,
+            ...shape(x),
+            verdict: verdicts.get(x.id)?.verdict ?? null,
+            effect: verdicts.get(x.id)?.effect ?? null
+          }));
           const checked = (x) => x.verdict !== null;
           const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
           return {
@@ -40581,12 +40706,7 @@ var init_jobs = __esm({
           if (argsProblem) return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${argsProblem}`);
           invocation.args = withExtraArgs(invocation.args, t.extraArgs);
           assertNoForbiddenFlags(cli, invocation.args);
-          job.boundary = adapter.boundary?.({
-            args: invocation.args,
-            sandbox,
-            network: req.network,
-            hasExposedPaths: Boolean(req._snapshot)
-          }) ?? null;
+          job.boundary = adapter.boundary?.({ args: invocation.args, sandbox, network: req.network, hasExposedPaths: Boolean(req._snapshot) }) ?? null;
           const attempt = (timeout) => {
             const { handle, done } = runChild({
               command: invocation.command,
@@ -40654,7 +40774,12 @@ var init_jobs = __esm({
               authTried = true;
               const seeded = adapter.recoverAuthFailure({ interpreted, sandbox, model: job.model });
               if (seeded && remaining >= MIN_RETRY_MS) {
-                job.retries.push({ failure_kind: interpreted.failureKind, reason: "credentials re-seeded", at: (/* @__PURE__ */ new Date()).toISOString(), usage: adapter.usageRecord(interpreted.usageRaw) });
+                job.retries.push({
+                  failure_kind: interpreted.failureKind,
+                  reason: "credentials re-seeded",
+                  at: (/* @__PURE__ */ new Date()).toISOString(),
+                  usage: adapter.usageRecord(interpreted.usageRaw)
+                });
                 run = await attempt(remaining);
                 continue;
               }
@@ -40662,7 +40787,12 @@ var init_jobs = __esm({
             const wait = POLICY.retryBackoffMs * 3 ** autoRetries;
             if (AUTO_RETRY_KINDS.includes(interpreted.failureKind) && autoRetries < POLICY.maxAutoRetries && remaining - wait >= MIN_RETRY_MS) {
               autoRetries += 1;
-              job.retries.push({ failure_kind: interpreted.failureKind, reason: `transient; re-run after ${wait} ms`, at: (/* @__PURE__ */ new Date()).toISOString(), usage: adapter.usageRecord(interpreted.usageRaw) });
+              job.retries.push({
+                failure_kind: interpreted.failureKind,
+                reason: `transient; re-run after ${wait} ms`,
+                at: (/* @__PURE__ */ new Date()).toISOString(),
+                usage: adapter.usageRecord(interpreted.usageRaw)
+              });
               await new Promise((resolve) => {
                 const timer = setTimeout(resolve, wait);
                 job._cancelFns.push(() => {
@@ -40785,7 +40915,10 @@ var init_jobs = __esm({
       #recordMany(input2) {
         const extra = Object.keys(input2).filter((k) => k !== "records");
         if (extra.length) {
-          throw new RequestError(`records cannot be combined with ${extra.map((k) => `"${k}"`).join(", ")}; put each job's verdicts inside records`, "unknown_field");
+          throw new RequestError(
+            `records cannot be combined with ${extra.map((k) => `"${k}"`).join(", ")}; put each job's verdicts inside records`,
+            "unknown_field"
+          );
         }
         const { records } = input2;
         if (!Array.isArray(records) || records.length === 0) {
@@ -40796,10 +40929,12 @@ var init_jobs = __esm({
         const seen = /* @__PURE__ */ new Set();
         records.forEach((r, i) => {
           try {
-            if (seen.has(r?.job_id)) throw new RequestError(`job "${r.job_id}" appears twice; give each job one record`, "duplicate_job");
+            if (seen.has(r?.job_id))
+              throw new RequestError(`job "${r.job_id}" appears twice; give each job one record`, "duplicate_job");
             seen.add(r?.job_id);
             const unknown2 = Object.keys(r ?? {}).filter((k) => !["job_id", "entries", "reflection"].includes(k));
-            if (unknown2.length) throw new RequestError(`${unknown2.map((k) => `"${k}"`).join(", ")} cannot be written here`, "unknown_field");
+            if (unknown2.length)
+              throw new RequestError(`${unknown2.map((k) => `"${k}"`).join(", ")} cannot be written here`, "unknown_field");
             changes.push(this.#checkRecord(r ?? {}));
           } catch (err) {
             if (!(err instanceof RequestError)) throw err;
@@ -40821,15 +40956,15 @@ var init_jobs = __esm({
       // written: what the job's record and reflection become, or a RequestError.
       #checkRecord({ job_id: jobId, entries, reflection }) {
         if (entries === void 0 && reflection === void 0) {
-          throw new RequestError("pass entries (verdicts on specific points), reflection (what the answer added), or both", "nothing_to_record");
+          throw new RequestError(
+            "pass entries (verdicts on specific points), reflection (what the answer added), or both",
+            "nothing_to_record"
+          );
         }
         const live = this.jobs.get(jobId);
         const job = live ?? loadRound(jobId);
         if (!job) {
-          throw new RequestError(
-            `no consultation with job_id "${jobId}" in this session or in ~/.severally/history`,
-            "unknown_job"
-          );
+          throw new RequestError(`no consultation with job_id "${jobId}" in this session or in ~/.severally/history`, "unknown_job");
         }
         if (!job.result) {
           throw new RequestError(
@@ -40948,7 +41083,8 @@ var init_jobs = __esm({
         if (!job) {
           const view = this.view(jobId);
           if (!view) return null;
-          if (view.status !== "running" && view.status !== "queued") return { ...view, cancel_effect: `job was already ${view.status}` };
+          if (view.status !== "running" && view.status !== "queued")
+            return { ...view, cancel_effect: `job was already ${view.status}` };
           return {
             ...view,
             cancel_effect: requestCancel(jobId) ? `asked the severally process running it to stop it; that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing signalled: the request to the severally process running it could not be written"
@@ -41038,7 +41174,10 @@ var init_jobs = __esm({
           const view = this.groupView(groupId);
           if (!view) return null;
           const asked = (loadGroup(groupId)?.job_ids ?? []).map((jid) => this.cancel(jid)).filter((r) => /^asked/.test(r?.cancel_effect ?? "")).length;
-          return { ...view, cancel_effect: asked ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing to signal: no consultant in this fan-out is still running" };
+          return {
+            ...view,
+            cancel_effect: asked ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing to signal: no consultant in this fan-out is still running"
+          };
         }
         const signalled = group.job_ids.filter((jid) => {
           const j = this.jobs.get(jid);
@@ -41157,11 +41296,23 @@ function briefSection(brief) {
     out.push("");
   };
   block("Objective", brief.objective);
-  block("Success criteria", bullets2(brief.success_criteria, (c) => `- ${c}`));
-  block("Constraints", bullets2(brief.constraints, (c) => `- ${c}`));
-  block("Facts as given", bullets2(brief.facts, (f) => `- ${f}`));
+  block(
+    "Success criteria",
+    bullets2(brief.success_criteria, (c) => `- ${c}`)
+  );
+  block(
+    "Constraints",
+    bullets2(brief.constraints, (c) => `- ${c}`)
+  );
+  block(
+    "Facts as given",
+    bullets2(brief.facts, (f) => `- ${f}`)
+  );
   block("Proposal", brief.proposal);
-  block("Opposing claims", bullets2(brief.counterpoints, (c) => `- ${c}`));
+  block(
+    "Opposing claims",
+    bullets2(brief.counterpoints, (c) => `- ${c}`)
+  );
   for (const a of brief.artifacts ?? []) {
     out.push(`**Material: ${a.name}** (${[a.kind, a.language, a.source].filter(Boolean).join(", ")})`, "");
     out.push(...fence(a.excerpt, a.language));
@@ -41178,7 +41329,8 @@ function briefSection(brief) {
     if (count("symlink")) out.push(`- ${count("symlink")} symlink(s) inside those directories were skipped, not followed`);
     if (count("protected")) out.push(`- ${count("protected")} credential or history path(s) were left out on purpose`);
     if (count("gone")) out.push(`- ${count("gone")} path(s) from the earlier round no longer existed and were not copied again`);
-    if (count("masked")) out.push(`- ${count("masked")} path(s) from the earlier round were masked in its record and were not copied again`);
+    if (count("masked"))
+      out.push(`- ${count("masked")} path(s) from the earlier round were masked in its record and were not copied again`);
     if (count("replaced")) out.push("- the earlier round's change was replaced by the diff given in this round");
     out.push("");
   }
@@ -41273,7 +41425,9 @@ function roundSection(round, previousBrief) {
   ];
   if (round.result) {
     head.push(`- stance as declared: ${round.result.stance ?? "not declared"}`);
-    head.push(`- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`);
+    head.push(
+      `- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`
+    );
   }
   head.push("");
   head.push("### Question", "", round.question, "");
@@ -41329,8 +41483,12 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
       if (round.brief) previousBrief = round.brief;
     }
   }
-  return { markdown: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
-`, rounds: total, chain_ids: chainIds };
+  return {
+    markdown: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
+`,
+    rounds: total,
+    chain_ids: chainIds
+  };
 }
 var ExportError, historyDir, bullets2;
 var init_export = __esm({
@@ -41394,10 +41552,7 @@ function staleInstall(home = os5.homedir(), severallyHome = POLICY.home) {
 }
 function createServer(manager = new JobManager()) {
   const stale = staleInstall();
-  const server = new McpServer(
-    { name: "severally", version: SEVERALLY_VERSION },
-    { instructions: SERVER_INSTRUCTIONS }
-  );
+  const server = new McpServer({ name: "severally", version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
   const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
   const fail = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: true });
   server.registerTool(
@@ -41431,7 +41586,9 @@ function createServer(manager = new JobManager()) {
         group_id: external_exports.string().min(1).optional(),
         wait_ms: external_exports.number().int().min(0).max(POLICY.maxWaitMs).optional(),
         detail: external_exports.enum(["full"]).optional(),
-        ids: external_exports.array(external_exports.string().min(1)).min(1).max(100).optional().describe("with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote")
+        ids: external_exports.array(external_exports.string().min(1)).min(1).max(100).optional().describe(
+          "with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote"
+        )
       })
     },
     async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
@@ -41439,14 +41596,20 @@ function createServer(manager = new JobManager()) {
         return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
       }
       if (ids && (group_id || detail)) {
-        return fail({ error: "invalid_request", message: "ids goes with job_id alone: a point id belongs to one consultant's answer" });
+        return fail({
+          error: "invalid_request",
+          message: "ids goes with job_id alone: a point id belongs to one consultant's answer"
+        });
       }
       const req = ctx?.mcpReq;
       const token = req?._meta?.progressToken;
       let beats = 0;
       const timer = token === void 0 ? null : setInterval(() => {
         beats += 1;
-        req.notify({ method: "notifications/progress", params: { progressToken: token, progress: beats, message: "the consultation is still running" } }).catch(() => {
+        req.notify({
+          method: "notifications/progress",
+          params: { progressToken: token, progress: beats, message: "the consultation is still running" }
+        }).catch(() => {
         });
       }, PROGRESS_EVERY_MS);
       let view;
@@ -41456,7 +41619,10 @@ function createServer(manager = new JobManager()) {
         clearInterval(timer);
       }
       if (!view) {
-        return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
+        return fail({
+          error: "unknown_job",
+          message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"`
+        });
       }
       if (!ids || ["running", "queued", "cancelling"].includes(view.status)) return ok(view);
       try {
@@ -41484,7 +41650,10 @@ function createServer(manager = new JobManager()) {
       }
       const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
       if (!view) {
-        return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
+        return fail({
+          error: "unknown_job",
+          message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"`
+        });
       }
       return ok(view);
     }
@@ -41504,15 +41673,20 @@ function createServer(manager = new JobManager()) {
     async ({ job_id, entries, reflection, records }) => {
       try {
         if (records !== void 0) {
-          const out = manager.record(Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== void 0)));
+          const out = manager.record(
+            Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== void 0))
+          );
           return out.not_saved ? fail(out) : ok(out);
         }
-        if (!job_id) return fail({ error: "invalid_request", message: "pass job_id (with entries and/or reflection), or records" });
-        return ok(manager.record({
-          job_id,
-          ...entries === void 0 ? {} : { entries },
-          ...reflection === void 0 ? {} : { reflection }
-        }));
+        if (!job_id)
+          return fail({ error: "invalid_request", message: "pass job_id (with entries and/or reflection), or records" });
+        return ok(
+          manager.record({
+            job_id,
+            ...entries === void 0 ? {} : { entries },
+            ...reflection === void 0 ? {} : { reflection }
+          })
+        );
       } catch (err) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
@@ -41559,9 +41733,11 @@ function createServer(manager = new JobManager()) {
 }
 async function main() {
   const problem = configProblem();
-  if (problem) process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}
+  if (problem)
+    process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}
 `);
-  for (const w of configWarnings()) process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}
+  for (const w of configWarnings())
+    process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}
 `);
   if (availableConsultants().length === 0) {
     process.stderr.write(
@@ -41569,9 +41745,7 @@ async function main() {
     );
   }
   if (process.env.SEVERALLY_ACTIVE === "1") {
-    process.stderr.write(
-      "severally: refusing to start inside a severally consultant session (recursion barrier)\n"
-    );
+    process.stderr.write("severally: refusing to start inside a severally consultant session (recursion barrier)\n");
     process.exit(2);
   }
   const manager = new JobManager();
@@ -41654,12 +41828,14 @@ prediction: { expected, worry }, kept and never sent; it can only be written her
 Model, permissions, rounds, timeout and size caps are fixed by this server.`;
     recordShape = {
       job_id: external_exports.string().min(1).describe("the job_id consult_get returned"),
-      entries: external_exports.array(external_exports.object({
-        id: external_exports.string().min(1).describe("f1, u1, c1 ... from the result"),
-        verdict: external_exports.enum(VERDICTS),
-        effect: external_exports.string().max(4e3).optional().describe("what it changed, or why it is unverified"),
-        note: external_exports.string().max(4e3).optional().describe("what you checked and found")
-      })).min(1).max(100).optional(),
+      entries: external_exports.array(
+        external_exports.object({
+          id: external_exports.string().min(1).describe("f1, u1, c1 ... from the result"),
+          verdict: external_exports.enum(VERDICTS),
+          effect: external_exports.string().max(4e3).optional().describe("what it changed, or why it is unverified"),
+          note: external_exports.string().max(4e3).optional().describe("what you checked and found")
+        })
+      ).min(1).max(100).optional(),
       reflection: external_exports.object({
         delta: external_exports.string().min(1).max(4e3).describe('what the answer added over what you expected ("nothing new" counts)'),
         related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("f1, u1, c1 ...")
@@ -41715,13 +41891,18 @@ function status() {
   lines.push(`network: ${POLICY.network === "off" ? "off for every consultation (server.network)" : "per request"}`, "");
   lines.push("consultants:");
   for (const c of POLICY.consultants) {
-    lines.push(`  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? "available" : `not available: ${unavailableReason(c)}`}`);
+    lines.push(
+      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? "available" : `not available: ${unavailableReason(c)}`}`
+    );
   }
   for (const name of brokenConsultantNames()) lines.push(`  ${name}: not available: ${brokenConsultant(name)}`);
   lines.push("");
   const stale = staleInstall();
-  lines.push(stale ? `copies: ${Object.entries(stale.copies).map(([k, v]) => `${k} ${v}${stale.behind.includes(k) ? " (behind)" : ""}`).join(", ")}
-  ${stale.fix}` : "copies: every installed copy is this version", "");
+  lines.push(
+    stale ? `copies: ${Object.entries(stale.copies).map(([k, v]) => `${k} ${v}${stale.behind.includes(k) ? " (behind)" : ""}`).join(", ")}
+  ${stale.fix}` : "copies: every installed copy is this version",
+    ""
+  );
   lines.push("clients:");
   for (const client of CLIENTS) lines.push(`  ${client.label.padEnd(12)} ${registration(client)}`);
   lines.push("", "login (out of quota is not checked; the first consultation shows it):");
@@ -41737,8 +41918,22 @@ var init_status = __esm({
     init_server();
     init_platform();
     CLIENTS = [
-      { label: "Claude Code", cmd: "claude", checks: [["plugin", "list"], ["mcp", "get", "severally"]] },
-      { label: "Codex", cmd: "codex", checks: [["plugin", "list"], ["mcp", "get", "severally"]] },
+      {
+        label: "Claude Code",
+        cmd: "claude",
+        checks: [
+          ["plugin", "list"],
+          ["mcp", "get", "severally"]
+        ]
+      },
+      {
+        label: "Codex",
+        cmd: "codex",
+        checks: [
+          ["plugin", "list"],
+          ["mcp", "get", "severally"]
+        ]
+      },
       { label: "Antigravity", cmd: "agy", checks: [["mcp", "list"]] },
       { label: "OpenCode", cmd: "opencode", checks: [["mcp", "list"]] }
     ];
@@ -41748,10 +41943,14 @@ var init_status = __esm({
       codex: { cmd: "codex", args: ["login", "status"], read: (out, ok) => ok },
       // OpenCode can also take keys from the environment, so no saved credential
       // is a warning, not a verdict.
-      opencode: { cmd: "opencode", args: ["auth", "list"], read: (out) => {
-        const n = out.split("\n").filter((l) => /\bstored\b/.test(l)).length;
-        return n ? `${n} saved credential${n > 1 ? "s" : ""}` : "no saved credentials (keys in the environment still work)";
-      } }
+      opencode: {
+        cmd: "opencode",
+        args: ["auth", "list"],
+        read: (out) => {
+          const n = out.split("\n").filter((l) => /\bstored\b/.test(l)).length;
+          return n ? `${n} saved credential${n > 1 ? "s" : ""}` : "no saved credentials (keys in the environment still work)";
+        }
+      }
     };
   }
 });
@@ -41760,14 +41959,18 @@ var init_status = __esm({
 import fs12 from "node:fs";
 var major = Number(process.versions.node.split(".")[0]);
 if (major < 22) {
-  process.stderr.write(`severally: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again
-`);
+  process.stderr.write(
+    `severally: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again
+`
+  );
   process.exit(1);
 }
 if (process.argv[2] === "install") {
   const installer = new URL("../scripts/install.mjs", import.meta.url);
   if (!fs12.existsSync(installer)) {
-    process.stderr.write("severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n");
+    process.stderr.write(
+      "severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n"
+    );
     process.exit(1);
   }
   process.argv.splice(2, 1);

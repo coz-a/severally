@@ -27,9 +27,7 @@ test('the synthesised home loads no MCP servers and denies every write path', ()
   const mcp = fs.readFileSync(path.join(sandbox.root, '.gemini', 'config', 'mcp_config.json'), 'utf8');
   assert.deepEqual(JSON.parse(mcp), {}, 'no MCP server may be reachable: this is the recursion barrier');
 
-  const settings = JSON.parse(
-    fs.readFileSync(path.join(sandbox.root, '.gemini', 'antigravity-cli', 'settings.json'), 'utf8'),
-  );
+  const settings = JSON.parse(fs.readFileSync(path.join(sandbox.root, '.gemini', 'antigravity-cli', 'settings.json'), 'utf8'));
   // read_file is allowed so that all three consultants read the same amount;
   // command stays denied, so reading a file never turns into a shell.
   assert.deepEqual(settings.permissions.allow, ['read_url(*)', 'read_file(*)']);
@@ -40,7 +38,7 @@ test('the synthesised home loads no MCP servers and denies every write path', ()
 
   assert.equal(sandbox.env.HOME, sandbox.root);
   // Windows uses ACLs and cannot represent Unix owner-only mode bits.
-  if (process.platform !== 'win32') assert.equal((fs.statSync(sandbox.root).mode & 0o777), 0o700);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(sandbox.root).mode & 0o777, 0o700);
   sandbox.cleanup();
 });
 

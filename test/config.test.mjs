@@ -12,7 +12,13 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'severally-cfg-'));
 
 test('round budget defaults to five and can be configured up to twenty', async () => {
-  for (const [value, expected] of [[undefined, 5], ['20', 20], ['99', 20], ['0', 1], ['invalid', 5]]) {
+  for (const [value, expected] of [
+    [undefined, 5],
+    ['20', 20],
+    ['99', 20],
+    ['0', 1],
+    ['invalid', 5],
+  ]) {
     const env = value === undefined ? {} : { SEVERALLY_MAX_ROUNDS: value };
     const policy = await loadPolicy(env, `rounds-${value}`);
     assert.equal(policy.POLICY.maxRounds, expected, `round setting ${value}`);
@@ -89,7 +95,10 @@ test('named consultants can share one CLI', async () => {
   const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'named');
   assert.equal(policy.configProblem(), null);
   assert.deepEqual(names(policy), ['glm', 'deepseek']);
-  assert.deepEqual(policy.availableConsultants().map((c) => c.cli), ['opencode', 'opencode']);
+  assert.deepEqual(
+    policy.availableConsultants().map((c) => c.cli),
+    ['opencode', 'opencode'],
+  );
   assert.deepEqual(policy.limitsSummary().clis, { glm: 'opencode', deepseek: 'opencode' });
 });
 
@@ -158,7 +167,10 @@ test('consulting an unavailable consultant is refused before a job exists', () =
 
   assert.equal(result.threw, true, 'the request must not be accepted');
   assert.equal(result.code, 'target_unavailable');
-  assert.match(result.message, /available: codex \(codex, gpt-6-astra\), claude-code \(claude-code, claude-opus-5-5\), opencode /);
+  assert.match(
+    result.message,
+    /available: codex \(codex, gpt-6-astra\), claude-code \(claude-code, claude-opus-5-5\), opencode /,
+  );
 });
 
 test('an installed CLI can still be excluded, with the reason carried to the caller', async () => {
@@ -179,7 +191,10 @@ test('an installed CLI can still be excluded, with the reason carried to the cal
 
 test('a consultant turned off on its own carries its own note', async () => {
   const config = writeConfig({
-    consultants: { sol: { cli: 'codex', model: 'gpt-6.1-sol', enabled: false, note: 'quota' }, astra: { cli: 'codex', model: 'gpt-6-astra' } },
+    consultants: {
+      sol: { cli: 'codex', model: 'gpt-6.1-sol', enabled: false, note: 'quota' },
+      astra: { cli: 'codex', model: 'gpt-6-astra' },
+    },
   });
   const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'own-note');
   assert.deepEqual(names(policy), ['astra']);
@@ -226,7 +241,9 @@ test('config.example.json is a config the server accepts', async () => {
 });
 
 test('OpenCode provider definitions reach the sandbox config and nowhere else', async () => {
-  const provider = { local: { npm: '@ai-sdk/openai-compatible', options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { 'qwen3:8b': {} } } };
+  const provider = {
+    local: { npm: '@ai-sdk/openai-compatible', options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { 'qwen3:8b': {} } },
+  };
   const config = writeConfig({ clis: { opencode: { provider } } });
   const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'oc-provider');
   assert.equal(policy.configProblem(), null);
@@ -236,18 +253,29 @@ test('OpenCode provider definitions reach the sandbox config and nowhere else', 
   const sandboxUrl = new URL('../src/adapters/opencode-sandbox.mjs', import.meta.url).href;
   const work = path.join(tmp(), 'job_x', 'work');
   fs.mkdirSync(work, { recursive: true });
-  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
     const fs = await import('node:fs'); const path = await import('node:path');
     const { prepareSandbox } = await import(${JSON.stringify(sandboxUrl)});
     const sb = prepareSandbox({ workdir: ${JSON.stringify(work)} });
     console.log(fs.readFileSync(path.join(sb.root, '.config', 'opencode', 'opencode.json'), 'utf8'));
-  `], { env: { ...process.env, SEVERALLY_CONFIG: config }, encoding: 'utf8' });
+  `,
+    ],
+    { env: { ...process.env, SEVERALLY_CONFIG: config }, encoding: 'utf8' },
+  );
   const written = JSON.parse(out);
   assert.deepEqual(written.provider, provider);
   assert.deepEqual(written.mcp, {}, 'providers do not bring anything else across');
   assert.equal(written.permission['*'], 'deny');
 
-  for (const [bad, why] of [[{ codex: { provider } }, /only OpenCode/], [{ opencode: { provider: { local: 'x' } } }, /provider objects/]]) {
+  for (const [bad, why] of [
+    [{ codex: { provider } }, /only OpenCode/],
+    [{ opencode: { provider: { local: 'x' } } }, /provider objects/],
+  ]) {
     const p = await loadPolicy({ SEVERALLY_CONFIG: writeConfig({ clis: bad }) }, `oc-provider-bad-${Math.random()}`);
     assert.match(p.configWarnings().join(), why);
     assert.equal(p.POLICY.clis[Object.keys(bad)[0]].available, false, 'a CLI with a mistake in its section is off');

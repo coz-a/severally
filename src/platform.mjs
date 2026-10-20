@@ -36,13 +36,9 @@ export function findCommand(command, { cwd = process.cwd(), env = process.env } 
   if (typeof command !== 'string' || !command) return null;
   cwd = path.resolve(cwd);
   const windows = process.platform === 'win32';
-  const value = (name) => env[windows
-    ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
+  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
   const explicit = command.includes('/') || (windows && command.includes('\\'));
-  const dirs = explicit ? [cwd] : [
-    ...(windows ? [cwd] : []),
-    ...(value('PATH') ?? '').split(path.delimiter).filter(Boolean),
-  ];
+  const dirs = explicit ? [cwd] : [...(windows ? [cwd] : []), ...(value('PATH') ?? '').split(path.delimiter).filter(Boolean)];
   for (const dir of dirs) {
     // Absolute candidates prevent which's own cwd lookup from resolving a
     // wrapper in the server directory instead of the child's directory.
@@ -56,7 +52,9 @@ export function findCommand(command, { cwd = process.cwd(), env = process.env } 
       if (!fs.statSync(candidate).isFile()) return null;
       fs.accessSync(candidate, fs.constants.X_OK);
       return candidate;
-    } catch { /* not installed */ }
+    } catch {
+      /* not installed */
+    }
   }
   return null;
 }

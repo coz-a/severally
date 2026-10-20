@@ -69,13 +69,29 @@ export const FORBIDDEN_FLAGS = [
 // feature switch that could re-enable what --ignore-user-config drops, and
 // the modes that leave the read-only sandbox.
 export const RESERVED_FLAGS = [
-  '-s', '--sandbox', '--config', '--cd', '--model', '--output-last-message',
-  '--profile', '-p', '--enable', '--full-auto', '--worktree', '--cyber-access-program',
+  '-s',
+  '--sandbox',
+  '--config',
+  '--cd',
+  '--model',
+  '--output-last-message',
+  '--profile',
+  '-p',
+  '--enable',
+  '--full-auto',
+  '--worktree',
+  '--cyber-access-program',
 ];
 
 const PROFILE = 'severally';
 
-const listDir = (dir) => { try { return fs.readdirSync(dir); } catch { return []; } };
+const listDir = (dir) => {
+  try {
+    return fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+};
 
 /**
  * The profile's filesystem table, as TOML: everything readable, the protected
@@ -90,11 +106,16 @@ export function filesystemPermissions() {
   fs.mkdirSync(path.join(POLICY.home, 'homes'), { recursive: true, mode: 0o700 });
   const codexHome = path.join(os.homedir(), '.codex').replaceAll('\\', '/');
   const denied = protectedRoots().flatMap((p) => {
-    if (p === codexHome) return listDir(codexHome).filter((n) => n !== 'packages').map((n) => `${codexHome}/${n}`);
+    if (p === codexHome)
+      return listDir(codexHome)
+        .filter((n) => n !== 'packages')
+        .map((n) => `${codexHome}/${n}`);
     const star = p.indexOf('/*/');
     if (star === -1) return [p];
     const [parent, rest] = [p.slice(0, star), p.slice(star + 3)];
-    return listDir(parent).map((n) => `${parent}/${n}/${rest}`).filter((q) => fs.existsSync(q));
+    return listDir(parent)
+      .map((n) => `${parent}/${n}/${rest}`)
+      .filter((q) => fs.existsSync(q));
   });
   return `{ ":root" = "read", ${denied.map((p) => `${JSON.stringify(p)} = "none"`).join(', ')} }`;
 }
@@ -106,24 +127,37 @@ export function buildInvocation({ workdir, schemaPath, consultant, network = 'on
   const args = [
     'exec',
     '--json',
-    '--color', 'never',
-    '-m', chosen,
-    '-c', `model_reasoning_effort="${consultant.effort ?? 'high'}"`,
-    '-c', `tools.web_search=${network !== 'off'}`,
+    '--color',
+    'never',
+    '-m',
+    chosen,
+    '-c',
+    `model_reasoning_effort="${consultant.effort ?? 'high'}"`,
+    '-c',
+    `tools.web_search=${network !== 'off'}`,
     ...(network === 'off' ? ['-c', 'web_search="disabled"'] : []),
-    '-c', 'hooks.enabled=false',
-    '-c', 'agents.enabled=false',
-    '-c', 'shell_environment_policy.inherit="core"',
-    '-c', 'shell_environment_policy.set={SEVERALLY_ACTIVE="1"}',
+    '-c',
+    'hooks.enabled=false',
+    '-c',
+    'agents.enabled=false',
+    '-c',
+    'shell_environment_policy.inherit="core"',
+    '-c',
+    'shell_environment_policy.set={SEVERALLY_ACTIVE="1"}',
     '--ignore-user-config',
     '--ignore-rules',
     '--skip-git-repo-check',
     '--ephemeral',
-    '-c', `default_permissions="${PROFILE}"`,
-    '-c', `permissions.${PROFILE}.filesystem=${filesystemPermissions()}`,
-    '-C', workdir,
-    '--output-schema', schemaPath,
-    '-o', lastMessagePath,
+    '-c',
+    `default_permissions="${PROFILE}"`,
+    '-c',
+    `permissions.${PROFILE}.filesystem=${filesystemPermissions()}`,
+    '-C',
+    workdir,
+    '--output-schema',
+    schemaPath,
+    '-o',
+    lastMessagePath,
     '-',
   ];
   return { command: t.cli, args, lastMessagePath, model: chosen };
@@ -146,7 +180,11 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
     if (!t.startsWith('{')) continue;
-    try { events.push(JSON.parse(t)); } catch { /* partial line */ }
+    try {
+      events.push(JSON.parse(t));
+    } catch {
+      /* partial line */
+    }
   }
 
   const errorEvents = events.filter((e) => e.type === 'error' || e.type === 'turn.failed');
@@ -167,9 +205,7 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
     }
   }
 
-  const errorMsg = errorEvents
-    .map((e) => e.message ?? e.error?.message ?? JSON.stringify(e))
-    .join(' | ');
+  const errorMsg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(' | ');
   // An error the turn recovered from (the stream still ends in
   // turn.completed, with an answer) does not throw the answer away; the lead
   // is told about it instead. A turn that ends in turn.failed has failed,
@@ -210,7 +246,9 @@ export function progress({ stdout }) {
     try {
       const e = JSON.parse(t);
       if (typeof e?.type === 'string' && e.type.startsWith('item.')) items.push(e);
-    } catch { /* a partial line, e.g. when the child was killed mid-write */ }
+    } catch {
+      /* a partial line, e.g. when the child was killed mid-write */
+    }
   }
   if (!items.length) return null;
   const last = items[items.length - 1];
@@ -229,7 +267,11 @@ export function toolCalls({ stdout }) {
     const t = line.trim();
     if (!t.startsWith('{')) continue;
     let e;
-    try { e = JSON.parse(t); } catch { continue; }
+    try {
+      e = JSON.parse(t);
+    } catch {
+      continue;
+    }
     const item = e?.item;
     if (!item?.type || !['item.started', 'item.completed'].includes(e.type)) continue;
     if (['agent_message', 'reasoning', 'error'].includes(item.type)) continue;
@@ -269,9 +311,9 @@ export function boundary({ args }) {
     writes: false,
     mcp: false,
     protected_paths: args.some((a) => a.startsWith(`permissions.${PROFILE}.filesystem=`))
-      ? 'denied by path (permission profile), as the paths stood at launch: ~/.codex entries other than packages/, '
-        + 'and legacy job homes, created later are not covered; file names such as .env anywhere are not; on Linux a '
-        + 'protected file replaced by rename during the run is readable'
+      ? 'denied by path (permission profile), as the paths stood at launch: ~/.codex entries other than packages/, ' +
+        'and legacy job homes, created later are not covered; file names such as .env anywhere are not; on Linux a ' +
+        'protected file replaced by rename during the run is readable'
       : 'not enforced',
     tools: null,
   };

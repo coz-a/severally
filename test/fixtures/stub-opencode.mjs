@@ -23,7 +23,8 @@ if (args.includes('--help')) {
     console.error('error: no such command; see --standalone docs');
     process.exit(1);
   }
-  if (process.env.STUB_HELP === 'standalone') console.log('FLAGS\n  --standalone            Run with a private server instead of the background service');
+  if (process.env.STUB_HELP === 'standalone')
+    console.log('FLAGS\n  --standalone            Run with a private server instead of the background service');
   else console.log('FLAGS\n  --format choice         Output format (choices: default, json)');
   process.exit(0);
 }
@@ -33,7 +34,9 @@ if (process.env.STUB_ENV_OUT) fs.writeFileSync(process.env.STUB_ENV_OUT, JSON.st
 
 let stdin = '';
 process.stdin.setEncoding('utf8');
-process.stdin.on('data', (d) => { stdin += d; });
+process.stdin.on('data', (d) => {
+  stdin += d;
+});
 process.stdin.on('end', () => run());
 if (process.stdin.isTTY) run();
 
@@ -46,7 +49,15 @@ function answer(overrides = {}) {
     confidence: 'medium',
     evidence_basis: 'sufficient',
     stance: 'proceed',
-    findings: [{ point: 'Unbounded retry', grounds: 'The excerpt has no cap.', impact: 'Load amplification', severity: 'high', confidence: 'medium' }],
+    findings: [
+      {
+        point: 'Unbounded retry',
+        grounds: 'The excerpt has no cap.',
+        impact: 'Load amplification',
+        severity: 'high',
+        confidence: 'medium',
+      },
+    ],
     alternatives: [{ option: 'Circuit breaker', tradeoffs: 'More moving parts', when_preferred: 'When the dependency flaps' }],
     unknowns: [{ item: 'Peak QPS', why_it_matters: 'Sets the cap', how_to_obtain: 'Check the dashboard' }],
     decision_changers: [{ condition: 'QPS below 5', changes_to: 'No cap needed' }],
@@ -57,12 +68,17 @@ function answer(overrides = {}) {
   };
 }
 
-const stepFinish = () => emit('step_finish', {
-  // Shape verified live against opencode 1.18.31 (glm-5.3): tokens carries
-  // total/input/output/reasoning plus cache.read/cache.write, and cost is a
-  // number (0 on a coding plan).
-  part: { type: 'step-finish', tokens: { total: 21, input: 10, output: 3, reasoning: 1, cache: { read: 7, write: 2 } }, cost: 0.02 },
-});
+const stepFinish = () =>
+  emit('step_finish', {
+    // Shape verified live against opencode 1.18.31 (glm-5.3): tokens carries
+    // total/input/output/reasoning plus cache.read/cache.write, and cost is a
+    // number (0 on a coding plan).
+    part: {
+      type: 'step-finish',
+      tokens: { total: 21, input: 10, output: 3, reasoning: 1, cache: { read: 7, write: 2 } },
+      cost: 0.02,
+    },
+  });
 
 async function run() {
   if (process.env.STUB_BRIEF_OUT) fs.writeFileSync(process.env.STUB_BRIEF_OUT, stdin);
@@ -74,7 +90,12 @@ async function run() {
   const behavior = process.env.STUB_BEHAVIOR ?? 'ok';
 
   if (behavior === 'usage_limit') {
-    emit('error', { error: { name: 'ProviderAuthError', data: { message: 'You have reached your usage limit for this model. Try again later.' } } });
+    emit('error', {
+      error: {
+        name: 'ProviderAuthError',
+        data: { message: 'You have reached your usage limit for this model. Try again later.' },
+      },
+    });
     process.exit(1);
   }
   if (behavior === 'auth') {
@@ -82,7 +103,9 @@ async function run() {
     process.exit(1);
   }
   if (behavior === 'model_unavailable') {
-    emit('error', { error: { name: 'UnknownModelException', data: { message: 'model glm-99 does not exist or you do not have access to it' } } });
+    emit('error', {
+      error: { name: 'UnknownModelException', data: { message: 'model glm-99 does not exist or you do not have access to it' } },
+    });
     process.exit(1);
   }
   if (behavior === 'invalid') {
@@ -105,7 +128,13 @@ async function run() {
     const blob = 'x'.repeat(60_000);
     emit('step_start', { part: { type: 'step-start' } });
     for (let i = 0; i < 10; i++) {
-      emit('tool_use', { part: { type: 'tool', tool: 'read', state: { status: 'completed', input: { filePath: `f${i}` }, output: blob, metadata: { preview: blob } } } });
+      emit('tool_use', {
+        part: {
+          type: 'tool',
+          tool: 'read',
+          state: { status: 'completed', input: { filePath: `f${i}` }, output: blob, metadata: { preview: blob } },
+        },
+      });
     }
     emit('text', { part: { type: 'text', text: JSON.stringify(answer()), time: { start: 1, end: 2 } } });
     stepFinish();
@@ -153,7 +182,9 @@ async function run() {
         const dir = path.join(process.env.XDG_DATA_HOME || path.join(process.env.HOME, '.local', 'share'), 'opencode');
         fs.mkdirSync(dir, { recursive: true });
         const db = new DatabaseSync(path.join(dir, 'opencode.db'));
-        db.exec('CREATE TABLE IF NOT EXISTS credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)');
+        db.exec(
+          'CREATE TABLE IF NOT EXISTS credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT, connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER)',
+        );
         const seeded = db.prepare("SELECT count(*) c FROM credential WHERE integration_id = 'zai-coding-plan'").get().c > 0;
         db.close();
         if (seeded) return 'seeded';

@@ -1,0 +1,4 @@
+plugins/severally/dist/
+node_modules/
+.work/
+.claude/

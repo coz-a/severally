@@ -41,7 +41,9 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
 if (Number(process.versions.node.split('.')[0]) < 22) {
-  console.error(`severally-install: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again`);
+  console.error(
+    `severally-install: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again`,
+  );
   process.exit(1);
 }
 
@@ -54,7 +56,9 @@ const argv = new Set(process.argv.slice(2));
 // would otherwise turn an install into a silent dry run.
 const unknownArgs = [...argv].filter((a) => !FLAGS.includes(a));
 if (unknownArgs.length) {
-  console.error(`severally-install: unknown argument(s) ${unknownArgs.map((a) => JSON.stringify(a)).join(' ')}; it takes ${FLAGS.join(' ')}`);
+  console.error(
+    `severally-install: unknown argument(s) ${unknownArgs.map((a) => JSON.stringify(a)).join(' ')}; it takes ${FLAGS.join(' ')}`,
+  );
   process.exit(2);
 }
 const dryRun = argv.has('--dry-run');
@@ -108,7 +112,10 @@ function backupName(target) {
 
 function backup(file) {
   if (!fs.existsSync(file)) return null;
-  if (dryRun) { log(`   [dry-run] backup ${file}`); return null; }
+  if (dryRun) {
+    log(`   [dry-run] backup ${file}`);
+    return null;
+  }
   fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
   const dest = path.join(backupDir, backupName(file));
   // Several client operations can touch the same config in one install.
@@ -120,7 +127,10 @@ function backup(file) {
 
 function backupTree(dir) {
   if (!fs.existsSync(dir)) return null;
-  if (dryRun) { log(`   [dry-run] backup ${dir}`); return null; }
+  if (dryRun) {
+    log(`   [dry-run] backup ${dir}`);
+    return null;
+  }
   fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
   const dest = path.join(backupDir, backupName(dir));
   copyTree(dir, dest);
@@ -138,7 +148,8 @@ function which(bin) {
 // severally-mcp package, so they are not where the command is looked for.
 function runtimeCommand() {
   const key = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
-  const dirs = (process.env[key] ?? '').split(path.delimiter)
+  const dirs = (process.env[key] ?? '')
+    .split(path.delimiter)
     .filter((dir) => !/(^|[\\/])node_modules[\\/]\.bin[\\/]?$/.test(dir.replace(/^"(.*)"$/, '$1')));
   return findCommand('severally-mcp', { env: { ...process.env, [key]: dirs.join(path.delimiter) } });
 }
@@ -163,7 +174,10 @@ function installRuntime() {
     run(process.execPath, ['--check', staged], { real: true });
     // The bundle carries other packages' code, so their licences travel with
     // it -- copied first, so a missing one fails before the runtime changes.
-    fs.copyFileSync(path.join(path.dirname(source), 'THIRD_PARTY_NOTICES'), path.join(path.dirname(installed), 'THIRD_PARTY_NOTICES'));
+    fs.copyFileSync(
+      path.join(path.dirname(source), 'THIRD_PARTY_NOTICES'),
+      path.join(path.dirname(installed), 'THIRD_PARTY_NOTICES'),
+    );
     fs.copyFileSync(path.join(PLUGIN, 'LICENSE'), path.join(path.dirname(installed), 'LICENSE'));
     backup(installed);
     fs.renameSync(staged, installed);
@@ -184,10 +198,18 @@ let globalRoot = null;
 if (mode === 'plugin' && !skipGlobal) {
   const npmRoot = tryRun('npm', ['root', '-g'], { real: true });
   globalRoot = npmRoot.ok ? npmRoot.out.trim() || null : null;
-  const inside = (dir) => { try { return fs.realpathSync(root).startsWith(fs.realpathSync(dir) + path.sep); } catch { return false; } };
+  const inside = (dir) => {
+    try {
+      return fs.realpathSync(root).startsWith(fs.realpathSync(dir) + path.sep);
+    } catch {
+      return false;
+    }
+  };
   if (globalRoot && inside(globalRoot)) {
-    throw new Error('severally-install was run from a global npm install of severally-mcp, which installing would replace. '
-      + 'Remove it (npm uninstall -g severally-mcp), then run npx -y severally-mcp@latest install, or install from a clone.');
+    throw new Error(
+      'severally-install was run from a global npm install of severally-mcp, which installing would replace. ' +
+        'Remove it (npm uninstall -g severally-mcp), then run npx -y severally-mcp@latest install, or install from a clone.',
+    );
   }
 }
 
@@ -206,14 +228,22 @@ if (mode === 'plugin') {
   const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   if (!dryRun) {
     backup(packageFile);
-    fs.writeFileSync(packageFile, `${JSON.stringify({ name: RUNTIME_PACKAGE, version: metadata.version,
-      type: 'module', bin: { 'severally-mcp': 'severally-mcp.mjs' } }, null, 2)}\n`);
+    fs.writeFileSync(
+      packageFile,
+      `${JSON.stringify(
+        { name: RUNTIME_PACKAGE, version: metadata.version, type: 'module', bin: { 'severally-mcp': 'severally-mcp.mjs' } },
+        null,
+        2,
+      )}\n`,
+    );
     fs.chmodSync(serverCommand[1], 0o755);
   }
   if (skipGlobal) {
     const existing = runtimeCommand();
     if (!dryRun && (!existing || fs.realpathSync(existing) !== fs.realpathSync(serverCommand[1]))) {
-      throw new Error('--skip-global requires severally-mcp on PATH to point to the installed runtime. Omit --skip-global or use --manual.');
+      throw new Error(
+        '--skip-global requires severally-mcp on PATH to point to the installed runtime. Omit --skip-global or use --manual.',
+      );
     }
     log('   --skip-global: using the existing runtime command');
   } else {
@@ -221,7 +251,11 @@ if (mode === 'plugin') {
     // own name; its severally-mcp command would collide with the new one.
     if (globalRoot && fs.existsSync(path.join(globalRoot, metadata.name))) {
       const r = tryRun('npm', ['uninstall', '-g', metadata.name]);
-      log(r.ok ? `   removed the global ${metadata.name} package (the runtime is now ${RUNTIME_PACKAGE})` : `   could not remove the global ${metadata.name} package: ${r.out}`);
+      log(
+        r.ok
+          ? `   removed the global ${metadata.name} package (the runtime is now ${RUNTIME_PACKAGE})`
+          : `   could not remove the global ${metadata.name} package: ${r.out}`,
+      );
     }
     const r = tryRun('npm', ['install', '-g', runtimeDir, '--install-links=false'], { cwd: dryRun ? root : runtimeDir });
     if (which('nodenv')) tryRun('nodenv', ['rehash']);
@@ -248,8 +282,10 @@ if (mode === 'plugin') {
     try {
       fs.mkdirSync(path.join(next, '.agents', 'plugins'), { recursive: true });
       copyTree(PLUGIN, path.join(next, 'plugins', 'severally'));
-      fs.copyFileSync(path.join(root, '.agents', 'plugins', 'marketplace.json'),
-        path.join(next, '.agents', 'plugins', 'marketplace.json'));
+      fs.copyFileSync(
+        path.join(root, '.agents', 'plugins', 'marketplace.json'),
+        path.join(next, '.agents', 'plugins', 'marketplace.json'),
+      );
       backupTree(marketplaceRoot);
       if (fs.existsSync(marketplaceRoot)) fs.renameSync(marketplaceRoot, previous);
       try {
@@ -293,14 +329,23 @@ let priorCodexTimeout;
 // that is not one of its own sub-tables (codex may put env in one).
 function codexTable() {
   let lines;
-  try { lines = fs.readFileSync(codexConfig, 'utf8').split('\n'); } catch (err) { return { reason: `cannot read ${codexConfig}: ${err.message}` }; }
+  try {
+    lines = fs.readFileSync(codexConfig, 'utf8').split('\n');
+  } catch (err) {
+    return { reason: `cannot read ${codexConfig}: ${err.message}` };
+  }
   const start = lines.findIndex((l) => /^\s*\[\s*mcp_servers\.severally\s*\]/.test(l));
   if (start < 0) return { reason: `${codexConfig} has no [mcp_servers.severally] table` };
   let end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l) && !/^\s*\[\s*mcp_servers\.severally\./.test(l));
   if (end < 0) end = lines.length;
   const block = lines.slice(start + 1, end).join('\n');
   const timeout = block.match(/^\s*tool_timeout_sec\s*=\s*(\d+(?:\.\d+)?)/m)?.[1];
-  return { lines, start, timeout: timeout === undefined ? undefined : Number(timeout), wait: /SEVERALLY_MAX_WAIT_MS\s*=\s*"?\d+/.test(block) };
+  return {
+    lines,
+    start,
+    timeout: timeout === undefined ? undefined : Number(timeout),
+    wait: /SEVERALLY_MAX_WAIT_MS\s*=\s*"?\d+/.test(block),
+  };
 }
 
 // The wait follows the timeout Codex will enforce: 15 s under the user's own
@@ -317,7 +362,11 @@ function writeCodexTimeout(sec) {
   if (t.reason) return t.reason;
   if (t.timeout !== undefined) return null; // never overwrite the user's value
   t.lines.splice(t.start + 1, 0, `tool_timeout_sec = ${sec}`);
-  try { fs.writeFileSync(codexConfig, t.lines.join('\n')); } catch (err) { return `cannot write ${codexConfig}: ${err.message}`; }
+  try {
+    fs.writeFileSync(codexConfig, t.lines.join('\n'));
+  } catch (err) {
+    return `cannot write ${codexConfig}: ${err.message}`;
+  }
   return null;
 }
 
@@ -375,7 +424,9 @@ const CLIENTS = [
     keptNote: () => {
       const t = codexTable();
       if (t.timeout === undefined || !t.wait) {
-        log(`   this registration lacks the long consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS and tool_timeout_sec = ${CODEX_TIMEOUT_SEC})`);
+        log(
+          `   this registration lacks the long consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS and tool_timeout_sec = ${CODEX_TIMEOUT_SEC})`,
+        );
       }
     },
     skillFrom: path.join(PLUGIN, 'skills', 'codex', 'severally'),
@@ -408,10 +459,7 @@ const CLIENTS = [
   {
     bin: 'opencode',
     label: 'OpenCode',
-    backup: [
-      path.join(xdgConfig, 'opencode', 'opencode.json'),
-      path.join(xdgConfig, 'opencode', 'opencode.jsonc'),
-    ],
+    backup: [path.join(xdgConfig, 'opencode', 'opencode.json'), path.join(xdgConfig, 'opencode', 'opencode.jsonc')],
     // opencode has no `mcp get`; list and look for the exact server name.
     // `mcp list` prints through the prompt library, but the per-server lines
     // still reach stdout when stdout is not a TTY ("✓ severally  connected").
@@ -441,17 +489,22 @@ const CLIENTS = [
     },
     keptNote: () => {
       const text = [path.join(xdgConfig, 'opencode', 'opencode.json'), path.join(xdgConfig, 'opencode', 'opencode.jsonc')]
-        .map((f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } }).join('\n');
-      if (!text.includes('SEVERALLY_MAX_WAIT_MS')) log('   this registration lacks the long consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS)');
+        .map((f) => {
+          try {
+            return fs.readFileSync(f, 'utf8');
+          } catch {
+            return '';
+          }
+        })
+        .join('\n');
+      if (!text.includes('SEVERALLY_MAX_WAIT_MS'))
+        log('   this registration lacks the long consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS)');
     },
     // A zero exit from `mcp add` can be a usage dump in disguise (see above),
     // so this client's registration is verified by listing after adding --
     // and the recorded command is compared against this install's.
     verifyAdd: true,
-    registrationConfig: [
-      path.join(xdgConfig, 'opencode', 'opencode.json'),
-      path.join(xdgConfig, 'opencode', 'opencode.jsonc'),
-    ],
+    registrationConfig: [path.join(xdgConfig, 'opencode', 'opencode.json'), path.join(xdgConfig, 'opencode', 'opencode.jsonc')],
     skillFrom: path.join(PLUGIN, 'skills', 'opencode', 'severally'),
     skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
@@ -469,7 +522,9 @@ function registrationCommandMatches(client, bin) {
     let cfg;
     try {
       cfg = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\s*\/\/.*$/gm, ''));
-    } catch { continue; }
+    } catch {
+      continue;
+    }
     const entry = cfg.mcp?.servers?.severally ?? cfg.mcp?.severally;
     const command = entry?.command ?? entry;
     if (Array.isArray(command)) return JSON.stringify(command) === JSON.stringify(bin);
@@ -490,7 +545,8 @@ function listedAfterAdd(client) {
 // Registers one client's MCP server directly (through its own `mcp add`) and
 // copies its skill, backing up everything it touches first. Shared by plugin
 // mode (Antigravity only) and --manual mode (all three clients).
-function installClientDirectly(client, bin) {  step(`Registering with ${client.label}`);
+function installClientDirectly(client, bin) {
+  step(`Registering with ${client.label}`);
   if (!which(client.bin)) {
     log(`   ${client.bin} CLI not found on PATH — skipped`);
     return;
@@ -535,7 +591,10 @@ function installClientDirectly(client, bin) {  step(`Registering with ${client.l
   if (!fs.existsSync(parent) && !dryRun) fs.mkdirSync(parent, { recursive: true });
   const saved = backupTree(client.skillTo);
   if (saved) log(`   backed up the existing ${client.label} skill to ${saved}`);
-  if (dryRun) { log(`   [dry-run] copy ${client.skillFrom} -> ${client.skillTo}`); return; }
+  if (dryRun) {
+    log(`   [dry-run] copy ${client.skillFrom} -> ${client.skillTo}`);
+    return;
+  }
   fs.rmSync(client.skillTo, { recursive: true, force: true });
   copyTree(client.skillFrom, client.skillTo);
   log(`   skill: ${client.skillTo}`);
@@ -551,7 +610,9 @@ function claudeHasMarketplacePlugin() {
   const r = tryRun('claude', ['plugin', 'list', '--json'], { real: true });
   try {
     return (r.ok && JSON.parse(r.out).find((p) => /^severally@/.test(p.id) && p.id !== 'severally@skills-dir')?.id) || false;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 const claudeMarketplace = claudeHasMarketplacePlugin();
 
@@ -569,10 +630,14 @@ function leaveClaudeToMarketplace() {
     log(r.ok ? '   removed the user-scope MCP registration' : `   could not remove the user-scope registration: ${r.out}`);
   }
   // Brought to this release too, so one install run updates every copy.
-  const updated = tryRun('claude', ['plugin', 'marketplace', 'update', 'severally'], { timeout: 120_000 }).ok
-    && tryRun('claude', ['plugin', 'update', claudeMarketplace], { timeout: 120_000 }).ok;
-  log(updated ? `   updated ${claudeMarketplace} from its marketplace`
-    : '   could not update it here; in Claude Code run /plugin marketplace update severally');
+  const updated =
+    tryRun('claude', ['plugin', 'marketplace', 'update', 'severally'], { timeout: 120_000 }).ok &&
+    tryRun('claude', ['plugin', 'update', claudeMarketplace], { timeout: 120_000 }).ok;
+  log(
+    updated
+      ? `   updated ${claudeMarketplace} from its marketplace`
+      : '   could not update it here; in Claude Code run /plugin marketplace update severally',
+  );
 }
 
 // A previous plugin installation would otherwise retain its old checkout
@@ -609,7 +674,11 @@ if (mode === 'plugin') {
       if (dup.ok) {
         backup(path.join(home, '.claude.json'));
         const r = tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'severally']);
-        log(r.ok ? '   removed the duplicate user-scope MCP registration' : `   could not remove the duplicate registration: ${r.out}`);
+        log(
+          r.ok
+            ? '   removed the duplicate user-scope MCP registration'
+            : `   could not remove the duplicate registration: ${r.out}`,
+        );
       }
     }
   }
@@ -641,7 +710,11 @@ if (mode === 'plugin') {
       const dup = tryRun('codex', ['mcp', 'get', 'severally'], { real: true });
       if (dup.ok) {
         const rm = tryRun('codex', ['mcp', 'remove', 'severally']);
-        log(rm.ok ? '   removed the duplicate global MCP registration' : `   could not remove the duplicate registration: ${rm.out}`);
+        log(
+          rm.ok
+            ? '   removed the duplicate global MCP registration'
+            : `   could not remove the duplicate registration: ${rm.out}`,
+        );
       }
       const strayCodexSkill = path.join(codexHome, 'skills', 'severally');
       if (fs.existsSync(strayCodexSkill)) {
@@ -679,8 +752,13 @@ async function allowLocalTools() {
   const prefix = mode === 'plugin' || claudeMarketplace ? 'mcp__plugin_severally_severally__' : 'mcp__severally__';
   const settingsFile = path.join(home, '.claude', 'settings.json');
   let settings = {};
-  try { settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch (err) {
-    if (err.code !== 'ENOENT') { log(`   could not read ${settingsFile} (${err.message}); left as it is`); return; }
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      log(`   could not read ${settingsFile} (${err.message}); left as it is`);
+      return;
+    }
   }
   const allow = settings.permissions?.allow ?? [];
   const missing = LOCAL_TOOLS.map((t) => prefix + t).filter((t) => !allow.includes(t));
@@ -689,8 +767,10 @@ async function allowLocalTools() {
   let yes = argv.has('--allow-local-tools');
   if (!yes && process.stdin.isTTY && process.stdout.isTTY && !dryRun) {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await rl.question(`   Let Claude Code run ${LOCAL_TOOLS.join(', ')} without asking each time?\n`
-      + '   They send nothing off this machine; consult_start, which does, still asks. [Y/n] ');
+    const answer = await rl.question(
+      `   Let Claude Code run ${LOCAL_TOOLS.join(', ')} without asking each time?\n` +
+        '   They send nothing off this machine; consult_start, which does, still asks. [Y/n] ',
+    );
     rl.close();
     yes = !/^\s*n/i.test(answer);
   }
@@ -698,7 +778,10 @@ async function allowLocalTools() {
     log(`   not changed; rerun with --allow-local-tools to allow them in ${settingsFile}`);
     return;
   }
-  if (dryRun) { log(`   [dry-run] add ${missing.join(', ')} to permissions.allow in ${settingsFile}`); return; }
+  if (dryRun) {
+    log(`   [dry-run] add ${missing.join(', ')} to permissions.allow in ${settingsFile}`);
+    return;
+  }
   backup(settingsFile);
   settings.permissions = { ...settings.permissions, allow: [...allow, ...missing] };
   fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
@@ -715,7 +798,9 @@ if (keptRegistrations) {
 } else if (!dryRun && !process.exitCode) {
   log('   The registered server and skills no longer depend on the source checkout.');
 }
-log(mode === 'plugin' ? `
+log(
+  mode === 'plugin'
+    ? `
 Verify with:
   claude plugin details severally
   ${codexDirect ? 'codex  mcp get severally' : 'codex  plugin list'}
@@ -726,7 +811,8 @@ Restart any running client session to pick the plugin up. In Claude Code the too
 mcp__plugin_severally_severally__consult_start / _get / _cancel / _list.
 
 Re-run this after "npm run build" to push an updated plugin to ${claudeMarketplace ? 'Codex' : 'both clients'} (Antigravity and
-OpenCode are registered directly each run, so a re-run always refreshes them too).` : `
+OpenCode are registered directly each run, so a re-run always refreshes them too).`
+    : `
 Verify with:
   claude mcp get severally
   codex  mcp get severally
@@ -734,4 +820,5 @@ Verify with:
   opencode mcp list
 
 In a new Claude Code session the tools appear as mcp__severally__consult_start / _get / _cancel / _list.
-Restart any running client session to pick the server up.`);
+Restart any running client session to pick the server up.`,
+);

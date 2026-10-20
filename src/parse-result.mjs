@@ -60,14 +60,26 @@ export function extractJson(text) {
     let esc = false;
     for (let i = start; i < trimmed.length; i++) {
       const ch = trimmed[i];
-      if (esc) { esc = false; continue; }
-      if (ch === '\\') { esc = true; continue; }
-      if (ch === '"') { inStr = !inStr; continue; }
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === '\\') {
+        esc = true;
+        continue;
+      }
+      if (ch === '"') {
+        inStr = !inStr;
+        continue;
+      }
       if (inStr) continue;
       if (ch === '{') depth++;
       else if (ch === '}') {
         depth--;
-        if (depth === 0) { candidates.push(trimmed.slice(start, i + 1)); break; }
+        if (depth === 0) {
+          candidates.push(trimmed.slice(start, i + 1));
+          break;
+        }
       }
     }
   }
@@ -75,7 +87,9 @@ export function extractJson(text) {
     try {
       const parsed = JSON.parse(c);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-    } catch { /* try the next candidate */ }
+    } catch {
+      /* try the next candidate */
+    }
   }
   return null;
 }
@@ -120,37 +134,78 @@ export function normalizeResult(raw) {
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
     stance: stance(src.stance),
-    findings: mapList(src.findings, {
-      point: 'text', grounds: 'text', impact: 'text', severity: 'level', confidence: 'level',
-    }, { requiredField: 'point', idPrefix: 'f' }),
-    alternatives: mapList(src.alternatives, {
-      option: 'text', tradeoffs: 'text', when_preferred: 'text',
-    }, { requiredField: 'option' }),
-    unknowns: mapList(src.unknowns, {
-      item: 'text', why_it_matters: 'text', how_to_obtain: 'text',
-    }, { requiredField: 'item', idPrefix: 'u' }),
-    decision_changers: mapList(src.decision_changers, {
-      condition: 'text', changes_to: 'text',
-    }, { requiredField: 'condition' }),
-    next_checks: mapList(src.next_checks, {
-      check: 'text', method: 'text', expected_signal: 'text',
-    }, { requiredField: 'check', idPrefix: 'c' }),
-    remaining_disagreements: mapList(src.remaining_disagreements, {
-      topic: 'text', your_position: 'text', why_unresolved: 'text',
-    }, { requiredField: 'topic' }),
+    findings: mapList(
+      src.findings,
+      {
+        point: 'text',
+        grounds: 'text',
+        impact: 'text',
+        severity: 'level',
+        confidence: 'level',
+      },
+      { requiredField: 'point', idPrefix: 'f' },
+    ),
+    alternatives: mapList(
+      src.alternatives,
+      {
+        option: 'text',
+        tradeoffs: 'text',
+        when_preferred: 'text',
+      },
+      { requiredField: 'option' },
+    ),
+    unknowns: mapList(
+      src.unknowns,
+      {
+        item: 'text',
+        why_it_matters: 'text',
+        how_to_obtain: 'text',
+      },
+      { requiredField: 'item', idPrefix: 'u' },
+    ),
+    decision_changers: mapList(
+      src.decision_changers,
+      {
+        condition: 'text',
+        changes_to: 'text',
+      },
+      { requiredField: 'condition' },
+    ),
+    next_checks: mapList(
+      src.next_checks,
+      {
+        check: 'text',
+        method: 'text',
+        expected_signal: 'text',
+      },
+      { requiredField: 'check', idPrefix: 'c' },
+    ),
+    remaining_disagreements: mapList(
+      src.remaining_disagreements,
+      {
+        topic: 'text',
+        your_position: 'text',
+        why_unresolved: 'text',
+      },
+      { requiredField: 'topic' },
+    ),
     references: (Array.isArray(src.references) ? src.references : [])
       .slice(0, O.referencesMax)
-      .map((r) => (r && typeof r === 'object'
-        ? { title: clampText(r.title, 300), url: clampText(r.url, 1000), relevance: clampText(r.relevance, 600) }
-        : { title: clampText(r, 300), url: null, relevance: null }))
+      .map((r) =>
+        r && typeof r === 'object'
+          ? { title: clampText(r.title, 300), url: clampText(r.url, 1000), relevance: clampText(r.relevance, 600) }
+          : { title: clampText(r, 300), url: null, relevance: null },
+      )
       .filter((r) => r.title || r.url),
   };
 
   // The lists are cut to O.listMax before anything else looks at them; say how
   // long the ones that were cut had been, so the cut is not silent.
-  const listTruncated = Object.fromEntries(['findings', 'alternatives', 'unknowns', 'decision_changers', 'next_checks', 'remaining_disagreements']
-    .filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax)
-    .map((k) => [k, src[k].length]));
+  const listTruncated = Object.fromEntries(
+    ['findings', 'alternatives', 'unknowns', 'decision_changers', 'next_checks', 'remaining_disagreements']
+      .filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax)
+      .map((k) => [k, src[k].length]),
+  );
 
   const missing = RESULT_KEYS.filter((k) => {
     const v = result[k];

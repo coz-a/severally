@@ -15,26 +15,49 @@ function fixture({ registered }) {
   const sev = path.join(home, '.severally');
   fs.mkdirSync(path.join(sev, 'runtime'), { recursive: true });
   fs.writeFileSync(path.join(sev, 'runtime', 'severally-mcp.mjs'), "export const SEVERALLY_VERSION = '0.0.1';\n");
-  fs.writeFileSync(path.join(sev, 'config.json'), JSON.stringify({
-    consultants: { codex: { cli: 'codex', model: 'gpt-6-astra' }, gemini: { cli: 'antigravity', model: 'g-high', effort: 'high' },
-      opus: { cli: 'claude-code', model: 'claude-opus-5-5' }, flash: { cli: 'antigravity', model: 'gemini-x-flash-high' } },
-  }));
+  fs.writeFileSync(
+    path.join(sev, 'config.json'),
+    JSON.stringify({
+      consultants: {
+        codex: { cli: 'codex', model: 'gpt-6-astra' },
+        gemini: { cli: 'antigravity', model: 'g-high', effort: 'high' },
+        opus: { cli: 'claude-code', model: 'claude-opus-5-5' },
+        flash: { cli: 'antigravity', model: 'gemini-x-flash-high' },
+      },
+    }),
+  );
   const pathDir = path.join(home, 'bin');
   fs.mkdirSync(pathDir);
   // Each fake client lists severally when told to; a missing one is not on PATH at all.
   // Login: claude answers its JSON (with an email that must not be shown), codex says no.
-  const login = { claude: `if [ "$1" = auth ]; then echo '{"loggedIn":true,"email":"someone@example.com"}'; exit 0; fi`,
-    codex: 'if [ "$1" = login ]; then echo "Not logged in" >&2; exit 1; fi' };
-  for (const [name, list] of [['claude', 'plugin list'], ['codex', 'mcp get']]) {
-    fs.writeFileSync(path.join(pathDir, name), `#!/bin/sh\n${login[name]}\n${registered.includes(name) ? `echo "severally@skills-dir ${list}"` : 'echo nothing; exit 1'}\n`, { mode: 0o755 });
+  const login = {
+    claude: `if [ "$1" = auth ]; then echo '{"loggedIn":true,"email":"someone@example.com"}'; exit 0; fi`,
+    codex: 'if [ "$1" = login ]; then echo "Not logged in" >&2; exit 1; fi',
+  };
+  for (const [name, list] of [
+    ['claude', 'plugin list'],
+    ['codex', 'mcp get'],
+  ]) {
+    fs.writeFileSync(
+      path.join(pathDir, name),
+      `#!/bin/sh\n${login[name]}\n${registered.includes(name) ? `echo "severally@skills-dir ${list}"` : 'echo nothing; exit 1'}\n`,
+      { mode: 0o755 },
+    );
   }
   return { home, sev, pathDir };
 }
 
-const run = (f) => spawnSync(process.execPath, [bin, 'status'], {
-  encoding: 'utf8',
-  env: { ...process.env, HOME: f.home, SEVERALLY_HOME: f.sev, SEVERALLY_CONFIG: '', PATH: `${f.pathDir}:${path.dirname(process.execPath)}` },
-});
+const run = (f) =>
+  spawnSync(process.execPath, [bin, 'status'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      HOME: f.home,
+      SEVERALLY_HOME: f.sev,
+      SEVERALLY_CONFIG: '',
+      PATH: `${f.pathDir}:${path.dirname(process.execPath)}`,
+    },
+  });
 
 test('status says what is set up, without starting a consultation', { skip: process.platform === 'win32' }, () => {
   sandboxEnv();

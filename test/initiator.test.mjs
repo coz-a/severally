@@ -13,15 +13,23 @@ const finish = async (mgr, jobId) => {
   return mgr.view(jobId);
 };
 
-const indexRow = (jobId) => fs.readFileSync(path.join(home, 'history', 'index.jsonl'), 'utf8')
-  .split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((r) => r.job_id === jobId);
+const indexRow = (jobId) =>
+  fs
+    .readFileSync(path.join(home, 'history', 'index.jsonl'), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l))
+    .find((r) => r.job_id === jobId);
 
 test('initiator is optional, "user" or nothing, and never gates anything', () => {
   assert.equal(parseRequest(reviewRequest()).initiator, null);
   assert.equal(parseRequest(reviewRequest({ initiator: 'user' })).initiator, 'user');
   // An older Skill still sends this; its consultation starts, read as not declared.
   assert.equal(parseRequest(reviewRequest({ initiator: 'offer_accepted' })).initiator, null);
-  assert.throws(() => parseRequest(reviewRequest({ initiator: 'agent' })), (err) => err.code === 'invalid_request');
+  assert.throws(
+    () => parseRequest(reviewRequest({ initiator: 'agent' })),
+    (err) => err.code === 'invalid_request',
+  );
 });
 
 test('who asked for a consultation is kept in the view, the round file, the index and the list', async () => {
@@ -43,4 +51,3 @@ test('an undeclared initiator is recorded as unknown, not guessed', async () => 
   assert.equal(view.initiator, null);
   assert.equal(indexRow(view.job_id).initiator, null);
 });
-

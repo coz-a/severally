@@ -57,15 +57,15 @@ function ensureRoom(totals, size) {
 function checkBudget(totals) {
   if (totals.files > POLICY.input.exposeFilesMax) {
     throw new ExposeError(
-      `expose_paths reaches more than ${POLICY.input.exposeFilesMax} files, over the file cap; name the files or `
-      + 'the subdirectory that actually matters instead of the tree above them',
+      `expose_paths reaches more than ${POLICY.input.exposeFilesMax} files, over the file cap; name the files or ` +
+        'the subdirectory that actually matters instead of the tree above them',
       'too_large',
     );
   }
   if (totals.bytes > POLICY.input.exposeBytesMax) {
     throw new ExposeError(
-      `expose_paths reaches more than ${humanSize(POLICY.input.exposeBytesMax)}, over the size cap; name the files `
-      + 'or the subdirectory that actually matters instead of the tree above them',
+      `expose_paths reaches more than ${humanSize(POLICY.input.exposeBytesMax)}, over the size cap; name the files ` +
+        'or the subdirectory that actually matters instead of the tree above them',
       'too_large',
     );
   }
@@ -158,7 +158,9 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
   try {
     listed = [...new Set(nulSplit(git(dir, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])))];
     ignored = nulSplit(git(dir, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']));
-  } catch { return false; }
+  } catch {
+    return false;
+  }
   if (listed.length === 0) return false;
   for (const p of ignored) skipped.push({ source: path.join(dir, p), reason: 'ignored' });
   if (fs.existsSync(path.join(dir, '.git'))) skipped.push({ source: path.join(dir, '.git'), reason: 'ignored' });
@@ -169,21 +171,43 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
     // walkDir never enters a protected directory (.env.d/, .ssh/ ...); a
     // listed file is checked with each directory above it for the same reason.
     const parts = rel.split('/');
-    const guarded = parts.slice(0, -1).map((_, i) => path.join(dir, ...parts.slice(0, i + 1))).find(isProtectedPath);
+    const guarded = parts
+      .slice(0, -1)
+      .map((_, i) => path.join(dir, ...parts.slice(0, i + 1)))
+      .find(isProtectedPath);
     if (guarded) {
       if (!protectedDirs.has(guarded)) skipped.push({ source: guarded, reason: 'protected' });
       protectedDirs.add(guarded);
       continue;
     }
-    if (isProtectedPath(abs)) { skipped.push({ source: abs, reason: 'protected' }); continue; }
+    if (isProtectedPath(abs)) {
+      skipped.push({ source: abs, reason: 'protected' });
+      continue;
+    }
     let stat;
     // Deleted in the work tree but still in the index: not part of the tree
     // as it is now, so not part of the copy either.
-    try { stat = fs.lstatSync(abs); } catch { continue; }
+    try {
+      stat = fs.lstatSync(abs);
+    } catch {
+      continue;
+    }
     // A directory here is a submodule (or a nested repository): its own history, not this one's files.
-    if (stat.isDirectory()) { skipped.push({ source: abs, reason: 'submodule' }); continue; }
-    const inside = (() => { try { return fs.realpathSync(abs).startsWith(realDir + path.sep); } catch { return false; } })();
-    if (stat.isSymbolicLink() || !inside) { skipped.push({ source: abs, reason: 'symlink' }); continue; }
+    if (stat.isDirectory()) {
+      skipped.push({ source: abs, reason: 'submodule' });
+      continue;
+    }
+    const inside = (() => {
+      try {
+        return fs.realpathSync(abs).startsWith(realDir + path.sep);
+      } catch {
+        return false;
+      }
+    })();
+    if (stat.isSymbolicLink() || !inside) {
+      skipped.push({ source: abs, reason: 'symlink' });
+      continue;
+    }
     if (!stat.isFile()) continue;
     onFile(abs, path.normalize(rel));
     checkBudget(totals);
@@ -304,18 +328,41 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const copied = [];
   for (const c of changes) {
     const abs = path.join(top, c.path);
-    if (isProtectedPath(abs)) { manifest.skipped.push({ source: abs, reason: 'protected' }); continue; }
-    if (c.status === 'D') { shown(c); continue; }
+    if (isProtectedPath(abs)) {
+      manifest.skipped.push({ source: abs, reason: 'protected' });
+      continue;
+    }
+    if (c.status === 'D') {
+      shown(c);
+      continue;
+    }
     let stat;
     // When `gone` is given, the paths are an earlier round's, and a skipped
     // one carries the name it had there.
     const named = gone ? { exposed_as: `workspace/repo/${c.path}` } : {};
-    try { stat = fs.lstatSync(abs); } catch { gone?.(c); continue; }
+    try {
+      stat = fs.lstatSync(abs);
+    } catch {
+      gone?.(c);
+      continue;
+    }
     // A directory on the way that is now a link out of the repository.
-    const inside = (() => { try { return fs.realpathSync(abs).startsWith(realTop + path.sep); } catch { return false; } })();
-    if (stat.isSymbolicLink() || !inside) { manifest.skipped.push({ source: abs, reason: 'symlink', ...named }); continue; }
+    const inside = (() => {
+      try {
+        return fs.realpathSync(abs).startsWith(realTop + path.sep);
+      } catch {
+        return false;
+      }
+    })();
+    if (stat.isSymbolicLink() || !inside) {
+      manifest.skipped.push({ source: abs, reason: 'symlink', ...named });
+      continue;
+    }
     // A submodule: its commit line stays in the diff, nothing to copy.
-    if (!stat.isFile()) { shown(c); continue; }
+    if (!stat.isFile()) {
+      shown(c);
+      continue;
+    }
     shown(c);
     copied.push({ path: c.path, size: stat.size });
   }
@@ -346,19 +393,38 @@ export function planInheritance(parentEntries, exposePaths) {
   const paths = [];
   const skipped = [];
   const diffs = [];
-  const exists = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
+  const exists = (p) => {
+    try {
+      fs.lstatSync(p);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   for (const e of parentEntries) {
-    if (String(e.source).includes('[REDACTED')) { skipped.push({ source: e.source, reason: 'masked', exposed_as: e.exposed_as }); continue; }
-    if (!exists(e.source)) { skipped.push({ source: e.source, reason: 'gone', exposed_as: e.exposed_as }); continue; }
-    if (e.kind === 'diff' || e.kind === 'change_files') { diffs.push(e); continue; }
+    if (String(e.source).includes('[REDACTED')) {
+      skipped.push({ source: e.source, reason: 'masked', exposed_as: e.exposed_as });
+      continue;
+    }
+    if (!exists(e.source)) {
+      skipped.push({ source: e.source, reason: 'gone', exposed_as: e.exposed_as });
+      continue;
+    }
+    if (e.kind === 'diff' || e.kind === 'change_files') {
+      diffs.push(e);
+      continue;
+    }
     paths.push({ source: e.source, index: e.index });
   }
   // New paths are numbered after every name the earlier round used.
   let next = parentEntries.reduce((n, e) => Math.max(n, e.index + 1), 0);
   for (const p of exposePaths) if (!paths.some((x) => x.source === p)) paths.push({ source: p, index: next++ });
   if (paths.length > POLICY.input.exposePathsMax) {
-    throw new ExposeError(`expose_from_parent and expose_paths together name ${paths.length} entries, over the cap of `
-      + `${POLICY.input.exposePathsMax}; name fewer new paths`, 'too_large');
+    throw new ExposeError(
+      `expose_from_parent and expose_paths together name ${paths.length} entries, over the cap of ` +
+        `${POLICY.input.exposePathsMax}; name fewer new paths`,
+      'too_large',
+    );
   }
   return { paths, skipped, diffs };
 }
@@ -373,21 +439,41 @@ export function reexposeChange(workdir, entry, manifest) {
   for (const c of entry.changes ?? []) {
     const m = /^(.*) \(([^()]+)\)$/.exec(c);
     const p = m ? m[1] : c;
-    if (p.includes('[REDACTED')) { manifest.skipped.push({ source: path.join(entry.source, p), reason: 'masked', exposed_as: `workspace/repo/${p}` }); continue; }
+    if (p.includes('[REDACTED')) {
+      manifest.skipped.push({ source: path.join(entry.source, p), reason: 'masked', exposed_as: `workspace/repo/${p}` });
+      continue;
+    }
     // A file the change deleted that is back now is copied as it is.
     const deleted = m?.[2] === 'deleted';
     let back = false;
-    if (deleted) try { fs.lstatSync(path.join(entry.source, p)); back = true; } catch { /* still deleted */ }
+    if (deleted)
+      try {
+        fs.lstatSync(path.join(entry.source, p));
+        back = true;
+      } catch {
+        /* still deleted */
+      }
     changes.push({ path: p, status: deleted ? (back ? 'restored' : 'D') : (m?.[2] ?? 'M') });
   }
   const before = { ...manifest.totals };
   const shown = [];
-  const { copied, sha256 } = copyRepoFiles(workdir, entry.source, changes, manifest, (c) => shown.push(c),
-    (c) => manifest.skipped.push({ source: path.join(entry.source, c.path), reason: 'gone', exposed_as: `workspace/repo/${c.path}` }));
+  const { copied, sha256 } = copyRepoFiles(
+    workdir,
+    entry.source,
+    changes,
+    manifest,
+    (c) => shown.push(c),
+    (c) =>
+      manifest.skipped.push({ source: path.join(entry.source, c.path), reason: 'gone', exposed_as: `workspace/repo/${c.path}` }),
+  );
   // Nothing of the change is left to show: no entry, so a follow-up with
   // nothing else to go on is refused rather than sent with an empty copy.
   if (shown.length === 0) {
-    try { fs.rmdirSync(path.join(workdir, 'workspace', 'repo')); } catch { /* holds another entry's files */ }
+    try {
+      fs.rmdirSync(path.join(workdir, 'workspace', 'repo'));
+    } catch {
+      /* holds another entry's files */
+    }
     return false;
   }
   manifest.entries.push({
@@ -415,7 +501,10 @@ function git(cwd, args) {
   // at another repository), and without taking the lead's index lock.
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.toUpperCase().startsWith('GIT_')));
   const r = spawnSync('git', ['--literal-pathspecs', '-c', 'core.fsmonitor=', '-C', cwd, ...args], {
-    timeout: 20_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true, env: { ...env, GIT_OPTIONAL_LOCKS: '0' },
+    timeout: 20_000,
+    maxBuffer: 64 * 1024 * 1024,
+    windowsHide: true,
+    env: { ...env, GIT_OPTIONAL_LOCKS: '0' },
   });
   if (r.error || r.status !== 0) {
     const why = r.error?.code === 'ENOENT' ? 'git is not on PATH' : String(r.stderr ?? r.error?.message ?? '').trim();
@@ -437,18 +526,23 @@ const nulSplit = (buf) => buf.toString('utf8').split('\0').filter(Boolean);
 export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars) {
   const top = git(repo, ['rev-parse', '--show-toplevel']).toString('utf8').trim();
   git(top, ['rev-parse', '--verify', `${base}^{commit}`]);
-  const tokens = nulSplit(git(top, ['diff', '--name-status', '-z', '--no-renames', '--no-relative', '--no-ext-diff',
-    '--no-textconv', base, '--']));
+  const tokens = nulSplit(
+    git(top, ['diff', '--name-status', '-z', '--no-renames', '--no-relative', '--no-ext-diff', '--no-textconv', base, '--']),
+  );
   const changes = [];
   for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
-  for (const p of nulSplit(git(top, ['ls-files', '--others', '--exclude-standard', '-z']))) changes.push({ status: 'untracked', path: p });
+  for (const p of nulSplit(git(top, ['ls-files', '--others', '--exclude-standard', '-z'])))
+    changes.push({ status: 'untracked', path: p });
 
   const before = { ...manifest.totals };
   const shown = [];
   const { copied, sha256 } = copyRepoFiles(workdir, top, changes, manifest, (c) => shown.push(c));
   if (shown.length === 0) {
-    throw new ExposeError(`context.expose_diff: no change against ${base} to show`
-      + (changes.length ? ' (every changed file is a protected path)' : ''), 'not_found');
+    throw new ExposeError(
+      `context.expose_diff: no change against ${base} to show` +
+        (changes.length ? ' (every changed file is a protected path)' : ''),
+      'not_found',
+    );
   }
   manifest.entries.push({
     index: manifest.entries.reduce((n, e) => Math.max(n, e.index + 1), 0),
@@ -461,7 +555,9 @@ export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars)
     // The copies, as paths a consultant can open; the change itself, with
     // what happened to each path, is listed apart.
     paths: copied,
-    changes: shown.map((c) => `${c.path} (${c.status === 'untracked' ? 'untracked' : c.status === 'D' ? 'deleted' : c.status})`).sort(),
+    changes: shown
+      .map((c) => `${c.path} (${c.status === 'untracked' ? 'untracked' : c.status === 'D' ? 'deleted' : c.status})`)
+      .sort(),
     sha256,
   });
 
@@ -474,18 +570,37 @@ export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars)
   // without its old content.
   const tracked = new Set(shown.filter((c) => c.status !== 'untracked').map((c) => c.path));
   const full = tracked.size
-    ? git(top, ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
-      '--no-relative', '--submodule=short', '--irreversible-delete', base, '--']).toString('utf8')
+    ? git(top, [
+        'diff',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--no-color',
+        '--src-prefix=a/',
+        '--dst-prefix=b/',
+        '--no-relative',
+        '--submodule=short',
+        '--irreversible-delete',
+        base,
+        '--',
+      ]).toString('utf8')
     : '';
   // A section whose header names no shown path (a protected one, or one git
   // had to quote) is dropped rather than guessed at.
-  let text = redact(full.split(/^(?=diff --git )/m).filter((sec) => {
-    const rest = sec.slice('diff --git '.length, sec.indexOf('\n'));
-    const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
-    return tracked.has(p) && rest === `a/${p} b/${p}`;
-  }).join(''));
+  let text = redact(
+    full
+      .split(/^(?=diff --git )/m)
+      .filter((sec) => {
+        const rest = sec.slice('diff --git '.length, sec.indexOf('\n'));
+        const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
+        return tracked.has(p) && rest === `a/${p} b/${p}`;
+      })
+      .join(''),
+  );
   if (text.length > maxChars) {
-    text = maxChars < 500 ? '' : `${text.slice(0, maxChars - 200)}\n... [diff cut by severally: ${text.length} characters in all; every changed file is under workspace/repo/]`;
+    text =
+      maxChars < 500
+        ? ''
+        : `${text.slice(0, maxChars - 200)}\n... [diff cut by severally: ${text.length} characters in all; every changed file is under workspace/repo/]`;
   }
   return text;
 }

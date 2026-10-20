@@ -113,9 +113,11 @@ test('a fan-out prints the shared brief once and says so, instead of repeating i
 test('the exported record carries what the lead expected and what the answer added', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
-  const started = mgr.start(reviewRequest({
-    prediction: { expected: 'proceed', worry: 'Only the retry cap really matters here.' },
-  }));
+  const started = mgr.start(
+    reviewRequest({
+      prediction: { expected: 'proceed', worry: 'Only the retry cap really matters here.' },
+    }),
+  );
   const view = await finish(mgr, started.job_id);
   mgr.record({
     job_id: view.job_id,
@@ -141,9 +143,11 @@ test('the export records which paths the consultant could read, without reprinti
   fs.writeFileSync(path.join(repo, 'src', 'retry.ts'), 'const everyLineOfIt = "do not reprint me";');
 
   const mgr = new JobManager();
-  const started = mgr.start(reviewRequest({
-    context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'src')] },
-  }));
+  const started = mgr.start(
+    reviewRequest({
+      context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'src')] },
+    }),
+  );
   const view = await finish(mgr, started.job_id);
 
   const { markdown } = exportChain({ chain_id: view.chain_id });
@@ -162,9 +166,11 @@ test('the export tells a protected file left out apart from a skipped symlink', 
   fs.writeFileSync(path.join(repo, 'src', '.env'), 'TOKEN=x');
 
   const mgr = new JobManager();
-  const started = mgr.start(reviewRequest({
-    context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'src')] },
-  }));
+  const started = mgr.start(
+    reviewRequest({
+      context: { facts: ['f'], proposal: 'p', expose_paths: [path.join(repo, 'src')] },
+    }),
+  );
   const view = await finish(mgr, started.job_id);
 
   const { markdown } = exportChain({ chain_id: view.chain_id });

@@ -5,8 +5,16 @@
 import { z } from 'zod';
 import path from 'node:path';
 import {
-  POLICY, CALLER_INPUTS, MODES, STANCES, artifactKinds,
-  resolveCaller, availableConsultants, consultantAvailable, unavailableReason, brokenConsultant,
+  POLICY,
+  CALLER_INPUTS,
+  MODES,
+  STANCES,
+  artifactKinds,
+  resolveCaller,
+  availableConsultants,
+  consultantAvailable,
+  unavailableReason,
+  brokenConsultant,
 } from './policy.mjs';
 import { normalizeName, resolveConsultant } from './consultants.mjs';
 
@@ -36,7 +44,11 @@ const exposedPathSchema = z
   .refine((p) => path.isAbsolute(p), { message: 'context.expose_paths[] must be an absolute path' });
 
 // A revision for `git diff`: a ref, a commit, or HEAD~n -- never an option.
-const gitRevision = z.string().trim().min(1).max(200)
+const gitRevision = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
   .regex(/^[A-Za-z0-9._/~^@{}-]+$/, 'context.expose_diff.base must be a git revision (a branch, tag, commit or HEAD~n)')
   .refine((r) => !r.startsWith('-'), { message: 'context.expose_diff.base must not start with "-"' });
 
@@ -65,7 +77,11 @@ export const contextSchema = z
 // for it, its CLI, its vendor, or its model ("glm", "claude opus"). Which
 // consultant that is depends on the operator's config, so it is resolved in
 // parseRequest, not by an enum here.
-const targetSpec = z.string().trim().min(1, 'target must not be empty').max(120, 'target exceeds 120 characters')
+const targetSpec = z
+  .string()
+  .trim()
+  .min(1, 'target must not be empty')
+  .max(120, 'target exceeds 120 characters')
   .regex(/^[^\p{Cc}\p{Cf}]+$/u, 'target must be a single line of printable characters');
 
 // Who asked for a consultation, as the lead reports it.
@@ -180,8 +196,10 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   if (hasSingle && hasMany) {
     throw new RequestError('pass either target (one consultant) or targets (several), not both', 'invalid_request');
   }
-  const listed = () => availableConsultants().map((c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')
-    || 'none -- no consultant CLI is available here';
+  const listed = () =>
+    availableConsultants()
+      .map((c) => `${c.name} (${c.cli}, ${c.model})`)
+      .join(', ') || 'none -- no consultant CLI is available here';
   if (!hasSingle && !hasMany) {
     throw new RequestError(
       `name the consultant: target: a consultant, its CLI or its model (available: ${listed()}), or targets: [...] to ask several the same question, targets: ["all"] to ask everyone`,
@@ -198,7 +216,10 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   if (isAll[0]) {
     chosen = availableConsultants();
     if (!chosen.length) {
-      throw new RequestError('no consultant is available on this machine -- install one of the CLIs, or check the config file', 'target_unavailable');
+      throw new RequestError(
+        'no consultant is available on this machine -- install one of the CLIs, or check the config file',
+        'target_unavailable',
+      );
     }
   } else {
     // Resolved among the reachable consultants first, so one that is off does
@@ -211,15 +232,18 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
       let r = resolveConsultant(name, reachable, POLICY.ranking);
       if (r.none) r = resolveConsultant(name, POLICY.consultants, POLICY.ranking);
       if (r.none && brokenConsultant(name)) {
-        throw new RequestError(`consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`, 'target_unavailable');
+        throw new RequestError(
+          `consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`,
+          'target_unavailable',
+        );
       }
       if (r.none) {
         throw new RequestError(`no consultant answers to ${JSON.stringify(name)}; available: ${listed()}`, 'unknown_target');
       }
       if (r.ambiguous) {
         throw new RequestError(
-          `${JSON.stringify(name)} fits more than one consultant and no ranking rule decides between `
-          + `${r.ambiguous.map((c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')}; name one of them`,
+          `${JSON.stringify(name)} fits more than one consultant and no ranking rule decides between ` +
+            `${r.ambiguous.map((c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')}; name one of them`,
           'target_ambiguous',
         );
       }
@@ -228,8 +252,8 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     const off = [...new Set(chosen.filter((c) => !consultantAvailable(c)))];
     if (off.length) {
       throw new RequestError(
-        `consultant ${off.map((c) => `${JSON.stringify(c.name)} (${unavailableReason(c)})`).join(', ')} `
-        + `is not available on this machine; available: ${listed()}`,
+        `consultant ${off.map((c) => `${JSON.stringify(c.name)} (${unavailableReason(c)})`).join(', ')} ` +
+          `is not available on this machine; available: ${listed()}`,
         'target_unavailable',
       );
     }
@@ -261,8 +285,7 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   // one its context fits -- no proposal is explore, a proposal is review, a
   // proposal with the other side's claims is debate. Checked below like a
   // mode that was given.
-  req.mode ??= parentMode
-    ?? (!req.context.proposal ? 'explore' : req.context.counterpoints.length ? 'debate' : 'review');
+  req.mode ??= parentMode ?? (!req.context.proposal ? 'explore' : req.context.counterpoints.length ? 'debate' : 'review');
 
   const total = charCount(req);
   if (total > L.totalCharsMax) {
@@ -296,11 +319,18 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
       'expose_from_parent_needs_followup',
     );
   }
-  if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0
-    && !req.context.expose_diff && !req.context.expose_from_parent) {
+  if (
+    req.context.facts.length === 0 &&
+    req.context.artifacts.length === 0 &&
+    req.context.expose_paths.length === 0 &&
+    !req.context.expose_diff &&
+    !req.context.expose_from_parent
+  ) {
     throw new RequestError(
-      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request'
-        + (isFollowup ? '; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown' : ''),
+      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request' +
+        (isFollowup
+          ? '; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown'
+          : ''),
       'context_required',
     );
   }

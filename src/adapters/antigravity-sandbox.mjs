@@ -32,13 +32,7 @@ import { sandboxHome } from '../store.mjs';
 // brief reached three differently-equipped readers. command(*) stays denied, so
 // this child reads files without gaining a shell.
 export const SANDBOX_ALLOW = Object.freeze(['read_url(*)', 'read_file(*)']);
-export const SANDBOX_DENY = Object.freeze([
-  'write_file(*)',
-  'command(*)',
-  'mcp(*)',
-  'execute_url(*)',
-  'unsandboxed(*)',
-]);
+export const SANDBOX_DENY = Object.freeze(['write_file(*)', 'command(*)', 'mcp(*)', 'execute_url(*)', 'unsandboxed(*)']);
 
 // The permission rules above cover only the categories agy asks permission
 // for. Its agent tools ask for none: on 2026-10-17 a consultant called
@@ -75,7 +69,11 @@ const PATH_TOOLS = ['view_file', 'read_url_content'];
 function spillPattern(root) {
   const esc = (s) => s.replaceAll('\\', '/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let real = root;
-  try { real = fs.realpathSync.native(root); } catch { /* not created yet: the root as given */ }
+  try {
+    real = fs.realpathSync.native(root);
+  } catch {
+    /* not created yet: the root as given */
+  }
   const roots = [...new Set([root, real])].map(esc).join('|');
   return `^(?:${roots})/\\.gemini/antigravity-cli/brain/[^/]+/\\.system_generated/steps/[0-9]+/content\\.md$`;
 }
@@ -164,11 +162,13 @@ export function sandboxPermissions(network = 'on') {
 }
 
 function hookCommand(script) {
-  return [process.execPath, script].map((v) => {
-    if (process.platform !== 'win32') return `'${v.replaceAll("'", "'\\''")}'`;
-    if (/["%\r\n!]/.test(v)) throw new Error(`unsupported character in hook path: ${v}`);
-    return `"${v}"`;
-  }).join(' ');
+  return [process.execPath, script]
+    .map((v) => {
+      if (process.platform !== 'win32') return `'${v.replaceAll("'", "'\\''")}'`;
+      if (/["%\r\n!]/.test(v)) throw new Error(`unsupported character in hook path: ${v}`);
+      return `"${v}"`;
+    })
+    .join(' ');
 }
 
 const TOKEN_REL = path.join('.gemini', 'antigravity-cli', 'antigravity-oauth-token');
@@ -188,7 +188,17 @@ export function prepareSandbox({ workdir, network = 'on' }) {
   fs.writeFileSync(path.join(cfgDir, 'mcp_config.json'), '{}\n', { mode: 0o600 });
   const tools = allowedTools(network);
   const hookScript = path.join(root, 'tool-allowlist.mjs');
-  fs.writeFileSync(hookScript, hookSource(tools, protectedRootPatterns([root, path.join(credentialsHome(), '.gemini')]), protectedNamePatterns(), os.homedir(), spillPattern(root)), { mode: 0o600 });
+  fs.writeFileSync(
+    hookScript,
+    hookSource(
+      tools,
+      protectedRootPatterns([root, path.join(credentialsHome(), '.gemini')]),
+      protectedNamePatterns(),
+      os.homedir(),
+      spillPattern(root),
+    ),
+    { mode: 0o600 },
+  );
   const hooks = {
     severally: {
       PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: hookCommand(hookScript), timeout: 10 }] }],
@@ -227,16 +237,22 @@ export function prepareSandbox({ workdir, network = 'on' }) {
     credentialsSource: source,
     env: {
       HOME: root,
-      ...(process.platform === 'win32' ? {
-        USERPROFILE: root,
-        HOMEDRIVE: path.parse(root).root.replace(/[\\/]$/, ''),
-        HOMEPATH: root.slice(path.parse(root).root.length - 1),
-        APPDATA: path.join(root, 'AppData', 'Roaming'),
-        LOCALAPPDATA: path.join(root, 'AppData', 'Local'),
-      } : {}),
+      ...(process.platform === 'win32'
+        ? {
+            USERPROFILE: root,
+            HOMEDRIVE: path.parse(root).root.replace(/[\\/]$/, ''),
+            HOMEPATH: root.slice(path.parse(root).root.length - 1),
+            APPDATA: path.join(root, 'AppData', 'Roaming'),
+            LOCALAPPDATA: path.join(root, 'AppData', 'Local'),
+          }
+        : {}),
     },
     cleanup() {
-      try { fs.rmSync(root, { recursive: true, force: true }); } catch { /* best effort */ }
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
     },
   };
 }

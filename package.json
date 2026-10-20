@@ -42,7 +42,9 @@
     "live-mcp-check": "node scripts/live-mcp-check.mjs",
     "build": "node scripts/build.mjs",
     "init-config": "node scripts/init-config.mjs",
-    "prepack": "node scripts/build.mjs"
+    "prepack": "node scripts/build.mjs",
+    "format": "prettier --write \"**/*.mjs\"",
+    "format:check": "prettier --check \"**/*.mjs\""
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
@@ -52,6 +54,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "^2.3.1",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "prettier": "3.6.2"
   }
 }
