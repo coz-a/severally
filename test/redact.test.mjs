@@ -63,3 +63,56 @@ test('names that only look like keys, public keys and plain URLs are left alone'
     'git@github.com:owner/repo.git',
   ]) assert.equal(redact(text), text);
 });
+
+test('short passwords, Azure keys and Slack webhooks are scrubbed', () => {
+  const cases = [
+    ['db_pass=hunter2xyz', 'hunter2xyz'],
+    ['DB_PWD=hunter2xyz', 'hunter2xyz'],
+    ['db_pwd: "s3cr3t"', 's3cr3t'],
+    ['password=hunter2', 'hunter2'],
+    ['PASSWORD=abcd', 'abcd'],
+    ['"password": "p4ss"', 'p4ss'],
+    ['AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==', 'Eby8vdM02xNOcqFlqUwJ'],
+    ['Endpoint=sb://x.servicebus.windows.net/;SharedAccessKey=abcdefghijklmnop1234=', 'abcdefghijklmnop1234'],
+    // Joined at run time so the repository holds no string a secret scanner reads as a webhook.
+    [['https://hooks.slack.com/services', 'T0123ABCD', 'B0123ABCD', 'abcdEFGH1234ijklMNOP5678'].join('/'), 'abcdEFGH1234'],
+  ];
+  for (const [c, secret] of cases) {
+    assert.ok(!redact(c).includes(secret), `leaked: ${redact(c)}`);
+    assert.match(redact(c), /REDACTED/, c);
+  }
+});
+
+test('passwords that are only a flag, a type or a reference are left alone', () => {
+  for (const text of [
+    'password: true',
+    'password = null',
+    'PASSWORD=undefined',
+    'password: string',
+    'PWD=/home/u',
+    'OLDPWD=/home/u',
+    'password = process.env.DB_PASSWORD',
+    'password: os.environ["DB_PASSWORD"]',
+    'DB_PASSWORD=${DB_PASSWORD}',
+    'bypass=something_long',
+    'primary_key=organization_id',
+    'sort_key: "created_at_desc"',
+    'first_pass = compute(x)',
+    'render_pass = RenderPass()',
+    'password = getenv("DB_PASS")',
+    'fn login(password: &str)',
+    'password: bytes',
+    'Password: None',
+  ]) assert.equal(redact(text), text);
+});
+
+// A long value under a full password name is masked whatever it looks like:
+// a reference cannot be told from a password that happens to read as one.
+test('a long password value is masked even when it reads like code', () => {
+  for (const [text, secret] of [
+    ['DB_PASSWORD=$ecretPa55', '$ecretPa55'],
+    ['password: "$3cr3t!x"', '$3cr3t!x'],
+    ['PASSWORD=my.secret.pass', 'my.secret.pass'],
+    ['const password = req.body.password;', 'req.body.password'],
+  ]) assert.ok(!redact(text).includes(secret), `leaked: ${redact(text)}`);
+});

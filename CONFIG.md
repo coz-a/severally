@@ -79,6 +79,8 @@ A name is lower-case letters, digits, `.` and `-`, at most 64 characters; `all` 
 | `enabled` | boolean | `true` | Turns this one consultant off, leaving the others on its CLI. |
 | `note` | string | – | Why it is off, as for `clis`. |
 
+### API keys and other model families, through OpenCode
+
 OpenCode is the way to consult other model families. Any `provider/model` that `opencode models` lists can be
 a consultant. Checked on 2026-10-17 with opencode 2.0.24: `opencode/deepseek-v4.1-flash-free` (DeepSeek) and
 `opencode/nemotron-3-ultra-free#` (NVIDIA Nemotron, which has no effort variant) both answered as consultants,
@@ -198,8 +200,8 @@ server only from Claude Code and Antigravity.
 | `max_rounds` | 5 (1 initial + 4 follow-ups) | 1–20 | `SEVERALLY_MAX_ROUNDS` | Rounds per consultation chain, the first one included. |
 | `max_concurrent` | 9 | 1–9 | `SEVERALLY_MAX_CONCURRENT` | Consultations running at once, counted across every severally process that shares this home (one runs per client session); a request that would go over it is refused. A "consult everyone" fan-out takes one per consultant, and is refused if that is over the cap. |
 | `max_jobs_retained` | 200 | 20–2000 | `SEVERALLY_MAX_JOBS_RETAINED` | Jobs the running server keeps in memory; older finished ones are dropped from memory, never from the history on disk. |
-| `max_wait_ms` | 45000 | 0–600000 | `SEVERALLY_MAX_WAIT_MS` | Longest `wait_ms` a single `consult_get` may block for. Keep it under your client's tool-call timeout. A `consult_get` with no `wait_ms` waits for this long, or 45000 if this is higher. |
-| `timeout_ms` | 3600000 | 1000–7200000 | `SEVERALLY_TIMEOUT_MS` | Wall-clock budget per consultation, for every consultant without its own `timeout_ms`. |
+| `max_wait_ms` | 45000 | 0–600000 | `SEVERALLY_MAX_WAIT_MS` | Longest `wait_ms` a single `consult_get` may block for. Keep it under your client's tool-call timeout. A `consult_get` with no `wait_ms` waits for this long, or 45000 if this is higher, unless the environment variable is set: it belongs to one client's registration, so it also sets that client's default wait (and takes precedence over this key). The plugin registrations for Claude Code and Codex (and the installer's `--manual` registration for Claude Code) set the environment variable to 600000: Claude Code waits on a tool call far longer, and the Codex plugin raises its tool-call timeout to 660 s. While it waits, `consult_get` sends a progress notification every 15 s when the client asks for them, and stops waiting if the client cancels the call. |
+| `timeout_ms` | 1800000 | 1000–7200000 | `SEVERALLY_TIMEOUT_MS` | Wall-clock budget per consultation, for every consultant without its own `timeout_ms`. |
 | `kill_grace_ms` | 5000 | 500–60000 | `SEVERALLY_KILL_GRACE_MS` | Time between asking a stopped consultant to exit and killing it; also how long the server waits for running consultants when it shuts down. |
 | `max_auto_retries` | 2 | 0–3 | `SEVERALLY_MAX_AUTO_RETRIES` | How many times a consultation that failed with `rate_limited` or `cli_error` is run again automatically, inside its original time budget. `0` turns it off. |
 | `retry_backoff_ms` | 5000 | 0–60000 | `SEVERALLY_RETRY_BACKOFF_MS` | Wait before the first automatic re-run; each later one waits three times longer. |

@@ -184,6 +184,8 @@ function renderExposeManifest(manifest) {
   const skipped = [
     count('symlink') ? `${count('symlink')} symlink(s), or path(s) through one, were skipped, not followed.` : null,
     count('protected') ? `${count('protected')} credential or history path(s) were left out on purpose.` : null,
+    count('ignored') ? `${count('ignored')} path(s) (.git, node_modules, whatever .gitignore excludes) were left out as not source.` : null,
+    count('submodule') ? `${count('submodule')} submodule(s) or nested repositor(ies) were left out; their files are not copied.` : null,
     count('gone') ? `No longer there, so not copied again: ${named('gone')}.` : null,
     count('masked') ? `Not copied again, because the record of the earlier round masked the path: ${named('masked')}.` : null,
     count('replaced') ? `The earlier round's change is replaced by the diff given in this round: ${named('replaced')}.` : null,
@@ -204,9 +206,30 @@ function renderExposeManifest(manifest) {
 // from crowding out the question it is there to inform.
 const clip = (s, max = 400) => (s.length > max ? `${s.slice(0, max)}...` : s);
 
+// The earlier rounds have a budget of their own, beside the request's cap:
+// when they outgrow it, the oldest rounds are left out, and the brief says so.
+const HISTORY_CHARS = 40_000;
+
+function renderRound(p) {
+  // Prefixed with the round, so a point from round 1 is not taken for this one's.
+  const tag = (id) => `r${p.round}.${id}`;
+  const verdict = (x) => (x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}` : '');
+  const list = (title, items, line) => (items?.length ? [title, ...items.map(line)].join('\n') : null);
+  return [
+    `### Round ${p.round} (${p.mode})`,
+    `Question asked: ${p.question}`,
+    `Your answer, summarised: ${p.summary}`,
+    list('Points you raised:', p.findings,
+      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `\n  grounds: ${clip(f.grounds)}` : ''}`),
+    list('Unknowns you named:', p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`),
+    list('Checks you proposed:', p.next_checks, (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}`),
+  ].filter(Boolean).join('\n');
+}
+
 /**
  * @param {object} req validated request
- * @param {object} chain { round, priorRounds: [{question, mode, summary, findings: [{id, point, verdict, effect}]}] }
+ * @param {object} chain { round, priorRounds: [{question, mode, summary, findings: [{id, point, grounds, verdict, effect}],
+ *   unknowns: [{id, point, verdict, effect}], next_checks: [{id, point, verdict, effect}]}] }
  */
 export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
@@ -238,22 +261,21 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
   if (chain.priorRounds && chain.priorRounds.length) {
     parts.push('');
     parts.push('## Earlier rounds of this same consultation');
-    for (const p of chain.priorRounds) {
-      parts.push(
-        [
-          `### Round ${p.round} (${p.mode})`,
-          `Question asked: ${p.question}`,
-          `Your answer, summarised: ${p.summary}`,
-          p.findings && p.findings.length
-            ? ['Points you raised, with what the lead\'s own check found -- confirmed: it held; not_applicable: checked, and it'
-              + ' does not apply here; unverifiable: could not be checked; no verdict: not checked yet:',
-              ...p.findings.map((f) => `- ${f.id}: ${clip(f.point)}${f.verdict ? ` -- lead's verdict: ${f.verdict}${f.effect ? ` (${clip(f.effect)})` : ''}` : ''}`)].join('\n')
-            : null,
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      );
+    parts.push(
+      'Each point carries the lead\'s own check where there is one -- confirmed: it held; not_applicable: checked, and'
+      + ' it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet.',
+    );
+    const blocks = chain.priorRounds.map(renderRound);
+    let kept = 0;
+    let used = 0;
+    // Newest first: the round being followed up always goes in.
+    for (let i = blocks.length - 1; i >= 0 && (kept === 0 || used + blocks[i].length <= HISTORY_CHARS); i--) {
+      used += blocks[i].length;
+      kept += 1;
     }
+    const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
+    if (left.length) parts.push(`(Round${left.length > 1 ? 's' : ''} ${left.join(', ')} left out to keep this brief within its size.)`);
+    parts.push(...blocks.slice(blocks.length - kept));
     parts.push('');
     parts.push(
       'This round is a follow-up. The lead has narrowed the exchange to the divergences above. Do not restate your earlier answer; address what is new, and say plainly if the new information changes or does not change your position.',

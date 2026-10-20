@@ -221,6 +221,31 @@ test('malformed output is a failure, not a silent success', async () => {
   assert.equal(view.failure.delivered_advice, false);
 });
 
+test('a Codex error the turn recovered from keeps the answer, with a caveat; a failed turn does not', async () => {
+  const run = async (behavior) => {
+    process.env.STUB_BEHAVIOR = behavior;
+    const mgr = new JobManager();
+    return finish(mgr, mgr.start(reviewRequest()).job_id);
+  };
+  let view = await run('recovered_ok');
+  assert.equal(view.status, 'completed');
+  assert.match(view.quality.caveat, /reported an error mid-run.*Rate limit reached/);
+
+  view = await run('recovered_failed');
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'rate_limited');
+
+  // No answer, or one that does not parse: the error stands, with its own kind.
+  for (const behavior of ['recovered_none', 'recovered_invalid']) {
+    view = await run(behavior);
+    assert.equal(view.status, 'failed', behavior);
+    assert.equal(view.failure.kind, 'rate_limited', behavior);
+    assert.equal(view.result, null, behavior);
+    // A transient error is re-run, whether or not an unreadable answer followed it.
+    assert.ok(view.retries.length > 0, behavior);
+  }
+});
+
 test('usage limits and auth failures are classified, not reported as advice', async () => {
   process.env.STUB_BEHAVIOR = 'usage_limit';
   let mgr = new JobManager();
@@ -319,6 +344,38 @@ test('a follow-up brief carries the earlier rounds and cannot cross targets', as
   assert.match(brief, /Retry storm risk/);
   delete process.env.STUB_BRIEF_OUT;
   fs.rmSync(briefOut, { force: true });
+});
+
+test('a follow-up brief carries grounds, unknowns and checks with their verdicts, tagged by round', async () => {
+  const briefOut = path.join(os.tmpdir(), `pc-brief4-${Date.now()}.txt`);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const r1 = mgr.start(reviewRequest());
+  await finish(mgr, r1.job_id);
+  mgr.record({ job_id: r1.job_id, entries: [{ id: 'c1', verdict: 'confirmed', effect: 'Replayed; p99 held.' }] });
+  process.env.STUB_BRIEF_OUT = briefOut;
+  const r2 = mgr.start(reviewRequest({ followup_to: r1.job_id }));
+  await finish(mgr, r2.job_id);
+  const brief = fs.readFileSync(briefOut, 'utf8');
+  assert.match(brief, /- r1\.f1: Retry storm risk\n  grounds: The excerpt retries without a cap\./);
+  assert.match(brief, /- r1\.u1: Current QPS/);
+  assert.match(brief, /- r1\.c1: Load test -- lead's verdict: confirmed \(Replayed; p99 held\.\)/);
+  delete process.env.STUB_BRIEF_OUT;
+  fs.rmSync(briefOut, { force: true });
+});
+
+test('earlier rounds past their budget are left out oldest first, and the brief says so', async () => {
+  const { renderBrief } = await import('../src/brief.mjs');
+  const { parseRequest } = await import('../src/schema.mjs');
+  const round = (n) => ({
+    round: n, mode: 'review', question: `question ${n}`, summary: `summary ${n} ${'x'.repeat(7_900)}`,
+    findings: Array.from({ length: 30 }, (_, i) => ({ id: `f${i + 1}`, point: 'p'.repeat(400), grounds: 'g'.repeat(400), verdict: 'confirmed', effect: null })),
+    unknowns: [], next_checks: [],
+  });
+  const brief = renderBrief(parseRequest(reviewRequest()), { round: 5, priorRounds: [1, 2, 3, 4].map(round) });
+  assert.match(brief, /Rounds 1, 2, 3 left out/);
+  assert.match(brief, /### Round 4 /);
+  assert.doesNotMatch(brief, /### Round 1 /);
 });
 
 test('a follow-up that leaves out the mode keeps its chain\'s', async () => {

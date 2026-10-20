@@ -136,7 +136,9 @@ When the question is about code in your repository, the lead hands the files ove
 absolute paths (`expose_paths`); what is not a file there, such as a test's output or a log, goes in the brief,
 and an excerpt in the brief goes alongside the files rather than instead of them. Those files and directories are
 copied read-only into the consultant's working directory (under `./workspace`): at most 20 entries, 500 files
-and 5 MB in total; symlinks are skipped rather than followed; text files are credential-masked exactly as the
+and 5 MB in total. A directory inside a git work tree copies only the files git lists, tracked or untracked but
+not ignored, so a repository root fits; outside git, `.git` and `node_modules` are skipped. Symlinks are skipped
+rather than followed; text files are credential-masked exactly as the
 brief is, binary files are copied unchanged. For a change under review the lead can pass `expose_diff` with the
 repository's path instead: the diff (against `HEAD`, or a `base` revision) goes in the brief, cut to fit the
 brief's budget (20,000 characters at most), and every file it touches, untracked ones included, is copied under
@@ -150,3 +152,7 @@ directory with no files. When it needs the earlier round's files, the lead passe
 what that round exposed is copied again as it is now: each entry is marked changed or unchanged by its SHA-256, a
 path that no longer exists is left out and named, and an earlier `expose_diff` brings back the files it touched
 rather than a new diff. Nothing is copied again unless the lead asks for it in that call.
+
+A follow-up to a fan-out (`followup_to` its `group_id`) asks every member the same new question, each continuing
+its own chain from its latest answered round, so each brief carries that consultant's own earlier rounds. A member
+that is still running, never answered or has used its rounds is not asked, and the `consult_start` response lists it under `skipped` with the reason.

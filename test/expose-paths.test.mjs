@@ -160,6 +160,25 @@ test('materialize: text is redacted on the way in, binary is copied byte-for-byt
   );
 });
 
+// The same masking decides what code the consultant reads: a short password
+// goes, the references and flags around it stay.
+test('materialize: a short password is masked and the code around it is not', () => {
+  const dir = tmp('severally-expose-');
+  const workdir = tmp('severally-workdir-');
+  const code = [
+    'const password = getenv("DB_PASSWORD");',
+    'const opts = { password: true, db_pass: "hunter2" };',
+    'process.env.PWD;',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'auth.mjs'), code);
+
+  materializeExposedPaths(workdir, [path.join(dir, 'auth.mjs')]);
+  assert.equal(
+    fs.readFileSync(path.join(workdir, 'workspace', '0-auth.mjs'), 'utf8'),
+    code.replace('hunter2', '[REDACTED]'),
+  );
+});
+
 // A non-utf8 text file (no null byte, so isBinary() calls it text) must not
 // be run through redact()'s utf8 decode: that would replace every invalid
 // byte sequence with U+FFFD and hand the consultant a silently corrupted
@@ -210,4 +229,82 @@ test('the brief lists what an exposed directory holds, up to a cap', async () =>
   assert.match(brief, new RegExp(`${base}/f000\\.txt`));
   assert.match(brief, /\.\.\. 51 more, not listed/);
   assert.doesNotMatch(brief, new RegExp(dir.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')), 'the source location stays out of the brief');
+});
+
+// A repository root as a lead would pass it: the work tree's own file list, not the walker, decides what is source.
+const { execFileSync } = await import('node:child_process');
+const vcs = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args],
+  { cwd, stdio: 'pipe', env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_SYSTEM: os.devNull } });
+const hasGit = (() => { try { vcs(os.tmpdir(), '--version'); return true; } catch { return false; } })();
+const repo = (files) => {
+  const dir = tmp('severally-expose-repo-');
+  vcs(dir, 'init', '-q');
+  for (const [name, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), text);
+  }
+  vcs(dir, 'add', '-A');
+  vcs(dir, 'commit', '-q', '-m', 'init');
+  return dir;
+};
+
+test('repo: a repository root gives what git lists, not .git or ignored files', { skip: !hasGit }, () => {
+  const dir = repo({ '.gitignore': 'dist/\n', 'src/a.mjs': 'a', 'a-b.txt': 'b', 'README.md': 'r' });
+  fs.mkdirSync(path.join(dir, 'dist'));
+  fs.writeFileSync(path.join(dir, 'dist', 'out.js'), 'built');
+  fs.writeFileSync(path.join(dir, 'new.txt'), 'untracked, not ignored');
+
+  const manifest = previewExposePaths([dir]);
+  assert.deepEqual(manifest.entries[0].paths, ['.gitignore', 'README.md', 'a-b.txt', 'new.txt', 'src/a.mjs']);
+  const ignored = manifest.skipped.filter((x) => x.reason === 'ignored').map((x) => path.relative(dir, x.source).replaceAll('\\', '/'));
+  assert.deepEqual(ignored.sort(), ['.git', 'dist']);
+  // The hash follows walkDir's order: the same files found by walking hash the same.
+  const a = materializeExposedPaths(tmp('severally-workdir-'), [dir]).entries[0].sha256;
+  fs.rmSync(path.join(dir, '.git'), { recursive: true });
+  fs.rmSync(path.join(dir, 'dist'), { recursive: true });
+  assert.equal(materializeExposedPaths(tmp('severally-workdir-'), [dir]).entries[0].sha256, a);
+});
+
+test('repo: outside one, .git and node_modules are skipped, and said so', () => {
+  const dir = tmp('severally-expose-');
+  fs.mkdirSync(path.join(dir, '.git'));
+  fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'sub', 'node_modules'), { recursive: true });
+  for (const f of ['.git/HEAD', 'node_modules/x/i.js', 'sub/node_modules/y.js']) fs.writeFileSync(path.join(dir, f), 'x');
+  fs.writeFileSync(path.join(dir, 'keep.txt'), 'k');
+
+  const manifest = previewExposePaths([dir]);
+  assert.deepEqual(manifest.entries[0].paths, ['keep.txt']);
+  assert.equal(manifest.skipped.filter((x) => x.reason === 'ignored').length, 3);
+});
+
+test('repo: a committed .env is still left out', { skip: !hasGit }, () => {
+  const dir = repo({ '.env': 'TOKEN=abc', 'app.mjs': 'x' });
+  const manifest = previewExposePaths([dir]);
+  assert.deepEqual(manifest.entries[0].paths, ['app.mjs']);
+  assert.ok(manifest.skipped.some((x) => x.reason === 'protected' && x.source.endsWith('.env')));
+});
+
+test('repo: a file deleted after the commit is left out, not an error', { skip: !hasGit }, () => {
+  const dir = repo({ 'keep.txt': 'k', 'lost.txt': 'l' });
+  fs.rmSync(path.join(dir, 'lost.txt'));
+  const manifest = previewExposePaths([dir]);
+  assert.deepEqual(manifest.entries[0].paths, ['keep.txt']);
+  // "gone" means an earlier round's path that is no longer there; a first round has none.
+  assert.equal(manifest.skipped.some((x) => x.reason === 'gone'), false);
+});
+
+test('repo: files under a protected directory are not copied, as walking it would not', { skip: !hasGit }, () => {
+  const dir = repo({ 'app.mjs': 'a', '.env.d/app': 'SECRET=1', '.env.d/db': 'SECRET=2' });
+  const manifest = previewExposePaths([dir]);
+  assert.deepEqual(manifest.entries[0].paths, ['app.mjs']);
+  assert.deepEqual(manifest.skipped.filter((x) => x.reason === 'protected').map((x) => path.basename(x.source)), ['.env.d']);
+});
+
+test('repo: a subdirectory gives only its own files, named relative to it', { skip: !hasGit }, () => {
+  const dir = repo({ 'top.txt': 't', 'pkg/one.mjs': '1', 'pkg/deep/two.mjs': '2', 'other/three.mjs': '3' });
+  fs.writeFileSync(path.join(dir, 'pkg', 'untracked.mjs'), 'u');
+  const manifest = previewExposePaths([path.join(dir, 'pkg')]);
+  assert.deepEqual(manifest.entries[0].paths, ['deep/two.mjs', 'one.mjs', 'untracked.mjs']);
+  assert.deepEqual(manifest.totals, { files: 3, bytes: 3 });
 });

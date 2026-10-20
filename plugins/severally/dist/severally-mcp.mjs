@@ -24336,7 +24336,7 @@ var LADDER_ERROR_HTTP_STATUS = {
   [ProtocolErrorCode.MissingRequiredClientCapability]: 400,
   [HEADER_MISMATCH_ERROR_CODE]: 400
 };
-function rejection(rung, cell, httpStatus, error62, settled) {
+function rejection(rung, cell, httpStatus, error62, settled2) {
   return {
     kind: "reject",
     rung,
@@ -24345,7 +24345,7 @@ function rejection(rung, cell, httpStatus, error62, settled) {
     code: error62.code,
     message: error62.message,
     ...error62.data !== void 0 && { data: error62.data },
-    settled
+    settled: settled2
   };
 }
 function carriesValidModernEnvelopeClaim(params) {
@@ -34560,28 +34560,28 @@ var StdioServerTransport = class {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
     return new Promise((resolve, reject) => {
       const json2 = serializeMessage(message);
-      let settled = false;
+      let settled2 = false;
       const onError = (error62) => {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
         reject(error62);
       };
       const onDrain = () => {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
         resolve();
       };
       this._stdout.once("error", onError);
       if (this._stdout.write(json2)) {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         this._stdout.off("error", onError);
         resolve();
-      } else if (!settled) this._stdout.once("drain", onDrain);
+      } else if (!settled2) this._stdout.once("drain", onDrain);
     });
   }
 };
@@ -35484,9 +35484,10 @@ var POLICY = Object.freeze({
   // going beyond that is an operator decision with quota to match.
   maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
   maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
-  // Upper bound for consult_get(wait_ms). Deliberately under the 60s default
-  // request timeout that MCP clients apply, so a long wait does not blow up as
-  // a client-side timeout while the consultation is still healthy.
+  // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
+  // clients allow a tool call, so a long wait does not blow up as a client-side
+  // timeout while the consultation is still healthy; a client registration
+  // that is known to wait longer raises it (scripts/install.mjs).
   maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
   input: Object.freeze({
     questionMax: 4e3,
@@ -35520,7 +35521,7 @@ var POLICY = Object.freeze({
   })
 });
 function timeoutMs(consultant) {
-  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 36e5, 1e3, 72e5);
+  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 18e5, 1e3, 72e5);
 }
 function agyExitGraceMs() {
   return {
@@ -35747,7 +35748,7 @@ var RequestError = class extends Error {
     this.details = details;
   }
 };
-function parseRequest(raw, { isFollowup = false, parentMode = null } = {}) {
+function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowup = false } = {}) {
   const parsed = requestSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
@@ -35808,9 +35809,9 @@ function parseRequest(raw, { isFollowup = false, parentMode = null } = {}) {
       "duplicate_targets"
     );
   }
-  if (isFollowup && unique.length > 1) {
+  if (isFollowup && !groupFollowup && unique.length > 1) {
     throw new RequestError(
-      "a follow-up continues the exchange with one consultant; name exactly one target",
+      "a follow-up to a job continues the exchange with one consultant; name exactly one target, or pass followup_to a group_id to ask every member of that fan-out again",
       "followup_fanout_not_allowed"
     );
   }
@@ -35955,6 +35956,12 @@ var CONSULT_RESULT_SCHEMA = obj(
 var RESULT_KEYS = Object.keys(CONSULT_RESULT_SCHEMA.properties);
 
 // src/redact.mjs
+var CODE_WORDS = /* @__PURE__ */ new Set(["true", "false", "null", "none", "undefined", "string", "str", "number", "boolean", "bool", "int", "bytes"]);
+function looksLikeCode(name, value) {
+  if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value)) return true;
+  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split("_").at(-1))) return false;
+  return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith("&");
+}
 var PATTERNS = [
   // Provider API keys
   [/\bsk-ant-[A-Za-z0-9_\-]{12,}/g, "[REDACTED:anthropic-key]"],
@@ -35963,6 +35970,7 @@ var PATTERNS = [
   [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, "[REDACTED:github-token]"],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "[REDACTED:github-token]"],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, "[REDACTED:slack-token]"],
+  [/https:\/\/hooks\.slack\.com\/services\/T[A-Za-z0-9]+\/B[A-Za-z0-9]+\/[A-Za-z0-9]+/g, "[REDACTED:slack-webhook]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
   [/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:aws-access-key-id]"],
   [/\bAIza[0-9A-Za-z_\-]{30,}/g, "[REDACTED:google-api-key]"],
@@ -35980,8 +35988,15 @@ var PATTERNS = [
   [/(:\/\/[^\s:/@]*:)[^\s@/]+(@)/g, "$1[REDACTED]$2"],
   // KEY=value / "token": "value" style assignments
   [
-    /\b((?:[A-Za-z0-9_]*_)?(?:API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|SECRET_KEY|CLIENT_SECRET|AUTH_TOKEN|CREDENTIALS|PASSWORD|PASSWD|SECRET|TOKEN))(["']?\s*[:=]\s*["']?)([^\s"',;)]{8,})/gi,
+    /\b((?:[A-Za-z0-9_]*_)?(?:API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|SECRET_KEY|CLIENT_SECRET|AUTH_TOKEN|CREDENTIALS|ACCOUNTKEY|SHAREDACCESSKEY|SECRET|TOKEN))(["']?\s*[:=]\s*["']?)([^\s"',;)]{8,})/gi,
     (_m, k, sep, _v) => `${k}${sep}[REDACTED]`
+  ],
+  // Password-type names, with values from 4 characters; PASS and PWD too (PWD
+  // only after `_` or a letter: bare PWD is the working directory). What reads
+  // as code rather than a password is left alone (looksLikeCode).
+  [
+    /\b((?:[A-Za-z0-9_]*_)?(?:PASSWORD|PASSWD|PASS|(?<=[A-Za-z_])PWD))(["']?\s*[:=]\s*["']?)([^\s"',;)]{4,})/gi,
+    (m, k, sep, v) => looksLikeCode(k, v) ? m : `${k}${sep}[REDACTED]`
   ],
   // Any environment variable named *_KEY. Upper case only: in code, primary_key,
   // sort_key and idempotency_key name things, not secrets.
@@ -36067,6 +36082,10 @@ function walkDir(root, dir, onFile, totals, skipped) {
   }
   for (const item of items) {
     const child = path4.join(dir, item.name);
+    if (item.name === ".git" || item.name === "node_modules") {
+      skipped.push({ source: child, reason: "ignored" });
+      continue;
+    }
     if (item.isSymbolicLink()) {
       skipped.push({ source: child, reason: "symlink" });
       continue;
@@ -36083,12 +36102,73 @@ function walkDir(root, dir, onFile, totals, skipped) {
     }
   }
 }
+function byPathParts(a, b) {
+  const x = a.split("/");
+  const y = b.split("/");
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return x.length - y.length;
+}
+function walkGit(dir, exposedAs, onFile, totals, skipped) {
+  let listed;
+  let ignored;
+  try {
+    listed = [...new Set(nulSplit(git(dir, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])))];
+    ignored = nulSplit(git(dir, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]));
+  } catch {
+    return false;
+  }
+  if (listed.length === 0) return false;
+  for (const p of ignored) skipped.push({ source: path4.join(dir, p), reason: "ignored" });
+  if (fs3.existsSync(path4.join(dir, ".git"))) skipped.push({ source: path4.join(dir, ".git"), reason: "ignored" });
+  const realDir = fs3.realpathSync(dir);
+  const protectedDirs = /* @__PURE__ */ new Set();
+  for (const rel of listed.sort(byPathParts)) {
+    const abs = path4.join(dir, rel);
+    const parts = rel.split("/");
+    const guarded = parts.slice(0, -1).map((_, i) => path4.join(dir, ...parts.slice(0, i + 1))).find(isProtectedPath);
+    if (guarded) {
+      if (!protectedDirs.has(guarded)) skipped.push({ source: guarded, reason: "protected" });
+      protectedDirs.add(guarded);
+      continue;
+    }
+    if (isProtectedPath(abs)) {
+      skipped.push({ source: abs, reason: "protected" });
+      continue;
+    }
+    let stat;
+    try {
+      stat = fs3.lstatSync(abs);
+    } catch {
+      continue;
+    }
+    if (stat.isDirectory()) {
+      skipped.push({ source: abs, reason: "submodule" });
+      continue;
+    }
+    const inside = (() => {
+      try {
+        return fs3.realpathSync(abs).startsWith(realDir + path4.sep);
+      } catch {
+        return false;
+      }
+    })();
+    if (stat.isSymbolicLink() || !inside) {
+      skipped.push({ source: abs, reason: "symlink" });
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    onFile(abs, path4.normalize(rel));
+    checkBudget(totals);
+  }
+  return true;
+}
 function walkEntries(exposePaths, onFile) {
   const totals = { files: 0, bytes: 0 };
   const skipped = [];
   const entries = exposePaths.map((p, i) => {
     const { source, index } = typeof p === "string" ? { source: p, index: i } : p;
     const stat = statEntry(source);
+    const exposedAs = `workspace/${index}-${path4.basename(source)}`;
     const before = { files: totals.files, bytes: totals.bytes };
     const paths = [];
     if (isProtectedPath(source)) {
@@ -36097,18 +36177,17 @@ function walkEntries(exposePaths, onFile) {
       onFile(source, "", index, source, totals);
       checkBudget(totals);
     } else {
-      walkDir(source, source, (abs, rel) => {
+      const add = (abs, rel) => {
         paths.push(rel.split(path4.sep).join("/"));
         onFile(abs, rel, index, source, totals);
-      }, totals, skipped);
+      };
+      walkGit(source, exposedAs, add, totals, skipped) || walkDir(source, source, add, totals, skipped);
     }
     return {
       index,
       source,
       kind: stat.isDirectory() ? "directory" : "file",
-      // Indexed, so two entries whose basenames collide (two different
-      // util.mjs) stay apart, and the brief can name each one exactly.
-      exposedAs: `workspace/${index}-${path4.basename(source)}`,
+      exposedAs,
       files: totals.files - before.files,
       bytes: totals.bytes - before.bytes,
       paths: paths.sort()
@@ -36501,6 +36580,8 @@ function renderExposeManifest(manifest) {
   const skipped = [
     count("symlink") ? `${count("symlink")} symlink(s), or path(s) through one, were skipped, not followed.` : null,
     count("protected") ? `${count("protected")} credential or history path(s) were left out on purpose.` : null,
+    count("ignored") ? `${count("ignored")} path(s) (.git, node_modules, whatever .gitignore excludes) were left out as not source.` : null,
+    count("submodule") ? `${count("submodule")} submodule(s) or nested repositor(ies) were left out; their files are not copied.` : null,
     count("gone") ? `No longer there, so not copied again: ${named("gone")}.` : null,
     count("masked") ? `Not copied again, because the record of the earlier round masked the path: ${named("masked")}.` : null,
     count("replaced") ? `The earlier round's change is replaced by the diff given in this round: ${named("replaced")}.` : null
@@ -36517,6 +36598,25 @@ function renderExposeManifest(manifest) {
   ].join("\n");
 }
 var clip = (s2, max = 400) => s2.length > max ? `${s2.slice(0, max)}...` : s2;
+var HISTORY_CHARS = 4e4;
+function renderRound(p) {
+  const tag = (id2) => `r${p.round}.${id2}`;
+  const verdict = (x) => x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ""}` : "";
+  const list = (title, items, line) => items?.length ? [title, ...items.map(line)].join("\n") : null;
+  return [
+    `### Round ${p.round} (${p.mode})`,
+    `Question asked: ${p.question}`,
+    `Your answer, summarised: ${p.summary}`,
+    list(
+      "Points you raised:",
+      p.findings,
+      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `
+  grounds: ${clip(f.grounds)}` : ""}`
+    ),
+    list("Unknowns you named:", p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`),
+    list("Checks you proposed:", p.next_checks, (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}`)
+  ].filter(Boolean).join("\n");
+}
 function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
   parts.push(renderGuardrails(Boolean(exposeManifest), req.network));
@@ -36545,19 +36645,19 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
   if (chain.priorRounds && chain.priorRounds.length) {
     parts.push("");
     parts.push("## Earlier rounds of this same consultation");
-    for (const p of chain.priorRounds) {
-      parts.push(
-        [
-          `### Round ${p.round} (${p.mode})`,
-          `Question asked: ${p.question}`,
-          `Your answer, summarised: ${p.summary}`,
-          p.findings && p.findings.length ? [
-            "Points you raised, with what the lead's own check found -- confirmed: it held; not_applicable: checked, and it does not apply here; unverifiable: could not be checked; no verdict: not checked yet:",
-            ...p.findings.map((f) => `- ${f.id}: ${clip(f.point)}${f.verdict ? ` -- lead's verdict: ${f.verdict}${f.effect ? ` (${clip(f.effect)})` : ""}` : ""}`)
-          ].join("\n") : null
-        ].filter(Boolean).join("\n")
-      );
+    parts.push(
+      "Each point carries the lead's own check where there is one -- confirmed: it held; not_applicable: checked, and it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet."
+    );
+    const blocks = chain.priorRounds.map(renderRound);
+    let kept = 0;
+    let used = 0;
+    for (let i = blocks.length - 1; i >= 0 && (kept === 0 || used + blocks[i].length <= HISTORY_CHARS); i--) {
+      used += blocks[i].length;
+      kept += 1;
     }
+    const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
+    if (left.length) parts.push(`(Round${left.length > 1 ? "s" : ""} ${left.join(", ")} left out to keep this brief within its size.)`);
+    parts.push(...blocks.slice(blocks.length - kept));
     parts.push("");
     parts.push(
       "This round is a follow-up. The lead has narrowed the exchange to the divergences above. Do not restate your earlier answer; address what is new, and say plainly if the new information changes or does not change your position."
@@ -36981,10 +37081,10 @@ function runChild({
     });
   }
   const done = new Promise((resolve) => {
-    let settled = false;
+    let settled2 = false;
     const finish = (payload) => {
-      if (settled) return;
-      settled = true;
+      if (settled2) return;
+      settled2 = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
       resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, ...payload });
@@ -37371,9 +37471,10 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       if (typeof candidate === "string" && candidate.trim()) text2 = candidate.trim();
     }
   }
-  if (errorEvents.length) {
-    const msg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
-    return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw: usage, events: events3.length };
+  const errorMsg = errorEvents.map((e) => e.message ?? e.error?.message ?? JSON.stringify(e)).join(" | ");
+  const recovered = errorEvents.length > 0 && Boolean(text2) && events3.at(-1)?.type === "turn.completed";
+  if (errorEvents.length && !recovered) {
+    return { ok: false, failureKind: classifyMessage(errorMsg), message: errorMsg, usageRaw: usage, events: events3.length };
   }
   if (!text2) {
     const msg = (stderr || "").trim() || `codex exited with code ${code} and produced no final message`;
@@ -37385,7 +37486,13 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
       events: events3.length
     };
   }
-  return { ok: true, text: text2, usageRaw: usage, events: events3.length };
+  return {
+    ok: true,
+    text: text2,
+    usageRaw: usage,
+    events: events3.length,
+    recoveredError: recovered ? { failureKind: classifyMessage(errorMsg), message: errorMsg } : null
+  };
 }
 function progress({ stdout }) {
   const items = [];
@@ -38185,11 +38292,11 @@ async function prepare() {
   if (standaloneSupport !== null) return;
   if (!probePromise) {
     probePromise = new Promise((resolve) => {
-      let settled = false;
+      let settled2 = false;
       let timer = null;
       const finishProbe = (supported, cache) => {
-        if (settled) return;
-        settled = true;
+        if (settled2) return;
+        settled2 = true;
         if (timer) clearTimeout(timer);
         if (cache) standaloneSupport = Boolean(supported);
         else probePromise = null;
@@ -38630,7 +38737,17 @@ var JobManager = class {
     if (configProblem()) throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
     const followupTo = typeof rawRequest?.followup_to === "string" && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
     let parent = null;
-    if (followupTo) {
+    let fromGroup = null;
+    if (followupTo?.startsWith("group_")) {
+      if ((rawRequest.target ?? null) !== null || rawRequest.targets?.length) {
+        throw new RequestError(
+          "a follow-up to a group goes to every member that can take one, so leave target and targets out; to follow up one member, pass its job_id",
+          "followup_group_targets"
+        );
+      }
+      fromGroup = this.#groupParents(followupTo);
+      rawRequest = { ...rawRequest, targets: fromGroup.links.map((l) => l.parent.target) };
+    } else if (followupTo) {
       parent = this.jobs.get(followupTo) ?? loadRound(followupTo);
       if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, "unknown_job");
       if (parent.status !== "completed") {
@@ -38649,7 +38766,17 @@ var JobManager = class {
       }
       parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
-    const req = parseRequest(rawRequest, { isFollowup: Boolean(parent), parentMode: parent?.mode ?? null });
+    const req = parseRequest(rawRequest, {
+      isFollowup: Boolean(parent || fromGroup),
+      parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+      groupFollowup: Boolean(fromGroup)
+    });
+    if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
+      throw new RequestError(
+        `the members of group "${followupTo}" no longer resolve to the consultants that answered them; follow up each member by its job_id`,
+        "followup_target_mismatch"
+      );
+    }
     if (parent && parent.target !== req.target) {
       throw new RequestError(
         `follow-up must go to the same consultant as job "${parent.job_id}" (${parent.target})`,
@@ -38657,7 +38784,7 @@ var JobManager = class {
       );
     }
     const round = parent ? parent.nextRound : 1;
-    if (round > POLICY.maxRounds) {
+    if (!fromGroup && round > POLICY.maxRounds) {
       throw new RequestError(
         `this consultation has used its ${POLICY.maxRounds} rounds (1 initial + ${POLICY.maxRounds - 1} follow-ups); decide with what you have, or start a new consultation with a materially different question`,
         "round_limit"
@@ -38680,13 +38807,46 @@ var JobManager = class {
       );
     }
     try {
-      return this.#admitted(req, parent, round, seats);
+      const links = fromGroup?.links ?? req.targets.map(() => ({ parent, round }));
+      return this.#admitted(req, links, seats, fromGroup);
     } catch (err) {
       for (const seat of seats) if (!this.jobs.has(seat.job_id)) releaseSeat(seat.job_id);
       throw err;
     }
   }
-  #admitted(req, parent, round, seats) {
+  // A follow-up to a fan-out: each member goes on from the newest answered
+  // round of its own chain. A member that is still running, never answered or
+  // has used its rounds is skipped and named; if that is every member, the
+  // request is refused.
+  #groupParents(groupId) {
+    const group = this.groups.get(groupId) ?? loadGroup(groupId);
+    if (!group) throw new RequestError(`followup_to references unknown group "${groupId}"`, "unknown_group");
+    const links = [];
+    const skipped = [];
+    for (const jid of group.job_ids) {
+      const member = this.jobs.get(jid) ?? loadRound(jid);
+      if (!member) {
+        skipped.push({ job_id: jid, target: null, reason: "not found: aged out of the history, or still running in another severally process" });
+        continue;
+      }
+      const rounds = this.#chainRounds(member.chain_id);
+      const latest = rounds.filter((j) => !["failed", "cancelled"].includes(j.status)).sort((a, b) => b.round - a.round)[0];
+      const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
+      const consultant = consultantByName(member.target);
+      const reason = !latest ? `${member.status}, so there is no answer to follow up` : latest.status !== "completed" ? `round ${latest.round} is still ${latest.status}` : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds` : !consultant || !consultantAvailable(consultant) ? "this consultant is no longer configured or available here" : null;
+      if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
+      else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
+    }
+    if (!links.length) {
+      throw new RequestError(
+        `no member of group "${groupId}" can take a follow-up: ${skipped.map((x) => `${x.target ?? x.job_id} (${x.reason})`).join(", ")}`,
+        "followup_nothing_to_continue"
+      );
+    }
+    return { group, links, skipped };
+  }
+  #admitted(req, links, seats, fromGroup = null) {
+    const parent = links[0].groupMember ?? links[0].parent;
     const groupId = id("group");
     let exposeManifest = null;
     const parentEntries = req.context.expose_from_parent ? parent.brief?.expose_paths?.entries ?? [] : [];
@@ -38737,13 +38897,14 @@ var JobManager = class {
       req._snapshot = path11.join(snapshot, "workspace");
     }
     const members2 = req.targets.map((target, i) => {
-      const chainId = parent ? parent.chain_id : id("chain");
+      const { parent: from, round: round2 } = links[i];
+      const chainId = from ? from.chain_id : id("chain");
       const jobId = seats[i].job_id;
       const job = {
         job_id: jobId,
         chain_id: chainId,
         group_id: groupId,
-        round,
+        round: round2,
         target,
         mode: req.mode,
         // Redacted here, at the one point the request text becomes state:
@@ -38769,7 +38930,7 @@ var JobManager = class {
         retries: [],
         partial_output: null,
         tool_calls: null,
-        followup_to: parent?.job_id ?? null,
+        followup_to: from?.job_id ?? null,
         status: "queued",
         // What this consultant is: the CLI it runs on, the model and its
         // lineage, as the operator defined it.
@@ -38809,19 +38970,21 @@ var JobManager = class {
       persistGroup(group);
     } catch {
     }
-    const chain = { round, priorRounds: this.#chainHistory(members2[0].chain_id) };
-    const brief = renderBrief(req, chain, exposeManifest);
     for (const job of members2) {
+      const chain = { round: job.round, priorRounds: this.#chainHistory(job.chain_id) };
+      const brief = renderBrief(req, chain, exposeManifest);
       job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
         this.#fail(job, "cli_error", err?.message ?? String(err));
       });
     }
     if (req._snapshot) cleanupJobDir(groupId);
+    const { round } = members2[0];
+    const sameRound = members2.every((m) => m.round === round);
     const common = {
       group_id: groupId,
-      round,
+      ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
+      ...fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {},
       ...parentEntries.length ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {},
-      rounds_remaining: POLICY.maxRounds - round,
       mode: req.mode,
       // Counted, not refused: a brief of facts alone is a legitimate
       // consultation, but one about code that hands over no file is one the
@@ -38850,16 +39013,22 @@ var JobManager = class {
       ...common,
       question: group.question,
       // the redacted text every member was actually sent
-      jobs: members2.map((m) => ({ job_id: m.job_id, chain_id: m.chain_id, target: m.target, cli: m.cli, model: m.model })),
+      jobs: members2.map((m) => ({
+        job_id: m.job_id,
+        chain_id: m.chain_id,
+        target: m.target,
+        cli: m.cli,
+        model: m.model,
+        ...sameRound ? {} : { round: m.round, rounds_remaining: POLICY.maxRounds - m.round }
+      })),
       poll_with: `consult_get({ group_id: "${groupId}" })`,
       note: "Every consultant got the identical brief. When they come back, compare the grounds behind the points that differ; matching summaries are not evidence of agreement."
     };
   }
   // The rounds before a follow-up, from the history on disk and from memory
   // (memory wins: it can hold a verdict written since the round was saved).
-  // Each finding goes with the lead's verdict on it, so the consultant answers
-  // knowing which of its points were checked and how they came out. Every
-  // finding that carries a verdict is passed; of the rest, the first five.
+  // Each point goes with the lead's verdict on it, so the consultant answers
+  // knowing which of its points were checked and how they came out.
   #chainRounds(chainId) {
     const byRound = new Map(loadChain(chainId).map((j) => [j.round, j]));
     for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
@@ -38868,9 +39037,22 @@ var JobManager = class {
   #chainHistory(chainId) {
     return this.#chainRounds(chainId).filter((j) => j.status === "completed" && j.result).sort((a, b) => a.round - b.round).map((j) => {
       const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
-      let unchecked = 0;
-      const findings = j.result.findings.filter((f) => verdicts.has(f.id) || unchecked++ < 5).map((f) => ({ id: f.id, point: f.point, verdict: verdicts.get(f.id)?.verdict ?? null, effect: verdicts.get(f.id)?.effect ?? null }));
-      return { round: j.round, mode: j.mode, question: j.question, summary: j.result.summary, findings };
+      const ordered = (items, shape) => [
+        ...items.filter((x) => verdicts.has(x.id)),
+        ...items.filter((x) => !verdicts.has(x.id))
+      ].map((x) => ({ id: x.id, ...shape(x), verdict: verdicts.get(x.id)?.verdict ?? null, effect: verdicts.get(x.id)?.effect ?? null }));
+      const checked = (x) => x.verdict !== null;
+      const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
+      return {
+        round: j.round,
+        mode: j.mode,
+        question: j.question,
+        summary: j.result.summary,
+        // Every checked finding; of the rest, the first five.
+        findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
+        unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
+        next_checks: ordered(j.result.next_checks, (c) => ({ point: c.check })).slice(0, 5)
+      };
     });
   }
   #evict() {
@@ -38996,6 +39178,10 @@ var JobManager = class {
         }
         const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
         interpreted = adapter.interpret({ ...run, lastMessageText });
+        const { recoveredError } = interpreted;
+        if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
+          interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
+        }
         if (interpreted.ok) break;
         if (run.stalled && !interpreted.usageRaw) {
           return this.#fail(
@@ -39059,7 +39245,11 @@ var JobManager = class {
         }
       }
       job.result = normalized.result;
-      const notes = [adviceCaveat(normalized), sameVendorCaveat(job.caller, job.caller_model, consultant)].filter(Boolean);
+      const notes = [
+        adviceCaveat(normalized),
+        sameVendorCaveat(job.caller, job.caller_model, consultant),
+        interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`
+      ].filter(Boolean);
       job.quality = {
         ...normalized.quality,
         evidence_basis: normalized.result.evidence_basis,
@@ -39248,32 +39438,32 @@ var JobManager = class {
         message: `the verdict for "${job.job_id}" could not be written to the history (${e.message}); record it again`
       };
     }
+    const summary = job.record && recordSummary(job);
     return {
       job_id: job.job_id,
       chain_id: job.chain_id,
       round: job.round,
-      record: job.record ? recordSummary(job) : null,
-      prediction: job.prediction ?? null,
-      reflection: job.reflection ?? null
+      record: summary ? { updated_at: summary.updated_at, verdicts: summary.verdicts, coverage: summary.coverage } : null,
+      reflection_saved: job.reflection != null
     };
   }
-  async wait(jobId, waitMs, opts) {
+  async wait(jobId, waitMs, opts, signal) {
     const job = this.jobs.get(jobId);
-    if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs);
+    if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs, signal);
     const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     if (budget === 0 || job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
       return this.view(jobId, opts);
     }
-    await Promise.race([job.promise, new Promise((r) => setTimeout(r, budget).unref?.())]);
+    await settled(job.promise, budget, signal);
     return this.view(jobId, opts);
   }
   // A consultation another process runs has no promise here, so its history
   // is re-read once a second until it is no longer running or the wait is up.
-  async #waitOnDisk(read, waitMs) {
+  async #waitOnDisk(read, waitMs, signal) {
     const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     let view = read();
-    while (view && ["running", "queued"].includes(view.status) && Date.now() < until) {
-      await new Promise((r) => setTimeout(r, Math.min(1e3, until - Date.now())));
+    while (view && ["running", "queued"].includes(view.status) && Date.now() < until && !signal?.aborted) {
+      await settled(null, Math.min(1e3, until - Date.now()), signal);
       view = read();
     }
     return view;
@@ -39347,7 +39537,8 @@ var JobManager = class {
       // the number of consultants configured rather than asked.
       limits: live || !full ? null : limitsSummary()
     };
-    view.comparison = comparison(members2, full ? Infinity : GROUP_CHARS - printed(view));
+    const anyFinished = members2.some((m) => ["completed", "failed", "cancelled"].includes(m.status));
+    if (anyFinished) view.comparison = comparison(members2, full ? Infinity : GROUP_CHARS - printed(view));
     return view;
   }
   groupView(groupId, opts) {
@@ -39355,16 +39546,13 @@ var JobManager = class {
     if (!group) return null;
     return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean), opts);
   }
-  async waitGroup(groupId, waitMs, opts) {
+  async waitGroup(groupId, waitMs, opts, signal) {
     const group = this.groups.get(groupId);
-    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs);
+    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
     const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
     if (budget > 0) {
       const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
-      await Promise.race([
-        Promise.all(promises),
-        new Promise((r) => setTimeout(r, budget).unref?.())
-      ]);
+      await settled(Promise.all(promises), budget, signal);
     }
     return this.groupView(groupId, opts);
   }
@@ -39403,11 +39591,11 @@ var JobManager = class {
         job._handle.stop();
       }
     }
-    const settled = Promise.all(live.map((j) => j.promise).filter(Boolean));
-    await Promise.race([settled, new Promise((r) => setTimeout(r, graceMs).unref?.())]);
+    const settled2 = Promise.all(live.map((j) => j.promise).filter(Boolean));
+    await Promise.race([settled2, new Promise((r) => setTimeout(r, graceMs).unref?.())]);
     for (const job of live) if (job._handle) handles.push(job._handle);
     for (const h of new Set(handles)) h.forceKill();
-    await Promise.race([settled, new Promise((r) => setTimeout(r, 1e3).unref?.())]);
+    await Promise.race([settled2, new Promise((r) => setTimeout(r, 1e3).unref?.())]);
   }
   /** The synchronous last resort for process exit: no waiting is possible there. */
   killNow() {
@@ -39448,6 +39636,31 @@ function partialOutput(run) {
     stopped_at: (/* @__PURE__ */ new Date()).toISOString(),
     note: "raw output stream of a consultant that was stopped at its time budget; unparsed and unverified, not an answer"
   };
+}
+async function settled(promise2, ms, signal) {
+  let timer;
+  let stop;
+  const until = new Promise((resolve) => {
+    stop = resolve;
+    timer = setTimeout(resolve, ms);
+    if (signal?.aborted) resolve();
+    else signal?.addEventListener("abort", resolve, { once: true });
+  });
+  try {
+    await (promise2 ? Promise.race([promise2, until]) : until);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", stop);
+  }
+}
+function parses(text2) {
+  try {
+    normalizeResult(text2);
+    return true;
+  } catch (err) {
+    if (err instanceof OutputError) return false;
+    throw err;
+  }
 }
 function recordableIds(result) {
   return [
@@ -39990,8 +40203,9 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 }
 
 // src/server.mjs
-var SEVERALLY_VERSION = "2.0.0";
-var DEFAULT_WAIT_MS = Math.min(POLICY.maxWaitMs, 45e3);
+var SEVERALLY_VERSION = "2.1.0";
+var DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
+var PROGRESS_EVERY_MS = 15e3;
 var semver = (v) => String(v).split(".").map(Number);
 var older = (a, b) => {
   const [x, y] = [semver(a), semver(b)];
@@ -40057,8 +40271,12 @@ ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
         drift -- and the result is marked as same lineage.
 targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates).
         targets: ["all"] asks every consultant listed above; "all" cannot be mixed with names.
-        Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
-        A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+        Every member gets the byte-identical brief (on a follow-up, plus its own earlier rounds) and one
+        group_id; poll it with consult_get({ group_id }). Each member takes one slot of the concurrency cap,
+        and a fan-out that would go over it is refused before any member starts.
+        A follow-up (followup_to) to a job names that one consultant. followup_to a group_id, with no target or
+        targets, asks every member of that fan-out the same new question, each on its own chain from its latest
+        round; a member that is still running, never answered or has used its rounds is skipped and listed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
         server can annotate a same-vendor consultation.
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
@@ -40082,7 +40300,9 @@ code only if you hand it over in this call. When the question is about code in a
 name the files it is about by absolute path in context.expose_paths: those files and directories are copied
 read-only into its working directory (under ./workspace) and are then the only part of your repository it has.
 At most 20 entries, 500 files and 5 MB in total; symlinks and protected files are skipped rather than copied,
-and text files are credential-masked exactly as the brief is. A follow-up starts in a fresh working directory
+and text files are credential-masked exactly as the brief is. A directory inside a git work tree copies only the
+files git lists (tracked, or untracked and not ignored), so a repository root fits; outside git, .git and
+node_modules are skipped. A follow-up starts in a fresh working directory
 with no files: pass context.expose_from_parent: true to copy again, as they are now, the paths the round it follows
 exposed (a changed or vanished entry is marked; an earlier expose_diff brings back the files it touched, not the
 diff), and add expose_paths for anything new. It is never implied: leave it off when the follow-up does not need them. Put the facts it needs into context.facts, and keep
@@ -40149,7 +40369,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before answering, which stays under the request timeout MCP clients apply; wait_ms sets another wait, and wait_ms: 0 answers at once. A typical consultation takes one to five minutes, so expect to call this several times, and do something else in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; the wait then covers every consultant in it. A fan-out comes back sized to read in one go: each member is its status, failure and job_id, and \`comparison.by_target\` holds every consultant's stance, summary and findings (with their ids) side by side, cut to fixed lengths where \`truncated\` says so. consult_get({ job_id, ids: ["f2", "u1"] }) on a member returns just those points, each whole with its grounds and your verdict (\`recorded\`): fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes -- not only where they diverge. consult_get({ job_id }) returns the whole answer. A finished consultation names its brief (size, sha256, round file) rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
+      description: `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before answering, a limit set to stay under this client's tool-call timeout; wait_ms sets another wait, and wait_ms: 0 answers at once. While it waits it sends a progress notification every 15 s if you asked for them, and a call you cancel stops waiting. A typical consultation takes one to ten minutes; call this again while it runs, and pass a shorter wait_ms when you have independent work to do in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; the wait then covers every consultant in it. A fan-out comes back sized to read in one go: each member is its status, failure and job_id, and \`comparison.by_target\` holds every consultant's stance, summary and findings (with their ids) side by side, cut to fixed lengths where \`truncated\` says so. consult_get({ job_id, ids: ["f2", "u1"] }) on a member returns just those points, each whole with its grounds and your verdict (\`recorded\`): fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes -- not only where they diverge. consult_get({ job_id }) returns the whole answer. A finished consultation names its brief (size, sha256, round file) rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -40158,14 +40378,27 @@ function createServer(manager = new JobManager()) {
         ids: external_exports.array(external_exports.string().min(1)).min(1).max(100).optional().describe("with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote")
       })
     },
-    async ({ job_id, group_id, wait_ms, detail, ids }) => {
+    async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
       }
       if (ids && (group_id || detail)) {
         return fail({ error: "invalid_request", message: "ids goes with job_id alone: a point id belongs to one consultant's answer" });
       }
-      const view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }) : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail });
+      const req = ctx?.mcpReq;
+      const token = req?._meta?.progressToken;
+      let beats = 0;
+      const timer = token === void 0 ? null : setInterval(() => {
+        beats += 1;
+        req.notify({ method: "notifications/progress", params: { progressToken: token, progress: beats, message: "the consultation is still running" } }).catch(() => {
+        });
+      }, PROGRESS_EVERY_MS);
+      let view;
+      try {
+        view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal) : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+      } finally {
+        clearInterval(timer);
+      }
       if (!view) {
         return fail({ error: "unknown_job", message: `no consultation with ${group_id ? "group_id" : "job_id"} "${group_id ?? job_id}"` });
       }
@@ -40205,7 +40438,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Record what checking a point showed",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. A follow-up to this job shows the consultant each finding\'s verdict and effect (credential-masked, like the brief), never the note. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction. For a fan-out, record every member in one call: records: [{ job_id, entries, reflection? }, ...] in place of job_id/entries/reflection. Every record is checked first; if any job or id is wrong, nothing is written and each bad one is named. A job whose write fails is listed under results with its error, not counted as saved.',
+      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. A follow-up to this job shows the consultant each point\'s verdict and effect (credential-masked, like the brief), never the note. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. It answers with counts (the verdicts tallied, and how many points now carry one); consult_get reads the entries back. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction. For a fan-out, record every member in one call: records: [{ job_id, entries, reflection? }, ...] in place of job_id/entries/reflection. Every record is checked first; if any job or id is wrong, nothing is written and each bad one is named. A job whose write fails is listed under results with its error, not counted as saved.',
       inputSchema: external_exports.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),

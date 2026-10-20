@@ -1,7 +1,7 @@
 {
   "name": "severally-mcp",
-  "version": "2.0.0",
-  "description": "A plugin that gives your AI agent consultants: Codex, Claude Code, Antigravity and OpenCode.",
+  "version": "2.1.0",
+  "description": "A plugin that lets your AI agent ask other coding agents for independent opinions, returned separately.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "coz.a (https://github.com/coz-a)",

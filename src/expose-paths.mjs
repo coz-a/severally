@@ -105,6 +105,12 @@ function walkDir(root, dir, onFile, totals, skipped) {
   }
   for (const item of items) {
     const child = path.join(dir, item.name);
+    // Outside git there is no .gitignore to say what is not source: these two
+    // are never what a consultant should read, and would hit the caps alone.
+    if (item.name === '.git' || item.name === 'node_modules') {
+      skipped.push({ source: child, reason: 'ignored' });
+      continue;
+    }
     // Not followed: a link inside a directory the lead exposed can resolve
     // anywhere on the disk, which is exactly the scope this feature exists
     // to keep drawn. Recorded rather than dropped silently, so a consultant
@@ -130,6 +136,61 @@ function walkDir(root, dir, onFile, totals, skipped) {
   }
 }
 
+// walkDir's order: name by name at every level, not the whole path as one
+// string ("a/x" comes before "a-b" there, after it as a string).
+function byPathParts(a, b) {
+  const x = a.split('/');
+  const y = b.split('/');
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return x.length - y.length;
+}
+
+// A directory inside a git work tree: the candidates are what git lists
+// (tracked, plus untracked that .gitignore does not exclude), so `.git` and
+// ignored trees drop out. Every candidate gets walkDir's checks again -- a
+// committed .env is still protected, a listed file may be gone, a link, a
+// submodule, or reach outside the directory. False when this is not a work
+// tree, git is missing or lists nothing (an ignored directory the lead named
+// on purpose): the caller walks it instead.
+function walkGit(dir, exposedAs, onFile, totals, skipped) {
+  let listed;
+  let ignored;
+  try {
+    listed = [...new Set(nulSplit(git(dir, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])))];
+    ignored = nulSplit(git(dir, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']));
+  } catch { return false; }
+  if (listed.length === 0) return false;
+  for (const p of ignored) skipped.push({ source: path.join(dir, p), reason: 'ignored' });
+  if (fs.existsSync(path.join(dir, '.git'))) skipped.push({ source: path.join(dir, '.git'), reason: 'ignored' });
+  const realDir = fs.realpathSync(dir);
+  const protectedDirs = new Set();
+  for (const rel of listed.sort(byPathParts)) {
+    const abs = path.join(dir, rel);
+    // walkDir never enters a protected directory (.env.d/, .ssh/ ...); a
+    // listed file is checked with each directory above it for the same reason.
+    const parts = rel.split('/');
+    const guarded = parts.slice(0, -1).map((_, i) => path.join(dir, ...parts.slice(0, i + 1))).find(isProtectedPath);
+    if (guarded) {
+      if (!protectedDirs.has(guarded)) skipped.push({ source: guarded, reason: 'protected' });
+      protectedDirs.add(guarded);
+      continue;
+    }
+    if (isProtectedPath(abs)) { skipped.push({ source: abs, reason: 'protected' }); continue; }
+    let stat;
+    // Deleted in the work tree but still in the index: not part of the tree
+    // as it is now, so not part of the copy either.
+    try { stat = fs.lstatSync(abs); } catch { continue; }
+    // A directory here is a submodule (or a nested repository): its own history, not this one's files.
+    if (stat.isDirectory()) { skipped.push({ source: abs, reason: 'submodule' }); continue; }
+    const inside = (() => { try { return fs.realpathSync(abs).startsWith(realDir + path.sep); } catch { return false; } })();
+    if (stat.isSymbolicLink() || !inside) { skipped.push({ source: abs, reason: 'symlink' }); continue; }
+    if (!stat.isFile()) continue;
+    onFile(abs, path.normalize(rel));
+    checkBudget(totals);
+  }
+  return true;
+}
+
 // Each path is a string, or { source, index } to keep the name an earlier
 // round gave it.
 function walkEntries(exposePaths, onFile) {
@@ -138,6 +199,9 @@ function walkEntries(exposePaths, onFile) {
   const entries = exposePaths.map((p, i) => {
     const { source, index } = typeof p === 'string' ? { source: p, index: i } : p;
     const stat = statEntry(source);
+    // Indexed, so two entries whose basenames collide (two different
+    // util.mjs) stay apart, and the brief can name each one exactly.
+    const exposedAs = `workspace/${index}-${path.basename(source)}`;
     const before = { files: totals.files, bytes: totals.bytes };
     // What a directory holds, for the brief: not every consultant has a tool
     // that lists a directory, and a name it cannot see is a file it never reads.
@@ -148,18 +212,17 @@ function walkEntries(exposePaths, onFile) {
       onFile(source, '', index, source, totals);
       checkBudget(totals);
     } else {
-      walkDir(source, source, (abs, rel) => {
+      const add = (abs, rel) => {
         paths.push(rel.split(path.sep).join('/'));
         onFile(abs, rel, index, source, totals);
-      }, totals, skipped);
+      };
+      walkGit(source, exposedAs, add, totals, skipped) || walkDir(source, source, add, totals, skipped);
     }
     return {
       index,
       source,
       kind: stat.isDirectory() ? 'directory' : 'file',
-      // Indexed, so two entries whose basenames collide (two different
-      // util.mjs) stay apart, and the brief can name each one exactly.
-      exposedAs: `workspace/${index}-${path.basename(source)}`,
+      exposedAs,
       files: totals.files - before.files,
       bytes: totals.bytes - before.bytes,
       paths: paths.sort(),

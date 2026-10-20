@@ -144,7 +144,7 @@ test('an everyone fan-out fits the default concurrency cap exactly', async () =>
   assert.equal(view.status, 'done');
 });
 
-test('a follow-up cannot fan out', async () => {
+test('a follow-up to one job cannot fan out', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
   const first = mgr.start(reviewRequest());
@@ -155,7 +155,82 @@ test('a follow-up cannot fan out', async () => {
       targets: ['codex', 'claude-code'],
       followup_to: first.job_id,
     })),
-    (e) => e.code === 'followup_fanout_not_allowed',
+    (e) => e.code === 'followup_fanout_not_allowed' && /group_id/.test(e.message),
+  );
+});
+
+test('a follow-up to a group goes to every member, each on its own chain with its own history', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const first = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, first.group_id);
+  mgr.record({ job_id: first.jobs[0].job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Codex was right.' }] });
+
+  const briefDir = fs.mkdtempSync(path.join(home, 'briefs-'));
+  process.env.STUB_BRIEF_DIR = briefDir;
+  const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
+  await finishGroup(mgr, next.group_id);
+  delete process.env.STUB_BRIEF_DIR;
+
+  assert.equal(next.round, 2);
+  assert.equal(next.followup_to_group, first.group_id);
+  assert.deepEqual(next.skipped, []);
+  assert.deepEqual(next.jobs.map((j) => j.target), ['codex', 'claude-code']);
+  assert.deepEqual(next.jobs.map((j) => j.chain_id), first.jobs.map((j) => j.chain_id));
+  assert.deepEqual(next.jobs.map((j) => mgr.view(j.job_id).followup_to), first.jobs.map((j) => j.job_id));
+  // The new question is the same for both; the earlier round each one sees is its own.
+  const codexBrief = fs.readFileSync(path.join(briefDir, 'codex.txt'), 'utf8');
+  const claudeBrief = fs.readFileSync(path.join(briefDir, 'claude-code.txt'), 'utf8');
+  assert.match(codexBrief, /lead's verdict: confirmed \(Codex was right\.\)/);
+  assert.doesNotMatch(claudeBrief, /Codex was right/);
+  const shared = (b) => b.slice(0, b.indexOf('## Earlier rounds'));
+  assert.equal(shared(codexBrief), shared(claudeBrief));
+});
+
+test('a follow-up to a group skips members that cannot take one, and names why', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const first = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, first.group_id);
+  // One member followed up on its own: the group follow-up continues after that round.
+  const solo = mgr.start(reviewRequest({ target: 'codex', followup_to: first.jobs[0].job_id }));
+  await mgr.jobs.get(solo.job_id).promise;
+  // STUB_BEHAVIOR is process-wide, so a failed member is staged on the finished group.
+  const failed = mgr.jobs.get(first.jobs[1].job_id);
+  failed.status = 'failed';
+  failed.result = null;
+
+  const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
+  await finishGroup(mgr, next.group_id);
+  assert.equal(next.target, 'codex', 'one member left: a group of one');
+  assert.equal(next.round, 3);
+  assert.equal(mgr.view(next.job_id).followup_to, solo.job_id);
+  assert.deepEqual(next.skipped.map((x) => [x.target, x.reason]), [['claude-code', 'failed, so there is no answer to follow up']]);
+});
+
+test('a follow-up to a group is refused when no member can take one, or when it names targets', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const first = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, first.group_id);
+  assert.throws(
+    () => mgr.start(reviewRequest({ target: 'codex', followup_to: first.group_id })),
+    (e) => e.code === 'followup_group_targets',
+  );
+  // A member whose consultant is no longer configured is skipped, not re-resolved.
+  mgr.jobs.get(first.jobs[1].job_id).target = 'renamed-away';
+  const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
+  assert.deepEqual(next.skipped.map((x) => x.target), ['renamed-away']);
+  assert.match(next.skipped[0].reason, /no longer configured/);
+  await mgr.jobs.get(next.job_id).promise;
+  for (const jid of [...first.jobs.map((j) => j.job_id), next.job_id]) mgr.jobs.get(jid).status = 'cancelled';
+  assert.throws(
+    () => mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id })),
+    (e) => e.code === 'followup_nothing_to_continue' && /codex/.test(e.message) && /renamed-away/.test(e.message),
+  );
+  assert.throws(
+    () => mgr.start(reviewRequest({ target: undefined, followup_to: 'group_000000000000' })),
+    (e) => e.code === 'unknown_group',
   );
 });
 
@@ -169,12 +244,14 @@ test('cancelling a group stops every member', async () => {
   assert.equal(cancelled.members.every((m) => m.status === 'cancelling' || m.status === 'cancelled'), true);
   assert.equal(cancelled.status, 'cancelling');
   assert.match(cancelled.cancel_effect, /every consultant process group/);
-  // One payload must not report two different statuses for the same job: a
-  // member's status is said once, in members.
-  for (const t of cancelled.comparison.by_target) assert.equal('status' in t, false);
+  // Nobody has finished yet, so there is no side-by-side to carry.
+  assert.equal(cancelled.comparison, null);
   await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
   const after = mgr.groupView(started.group_id);
   assert.equal(after.members.every((m) => m.status === 'cancelled'), true);
+  // One payload must not report two different statuses for the same job: a
+  // member's status is said once, in members.
+  for (const t of after.comparison.by_target) assert.equal('status' in t, false);
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
 

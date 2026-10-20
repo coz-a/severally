@@ -59,7 +59,7 @@ if(cli==='npm') {
   // is what the installer's command verification reads.
   // STUB_LIST_EMPTY_FOR: how many 'mcp list' calls answer "No MCP servers
   // configured" before the real list -- what opencode did twice on the first
-  // run after an upgrade (backlog 17), with the server in its config all along.
+  // run after an upgrade, with the server in its config all along.
   if(args[1]==='list' && cli==='opencode' && Number(process.env.STUB_LIST_EMPTY_FOR ?? 0) > (state.emptyLists ?? 0)) {
     state.emptyLists = (state.emptyLists ?? 0) + 1;
     console.log('No MCP servers configured');
@@ -153,6 +153,11 @@ test('POSIX manual mode needs no global npm install and registers the copied run
   for (const cli of ['codex', 'claude', 'agy', 'opencode']) {
     assert.deepEqual(state[cli], [process.execPath, path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
   }
+  // Only a client known to outwait ten minutes gets the long consult_get wait.
+  const adds = calls.filter((args) => args[1] === 'mcp' && args[2] === 'add');
+  const longWait = (cli) => adds.find((args) => args[0] === cli).includes('SEVERALLY_MAX_WAIT_MS=600000');
+  assert.equal(longWait('claude'), true);
+  for (const cli of ['agy', 'opencode']) assert.equal(longWait(cli), false, cli);
 });
 
 // opencode resolves its global config from XDG_CONFIG_HOME when set (its own
@@ -205,7 +210,7 @@ test('POSIX opencode add that did not register is reported as a failure', { skip
 });
 
 // opencode's list can come back empty for a moment while the server is in its
-// config (backlog 17): the installer asks again before calling it a failure.
+// config: the installer asks again before calling it a failure.
 test('POSIX opencode list that is briefly empty after add is asked again, not reported as a failure', { skip: !posix }, (t) => {
   const f = fixture(t);
   f.env.STUB_LIST_EMPTY_FOR = '3'; // the two checks before adding, and the first one after

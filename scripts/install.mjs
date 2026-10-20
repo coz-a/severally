@@ -243,6 +243,14 @@ if (mode === 'plugin') {
 log(`   server command: ${JSON.stringify(serverCommand)}`);
 
 const codexHome = process.env.CODEX_HOME ?? path.join(home, '.codex');
+// consult_get waits 45 s by default, under the 60 s that some MCP clients
+// allow a tool call. A client known to wait longer is registered with this,
+// so one consult_get usually covers a whole consultation. The plugin's own
+// .mcp.json carries the same value for Claude Code, and its Codex manifest
+// with tool_timeout_sec 660 (codex 0.163 stops a tool call at 300 s by
+// default, progress notwithstanding). `codex mcp add` cannot set that
+// timeout, so a --manual Codex keeps 45 s.
+const LONG_WAIT = 'SEVERALLY_MAX_WAIT_MS=600000';
 const claudeSkillsDir = path.join(home, '.claude', 'skills');
 
 // ---------------------------------------------------------------- clients
@@ -260,7 +268,9 @@ const CLIENTS = [
     // `claude mcp get` exits non-zero when the server is not registered.
     isRegistered: () => tryRun('claude', ['mcp', 'get', 'severally'], { real: true }).ok,
     remove: () => tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'severally']),
-    add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'severally', '--', ...bin]),
+    // Claude Code waits on a tool call far longer than consult_get's ten
+    // minutes, so its consult_get may wait that long (see LONG_WAIT).
+    add: (bin) => tryRun('claude', ['mcp', 'add', '--scope', 'user', 'severally', '--env', LONG_WAIT, '--', ...bin]),
     skillFrom: path.join(PLUGIN, 'skills', 'claude', 'severally'),
     skillTo: path.join(claudeSkillsDir, 'severally'),
   },
@@ -382,7 +392,7 @@ function installClientDirectly(client, bin) {  step(`Registering with ${client.l
       // so a zero exit from `mcp add` proves nothing: confirm the entry is
       // actually listed, or the server silently never reaches the client.
       // Its list has also come back empty with the server in its config
-      // (backlog 17, twice, on the first run after an upgrade), so a config
+      // (twice, on the first run after an upgrade), so a config
       // holding exactly this install's command is a registration, noted.
       const said = `   the list said: ${lastListOutput.slice(0, 500) || '(nothing)'}`;
       if (registrationCommandMatches(client, bin)) {

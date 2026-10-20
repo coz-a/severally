@@ -147,9 +147,10 @@ export class RequestError extends Error {
 
 /**
  * Validate + normalise a consult request.
- * `isFollowup` is decided by the caller (the job store resolves followup_to first).
+ * `isFollowup` is decided by the caller (the job store resolves followup_to first);
+ * `groupFollowup` when followup_to named a fan-out, whose members are the targets.
  */
-export function parseRequest(raw, { isFollowup = false, parentMode = null } = {}) {
+export function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowup = false } = {}) {
   const parsed = requestSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
@@ -220,9 +221,9 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null } = {}
       'duplicate_targets',
     );
   }
-  if (isFollowup && unique.length > 1) {
+  if (isFollowup && !groupFollowup && unique.length > 1) {
     throw new RequestError(
-      'a follow-up continues the exchange with one consultant; name exactly one target',
+      'a follow-up to a job continues the exchange with one consultant; name exactly one target, or pass followup_to a group_id to ask every member of that fan-out again',
       'followup_fanout_not_allowed',
     );
   }

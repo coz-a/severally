@@ -107,8 +107,8 @@ Windows. Pass `--manual` to use manual mode on macOS/Linux too.
 
 ## Skipping the permission prompt for tools that send nothing out
 
-Every tool except `consult_start` stays on your machine: `consult_get` (called several times per
-consultation), `consult_list`, `consult_cancel`, `consult_record` and `consult_export`. None of the clients has a command that adds tools to its allowlist, so the installer
+Every tool except `consult_start` stays on your machine: `consult_get` (called repeatedly while a
+consultation runs), `consult_list`, `consult_cancel`, `consult_record` and `consult_export`. None of the clients has a command that adds tools to its allowlist, so the installer
 leaves this to you. Keep `consult_start` prompting: it is the point where material leaves for another vendor.
 
 - **Claude Code**: the Skill already allows these five tools (its `allowed-tools`) for the turn it is invoked in, so
@@ -131,6 +131,20 @@ leaves this to you. Keep `consult_start` prompting: it is the point where materi
   ```
 - **OpenCode** allows MCP tools without asking unless your own `permission` settings say otherwise.
 - **Antigravity**: not covered here; the rule syntax for a single MCP tool has not been checked.
+
+### Letting consultations start without the prompt too
+
+The agent consults on its own (the Skill tells it not to ask whether to), so with `consult_start` prompting, every
+consultation it starts waits for you once. That prompt is the only check before material leaves your machine, so it
+stays by default. To drop it, add `consult_start` the same way as the tools above:
+`mcp__plugin_severally_severally__consult_start` in Claude Code's allow list, or a
+`[mcp_servers.severally.tools.consult_start]` table in Codex's `config.toml` (for a `--manual` registration; not
+checked for the plugin install).
+
+From then on, each consultation sends these to every consultant's model without asking you: the brief, the files
+it exposes, and whatever the consultant reads while it runs (see
+[What a consultant can see and do](../README.md#what-a-consultant-can-see-and-do)). Do it only where everything the
+agent can reach may go to those vendors.
 
 ## Updating
 

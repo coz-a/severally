@@ -1,6 +1,6 @@
 {
   "name": "severally",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Ask Codex, Claude Code, Antigravity or OpenCode for an independent opinion, review or structured debate, in a sandboxed child session that can read files and search the web but cannot edit files, change the system, or start other agents.",
   "author": {
     "name": "coz.a",
@@ -20,7 +20,9 @@
   "mcpServers": {
     "severally": {
       "type": "stdio",
-      "command": "severally-mcp"
+      "command": "severally-mcp",
+      "env": { "SEVERALLY_MAX_WAIT_MS": "600000" },
+      "tool_timeout_sec": 660
     }
   },
   "interface": {

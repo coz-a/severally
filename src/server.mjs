@@ -9,12 +9,17 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
-export const SEVERALLY_VERSION = '2.0.0';
+export const SEVERALLY_VERSION = '2.1.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
-// would otherwise return at once and be repeated. Never above 45 s, whatever
-// max_wait_ms allows, so the default stays under a 60 s client timeout.
-const DEFAULT_WAIT_MS = Math.min(POLICY.maxWaitMs, 45_000);
+// would otherwise return at once and be repeated. Up to 45 s, under the 60 s
+// some clients allow a tool call -- unless this client's own registration
+// raised the limit (SEVERALLY_MAX_WAIT_MS), which says the client waits that
+// long. The config file is shared by every client, so it cannot say that.
+const DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45_000);
+// While consult_get waits, the client hears from it this often: a client that
+// counts silence against the call keeps it open.
+const PROGRESS_EVERY_MS = 15_000;
 
 const semver = (v) => String(v).split('.').map(Number);
 const older = (a, b) => { const [x, y] = [semver(a), semver(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
@@ -79,8 +84,12 @@ ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
         drift -- and the result is marked as same lineage.
 targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates).
         targets: ["all"] asks every consultant listed above; "all" cannot be mixed with names.
-        Every member gets the byte-identical brief and one group_id; poll it with consult_get({ group_id }).
-        A follow-up (followup_to) always names one consultant -- fan-out is never available on a follow-up.
+        Every member gets the byte-identical brief (on a follow-up, plus its own earlier rounds) and one
+        group_id; poll it with consult_get({ group_id }). Each member takes one slot of the concurrency cap,
+        and a fan-out that would go over it is refused before any member starts.
+        A follow-up (followup_to) to a job names that one consultant. followup_to a group_id, with no target or
+        targets, asks every member of that fan-out the same new question, each on its own chain from its latest
+        round; a member that is still running, never answered or has used its rounds is skipped and listed.
 caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
         server can annotate a same-vendor consultation.
 caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
@@ -104,7 +113,9 @@ code only if you hand it over in this call. When the question is about code in a
 name the files it is about by absolute path in context.expose_paths: those files and directories are copied
 read-only into its working directory (under ./workspace) and are then the only part of your repository it has.
 At most 20 entries, 500 files and 5 MB in total; symlinks and protected files are skipped rather than copied,
-and text files are credential-masked exactly as the brief is. A follow-up starts in a fresh working directory
+and text files are credential-masked exactly as the brief is. A directory inside a git work tree copies only the
+files git lists (tracked, or untracked and not ignored), so a repository root fits; outside git, .git and
+node_modules are skipped. A follow-up starts in a fresh working directory
 with no files: pass context.expose_from_parent: true to copy again, as they are now, the paths the round it follows
 exposed (a changed or vanished entry is marked; an earlier expose_diff brings back the files it touched, not the
 diff), and add expose_paths for anything new. It is never implied: leave it off when the follow-up does not need them. Put the facts it needs into context.facts, and keep
@@ -182,9 +193,11 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before ` +
-        'answering, which stays under the request timeout MCP clients apply; wait_ms sets another wait, and ' +
-        'wait_ms: 0 answers at once. A typical consultation takes one to five minutes, so expect to call this ' +
-        'several times, and do something else in between. A completed job carries the structured ' +
+        'answering, a limit set to stay under this client\'s tool-call timeout; wait_ms sets another wait, and ' +
+        'wait_ms: 0 answers at once. While it waits it sends a progress notification every 15 s if you asked ' +
+        'for them, and a call you cancel stops waiting. A typical consultation takes one to ten minutes; call ' +
+        'this again while it runs, and pass a shorter wait_ms when you have independent work to do in between. ' +
+        'A completed job carries the structured ' +
         'answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, ' +
         'invalid_output, cli_error, spawn_error, interrupted) — that is "no advice was obtained", which is different from advice that arrived ' +
         'with thin evidence (see quality.evidence_basis). ' +
@@ -206,16 +219,30 @@ export function createServer(manager = new JobManager()) {
           .describe('with job_id: return only these points of the finished answer (f1, u1, c1 ...), each whole with its grounds and, under `recorded`, the verdict you wrote'),
       }),
     },
-    async ({ job_id, group_id, wait_ms, detail, ids }) => {
+    async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
       }
       if (ids && (group_id || detail)) {
         return fail({ error: 'invalid_request', message: 'ids goes with job_id alone: a point id belongs to one consultant\'s answer' });
       }
-      const view = group_id
-        ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail })
-        : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail });
+      const req = ctx?.mcpReq;
+      const token = req?._meta?.progressToken;
+      let beats = 0;
+      const timer = token === undefined ? null : setInterval(() => {
+        beats += 1;
+        req.notify({ method: 'notifications/progress', params: { progressToken: token, progress: beats, message: 'the consultation is still running' } })
+          .catch(() => {});
+      }, PROGRESS_EVERY_MS);
+      let view;
+      try {
+        // A request the client cancels stops the wait with it.
+        view = group_id
+          ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal)
+          : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+      } finally {
+        clearInterval(timer);
+      }
       if (!view) {
         return fail({ error: 'unknown_job', message: `no consultation with ${group_id ? 'group_id' : 'job_id'} "${group_id ?? job_id}"` });
       }
@@ -267,13 +294,14 @@ export function createServer(manager = new JobManager()) {
         + 'not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not '
         + 'checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what '
         + 'it changed about your decision; note is the evidence you used. A follow-up to this job shows the '
-        + 'consultant each finding\'s verdict and effect (credential-masked, like the brief), never the note. '
+        + 'consultant each point\'s verdict and effect (credential-masked, like the brief), never the note. '
         + 'Recording the same id again replaces '
         + 'that entry. This server stores what you write and counts the verdicts; it never infers one, and never '
         + 'decides a consultation was worth it. The entry is saved beside the answer and the brief in '
         + '~/.severally/history, which is what makes the decision readable a month from now; the job is '
         + 'read back from that history, so a consultation from an earlier session can still be recorded against. '
-        + 'Pass `reflection` to record what the answer added over what you already expected, when the '
+        + 'It answers with counts (the verdicts tallied, and how many points now carry one); consult_get reads '
+        + 'the entries back. Pass `reflection` to record what the answer added over what you already expected, when the '
         + 'consultation was started with a `prediction`. A prediction itself cannot be written here: it goes '
         + 'in consult_start, before the consultant runs, which is the only thing that makes it a prediction. '
         + 'For a fan-out, record every member in one call: records: [{ job_id, entries, reflection? }, ...] in '
