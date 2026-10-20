@@ -91,12 +91,28 @@ test('passwords that are only a flag, a type or a reference are left alone', () 
     'password: string',
     'PWD=/home/u',
     'OLDPWD=/home/u',
-    'const password = req.body.password;',
     'password = process.env.DB_PASSWORD',
     'password: os.environ["DB_PASSWORD"]',
     'DB_PASSWORD=${DB_PASSWORD}',
     'bypass=something_long',
     'primary_key=organization_id',
     'sort_key: "created_at_desc"',
+    'first_pass = compute(x)',
+    'render_pass = RenderPass()',
+    'password = getenv("DB_PASS")',
+    'fn login(password: &str)',
+    'password: bytes',
+    'Password: None',
   ]) assert.equal(redact(text), text);
+});
+
+// A long value under a full password name is masked whatever it looks like:
+// a reference cannot be told from a password that happens to read as one.
+test('a long password value is masked even when it reads like code', () => {
+  for (const [text, secret] of [
+    ['DB_PASSWORD=$ecretPa55', '$ecretPa55'],
+    ['password: "$3cr3t!x"', '$3cr3t!x'],
+    ['PASSWORD=my.secret.pass', 'my.secret.pass'],
+    ['const password = req.body.password;', 'req.body.password'],
+  ]) assert.ok(!redact(text).includes(secret), `leaked: ${redact(text)}`);
 });

@@ -166,7 +166,7 @@ test('materialize: a short password is masked and the code around it is not', ()
   const dir = tmp('severally-expose-');
   const workdir = tmp('severally-workdir-');
   const code = [
-    'const password = req.body.password;',
+    'const password = getenv("DB_PASSWORD");',
     'const opts = { password: true, db_pass: "hunter2" };',
     'process.env.PWD;',
   ].join('\n');
@@ -285,13 +285,20 @@ test('repo: a committed .env is still left out', { skip: !hasGit }, () => {
   assert.ok(manifest.skipped.some((x) => x.reason === 'protected' && x.source.endsWith('.env')));
 });
 
-test('repo: a file deleted after the commit is skipped as gone, not an error', { skip: !hasGit }, () => {
+test('repo: a file deleted after the commit is left out, not an error', { skip: !hasGit }, () => {
   const dir = repo({ 'keep.txt': 'k', 'lost.txt': 'l' });
   fs.rmSync(path.join(dir, 'lost.txt'));
   const manifest = previewExposePaths([dir]);
   assert.deepEqual(manifest.entries[0].paths, ['keep.txt']);
-  const gone = manifest.skipped.find((x) => x.reason === 'gone');
-  assert.equal(gone.exposed_as, `${manifest.entries[0].exposedAs}/lost.txt`);
+  // "gone" means an earlier round's path that is no longer there; a first round has none.
+  assert.equal(manifest.skipped.some((x) => x.reason === 'gone'), false);
+});
+
+test('repo: files under a protected directory are not copied, as walking it would not', { skip: !hasGit }, () => {
+  const dir = repo({ 'app.mjs': 'a', '.env.d/app': 'SECRET=1', '.env.d/db': 'SECRET=2' });
+  const manifest = previewExposePaths([dir]);
+  assert.deepEqual(manifest.entries[0].paths, ['app.mjs']);
+  assert.deepEqual(manifest.skipped.filter((x) => x.reason === 'protected').map((x) => path.basename(x.source)), ['.env.d']);
 });
 
 test('repo: a subdirectory gives only its own files, named relative to it', { skip: !hasGit }, () => {

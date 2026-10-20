@@ -163,11 +163,23 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
   for (const p of ignored) skipped.push({ source: path.join(dir, p), reason: 'ignored' });
   if (fs.existsSync(path.join(dir, '.git'))) skipped.push({ source: path.join(dir, '.git'), reason: 'ignored' });
   const realDir = fs.realpathSync(dir);
+  const protectedDirs = new Set();
   for (const rel of listed.sort(byPathParts)) {
     const abs = path.join(dir, rel);
+    // walkDir never enters a protected directory (.env.d/, .ssh/ ...); a
+    // listed file is checked with each directory above it for the same reason.
+    const parts = rel.split('/');
+    const guarded = parts.slice(0, -1).map((_, i) => path.join(dir, ...parts.slice(0, i + 1))).find(isProtectedPath);
+    if (guarded) {
+      if (!protectedDirs.has(guarded)) skipped.push({ source: guarded, reason: 'protected' });
+      protectedDirs.add(guarded);
+      continue;
+    }
     if (isProtectedPath(abs)) { skipped.push({ source: abs, reason: 'protected' }); continue; }
     let stat;
-    try { stat = fs.lstatSync(abs); } catch { skipped.push({ source: abs, reason: 'gone', exposed_as: `${exposedAs}/${rel}` }); continue; }
+    // Deleted in the work tree but still in the index: not part of the tree
+    // as it is now, so not part of the copy either.
+    try { stat = fs.lstatSync(abs); } catch { continue; }
     // A directory here is a submodule (or a nested repository): its own history, not this one's files.
     if (stat.isDirectory()) { skipped.push({ source: abs, reason: 'submodule' }); continue; }
     const inside = (() => { try { return fs.realpathSync(abs).startsWith(realDir + path.sep); } catch { return false; } })();
