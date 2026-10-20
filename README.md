@@ -22,12 +22,21 @@ The plugin puts the question to several independent consultants, and returns eac
 instead of merging them into one, because a disagreement means something too. The agent checks why they disagree
 before deciding how to take the answers.
 
+Asked whether to cache a slow product page for five minutes, three consultants answered on their own
+(see [Example](#example) for the whole run):
+
+```
+codex        do_not_proceed  the price depends on the member's tier, so the first visitor's price is served to everyone
+claude-code  do_not_proceed  whoever fills the cache first sets the price everyone else sees for 5 minutes
+antigravity  alternative     member discounts leak to other users; fix the query and a cache may not be needed
+```
+
 ## Contents
 
-- [Example](#example)
-- [How it works](#how-it-works)
+- [Background](#background)
 - [Install](#install)
   - [Requirements](#requirements)
+  - [Command line](#command-line)
   - [Updating](#updating)
   - [Uninstall](#uninstall)
 - [Usage](#usage)
@@ -35,12 +44,160 @@ before deciding how to take the answers.
   - [When the answers come back](#when-the-answers-come-back)
   - [Modes](#modes)
   - [History and records](#history-and-records)
+- [Example](#example)
 - [Recommended setup](#recommended-setup)
 - [Configuration](#configuration)
 - [What a consultant can see and do](#what-a-consultant-can-see-and-do)
 - [API](#api)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Background
+
+```mermaid
+flowchart TB
+  you(["You"]) <-->|"↓ the work you ask for<br>↑ what was checked, and what is yours to decide"| lead["The lead<br>the agent you work with"]
+  lead <-->|"↓ brief, copies of the code<br>↑ each consultant's answer"| srv["severally server"]
+  srv <--> c1 & c2 & c3 & c4
+  subgraph cs["Consultants (fresh, read-only sessions)"]
+    c1["Codex"]
+    c2["Claude Code"]
+    c3["Antigravity"]
+    c4["OpenCode"]
+  end
+```
+
+The lead is the agent you are working with. It writes the *brief*, the question and the facts it rests on, and
+consults with read-only copies of the code the question is about. When the answers come back, it checks the
+findings itself and asks you only what is yours to decide. In a routine consultation the lead does three things:
+starts it, waits for the answers, and records the one finding it checked.
+
+Each consultant is a new session of its CLI, started just for this question. It sees the brief and the files it
+was handed, and nothing of your conversation. The severally server sends every consultant the same brief and
+returns the answers consultant by consultant. It does not merge them or judge which is right.
+
+What a consultant can read and do is under [What a consultant can see and do](#what-a-consultant-can-see-and-do).
+
+## Install
+
+### Requirements
+
+- Node.js 22 or newer
+- At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
+  fresh Claude Code session.
+- On macOS and Linux, npm's global executable directory on `PATH`: the default install puts a `severally-mcp`
+  command there for Codex to launch. `--manual` does without it.
+
+The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
+routes and the real CLIs have been tried on Linux only.
+
+One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
+
+```bash
+npx -y severally-mcp@2.1.0 install
+```
+
+The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
+would change without changing anything. Then restart the clients: a running session does not reload the new
+registration.
+
+Installing from the Claude Code plugin marketplace or from a clone, checking the registration, and what the
+installer changes are in [docs/install.md](docs/install.md).
+
+### Command line
+
+```bash
+npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global]
+```
+
+| Option | What it does |
+|---|---|
+| `--dry-run` | prints what it would change, and changes nothing |
+| `--manual` | registers the MCP server and copies the Skill instead of installing the plugin (the default on Windows) |
+| `--force` | registers again where severally is already registered, instead of leaving it as it is |
+| `--skip-global` | skips the global npm install in plugin mode, when `severally-mcp` on `PATH` is already this install |
+
+What each mode changes is in [docs/install.md](docs/install.md#two-install-modes).
+
+### Updating
+
+This line replaces your install with the latest version, with no version number to look up:
+
+```bash
+npx -y severally-mcp@latest install
+```
+
+With `@latest`, npx asks npm for the newest version every time, so an older copy it already has is not used.
+Then restart the clients. Installed from the Claude Code plugin marketplace: see
+[docs/install.md](docs/install.md#updating). What changed in each version is in the
+[releases](https://github.com/coz-a/severally/releases).
+
+### Uninstall
+
+Installed from the marketplace: run `/plugin marketplace remove severally` in Claude Code, which also removes the
+plugin. For an installer install, the commands for each OS and install mode are in
+[docs/install.md](docs/install.md#uninstall). Either way, history and backups stay in `~/.severally/`; delete it
+if you no longer need them.
+
+## Usage
+
+### Asking
+
+Ask in your own words, in the chat with your agent:
+
+```
+> ask Codex whether this migration plan is safe
+> get a second opinion on this cache design
+> ask everyone before we merge this
+```
+
+- Name a consultant ("ask Codex", "ask Claude Opus") and only that one is asked. A CLI's name works, and so
+  does a model's.
+- Ask for a second opinion without naming anyone, or ask everyone, and the same brief goes to every
+  consultant, a fresh session of your own CLI included. That is one consultation's quota per consultant.
+- The agent also consults without being asked: when an investigation stalls, when two options look equally
+  good, and before asking you to approve a hard-to-reverse change.
+
+What comes back to you is the lead's report, not the consultants' answers as they arrived: what it checked and
+what that showed, what it recommends, and what is still unverified. The [example](#example) shows one.
+
+It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
+same bug. One consultation takes minutes and real quota, so it is not for small fixes.
+
+### When the answers come back
+
+Starting a consultation does not make the agent wait: it can work on something that does not depend on the
+answers, which usually arrive within one to ten minutes (Antigravity is the slowest).
+
+Every answer is asked for in the same shape: a bottom line, findings with their grounds, what the consultant could
+not determine, conditions that would change its judgement, and how to check. When an answer leaves part of that
+out, such as the bottom line or the grounds for a finding, it says so in a caveat. A consultant that fails comes
+back as a failure with the reason (`usage_limit`, `timeout` …), never as "no problems found".
+
+The agent checks the findings that would change the decision itself, then tells you what it checked, what it did
+not adopt, and what is still unverified.
+
+### Modes
+
+There are three modes, chosen from what the agent hands over. You can also ask for one ("debate this with
+Codex").
+
+- `explore`: asks without showing the plan, so the consultant answers with its own approach first
+- `review`: shows the plan and asks what is wrong with it (the [example](#example))
+- `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
+
+After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
+in total. A follow-up to a fan-out asks every consultant in it again, each continuing its own exchange.
+
+### History and records
+
+Every consultation is kept on your machine in `~/.severally/history/`: the brief that was sent, the consultant's
+answer, and the agent's verdict on each finding (`confirmed`, `not_applicable`, `unverifiable`, `unverified`).
+Verdicts can be added later, from another session. A consultation can be exported as Markdown into your
+repository.
+
+How to name consultants, how a consultation runs, and the records in detail are in
+[docs/how-it-works.md](docs/how-it-works.md).
 
 ## Example
 
@@ -94,135 +251,6 @@ recommends, and what has not been checked yet. Here that is whether the fixed qu
 cache (it needs production-like data), and how stale the stock shown after an order may be (that one is yours to
 decide). You make the call. The checked results stay next to the findings and can be exported as Markdown into
 your repository (see [History and records](#history-and-records)).
-
-## How it works
-
-```mermaid
-flowchart TB
-  you(["You"]) <-->|"↓ the work you ask for<br>↑ what was checked, and what is yours to decide"| lead["The lead<br>the agent you work with"]
-  lead <-->|"↓ brief, copies of the code<br>↑ each consultant's answer"| srv["severally server"]
-  srv <--> c1 & c2 & c3 & c4
-  subgraph cs["Consultants (fresh, read-only sessions)"]
-    c1["Codex"]
-    c2["Claude Code"]
-    c3["Antigravity"]
-    c4["OpenCode"]
-  end
-```
-
-The lead is the agent you are working with. It writes the *brief*, the question and the facts it rests on, and
-consults with read-only copies of the code the question is about. When the answers come back, it checks the
-findings itself and asks you only what is yours to decide. In a routine consultation the lead does three things:
-starts it, waits for the answers, and records the one finding it checked.
-
-Each consultant is a new session of its CLI, started just for this question. It sees the brief and the files it
-was handed, and nothing of your conversation. The severally server sends every consultant the same brief and
-returns the answers consultant by consultant. It does not merge them or judge which is right.
-
-What a consultant can read and do is under [What a consultant can see and do](#what-a-consultant-can-see-and-do).
-
-## Install
-
-### Requirements
-
-- Node.js 22 or newer
-- At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
-  fresh Claude Code session.
-- On macOS and Linux, npm's global executable directory on `PATH`: the default install puts a `severally-mcp`
-  command there for Codex to launch. `--manual` does without it.
-
-The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
-routes and the real CLIs have been tried on Linux only.
-
-One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
-
-```bash
-npx -y severally-mcp@2.1.0 install
-```
-
-The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
-would change without changing anything. Then restart the clients: a running session does not reload the new
-registration.
-
-Installing from the Claude Code plugin marketplace or from a clone, checking the registration, and what the
-installer changes are in [docs/install.md](docs/install.md).
-
-### Updating
-
-This line replaces your install with the latest version, with no version number to look up:
-
-```bash
-npx -y severally-mcp@latest install
-```
-
-With `@latest`, npx asks npm for the newest version every time, so an older copy it already has is not used.
-Then restart the clients. Installed from the Claude Code plugin marketplace: see
-[docs/install.md](docs/install.md#updating). What changed in each version is in the
-[releases](https://github.com/coz-a/severally/releases).
-
-### Uninstall
-
-Installed from the marketplace: run `/plugin marketplace remove severally` in Claude Code, which also removes the
-plugin. For an installer install, the commands for each OS and install mode are in
-[docs/install.md](docs/install.md#uninstall). Either way, history and backups stay in `~/.severally/`; delete it
-if you no longer need them.
-
-## Usage
-
-### Asking
-
-Ask in your own words, in the chat with your agent:
-
-```
-> ask Codex whether this migration plan is safe
-> get a second opinion on this cache design
-> ask everyone before we merge this
-```
-
-- Name a consultant ("ask Codex", "ask Claude Opus") and only that one is asked. A CLI's name works, and so
-  does a model's.
-- Ask for a second opinion without naming anyone, or ask everyone, and the same brief goes to every
-  consultant, a fresh session of your own CLI included. That is one consultation's quota per consultant.
-- The agent also consults without being asked: when an investigation stalls, when two options look equally
-  good, and before asking you to approve a hard-to-reverse change.
-
-It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
-same bug. One consultation takes minutes and real quota, so it is not for small fixes.
-
-### When the answers come back
-
-Starting a consultation does not make the agent wait: it can work on something that does not depend on the
-answers, which usually arrive within one to ten minutes (Antigravity is the slowest).
-
-Every answer is asked for in the same shape: a bottom line, findings with their grounds, what the consultant could
-not determine, conditions that would change its judgement, and how to check. When an answer leaves part of that
-out, such as the bottom line or the grounds for a finding, it says so in a caveat. A consultant that fails comes
-back as a failure with the reason (`usage_limit`, `timeout` …), never as "no problems found".
-
-The agent checks the findings that would change the decision itself, then tells you what it checked, what it did
-not adopt, and what is still unverified.
-
-### Modes
-
-There are three modes, chosen from what the agent hands over. You can also ask for one ("debate this with
-Codex").
-
-- `explore`: asks without showing the plan, so the consultant answers with its own approach first
-- `review`: shows the plan and asks what is wrong with it (the example above)
-- `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
-
-After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
-in total. A follow-up to a fan-out asks every consultant in it again, each continuing its own exchange.
-
-### History and records
-
-Every consultation is kept on your machine in `~/.severally/history/`: the brief that was sent, the consultant's
-answer, and the agent's verdict on each finding (`confirmed`, `not_applicable`, `unverifiable`, `unverified`).
-Verdicts can be added later, from another session. A consultation can be exported as Markdown into your
-repository.
-
-How to name consultants, how a consultation runs, and the records in detail are in
-[docs/how-it-works.md](docs/how-it-works.md).
 
 ## Recommended setup
 

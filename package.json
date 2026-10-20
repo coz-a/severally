@@ -28,6 +28,7 @@
     "README.ja.md",
     "CONFIG.md",
     "config.example.json",
+    "CODE_OF_CONDUCT.md",
     "docs"
   ],
   "engines": {
