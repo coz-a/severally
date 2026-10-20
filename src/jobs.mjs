@@ -369,8 +369,13 @@ export class JobManager {
     // Admit or refuse the whole fan-out: a half-started group would leave the
     // lead comparing answers to a question only some consultants were asked.
     // The cap counts every severally process on this home, through the seats.
-    const seats = req.targets.map((target) => ({
+    // A follow-up's seat also names the chain and round it opens, so that two
+    // servers continuing one consultation at once cannot both take a round
+    // number: neither sees the other's round in its history until it ends.
+    const chainOf = (i) => (fromGroup ? fromGroup.links[i] : parent ? { parent, round } : null);
+    const seats = req.targets.map((target, i) => ({
       job_id: id('job'),
+      ...(chainOf(i) ? { chain_id: chainOf(i).parent.chain_id, round: chainOf(i).round } : {}),
       // Twice the budget plus an hour: the deadline is wall-clock, the budget is
       // not, so a suspended laptop must not make a live owner look overdue.
       owner: {
@@ -379,6 +384,14 @@ export class JobManager {
       },
     }));
     const taken = store.takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === 'alive');
+    if (taken.chainBusy) {
+      const { live, mine } = taken.chainBusy;
+      throw new RequestError(
+        `another severally process has already continued this consultation: job "${live.job_id}" is round ${live.round ?? mine.round}`
+        + '; wait for it (consult_get) and follow up the latest round',
+        'followup_not_latest',
+      );
+    }
     if (!taken.ok) {
       throw new RequestError(
         `this would run ${taken.live + seats.length} consultations at once; the cap is ${POLICY.maxConcurrent}`

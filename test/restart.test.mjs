@@ -223,3 +223,23 @@ test('two processes taking the last seats at once cannot both get them', async (
   await Promise.all(children.map((c) => new Promise((resolve) => (c.exitCode !== null ? resolve() : c.on('exit', resolve)))));
   clearSeats();
 });
+
+test('two servers cannot both continue one consultation at once: the second follow-up is refused', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const a = new JobManager();
+  const r1 = a.start(reviewRequest());
+  await a.jobs.get(r1.job_id).promise;
+  process.env.STUB_BEHAVIOR = 'hang';
+  const r2 = a.start(reviewRequest({ followup_to: r1.job_id }));
+  // Another server: nothing of A's in memory, and A's round 2 not yet on disk.
+  const b = new JobManager();
+  assert.throws(() => b.start(reviewRequest({ followup_to: r1.job_id })),
+    (e) => e.code === 'followup_not_latest' && e.message.includes(r2.job_id));
+  a.cancel(r2.job_id);
+  await a.jobs.get(r2.job_id).promise;
+  // Once it is over, the retry from round 1 is allowed again, numbered after it.
+  process.env.STUB_BEHAVIOR = 'ok';
+  const r3 = b.start(reviewRequest({ followup_to: r1.job_id }));
+  assert.equal(r3.round, 3);
+  await b.jobs.get(r3.job_id).promise;
+});

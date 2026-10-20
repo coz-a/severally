@@ -37329,6 +37329,17 @@ function takeSeats(seats, cap, held) {
       } catch {
       }
     }
+    for (const mine of seats.filter((x) => x.chain_id)) {
+      let other = live.find((x) => x.chain_id === mine.chain_id);
+      if (!other && fs4.existsSync(roundPath(mine.chain_id, mine.round))) {
+        try {
+          other = { job_id: JSON.parse(fs4.readFileSync(roundPath(mine.chain_id, mine.round), "utf8")).job_id, round: mine.round };
+        } catch {
+          other = { job_id: "(unreadable)", round: mine.round };
+        }
+      }
+      if (other) return { ok: false, chainBusy: { live: other, mine } };
+    }
     if (live.length + seats.length > cap) {
       return { ok: false, live: live.length, elsewhere: live.filter((x) => x.owner?.pid !== process.pid).length };
     }
@@ -38821,8 +38832,10 @@ var JobManager = class {
         "round_limit"
       );
     }
-    const seats = req.targets.map((target) => ({
+    const chainOf = (i) => fromGroup ? fromGroup.links[i] : parent ? { parent, round } : null;
+    const seats = req.targets.map((target, i) => ({
       job_id: id("job"),
+      ...chainOf(i) ? { chain_id: chainOf(i).parent.chain_id, round: chainOf(i).round } : {},
       // Twice the budget plus an hour: the deadline is wall-clock, the budget is
       // not, so a suspended laptop must not make a live owner look overdue.
       owner: {
@@ -38831,6 +38844,13 @@ var JobManager = class {
       }
     }));
     const taken = takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === "alive");
+    if (taken.chainBusy) {
+      const { live, mine } = taken.chainBusy;
+      throw new RequestError(
+        `another severally process has already continued this consultation: job "${live.job_id}" is round ${live.round ?? mine.round}; wait for it (consult_get) and follow up the latest round`,
+        "followup_not_latest"
+      );
+    }
     if (!taken.ok) {
       throw new RequestError(
         `this would run ${taken.live + seats.length} consultations at once; the cap is ${POLICY.maxConcurrent}` + (taken.elsewhere ? `, and ${taken.elsewhere} of the ${taken.live} running are in other severally processes` : "") + ". Wait for one to finish (consult_get) or cancel it",
