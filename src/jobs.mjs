@@ -237,10 +237,14 @@ export class JobManager {
     const here = this.order.map((jid) => this.jobs.get(jid));
     const seen = new Set(here.map((j) => j.job_id));
     const elsewhere = [];
+    // Read only: a marker whose owner is gone is shown as interrupted, and
+    // left for consult_get or the startup sweep to close out.
     for (const jobId of store.listRunning()) {
-      if (seen.has(jobId)) continue;
-      const rec = this.#fromDisk(jobId);
-      if (rec) { seen.add(jobId); elsewhere.push({ rec }); }
+      const live = seen.has(jobId) ? null : store.loadRunning(jobId);
+      if (!live) continue;
+      seen.add(jobId);
+      const state = ownerState(jobId, live.owner);
+      elsewhere.push({ rec: state === 'alive' ? live : { ...live, status: 'failed', failure: { kind: 'interrupted' } } });
     }
     for (const row of store.indexRows()) if (!seen.has(row.job_id)) { seen.add(row.job_id); elsewhere.push({ row }); }
     const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? '';

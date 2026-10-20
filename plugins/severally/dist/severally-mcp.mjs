@@ -38076,7 +38076,8 @@ function indexRow(jobId) {
 function indexRows() {
   return readIfExists(path6.join(POLICY.home, "history", "index.jsonl")).split("\n").flatMap((line) => {
     try {
-      return line.trim() ? [JSON.parse(line)] : [];
+      const row = line.trim() ? JSON.parse(line) : null;
+      return row && typeof row === "object" && JOB_ID.test(row.job_id) ? [row] : [];
     } catch {
       return [];
     }
@@ -40077,12 +40078,11 @@ var init_jobs = __esm({
         const seen = new Set(here.map((j) => j.job_id));
         const elsewhere = [];
         for (const jobId of listRunning()) {
-          if (seen.has(jobId)) continue;
-          const rec = this.#fromDisk(jobId);
-          if (rec) {
-            seen.add(jobId);
-            elsewhere.push({ rec });
-          }
+          const live = seen.has(jobId) ? null : loadRunning(jobId);
+          if (!live) continue;
+          seen.add(jobId);
+          const state = ownerState(jobId, live.owner);
+          elsewhere.push({ rec: state === "alive" ? live : { ...live, status: "failed", failure: { kind: "interrupted" } } });
         }
         for (const row of indexRows()) if (!seen.has(row.job_id)) {
           seen.add(row.job_id);

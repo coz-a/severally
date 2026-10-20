@@ -302,3 +302,19 @@ test('the cancel reaches a consultation that a separate server process runs', as
   await new Promise((r) => child.on('exit', r));
   assert.equal(out.trim().split('\n').pop(), 'cancelled');
 });
+
+test('consult_list only reads: a dead server\'s consultation shows as interrupted and its marker stays', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const a = new JobManager();
+  const s = a.start(reviewRequest());
+  const marker = store.loadRunning(s.job_id);
+  store.writeRunning({ ...marker, owner: { ...marker.owner, pid: deadPid() } });
+  fs.appendFileSync(path.join(home, 'history', 'index.jsonl'), 'null\n42\n');
+  const row = new JobManager().list({ limit: 100 }).find((j) => j.job_id === s.job_id);
+  assert.equal(row.status, 'failed');
+  assert.equal(row.failure_kind, 'interrupted');
+  assert.ok(store.loadRunning(s.job_id), 'listing wrote nothing');
+  store.writeRunning(marker);
+  a.cancel(s.job_id);
+  await a.jobs.get(s.job_id).promise;
+});

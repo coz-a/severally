@@ -66,7 +66,10 @@ function indexRow(jobId) {
 /** Every row of the history index, in the order written; a damaged line is skipped. */
 export function indexRows() {
   return readIfExists(path.join(POLICY.home, 'history', 'index.jsonl')).split('\n').flatMap((line) => {
-    try { return line.trim() ? [JSON.parse(line)] : []; } catch { return []; }
+    try {
+      const row = line.trim() ? JSON.parse(line) : null;
+      return row && typeof row === 'object' && JOB_ID.test(row.job_id) ? [row] : [];
+    } catch { return []; }
   });
 }
 
