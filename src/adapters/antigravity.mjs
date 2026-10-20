@@ -158,6 +158,9 @@ export function progress({ stdout }) {
   return `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
 }
 
+/** The tools that read a file; a consultation whose calls to them all failed read none of its exposed files. */
+export const FILE_READ_TOOLS = ['view_file', 'read_file'];
+
 /**
  * Tool calls seen in the step stream, one per step index; `:error` when the step failed or was refused.
  * @param {{ stdout: string }} run

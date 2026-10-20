@@ -593,6 +593,22 @@ test('antigravity consultation: alias target, structured answer, usage recorded'
   assert.equal(view.usage.cost_usd, null);
 });
 
+test('an answer whose consultant read none of the exposed files says so', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-unread-'));
+  fs.writeFileSync(path.join(dir, 'a.mjs'), 'x');
+  const req = antigravityRequest();
+  const mgr = new JobManager();
+  process.env.STUB_BEHAVIOR = 'read_refused';
+  const refused = await finish(mgr, mgr.start({ ...req, context: { ...req.context, expose_paths: [dir] } }).job_id);
+  assert.equal(refused.status, 'completed');
+  assert.match(refused.quality.caveat, /files were exposed, but all 1 of its file reads failed or were refused/);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const unopened = await finish(mgr, mgr.start({ ...req, context: { ...req.context, expose_paths: [dir] } }).job_id);
+  assert.match(unopened.quality.caveat, /it did not open any of them/);
+  const bare = await finish(mgr, mgr.start(req).job_id);
+  assert.doesNotMatch(bare.quality.caveat ?? '', /files were exposed/);
+});
+
 test('antigravity: the synthesised home is handed over as HOME and removed afterwards', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'agy-env.json');

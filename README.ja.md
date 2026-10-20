@@ -90,7 +90,7 @@ flowchart TB
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.4.1 install
+npx -y severally-mcp@2.4.2 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -313,7 +313,7 @@ API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの 
 |---|---|---|---|---|---|
 | Codex | できる | パスで拒否（権限プロファイル）。`.env` のようなファイル名では拒否しない | ある。サンドボックスの中（コマンドは動くが、書き込みとネットワークはできない） | できない | できる（`network: "off"` のときを除く） |
 | Claude Code | できる（`Read` / `Glob` / `Grep`） | 拒否（権限の規則） | なし | できない | できる（`network: "off"` のときを除く） |
-| Antigravity | できる（`view_file`） | 拒否（ツールのフック） | なし | できない | できる（`network: "off"` のときを除く） |
+| Antigravity | できる（`view_file`・`read_file`） | 拒否（ツールのフック） | なし | できない | できる（`network: "off"` のときを除く） |
 | OpenCode | できる（`read` / `glob` / `grep`） | 拒否（権限の規則） | なし（Code Mode の `execute` は拒否） | できない | できる（`network: "off"` のときを除く） |
 
 どの相談相手も、渡したファイルの写しだけが入った専用の作業ディレクトリで始まり、サーバはあなたのリポジトリの

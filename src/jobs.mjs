@@ -1318,6 +1318,7 @@ export class JobManager {
           `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
         leftover &&
           'the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)',
+        req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
       ].filter(Boolean);
       // No `advice_usable` verdict here. It was always true, so it carried no
       // information -- and worse, it read as the server vouching for advice it
@@ -2078,6 +2079,24 @@ function adviceCaveat(normalized) {
     notes.push("no sources were cited; the findings rest on the consultant's own reasoning over the brief");
   }
   return notes.length ? notes.join('; ') : null;
+}
+
+// Files were handed over, but no call to a file-reading tool succeeded: the
+// answer rests on the brief alone, however confidently it cites the code. On
+// 2026-10-20 an agy release renamed its read tool, every read was refused,
+// and the answer still cited line numbers. Only for a CLI that reports its
+// tool calls and names its reading tools; the others say nothing here.
+/**
+ * @param {Record<string, number> | null | undefined} calls
+ * @param {readonly string[] | undefined} readTools
+ * @returns {string | null}
+ */
+function unreadCaveat(calls, readTools) {
+  if (!calls || !readTools) return null;
+  if (readTools.some((t) => calls[t])) return null;
+  const failed = readTools.reduce((n, t) => n + (calls[`${t}:error`] ?? 0), 0);
+  const how = failed ? `all ${failed} of its file reads failed or were refused` : 'it did not open any of them';
+  return `files were exposed, but ${how}: its claims about that code rest on the brief alone`;
 }
 
 // A lead may legitimately name its own CLI as the consultant: a fresh child

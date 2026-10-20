@@ -39099,9 +39099,9 @@ var init_antigravity_sandbox = __esm({
     init_store();
     SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
     SANDBOX_DENY = Object.freeze(["write_file(*)", "command(*)", "mcp(*)", "execute_url(*)", "unsandboxed(*)"]);
-    ALLOWED_TOOLS = Object.freeze(["view_file", "search_web", "read_url_content", "finish"]);
+    ALLOWED_TOOLS = Object.freeze(["view_file", "read_file", "search_web", "read_url_content", "finish"]);
     WEB_TOOLS = /* @__PURE__ */ new Set(["search_web", "read_url_content"]);
-    PATH_TOOLS = ["view_file", "read_url_content"];
+    PATH_TOOLS = ["view_file", "read_file", "read_url_content"];
     TOKEN_REL = path8.join(".gemini", "antigravity-cli", "antigravity-oauth-token");
   }
 });
@@ -39109,6 +39109,7 @@ var init_antigravity_sandbox = __esm({
 // src/adapters/antigravity.mjs
 var antigravity_exports = {};
 __export(antigravity_exports, {
+  FILE_READ_TOOLS: () => FILE_READ_TOOLS,
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS3,
   RESERVED_FLAGS: () => RESERVED_FLAGS3,
   boundary: () => boundary3,
@@ -39267,7 +39268,7 @@ function boundary3({ sandbox }) {
     tools: [...tools]
   };
 }
-var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, stopSignal;
+var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, FILE_READ_TOOLS, stopSignal;
 var init_antigravity = __esm({
   "src/adapters/antigravity.mjs"() {
     "use strict";
@@ -39295,6 +39296,7 @@ var init_antigravity = __esm({
       "-i"
     ];
     RESERVED_FLAGS3 = ["--print", "-p", "--prompt", "--project", "--remote-control", "--effort"];
+    FILE_READ_TOOLS = ["view_file", "read_file"];
     stopSignal = "SIGQUIT";
   }
 });
@@ -39482,6 +39484,7 @@ var init_opencode_sandbox = __esm({
 // src/adapters/opencode.mjs
 var opencode_exports = {};
 __export(opencode_exports, {
+  FILE_READ_TOOLS: () => FILE_READ_TOOLS2,
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS4,
   RESERVED_FLAGS: () => RESERVED_FLAGS4,
   boundary: () => boundary4,
@@ -39737,7 +39740,7 @@ function boundary4({ sandbox }) {
     tools: [...tools]
   };
 }
-var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4;
+var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4, FILE_READ_TOOLS2;
 var init_opencode = __esm({
   "src/adapters/opencode.mjs"() {
     "use strict";
@@ -39769,6 +39772,7 @@ var init_opencode = __esm({
     standaloneSupport = null;
     probePromise = null;
     RESERVED_FLAGS4 = ["--model", "--standalone", "--wizard"];
+    FILE_READ_TOOLS2 = ["read", "glob", "grep"];
   }
 });
 
@@ -39929,6 +39933,13 @@ function adviceCaveat(normalized) {
     notes.push("no sources were cited; the findings rest on the consultant's own reasoning over the brief");
   }
   return notes.length ? notes.join("; ") : null;
+}
+function unreadCaveat(calls, readTools) {
+  if (!calls || !readTools) return null;
+  if (readTools.some((t) => calls[t])) return null;
+  const failed = readTools.reduce((n, t) => n + (calls[`${t}:error`] ?? 0), 0);
+  const how = failed ? `all ${failed} of its file reads failed or were refused` : "it did not open any of them";
+  return `files were exposed, but ${how}: its claims about that code rest on the brief alone`;
 }
 function sameVendorCaveat(caller, callerModel, consultant) {
   const callerCli = CLI_IDS.find((c) => c === caller);
@@ -41079,7 +41090,8 @@ var init_jobs = __esm({
             adviceCaveat(normalized),
             sameVendorCaveat(job.caller, job.caller_model, consultant),
             interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
-            leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)"
+            leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)",
+            req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS)
           ].filter(Boolean);
           job.quality = {
             ...normalized.quality,
@@ -42086,7 +42098,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.4.1";
+    SEVERALLY_VERSION = "2.4.2";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

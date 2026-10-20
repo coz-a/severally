@@ -92,7 +92,7 @@ routes and the real CLIs have been tried on Linux only.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.4.1 install
+npx -y severally-mcp@2.4.2 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -320,7 +320,7 @@ history is never sent. No consultant can:
 |---|---|---|---|---|---|
 | Codex | yes | blocked by path (permission profile), not by file name such as `.env` | yes, in its sandbox (commands run, but cannot write or reach the network) | no | yes, unless `network: "off"` |
 | Claude Code | yes (`Read` / `Glob` / `Grep`) | blocked (permission rules) | none | no | yes, unless `network: "off"` |
-| Antigravity | yes (`view_file`) | blocked (tool hook) | none | no | yes, unless `network: "off"` |
+| Antigravity | yes (`view_file`, `read_file`) | blocked (tool hook) | none | no | yes, unless `network: "off"` |
 | OpenCode | yes (`read` / `glob` / `grep`) | blocked (permission rules) | none (its Code Mode `execute` is refused) | no | yes, unless `network: "off"` |
 
 Every consultant starts in a working directory of its own that holds only copies of the files you handed it, and
