@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sandboxEnv, reviewRequest } from './helpers.mjs';
+import { sandboxEnv, reviewRequest, debateRequest } from './helpers.mjs';
 
 // The retention cap is frozen when policy.mjs first loads, and a query-string
 // re-import of jobs.mjs reuses that same policy module -- so a cap the eviction
@@ -361,4 +361,22 @@ test('a consultant that never answered contributes no weight to the side-by-side
     assert.deepEqual(t.decision_changers, []);
     assert.deepEqual(t.severity_counts, {});
   }
+});
+
+test('a follow-up to a group needs only followup_to and the question, and every member gets the same brief', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const first = mgr.start(debateRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, first.group_id);
+  const briefDir = fs.mkdtempSync(path.join(home, 'briefs-'));
+  process.env.STUB_BRIEF_DIR = briefDir;
+  const next = mgr.start({ followup_to: first.group_id, question: 'Which counterpoint is strongest?' });
+  await finishGroup(mgr, next.group_id);
+  delete process.env.STUB_BRIEF_DIR;
+  assert.equal(next.mode, 'debate');
+  const shared = (b) => b.slice(0, b.indexOf('## Earlier rounds'));
+  const codexBrief = shared(fs.readFileSync(path.join(briefDir, 'codex.txt'), 'utf8'));
+  assert.equal(codexBrief, shared(fs.readFileSync(path.join(briefDir, 'claude-code.txt'), 'utf8')));
+  assert.match(codexBrief, /Write-behind with a durable log/);
+  assert.match(codexBrief, /Write-through, because/);
 });

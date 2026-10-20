@@ -129,7 +129,13 @@ By default a chain has five rounds: one initial round plus up to four follow-ups
 (`followup_to: "<previous job_id>"`); the operator can configure 1–20 (`server.max_rounds`), and
 `rounds_remaining` says what is left. `followup_to: "<group_id>"`, with no `target` or `targets`, sends the same new
 question to every member of a fan-out, each continuing from its own latest round with its own history; a member
-that is still running, never answered or has used its rounds is listed under `skipped` and not asked. A follow-up starts in a fresh working directory with no files: pass
+that is still running, never answered or has used its rounds is listed under `skipped` and not asked.
+
+A follow-up needs only `followup_to` and the new `question`:
+`consult_start({ request: { followup_to: "<job_id>", question: "..." } })`. The consultant, the mode and what
+the earlier round was given (objective, constraints, success criteria, facts, proposal, counterpoints,
+artifacts) carry over, and the brief restates them; a field you pass replaces the earlier one, an empty list
+included. A follow-up starts in a fresh working directory with no files: pass
 `context.expose_from_parent: true` to copy again, as they are now, the paths the earlier round exposed (a changed
 or vanished entry is marked), and leave it off when the follow-up does not need them.
 

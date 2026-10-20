@@ -5,9 +5,9 @@ description: Use when a decision deserves a second, independent mind - an archit
 
 # Consulting a peer agent
 
-You have three peers, each reached through the `severally` MCP server as a fresh child session. They can
-search and browse the web. They cannot edit files, reach the network outside search/browse, load MCP tools,
-see your session, or consult anyone else. In practice they know only what you put in the brief and the files you expose to them.
+You have three peers, each reached through the `severally` MCP server as a fresh child session that can read files
+and search the web, but not edit them, load MCP tools, see your session or consult anyone else. Each knows only
+what you put in the brief and the files you expose to it.
 
 One caveat on that list: a consultant can read local files. Its writes are blocked,
 its network reaches only web search and browsing (none with `network: "off"`), credential and history
@@ -34,9 +34,9 @@ copied read-only into its working directory.
    `status` is `running`. To work on something independent meanwhile, ask for a shorter wait (`reference.md`).
 3. **Check one point, report, and record it once** (see **Before you hand the decision back**).
 
-That is the whole routine. The rest of the record — more verdicts, a prediction and reflection, follow-ups,
-the export into the repository, the details of reading a fan-out — is in `reference.md`, in the same
-directory as this file. Read it only for a decision you will have to justify later, or when you follow up.
+That is the whole routine. The rest — follow-ups, a prediction and reflection, the export, reading a fan-out
+in detail — is in `reference.md`, in the same directory as this file. Read it for a decision you will have to
+justify later, or when you follow up.
 
 ## Pick the consultant
 
@@ -54,12 +54,10 @@ costs one consultation's quota per consultant. Narrow to `target` (singular) onl
 specific peer, or when the decision clearly does not warrant that much. This is the one rule for how many to
 ask.
 
-A consultant is one CLI running one model, and the operator decides which ones exist. `consult_start`'s
-description lists the ones this machine can actually reach as `name: CLI, model`. When the user names one,
-pass **the word the user used** as `target` — a name, a CLI (`codex`, `agy`), a vendor or a model
-(「Claude Opusと相談して」 is `target: "claude opus"`) — and let the server resolve it. A word that fits several
-comes back as `target_ambiguous` with the candidates: ask the user which one they meant. One that is not
-installed comes back as `target_unavailable` with the available list: take that as final and tell the user.
+The operator decides which consultants exist; `consult_start`'s description lists the ones this machine can
+actually reach. When the user names one, pass **the word the user used** as `target`
+(「Claude Opusと相談して」 is `target: "claude opus"`). `target_ambiguous`: ask the user which one they meant.
+`target_unavailable`: take the available list as final and tell the user.
 
 **Do not pick a model yourself.** When the user named no one, ask everyone; overriding the operator's
 consultants on your own judgement — including after a `usage_limit` failure — substitutes a different mind
@@ -73,9 +71,8 @@ answer can say which model answered.
 
 ## When this is worth it
 
-When a wrong answer is expensive or hard to undo: an architectural or interface decision, a data migration, a
-security or concurrency design; two options that still look close; an investigation that has stalled after two
-failed attempts; or the user asked. Not for routine edits, a rename, a test that just needs writing, or
+When a wrong answer is expensive or hard to undo (an interface, a migration, a security or concurrency design),
+two options still look close, an investigation has stalled after two attempts, or the user asked. Not for
 anything you would be comfortable defending on your own.
 
 **Before you ask the user to approve a change that is hard to reverse** and nobody else has reviewed it,
@@ -92,16 +89,13 @@ Pass `initiator: "user"` when the user asked for the consultation; leave it out 
 - **Ask one decidable question.** What runs out the clock is scope, not brief length: when the budget runs out
   the session is killed and you get nothing. Split "research everything about X" or three questions at once,
   and ask the one whose answer changes what you do next.
-- **Hand over the code.** The consultant starts in an empty working directory and is not told where your
-  repository is. Name the files by absolute path in `context.expose_paths` in this first call (at most 20
-  entries, 500 files, 5 MB; never your home directory or one holding keys). A repository root works: only the
-  files git lists are copied, nothing `.gitignore` excludes. Or pass
+- **Hand over the code.** The consultant is not told where your repository is. Name the files by absolute path
+  in `context.expose_paths` (a repository root works; never your home directory or one holding keys), or pass
   `context.expose_diff: { repo: "<absolute path>" }` for a change you are making. When `consult_start` answers
   `files_exposed: 0` and the question is about code, `consult_cancel` and start again with `expose_paths`.
 - **Put the load-bearing facts in `context.facts`**, and test output or a log in `context.artifacts`.
-- **The mode follows from the context.** Leave `mode` out: no proposal is `explore`, a proposal is `review`, a
-  proposal with `counterpoints` (the other side's claims) is `debate`. To gather opinions without showing your
-  own, leave `context.proposal` empty; a reviewed plan is answered around the plan.
+- **Leave `mode` out**; it follows from the context. To gather opinions without showing your own, leave
+  `context.proposal` empty: a reviewed plan is answered around the plan.
 - A constraint is read as fixed and will not be challenged; if it is your own call, put it under `facts` with
   its reason. For material that must not leave the machine through a URL, pass `network: "off"`.
 

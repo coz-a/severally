@@ -334,6 +334,12 @@ export class JobManager {
       parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
 
+    if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
+      rawRequest = { ...rawRequest, target: parent.target };
+    }
+    // A fan-out's members were all handed the same brief, so any one of them holds it.
+    if (parent || fromGroup) rawRequest = inherit(rawRequest, (fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent).brief);
+
     const req = parseRequest(rawRequest, {
       isFollowup: Boolean(parent || fromGroup),
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -1482,6 +1488,33 @@ function text(value) {
   const t = redact(value).trim();
   if (!t) return null;
   return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}\n…[truncated by severally]` : t;
+}
+
+// A follow-up restates what the round before was given unless it says
+// otherwise: the lead sends the new question, not the whole brief again. Only
+// a key left out is inherited -- one passed, even as an empty list, replaces
+// it -- and the validation that follows sees the result. Files are not:
+// copying them again stays expose_from_parent, named in the call (schema.mjs).
+function inherit(raw, brief) {
+  if (!brief) return raw;
+  const out = { ...raw };
+  for (const k of ['objective', 'success_criteria', 'constraints']) {
+    if (out[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+  }
+  const ctx = { ...(raw.context ?? {}) };
+  for (const k of ['facts', 'proposal', 'counterpoints']) {
+    if (ctx[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
+  }
+  // The diff expose_diff added is not the lead's material: it is taken again
+  // (or replaced) through expose_from_parent, against the files as they are now.
+  const generatedDiff = brief.expose_paths?.entries?.some((e) => e.kind === 'diff');
+  const artifacts = (brief.artifacts ?? []).filter((a) => !(generatedDiff && a.kind === 'diff' && a.name.startsWith('git diff ')));
+  if (ctx.artifacts === undefined && artifacts.length) {
+    // Stored with null for an absent language or source; the request schema takes them as optional strings.
+    ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));
+  }
+  out.context = ctx;
+  return out;
 }
 
 function adviceCaveat(normalized) {

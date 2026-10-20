@@ -35665,10 +35665,10 @@ var artifactSchema = external_exports.object({
 var exposedPathSchema = external_exports.string().trim().min(1, "context.expose_paths[] must not be empty").max(1e3, "context.expose_paths[] exceeds 1000 characters").refine((p) => path3.isAbsolute(p), { message: "context.expose_paths[] must be an absolute path" });
 var gitRevision = external_exports.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._/~^@{}-]+$/, "context.expose_diff.base must be a git revision (a branch, tag, commit or HEAD~n)").refine((r) => !r.startsWith("-"), { message: 'context.expose_diff.base must not start with "-"' });
 var contextSchema = external_exports.object({
-  facts: external_exports.array(trimmed(L.factMax, "context.facts[]")).max(L.factsMax).default([]),
+  facts: external_exports.array(trimmed(L.factMax, "context.facts[]")).max(L.factsMax).optional(),
   proposal: external_exports.string().trim().max(L.proposalMax).nullish(),
-  counterpoints: external_exports.array(trimmed(L.counterpointMax, "context.counterpoints[]")).max(L.counterpointsMax).default([]),
-  artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).default([]),
+  counterpoints: external_exports.array(trimmed(L.counterpointMax, "context.counterpoints[]")).max(L.counterpointsMax).optional(),
+  artifacts: external_exports.array(artifactSchema).max(L.artifactsMax).optional(),
   expose_paths: external_exports.array(exposedPathSchema).max(L.exposePathsMax).default([]),
   // The lead's uncommitted (or since-`base`) change: its diff goes in the
   // brief and the files it touches are copied, under workspace/repo/ at
@@ -35715,8 +35715,8 @@ var requestSchema = external_exports.object({
   // Optional: most consultations state what they are after in the question
   // itself, and a second field that repeats it is friction, not information.
   objective: trimmed(L.objectiveMax, "objective").nullish(),
-  success_criteria: external_exports.array(trimmed(L.constraintMax, "success_criteria[]")).max(L.constraintsMax).default([]),
-  constraints: external_exports.array(trimmed(L.constraintMax, "constraints[]")).max(L.constraintsMax).default([]),
+  success_criteria: external_exports.array(trimmed(L.constraintMax, "success_criteria[]")).max(L.constraintsMax).optional(),
+  constraints: external_exports.array(trimmed(L.constraintMax, "constraints[]")).max(L.constraintsMax).optional(),
   // prefault, not default: zod 4 returns a default as is, skipping the inner defaults (expose_paths among them).
   context: contextSchema.prefault({}),
   // Written by the lead before the consultant is launched, kept on this
@@ -35755,6 +35755,9 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     throw new RequestError(`request failed validation: ${issues.join("; ")}`, "invalid_request", issues);
   }
   const req = parsed.data;
+  req.success_criteria ??= [];
+  req.constraints ??= [];
+  for (const k of ["facts", "counterpoints", "artifacts"]) req.context[k] ??= [];
   const hasSingle = req.target !== void 0 && req.target !== null;
   const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
   if (hasSingle && hasMany) {
@@ -35858,7 +35861,7 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
   }
   if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0 && !req.context.expose_diff && !req.context.expose_from_parent) {
     throw new RequestError(
-      "provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request",
+      "provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request" + (isFollowup ? "; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown" : ""),
       "context_required"
     );
   }
@@ -38766,6 +38769,10 @@ var JobManager = class {
       }
       parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
+    if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
+      rawRequest = { ...rawRequest, target: parent.target };
+    }
+    if (parent || fromGroup) rawRequest = inherit(rawRequest, (fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent).brief);
     const req = parseRequest(rawRequest, {
       isFollowup: Boolean(parent || fromGroup),
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -39691,6 +39698,24 @@ function text(value) {
   return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}
 \u2026[truncated by severally]` : t;
 }
+function inherit(raw, brief) {
+  if (!brief) return raw;
+  const out = { ...raw };
+  for (const k of ["objective", "success_criteria", "constraints"]) {
+    if (out[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+  }
+  const ctx = { ...raw.context ?? {} };
+  for (const k of ["facts", "proposal", "counterpoints"]) {
+    if (ctx[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
+  }
+  const generatedDiff = brief.expose_paths?.entries?.some((e) => e.kind === "diff");
+  const artifacts = (brief.artifacts ?? []).filter((a) => !(generatedDiff && a.kind === "diff" && a.name.startsWith("git diff ")));
+  if (ctx.artifacts === void 0 && artifacts.length) {
+    ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));
+  }
+  out.context = ctx;
+  return out;
+}
 function adviceCaveat(normalized) {
   const { result, quality } = normalized;
   const notes = [];
@@ -40257,84 +40282,50 @@ Flow: consult_start(request) -> job_id; consult_get(job_id) until it is done; co
 Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per chain, and follow-ups should be
 spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
 check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
-var startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) immediately; the work runs in the background.
+var startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) at once; the work runs in the background.
 
 target: which consultant to ask. This machine can reach (name: CLI, model):
 ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`).join("\n") || "          (none -- no consultant CLI is installed)"}
-        Pass the name the user used: a consultant's name, its CLI ("codex", "agy"), its vendor ("openai") or
-        its model ("glm", "claude opus", "gpt-6.1"). A name that fits several consultants goes to the
-        operator's ranking first, then to the higher tier (opus over sonnet) and the newer version; when
-        nothing separates them it is refused with the candidates -- ask the user which one, do not guess.
-        A consultant that is not listed above is refused up front, so do not retry it -- say which ones
-        are available instead.
-        Consulting your own CLI on a fresh session is encouraged -- it sheds this session's history and
-        drift -- and the result is marked as same lineage.
-targets: ask several consultants the same question at once (mutually exclusive with target, no duplicates).
-        targets: ["all"] asks every consultant listed above; "all" cannot be mixed with names.
-        Every member gets the byte-identical brief (on a follow-up, plus its own earlier rounds) and one
-        group_id; poll it with consult_get({ group_id }). Each member takes one slot of the concurrency cap,
-        and a fan-out that would go over it is refused before any member starts.
-        A follow-up (followup_to) to a job names that one consultant. followup_to a group_id, with no target or
-        targets, asks every member of that fan-out the same new question, each on its own chain from its latest
-        round; a member that is still running, never answered or has used its rounds is skipped and listed.
-caller: optional -- the CLI you are running in ("codex" / "claude-code" / "antigravity" / "opencode"), so the
-        server can annotate a same-vendor consultation.
-caller_model: optional -- the model you are running on (e.g. "claude-opus-5"), self-declared and never checked.
-        With it, a same-vendor caveat can say "same lineage, different model" and the record keeps who asked
-        whom; it never changes which model the consultant runs.
-initiator: optional -- "user" when the user asked for this consultation; leave it out when you started it
-        yourself. Self-declared, never checked, gates nothing; it lets the record tell the two apart.
-mode: optional. Left out, it is read from context: no proposal is explore, a proposal is review, a proposal
-        with counterpoints is debate; a follow-up keeps its chain's mode. To gather opinions without showing
-        yours, leave context.proposal empty.
-  explore - hand over objective/constraints/facts and withhold your own preferred solution, to get independent
-            options, alternative problem framings and blind spots. context.proposal MUST be empty on round 1.
-  review  - hand over your current proposal AND the reasoning behind it, to get weaknesses, counterexamples,
-            concrete improvements and the conditions under which it holds. context.proposal is required.
-  debate  - hand over the disputed point, your position (context.proposal), the other side's claims
-            (context.counterpoints) and the extra evidence, to get what would change the judgement, how to test
-            it, and which disagreements remain. Both are required.
-
-The consultant starts in an empty working directory and is not told where your repository is, so it sees your
-code only if you hand it over in this call. When the question is about code in a repository on this machine,
-name the files it is about by absolute path in context.expose_paths: those files and directories are copied
-read-only into its working directory (under ./workspace) and are then the only part of your repository it has.
-At most 20 entries, 500 files and 5 MB in total; symlinks and protected files are skipped rather than copied,
-and text files are credential-masked exactly as the brief is. A directory inside a git work tree copies only the
-files git lists (tracked, or untracked and not ignored), so a repository root fits; outside git, .git and
-node_modules are skipped. A follow-up starts in a fresh working directory
-with no files: pass context.expose_from_parent: true to copy again, as they are now, the paths the round it follows
-exposed (a changed or vanished entry is marked; an earlier expose_diff brings back the files it touched, not the
-diff), and add expose_paths for anything new. It is never implied: leave it off when the follow-up does not need them. Put the facts it needs into context.facts, and keep
-context.artifacts for what is not a file here (test output, a log); an excerpt there goes alongside the
-exposed files, not instead of them. For a change you are making, pass
-context.expose_diff: { repo: "<absolute repository path>", base?: "<revision, default HEAD>" } instead or as
-well: the diff goes in the brief and every file it touches is copied under ./workspace/repo/ at its repository
-path. Model, permissions, round count, timeout and size
-caps are fixed by this server and cannot be raised from a request.
-
-network: optional -- "on" (default) or "off". "off" takes web search and browsing away from every consultant
-        in this round: use it when the brief holds material that must not leave the machine through a URL.
-        Whatever the setting, consultants are refused credential and history paths (~/.ssh, cloud keys, other
-        tools' sessions, severally's own history, .env files) where the CLI can enforce it; each answer's
-        \`boundary\` says what held for that consultant.
-
-prediction: optional -- { expected, worry }: the bottom line you expect back and, in one sentence, what you are
-        most worried about. Stored with the consultation and NEVER sent to the consultant. It can only be
-        written here, before the consultant runs, so that afterwards you cannot rewrite what you thought
-        beforehand; consult_record takes the other half (reflection) once you have read the answer.`;
+        Pass the word the user used: a name, a CLI ("codex", "agy"), a vendor or a model ("claude opus"). One
+        that fits several, unresolved by the operator's ranking, tier and version, is refused with the
+        candidates (target_ambiguous); one not listed is refused (target_unavailable). Your own CLI on a fresh
+        session is a valid consultant, marked same lineage.
+targets: several consultants, the same question (not with target, no duplicates); targets: ["all"] is every
+        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier rounds) and one group_id, for consult_get
+        and consult_cancel. A fan-out over the concurrency cap is refused before any member starts.
+followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
+        (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
+        followup_to and question: the consultant, mode, objective, constraints, success_criteria, facts,
+        proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
+        even empty, replaces it. Files are not carried over: context.expose_from_parent: true copies again,
+        as they are now, what the earlier round exposed. A job's follow-up cannot change the consultant.
+mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
+        counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
+        also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
+context: the consultant starts in an empty working directory and is not told where your repository is, so
+        give it at least one of: facts, artifacts (material that is not a file here: test output, a log),
+        expose_paths (absolute paths copied read-only under ./workspace; a directory in a git work tree copies
+        the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files are skipped,
+        text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the brief, the
+        files it touches under ./workspace/repo/).
+network: "on" (default) or "off" (no web search or browsing for any consultant this round). Credential and
+        history paths are refused either way where the CLI can enforce it; each answer's \`boundary\` says what held.
+caller, caller_model: the CLI and model you run on (self-declared), for the same-vendor caveat and the record.
+initiator: "user" when the user asked for this; leave it out when you started it yourself.
+prediction: { expected, worry }, kept and never sent; it can only be written here, before the answer.
+Model, permissions, rounds, timeout and size caps are fixed by this server.`;
 var recordShape = {
-  job_id: external_exports.string().min(1).describe("the consultation to record against -- the job_id consult_get returned for it"),
+  job_id: external_exports.string().min(1).describe("the job_id consult_get returned"),
   entries: external_exports.array(external_exports.object({
-    id: external_exports.string().min(1).describe("the point this verdict is about: f1, u1, c1 ... as returned in the result"),
+    id: external_exports.string().min(1).describe("f1, u1, c1 ... from the result"),
     verdict: external_exports.enum(VERDICTS),
-    effect: external_exports.string().max(4e3).optional().describe("what it changed about your decision, or why it is still unverified"),
-    note: external_exports.string().max(4e3).optional().describe("what you checked and what you found")
+    effect: external_exports.string().max(4e3).optional().describe("what it changed, or why it is unverified"),
+    note: external_exports.string().max(4e3).optional().describe("what you checked and found")
   })).min(1).max(100).optional(),
   reflection: external_exports.object({
-    delta: external_exports.string().min(1).max(4e3).describe('what the answer added over what you already expected -- including "nothing new", which is a real outcome'),
-    related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("the points this is about: f1, u1, c1 ...")
-  }).optional().describe("written after you have read the answer. There is deliberately no hit/miss label: a point you predicted can still arrive with the evidence that settles it, and a surprise can still be wrong.")
+    delta: external_exports.string().min(1).max(4e3).describe('what the answer added over what you expected ("nothing new" counts)'),
+    related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("f1, u1, c1 ...")
+  }).optional().describe("written after reading the answer")
 };
 function createServer(manager = new JobManager()) {
   const stale = staleInstall();
@@ -40369,7 +40360,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch the state of a consultation. It waits up to ${DEFAULT_WAIT_MS} ms for it to finish before answering, a limit set to stay under this client's tool-call timeout; wait_ms sets another wait, and wait_ms: 0 answers at once. While it waits it sends a progress notification every 15 s if you asked for them, and a call you cancel stops waiting. A typical consultation takes one to ten minutes; call this again while it runs, and pass a shorter wait_ms when you have independent work to do in between. A completed job carries the structured answer; a failed one carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted) \u2014 that is "no advice was obtained", which is different from advice that arrived with thin evidence (see quality.evidence_basis). Pass group_id instead of job_id to fetch a fan-out; the wait then covers every consultant in it. A fan-out comes back sized to read in one go: each member is its status, failure and job_id, and \`comparison.by_target\` holds every consultant's stance, summary and findings (with their ids) side by side, cut to fixed lengths where \`truncated\` says so. consult_get({ job_id, ids: ["f2", "u1"] }) on a member returns just those points, each whole with its grounds and your verdict (\`recorded\`): fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes -- not only where they diverge. consult_get({ job_id }) returns the whole answer. A finished consultation names its brief (size, sha256, round file) rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
+      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with every stance, summary and finding id side by side, cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -40438,11 +40429,11 @@ function createServer(manager = new JobManager()) {
     {
       title: "Record what checking a point showed",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      description: 'Write your own verdict against one or more points of an answer, after you have checked them in the repository. Ids come from the result: findings are f1, f2 ..., unknowns u1 ..., next_checks c1 ... . verdict says what checking showed -- "confirmed" (it holds here), "not_applicable" (true in general, not for this codebase), "unverifiable" (cannot be settled with what you can reach), "unverified" (not checked yet, and say in effect why not). It does not say whether you adopted the point. effect is what it changed about your decision; note is the evidence you used. A follow-up to this job shows the consultant each point\'s verdict and effect (credential-masked, like the brief), never the note. Recording the same id again replaces that entry. This server stores what you write and counts the verdicts; it never infers one, and never decides a consultation was worth it. The entry is saved beside the answer and the brief in ~/.severally/history, which is what makes the decision readable a month from now; the job is read back from that history, so a consultation from an earlier session can still be recorded against. It answers with counts (the verdicts tallied, and how many points now carry one); consult_get reads the entries back. Pass `reflection` to record what the answer added over what you already expected, when the consultation was started with a `prediction`. A prediction itself cannot be written here: it goes in consult_start, before the consultant runs, which is the only thing that makes it a prediction. For a fan-out, record every member in one call: records: [{ job_id, entries, reflection? }, ...] in place of job_id/entries/reflection. Every record is checked first; if any job or id is wrong, nothing is written and each bad one is named. A job whose write fails is listed under results with its error, not counted as saved.',
+      description: "Write your verdict on points of an answer after checking them: ids f1 ... (findings), u1 ... (unknowns), c1 ... (next_checks). verdict is what checking showed -- confirmed (holds here), not_applicable (true in general, not here), unverifiable, unverified (not checked yet; say why in effect) -- not whether you adopted it. effect is what it changed about your decision, note the evidence. A follow-up shows the consultant each verdict and effect (credential-masked), never the note. The same id again replaces the entry. Saved beside the answer in ~/.severally/history, so a job from an earlier session can be recorded against; the server never infers a verdict. Answers with counts; consult_get reads the entries back. reflection records what the answer added over your consult_start prediction. records: [{ job_id, entries, reflection? }, ...] records every member of a fan-out in one call; all are checked first and nothing is written if any job or id is wrong. A job whose write fails is listed under results with its error.",
       inputSchema: external_exports.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),
-        records: external_exports.array(external_exports.object(recordShape)).min(1).max(POLICY.maxConcurrent).optional().describe("several consultations at once -- one per member of a fan-out -- instead of job_id/entries/reflection")
+        records: external_exports.array(external_exports.object(recordShape)).min(1).max(POLICY.maxConcurrent).optional().describe("one per fan-out member, instead of job_id/entries/reflection")
       })
     },
     async ({ job_id, entries, reflection, records }) => {
@@ -40470,7 +40461,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Export a consultation as a record to commit",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: "Render one consultation (chain_id) or one fan-out (group_id) as Markdown: the brief as it was sent, each consultant's answer as it came back, and the verdicts recorded against each point -- with the ones nobody checked marked as unchecked. Nothing is summarised across consultants and nothing is scored. The text is returned, not written: put it wherever the decision belongs in the repository (a decision record next to the code it is about), which is the only place a teammate will find it. Reads the on-disk history, so a consultation from an earlier session can still be exported.",
+      description: "Render one consultation (chain_id) or fan-out (group_id) as Markdown: the brief as sent, each answer as it came back, and the verdicts on each point, unchecked ones marked. Nothing is summarised or scored. The text is returned, not written: put it beside the code the decision is about. Reads the history, so an earlier session's consultation can be exported.",
       inputSchema: external_exports.object({
         chain_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional()
@@ -40490,7 +40481,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "List recent consultations",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: "Recent consultations from this session, newest first, with their status, one-line summary and who asked for them (initiator), and usage_totals: the token (and, where the CLI reports one, cost) figures each consultant reported this session, summed per consultant over every attempt, automatic re-runs included. A figure a CLI does not report is not counted as zero; it is named under not_reported.",
+      description: "Recent consultations from this session, newest first: status, one-line summary, initiator; and usage_totals, the tokens (and cost, where the CLI reports one) each consultant reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
       inputSchema: external_exports.object({ limit: external_exports.number().int().min(1).max(100).optional() })
     },
     async ({ limit: limit2 }) => ok({

@@ -307,7 +307,7 @@ The arguments of `consult_start` that matter most:
   directory in a git repository copies only the files git lists (nothing `.gitignore` excludes)
 - `context.expose_diff`: `{ repo, base? }`, a change in progress: the diff goes in the brief and the files it touches are copied
 - `network`: `"off"` takes web search and browsing away from every consultant in the round
-- `followup_to`: the `job_id` of the answer a follow-up continues, or a fan-out's `group_id` to ask every consultant in it again
+- `followup_to`: the `job_id` of the answer a follow-up continues, or a fan-out's `group_id` to ask every consultant in it again. A follow-up needs only this and `question`; the consultant, the mode and the earlier round's context carry over unless you pass them again
 
 ## Contributing
 

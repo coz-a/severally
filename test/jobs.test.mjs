@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, opencodeRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest, exploreRequest, debateRequest, antigravityRequest, opencodeRequest, waitFor } from './helpers.mjs';
 
 // The four default consultants plus a second one on Codex, so a test can ask
 // a consultant that shares its CLI with another. POLICY freezes at first
@@ -1234,4 +1234,60 @@ test('the Claude Code consultant loses its whole-disk read scope once paths are 
   assert.deepEqual(scoped[scoped.indexOf('--tools') + 1].split(','), ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep']);
 
   delete process.env.STUB_ARGV_OUT;
+});
+
+test('a follow-up needs only followup_to and the question: target, premises and proposal come from the round before', async () => {
+  const briefOut = path.join(os.tmpdir(), `pc-brief-inherit-${Date.now()}.txt`);
+  process.env.STUB_BEHAVIOR = 'ok';
+  for (const first of [reviewRequest(), debateRequest()]) {
+    const mgr = new JobManager();
+    const r1 = mgr.start(first);
+    await finish(mgr, r1.job_id);
+    let parent = r1.job_id;
+    // Across a restart too: the parent's brief is read back from the history.
+    for (const m of [mgr, new JobManager()]) {
+      process.env.STUB_BRIEF_OUT = briefOut;
+      const r2 = m.start({ followup_to: parent, question: 'What would change your bottom line?' });
+      assert.equal(r2.mode, first.mode);
+      assert.equal(m.view(r2.job_id).target, 'codex');
+      assert.equal((await finish(m, r2.job_id)).status, 'completed');
+      const brief = fs.readFileSync(briefOut, 'utf8');
+      const current = brief.slice(0, brief.indexOf('Earlier rounds'));
+      assert.match(current, /What would change your bottom line\?/);
+      assert.ok(current.includes(first.context.proposal), 'the proposal is restated');
+      assert.ok(current.includes(first.context.facts[0]), 'the facts are restated');
+      for (const c of first.constraints ?? []) assert.ok(current.includes(c));
+      for (const c of first.context.counterpoints ?? []) assert.ok(current.includes(c));
+      // The next follow-up continues from this round, inheriting what it inherited.
+      parent = r2.job_id;
+    }
+  }
+  delete process.env.STUB_BRIEF_OUT;
+  fs.rmSync(briefOut, { force: true });
+});
+
+test('a field the follow-up passes replaces the earlier one; an explicit empty list stays empty', async () => {
+  const briefOut = path.join(os.tmpdir(), `pc-brief-override-${Date.now()}.txt`);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const r1 = mgr.start(debateRequest());
+  await finish(mgr, r1.job_id);
+  assert.throws(
+    () => mgr.start({ followup_to: r1.job_id, question: 'q', context: { counterpoints: [] } }),
+    (e) => e.code === 'counterpoints_required',
+  );
+  assert.throws(
+    () => mgr.start({ followup_to: r1.job_id, question: 'q', target: 'claude-code' }),
+    (e) => e.code === 'followup_target_mismatch',
+  );
+  process.env.STUB_BRIEF_OUT = briefOut;
+  const r2 = mgr.start({ followup_to: r1.job_id, question: 'q', context: { proposal: 'Write-behind after all.' } });
+  await finish(mgr, r2.job_id);
+  const brief = fs.readFileSync(briefOut, 'utf8');
+  const current = brief.slice(0, brief.indexOf('Earlier rounds'));
+  assert.match(current, /Write-behind after all\./);
+  assert.doesNotMatch(current, /Write-through, because/);
+  assert.match(current, /Order writes are 200\/s peak\./, 'facts left out are still inherited');
+  delete process.env.STUB_BRIEF_OUT;
+  fs.rmSync(briefOut, { force: true });
 });

@@ -42,10 +42,10 @@ const gitRevision = z.string().trim().min(1).max(200)
 
 export const contextSchema = z
   .object({
-    facts: z.array(trimmed(L.factMax, 'context.facts[]')).max(L.factsMax).default([]),
+    facts: z.array(trimmed(L.factMax, 'context.facts[]')).max(L.factsMax).optional(),
     proposal: z.string().trim().max(L.proposalMax).nullish(),
-    counterpoints: z.array(trimmed(L.counterpointMax, 'context.counterpoints[]')).max(L.counterpointsMax).default([]),
-    artifacts: z.array(artifactSchema).max(L.artifactsMax).default([]),
+    counterpoints: z.array(trimmed(L.counterpointMax, 'context.counterpoints[]')).max(L.counterpointsMax).optional(),
+    artifacts: z.array(artifactSchema).max(L.artifactsMax).optional(),
     expose_paths: z.array(exposedPathSchema).max(L.exposePathsMax).default([]),
     // The lead's uncommitted (or since-`base`) change: its diff goes in the
     // brief and the files it touches are copied, under workspace/repo/ at
@@ -105,8 +105,8 @@ export const requestSchema = z
     // Optional: most consultations state what they are after in the question
     // itself, and a second field that repeats it is friction, not information.
     objective: trimmed(L.objectiveMax, 'objective').nullish(),
-    success_criteria: z.array(trimmed(L.constraintMax, 'success_criteria[]')).max(L.constraintsMax).default([]),
-    constraints: z.array(trimmed(L.constraintMax, 'constraints[]')).max(L.constraintsMax).default([]),
+    success_criteria: z.array(trimmed(L.constraintMax, 'success_criteria[]')).max(L.constraintsMax).optional(),
+    constraints: z.array(trimmed(L.constraintMax, 'constraints[]')).max(L.constraintsMax).optional(),
     // prefault, not default: zod 4 returns a default as is, skipping the inner defaults (expose_paths among them).
     context: contextSchema.prefault({}),
     // Written by the lead before the consultant is launched, kept on this
@@ -157,6 +157,12 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
   const req = parsed.data;
+  // Left without a default in the schema, so that a follow-up can tell a list
+  // it left out (inherited from the round before, jobs.mjs) from one it
+  // emptied on purpose: the tool layer applies the schema's defaults first.
+  req.success_criteria ??= [];
+  req.constraints ??= [];
+  for (const k of ['facts', 'counterpoints', 'artifacts']) req.context[k] ??= [];
   const hasSingle = req.target !== undefined && req.target !== null;
   const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
   if (hasSingle && hasMany) {
@@ -278,7 +284,8 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0
     && !req.context.expose_diff && !req.context.expose_from_parent) {
     throw new RequestError(
-      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request',
+      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request'
+        + (isFollowup ? '; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown' : ''),
       'context_required',
     );
   }
