@@ -48,6 +48,1247 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// src/jsonc.mjs
+function stripJsonc(text2) {
+  const out = [];
+  let inString = false;
+  let i = 0;
+  const blankBack = () => {
+    for (let j = out.length - 1; j >= 0; j--) {
+      const c = out[j];
+      if (c === " " || c === "\n" || c === "\r" || c === "	") continue;
+      if (c === ",") out[j] = " ";
+      return;
+    }
+  };
+  while (i < text2.length) {
+    const c = text2[i];
+    const next = text2[i + 1];
+    if (inString) {
+      out.push(c);
+      if (c === "\\") {
+        out.push(next ?? "");
+        i += 2;
+        continue;
+      }
+      if (c === '"') inString = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out.push(c);
+      i++;
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      while (i < text2.length && text2[i] !== "\n") {
+        out.push(" ");
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      out.push(" ", " ");
+      i += 2;
+      while (i < text2.length && !(text2[i] === "*" && text2[i + 1] === "/")) {
+        out.push(text2[i] === "\n" ? "\n" : " ");
+        i++;
+      }
+      out.push(" ", " ");
+      i += 2;
+      continue;
+    }
+    if (c === "}" || c === "]") blankBack();
+    out.push(c);
+    i++;
+  }
+  return out.join("");
+}
+function parseJsonc(text2) {
+  return JSON.parse(stripJsonc(text2));
+}
+var init_jsonc = __esm({
+  "src/jsonc.mjs"() {
+  }
+});
+
+// node_modules/isexe/windows.js
+var require_windows = __commonJS({
+  "node_modules/isexe/windows.js"(exports, module) {
+    module.exports = isexe;
+    isexe.sync = sync;
+    var fs13 = __require("fs");
+    function checkPathExt(path14, options) {
+      var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
+      if (!pathext) {
+        return true;
+      }
+      pathext = pathext.split(";");
+      if (pathext.indexOf("") !== -1) {
+        return true;
+      }
+      for (var i = 0; i < pathext.length; i++) {
+        var p = pathext[i].toLowerCase();
+        if (p && path14.substr(-p.length).toLowerCase() === p) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function checkStat(stat, path14, options) {
+      if (!stat.isSymbolicLink() && !stat.isFile()) {
+        return false;
+      }
+      return checkPathExt(path14, options);
+    }
+    function isexe(path14, options, cb) {
+      fs13.stat(path14, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path14, options));
+      });
+    }
+    function sync(path14, options) {
+      return checkStat(fs13.statSync(path14), path14, options);
+    }
+  }
+});
+
+// node_modules/isexe/mode.js
+var require_mode = __commonJS({
+  "node_modules/isexe/mode.js"(exports, module) {
+    module.exports = isexe;
+    isexe.sync = sync;
+    var fs13 = __require("fs");
+    function isexe(path14, options, cb) {
+      fs13.stat(path14, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, options));
+      });
+    }
+    function sync(path14, options) {
+      return checkStat(fs13.statSync(path14), options);
+    }
+    function checkStat(stat, options) {
+      return stat.isFile() && checkMode(stat, options);
+    }
+    function checkMode(stat, options) {
+      var mod = stat.mode;
+      var uid = stat.uid;
+      var gid = stat.gid;
+      var myUid = options.uid !== void 0 ? options.uid : process.getuid && process.getuid();
+      var myGid = options.gid !== void 0 ? options.gid : process.getgid && process.getgid();
+      var u = parseInt("100", 8);
+      var g = parseInt("010", 8);
+      var o = parseInt("001", 8);
+      var ug = u | g;
+      var ret = mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
+      return ret;
+    }
+  }
+});
+
+// node_modules/isexe/index.js
+var require_isexe = __commonJS({
+  "node_modules/isexe/index.js"(exports, module) {
+    var fs13 = __require("fs");
+    var core;
+    if (process.platform === "win32" || global.TESTING_WINDOWS) {
+      core = require_windows();
+    } else {
+      core = require_mode();
+    }
+    module.exports = isexe;
+    isexe.sync = sync;
+    function isexe(path14, options, cb) {
+      if (typeof options === "function") {
+        cb = options;
+        options = {};
+      }
+      if (!cb) {
+        if (typeof Promise !== "function") {
+          throw new TypeError("callback not provided");
+        }
+        return new Promise(function(resolve, reject) {
+          isexe(path14, options || {}, function(er, is) {
+            if (er) {
+              reject(er);
+            } else {
+              resolve(is);
+            }
+          });
+        });
+      }
+      core(path14, options || {}, function(er, is) {
+        if (er) {
+          if (er.code === "EACCES" || options && options.ignoreErrors) {
+            er = null;
+            is = false;
+          }
+        }
+        cb(er, is);
+      });
+    }
+    function sync(path14, options) {
+      try {
+        return core.sync(path14, options || {});
+      } catch (er) {
+        if (options && options.ignoreErrors || er.code === "EACCES") {
+          return false;
+        } else {
+          throw er;
+        }
+      }
+    }
+  }
+});
+
+// node_modules/which/which.js
+var require_which = __commonJS({
+  "node_modules/which/which.js"(exports, module) {
+    var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
+    var path14 = __require("path");
+    var COLON = isWindows ? ";" : ":";
+    var isexe = require_isexe();
+    var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
+    var getPathInfo = (cmd, opt) => {
+      const colon = opt.colon || COLON;
+      const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
+        // windows always checks the cwd first
+        ...isWindows ? [process.cwd()] : [],
+        ...(opt.path || process.env.PATH || /* istanbul ignore next: very unusual */
+        "").split(colon)
+      ];
+      const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
+      const pathExt = isWindows ? pathExtExe.split(colon) : [""];
+      if (isWindows) {
+        if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
+          pathExt.unshift("");
+      }
+      return {
+        pathEnv,
+        pathExt,
+        pathExtExe
+      };
+    };
+    var which2 = (cmd, opt, cb) => {
+      if (typeof opt === "function") {
+        cb = opt;
+        opt = {};
+      }
+      if (!opt)
+        opt = {};
+      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+      const found = [];
+      const step = (i) => new Promise((resolve, reject) => {
+        if (i === pathEnv.length)
+          return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
+        const ppRaw = pathEnv[i];
+        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+        const pCmd = path14.join(pathPart, cmd);
+        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+        resolve(subStep(p, i, 0));
+      });
+      const subStep = (p, i, ii) => new Promise((resolve, reject) => {
+        if (ii === pathExt.length)
+          return resolve(step(i + 1));
+        const ext = pathExt[ii];
+        isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
+          if (!er && is) {
+            if (opt.all)
+              found.push(p + ext);
+            else
+              return resolve(p + ext);
+          }
+          return resolve(subStep(p, i, ii + 1));
+        });
+      });
+      return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
+    };
+    var whichSync = (cmd, opt) => {
+      opt = opt || {};
+      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+      const found = [];
+      for (let i = 0; i < pathEnv.length; i++) {
+        const ppRaw = pathEnv[i];
+        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+        const pCmd = path14.join(pathPart, cmd);
+        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+        for (let j = 0; j < pathExt.length; j++) {
+          const cur = p + pathExt[j];
+          try {
+            const is = isexe.sync(cur, { pathExt: pathExtExe });
+            if (is) {
+              if (opt.all)
+                found.push(cur);
+              else
+                return cur;
+            }
+          } catch (ex) {
+          }
+        }
+      }
+      if (opt.all && found.length)
+        return found;
+      if (opt.nothrow)
+        return null;
+      throw getNotFoundError(cmd);
+    };
+    module.exports = which2;
+    which2.sync = whichSync;
+  }
+});
+
+// node_modules/path-key/index.js
+var require_path_key = __commonJS({
+  "node_modules/path-key/index.js"(exports, module) {
+    "use strict";
+    var pathKey = (options = {}) => {
+      const environment = options.env || process.env;
+      const platform = options.platform || process.platform;
+      if (platform !== "win32") {
+        return "PATH";
+      }
+      return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
+    };
+    module.exports = pathKey;
+    module.exports.default = pathKey;
+  }
+});
+
+// node_modules/cross-spawn/lib/util/resolveCommand.js
+var require_resolveCommand = __commonJS({
+  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
+    "use strict";
+    var path14 = __require("path");
+    var which2 = require_which();
+    var getPathKey = require_path_key();
+    function resolveCommandAttempt(parsed, withoutPathExt) {
+      const env = parsed.options.env || process.env;
+      const cwd = process.cwd();
+      const hasCustomCwd = parsed.options.cwd != null;
+      const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
+      if (shouldSwitchCwd) {
+        try {
+          process.chdir(parsed.options.cwd);
+        } catch (err) {
+        }
+      }
+      let resolved;
+      try {
+        resolved = which2.sync(parsed.command, {
+          path: env[getPathKey({ env })],
+          pathExt: withoutPathExt ? path14.delimiter : void 0
+        });
+      } catch (e) {
+      } finally {
+        if (shouldSwitchCwd) {
+          process.chdir(cwd);
+        }
+      }
+      if (resolved) {
+        resolved = path14.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+      }
+      return resolved;
+    }
+    function resolveCommand(parsed) {
+      return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
+    }
+    module.exports = resolveCommand;
+  }
+});
+
+// node_modules/cross-spawn/lib/util/escape.js
+var require_escape = __commonJS({
+  "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
+    "use strict";
+    var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
+    function escapeCommand(arg) {
+      arg = arg.replace(metaCharsRegExp, "^$1");
+      return arg;
+    }
+    function escapeArgument(arg, doubleEscapeMetaChars) {
+      arg = `${arg}`;
+      arg = arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+      arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
+      arg = `"${arg}"`;
+      arg = arg.replace(metaCharsRegExp, "^$1");
+      if (doubleEscapeMetaChars) {
+        arg = arg.replace(metaCharsRegExp, "^$1");
+      }
+      return arg;
+    }
+    module.exports.command = escapeCommand;
+    module.exports.argument = escapeArgument;
+  }
+});
+
+// node_modules/shebang-regex/index.js
+var require_shebang_regex = __commonJS({
+  "node_modules/shebang-regex/index.js"(exports, module) {
+    "use strict";
+    module.exports = /^#!(.*)/;
+  }
+});
+
+// node_modules/shebang-command/index.js
+var require_shebang_command = __commonJS({
+  "node_modules/shebang-command/index.js"(exports, module) {
+    "use strict";
+    var shebangRegex = require_shebang_regex();
+    module.exports = (string4 = "") => {
+      const match = string4.match(shebangRegex);
+      if (!match) {
+        return null;
+      }
+      const [path14, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path14.split("/").pop();
+      if (binary === "env") {
+        return argument;
+      }
+      return argument ? `${binary} ${argument}` : binary;
+    };
+  }
+});
+
+// node_modules/cross-spawn/lib/util/readShebang.js
+var require_readShebang = __commonJS({
+  "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
+    "use strict";
+    var fs13 = __require("fs");
+    var shebangCommand = require_shebang_command();
+    function readShebang(command) {
+      const size = 150;
+      const buffer = Buffer.alloc(size);
+      let fd;
+      try {
+        fd = fs13.openSync(command, "r");
+        fs13.readSync(fd, buffer, 0, size, 0);
+        fs13.closeSync(fd);
+      } catch (e) {
+      }
+      return shebangCommand(buffer.toString());
+    }
+    module.exports = readShebang;
+  }
+});
+
+// node_modules/cross-spawn/lib/parse.js
+var require_parse = __commonJS({
+  "node_modules/cross-spawn/lib/parse.js"(exports, module) {
+    "use strict";
+    var path14 = __require("path");
+    var resolveCommand = require_resolveCommand();
+    var escape3 = require_escape();
+    var readShebang = require_readShebang();
+    var isWin = process.platform === "win32";
+    var isExecutableRegExp = /\.(?:com|exe)$/i;
+    var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
+    function detectShebang(parsed) {
+      parsed.file = resolveCommand(parsed);
+      const shebang = parsed.file && readShebang(parsed.file);
+      if (shebang) {
+        parsed.args.unshift(parsed.file);
+        parsed.command = shebang;
+        return resolveCommand(parsed);
+      }
+      return parsed.file;
+    }
+    function parseNonShell(parsed) {
+      if (!isWin) {
+        return parsed;
+      }
+      const commandFile = detectShebang(parsed);
+      const needsShell = !isExecutableRegExp.test(commandFile);
+      if (parsed.options.forceShell || needsShell) {
+        const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
+        parsed.command = path14.normalize(parsed.command);
+        parsed.command = escape3.command(parsed.command);
+        parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
+        const shellCommand = [parsed.command].concat(parsed.args).join(" ");
+        parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
+        parsed.command = process.env.comspec || "cmd.exe";
+        parsed.options.windowsVerbatimArguments = true;
+      }
+      return parsed;
+    }
+    function parse3(command, args, options) {
+      if (args && !Array.isArray(args)) {
+        options = args;
+        args = null;
+      }
+      args = args ? args.slice(0) : [];
+      options = Object.assign({}, options);
+      const parsed = {
+        command,
+        args,
+        options,
+        file: void 0,
+        original: {
+          command,
+          args
+        }
+      };
+      return options.shell ? parsed : parseNonShell(parsed);
+    }
+    module.exports = parse3;
+  }
+});
+
+// node_modules/cross-spawn/lib/enoent.js
+var require_enoent = __commonJS({
+  "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
+    "use strict";
+    var isWin = process.platform === "win32";
+    function notFoundError(original, syscall) {
+      return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
+        code: "ENOENT",
+        errno: "ENOENT",
+        syscall: `${syscall} ${original.command}`,
+        path: original.command,
+        spawnargs: original.args
+      });
+    }
+    function hookChildProcess(cp, parsed) {
+      if (!isWin) {
+        return;
+      }
+      const originalEmit = cp.emit;
+      cp.emit = function(name, arg1) {
+        if (name === "exit") {
+          const err = verifyENOENT(arg1, parsed);
+          if (err) {
+            return originalEmit.call(cp, "error", err);
+          }
+        }
+        return originalEmit.apply(cp, arguments);
+      };
+    }
+    function verifyENOENT(status2, parsed) {
+      if (isWin && status2 === 1 && !parsed.file) {
+        return notFoundError(parsed.original, "spawn");
+      }
+      return null;
+    }
+    function verifyENOENTSync(status2, parsed) {
+      if (isWin && status2 === 1 && !parsed.file) {
+        return notFoundError(parsed.original, "spawnSync");
+      }
+      return null;
+    }
+    module.exports = {
+      hookChildProcess,
+      verifyENOENT,
+      verifyENOENTSync,
+      notFoundError
+    };
+  }
+});
+
+// node_modules/cross-spawn/index.js
+var require_cross_spawn = __commonJS({
+  "node_modules/cross-spawn/index.js"(exports, module) {
+    "use strict";
+    var cp = __require("child_process");
+    var parse3 = require_parse();
+    var enoent = require_enoent();
+    function spawn2(command, args, options) {
+      const parsed = parse3(command, args, options);
+      const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
+      enoent.hookChildProcess(spawned, parsed);
+      return spawned;
+    }
+    function spawnSync2(command, args, options) {
+      const parsed = parse3(command, args, options);
+      const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
+      result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
+      return result;
+    }
+    module.exports = spawn2;
+    module.exports.spawn = spawn2;
+    module.exports.sync = spawnSync2;
+    module.exports._parse = parse3;
+    module.exports._enoent = enoent;
+  }
+});
+
+// src/platform.mjs
+import fs from "node:fs";
+import path from "node:path";
+import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from "node:child_process";
+function batchInvocation(command, args, options) {
+  if (process.platform !== "win32") return null;
+  const resolved = findCommand(command, options);
+  if (!resolved || !/\.(cmd|bat)$/i.test(resolved)) return null;
+  const forwarding = /%\*/.test(fs.readFileSync(resolved, "utf8"));
+  const line = [import_escape.default.command(resolved), ...args.map((arg) => import_escape.default.argument(arg, forwarding))].join(" ");
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", `"${line}"`],
+    options: { ...options, windowsHide: true, windowsVerbatimArguments: true }
+  };
+}
+function spawnCommand(command, args, options = {}) {
+  const batch = batchInvocation(command, args, options);
+  return batch ? nativeSpawn(batch.command, batch.args, batch.options) : (0, import_cross_spawn.default)(command, args, options);
+}
+function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
+  if (typeof command !== "string" || !command) return null;
+  cwd = path.resolve(cwd);
+  const windows = process.platform === "win32";
+  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
+  const explicit = command.includes("/") || windows && command.includes("\\");
+  const dirs = explicit ? [cwd] : [
+    ...windows ? [cwd] : [],
+    ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)
+  ];
+  for (const dir of dirs) {
+    const candidate = path.resolve(cwd, dir.replace(/^"(.*)"$/, "$1"), command);
+    const found = import_which.default.sync(candidate, { nothrow: true, pathExt: value("PATHEXT") });
+    if (found) return found;
+  }
+  if (explicit) {
+    const candidate = path.resolve(cwd, command);
+    try {
+      if (!fs.statSync(candidate).isFile()) return null;
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+    }
+  }
+  return null;
+}
+function execCommandSync(command, args, options = {}) {
+  const opts = { windowsHide: true, encoding: "utf8", ...options };
+  const batch = batchInvocation(command, args, opts);
+  const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
+  }
+  return result.stdout;
+}
+var import_which, import_cross_spawn, import_escape;
+var init_platform = __esm({
+  "src/platform.mjs"() {
+    import_which = __toESM(require_which(), 1);
+    import_cross_spawn = __toESM(require_cross_spawn(), 1);
+    import_escape = __toESM(require_escape(), 1);
+  }
+});
+
+// src/consultants.mjs
+function normalizeName(raw) {
+  if (typeof raw !== "string") return raw;
+  return raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+function modelWords(model) {
+  const s2 = String(model ?? "").toLowerCase();
+  return s2.slice(s2.lastIndexOf("/") + 1).split(/[-._#:\s]+/).filter(Boolean);
+}
+function modelStem(model) {
+  const words = modelWords(model);
+  const at = words.findIndex(isDigitWord);
+  return at === -1 ? words : words.slice(0, at);
+}
+function modelVersion(model) {
+  const words = modelWords(model);
+  const at = words.findIndex(isDigitWord);
+  if (at === -1) return null;
+  const digits = [];
+  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, "")));
+  return digits;
+}
+function vendorOf(model, explicit = null) {
+  if (typeof explicit === "string" && explicit.trim() !== "") return explicit.trim().toLowerCase();
+  const first = modelStem(model)[0] ?? "";
+  if (/^o\d/.test(first)) return "openai";
+  return STEM_VENDORS[first] ?? null;
+}
+function matchesWords(model, wanted) {
+  return containsRun(modelWords(model), modelWords(wanted));
+}
+function byRanking(cands, ranking) {
+  const index = (c) => {
+    const i = ranking.findIndex((r) => normalizeName(r) === normalizeName(c.name) || matchesWords(c.model, r));
+    return i === -1 ? Infinity : i;
+  };
+  const best = Math.min(...cands.map(index));
+  return best === Infinity ? cands : cands.filter((c) => index(c) === best);
+}
+function byTier(cands, tier) {
+  if (!tier.family(cands)) return cands;
+  const rank = (c) => {
+    const words = modelWords(c.model);
+    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
+  };
+  const ranks = cands.map(rank);
+  if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
+  const best = Math.min(...ranks);
+  return cands.filter((_, i) => ranks[i] === best);
+}
+function byVersion(cands) {
+  const stem = modelStem(cands[0].model).join("-");
+  const versions = cands.map((c) => modelVersion(c.model));
+  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
+  const best = versions.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
+  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
+}
+function rankCandidates(cands, ranking = []) {
+  let left = byRanking(cands, ranking);
+  for (const tier of TIERS) {
+    if (left.length === 1) break;
+    left = byTier(left, tier);
+  }
+  if (left.length > 1) left = byVersion(left);
+  return left.length === 1 ? left[0] : null;
+}
+function resolveConsultant(input2, consultants, ranking = []) {
+  const key = normalizeName(input2);
+  if (typeof key !== "string" || key === "") return { none: true };
+  const own2 = consultants.find((c) => normalizeName(c.name) === key);
+  if (own2) return { consultant: own2 };
+  let cands;
+  if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
+  else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
+  else cands = consultants.filter((c) => matchesWords(c.model, input2));
+  if (cands.length === 0) return { none: true };
+  if (cands.length === 1) return { consultant: cands[0] };
+  const winner = rankCandidates(cands, ranking);
+  return winner ? { consultant: winner } : { ambiguous: cands };
+}
+function sameModel(callerModel, consultantModel) {
+  const a = modelWords(callerModel);
+  const b = modelWords(consultantModel);
+  if (a.length && a.length === b.length && a.every((w, i) => w === b[i])) return "same";
+  if (containsRun(a, b) || containsRun(b, a)) return "unknown";
+  return "different";
+}
+function buildConsultants(config2) {
+  const problems = [];
+  const global2 = [];
+  const broken = {};
+  const brokenClis = {};
+  const fault = (msg) => {
+    problems.push(msg);
+    global2.push(msg);
+  };
+  const cfg = isObject(config2) ? config2 : {};
+  if (!isObject(config2)) fault("the config file must hold a JSON object");
+  for (const key of Object.keys(cfg)) {
+    if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
+  }
+  if (isObject(cfg.server) && cfg.server.network !== void 0 && !["on", "off"].includes(cfg.server.network)) {
+    fault('server.network must be "on" or "off"');
+  }
+  let ranking = [];
+  if (cfg.ranking !== void 0) {
+    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== "")) ranking = cfg.ranking.map((r) => r.trim());
+    else fault("ranking must be an array of non-empty strings");
+  }
+  if (cfg.clis !== void 0) {
+    if (!isObject(cfg.clis)) fault("clis must be an object keyed by CLI");
+    else {
+      for (const [id2, def] of Object.entries(cfg.clis)) {
+        if (!CLI_IDS.includes(id2)) {
+          problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
+          continue;
+        }
+        const before = problems.length;
+        if (!isObject(def)) {
+          problems.push(`clis.${id2} must be an object`);
+          brokenClis[id2] = problems.slice(before);
+          continue;
+        }
+        for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
+        if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`clis.${id2}.enabled: must be true or false`);
+        for (const k of ["bin", "note"]) if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`clis.${id2}.${k}: must be a string`);
+        if (def.args !== void 0 && !(Array.isArray(def.args) && def.args.every((a) => typeof a === "string"))) problems.push(`clis.${id2}.args: must be an array of strings`);
+        if (def.env !== void 0 && !(isObject(def.env) && Object.values(def.env).every((v) => typeof v === "string"))) problems.push(`clis.${id2}.env: must be an object of strings`);
+        if (def.provider !== void 0) {
+          if (id2 !== "opencode") problems.push(`clis.${id2}.provider: only OpenCode takes provider definitions`);
+          else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject))) problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
+        }
+        if (problems.length > before) brokenClis[id2] = problems.slice(before);
+      }
+    }
+  }
+  const consultants = [];
+  if (cfg.consultants === void 0) {
+    for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
+  } else if (!isObject(cfg.consultants)) {
+    fault("consultants must be an object keyed by name");
+  } else {
+    const seen = /* @__PURE__ */ new Map();
+    for (const [name, def] of Object.entries(cfg.consultants)) {
+      const at = `consultants.${name}`;
+      if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) {
+        problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`);
+        continue;
+      }
+      if (RESERVED_NAMES.includes(name)) {
+        problems.push(`${at}: "${name}" is reserved`);
+        continue;
+      }
+      const before = problems.length;
+      if (!isObject(def)) {
+        problems.push(`${at} must be an object`);
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
+      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
+      if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
+      for (const k of ["effort", "vendor", "note"]) {
+        if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
+      }
+      if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`${at}.enabled: must be true or false`);
+      for (const k of ["timeout_ms", "max_budget_usd"]) {
+        if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k]))) problems.push(`${at}.${k}: must be a number`);
+      }
+      if (def.max_budget_usd !== void 0 && def.cli !== "claude-code") problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
+      if (def.effort !== void 0 && def.cli === "antigravity") problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
+      if (problems.length > before) {
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      const pair = `${def.cli}
+${def.model.trim()}`;
+      if (seen.has(pair)) {
+        problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
+        broken[name] = problems.slice(before);
+        continue;
+      }
+      seen.set(pair, name);
+      consultants.push(make(name, def));
+    }
+  }
+  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
+}
+function make(name, def) {
+  const model = def.model.trim();
+  return Object.freeze({
+    name,
+    cli: def.cli,
+    model,
+    effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
+    timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
+    maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
+    vendor: vendorOf(model, def.vendor ?? null),
+    enabled: def.enabled !== false,
+    note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
+  });
+}
+var CLI_IDS, DEFAULT_MODELS, CLI_VENDORS, table, CLI_ALIASES, VENDOR_WORDS, STEM_VENDORS, sameStem, TIERS, RESERVED_NAMES, isDigitWord, containsRun, compareVersions, TOP_KEYS, CLI_KEYS, CONSULTANT_KEYS, isObject, clamp;
+var init_consultants = __esm({
+  "src/consultants.mjs"() {
+    CLI_IDS = Object.freeze(["codex", "claude-code", "antigravity", "opencode"]);
+    DEFAULT_MODELS = Object.freeze({
+      codex: "gpt-6-astra",
+      "claude-code": "claude-opus-5-5",
+      antigravity: "gemini-4-argon-high",
+      opencode: "zai-coding-plan/glm-5.3"
+    });
+    CLI_VENDORS = Object.freeze({ codex: "openai", "claude-code": "anthropic", antigravity: "google", opencode: null });
+    table = (entries) => Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), entries));
+    CLI_ALIASES = table({
+      codex: "codex",
+      "claude-code": "claude-code",
+      antigravity: "antigravity",
+      agy: "antigravity",
+      opencode: "opencode"
+    });
+    VENDOR_WORDS = table({ openai: "openai", chatgpt: "openai", anthropic: "anthropic", google: "google" });
+    STEM_VENDORS = table({
+      gpt: "openai",
+      claude: "anthropic",
+      gemini: "google",
+      glm: "zai",
+      deepseek: "deepseek",
+      nemotron: "nvidia"
+    });
+    sameStem = (cands) => new Set(cands.map((c) => modelStem(c.model).join("-"))).size === 1;
+    TIERS = Object.freeze([
+      { words: ["opus", "sonnet", "haiku"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "claude") },
+      { words: ["ultra", "pro", "flash", "lite"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "gemini") },
+      // Effort words: the last word of the name, between otherwise like models.
+      { words: ["max", "xhigh", "high", "medium", "low"], family: sameStem, last: true }
+    ]);
+    RESERVED_NAMES = Object.freeze(["all"]);
+    isDigitWord = (w) => /^v?\d+$/.test(w);
+    containsRun = (hay, needle) => needle.length > 0 && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
+    compareVersions = (a, b) => {
+      for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const d = (a[i] ?? -1) - (b[i] ?? -1);
+        if (d !== 0) return d;
+      }
+      return 0;
+    };
+    TOP_KEYS = ["server", "clis", "consultants", "ranking"];
+    CLI_KEYS = ["enabled", "note", "bin", "args", "env", "provider"];
+    CONSULTANT_KEYS = ["cli", "model", "effort", "timeout_ms", "max_budget_usd", "vendor", "enabled", "note"];
+    isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+  }
+});
+
+// src/policy.mjs
+import fs2 from "node:fs";
+import os from "node:os";
+import path2 from "node:path";
+function configProblem() {
+  return configError;
+}
+function configWarnings() {
+  return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
+}
+function brokenConsultantNames() {
+  return configError ? [] : Object.keys(BUILT.broken);
+}
+function brokenConsultant(name) {
+  const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
+  return p ? `the config file has a mistake in it: ${p.join("; ")}` : null;
+}
+function isInstalled(command) {
+  return findCommand(command) !== null;
+}
+function resolveCaller(raw) {
+  const key = normalizeName(raw);
+  return typeof key === "string" && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
+}
+function detectCaller(env = process.env) {
+  if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
+  if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return "codex";
+  if (Object.keys(env).some((k) => k.startsWith("AGY_") || k.startsWith("ANTIGRAVITY_"))) return "antigravity";
+  return null;
+}
+function expandHome(value) {
+  if (typeof value !== "string") return value;
+  if (value === "~") return os.homedir();
+  return /^~[\\/]/.test(value) ? path2.join(os.homedir(), value.slice(2)) : value;
+}
+function timeoutMs(consultant) {
+  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 18e5, 1e3, 72e5);
+}
+function agyExitGraceMs() {
+  return {
+    afterResult: limit("SEVERALLY_AGY_AFTER_RESULT_MS", void 0, 1e4, 100, 6e5),
+    afterFinish: limit("SEVERALLY_AGY_AFTER_FINISH_MS", void 0, 6e4, 100, 6e5)
+  };
+}
+function credentialsHome() {
+  return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
+}
+function opencodeCredentialsHome() {
+  return str("SEVERALLY_OPENCODE_CRED_HOME", os.homedir());
+}
+function protectedRoots() {
+  const fwd = (p) => p.replaceAll("\\", "/");
+  return [
+    ...PROTECTED_HOME_PATHS.map((rel) => fwd(path2.join(os.homedir(), rel))),
+    ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path2.join(POLICY.home, rel)))
+  ];
+}
+function protectedRootPatterns(extraRoots = []) {
+  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map((r) => `^${escapeRe(r.replace(/\/+$/, "")).replaceAll("*", "[^/]+")}(/|$)`);
+}
+function protectedNamePatterns() {
+  return PROTECTED_FILE_NAMES.map((n) => `^${escapeRe(n).replaceAll("*", ".*")}$`);
+}
+function isProtectedPath(abs) {
+  const flags = PATHS_CASE_INSENSITIVE ? "i" : "";
+  const roots = protectedRootPatterns().map((p) => new RegExp(p, flags));
+  const names = protectedNamePatterns().map((p) => new RegExp(p, flags));
+  let real = abs;
+  try {
+    real = fs2.realpathSync.native(abs);
+  } catch {
+  }
+  return [abs, real].some((p) => {
+    const fwd = p.replaceAll("\\", "/");
+    return roots.some((re) => re.test(fwd)) || names.some((re) => re.test(path2.basename(fwd)));
+  });
+}
+function consultantByName(name) {
+  return POLICY.consultants.find((c) => c.name === name);
+}
+function consultantAvailable(c) {
+  return c.enabled && POLICY.clis[c.cli].available;
+}
+function unavailableReason(c) {
+  if (!c || consultantAvailable(c)) return null;
+  if (!c.enabled) return c.note ?? "turned off in the operator configuration";
+  const cli = POLICY.clis[c.cli];
+  if (cli.note) return cli.note;
+  if (!isInstalled(cli.cli)) return `${cli.cli} is not installed here`;
+  return "turned off in the operator configuration";
+}
+function availableConsultants() {
+  return POLICY.consultants.filter(consultantAvailable);
+}
+function limitsSummary() {
+  const list = availableConsultants();
+  const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
+  return {
+    available_targets: list.map((c) => c.name),
+    // A consultant or CLI out of use because of a mistake in its own section.
+    ...LOCAL.length ? { config_mistakes: configWarnings() } : {},
+    clis: by((c) => c.cli),
+    models: by((c) => c.model),
+    // Per consultant, because they no longer share one budget.
+    timeout_ms: by(timeoutMs),
+    max_rounds_per_chain: POLICY.maxRounds,
+    // "off": the operator has taken the web away from every consultation.
+    network: POLICY.network,
+    max_concurrent_jobs: POLICY.maxConcurrent,
+    max_wait_ms: POLICY.maxWaitMs,
+    input_char_budget: POLICY.input.totalCharsMax,
+    // Stated so it is true of all three consultants. Reading is allowed for
+    // every one of them -- what keeps a consultation brief-only is that the
+    // child starts in an empty working directory and is never told where the
+    // repository is, not that it cannot read. Codex is additionally sandboxed
+    // read-only rather than execution-free, so do not advertise "no execution".
+    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is -- unless context.expose_paths names files or directories, which are copied read-only into that working directory and are then the only part of your repository it has; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
+  };
+}
+var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
+var init_policy = __esm({
+  "src/policy.mjs"() {
+    init_jsonc();
+    init_platform();
+    init_consultants();
+    CONFIG_HOME = process.env.SEVERALLY_HOME || path2.join(os.homedir(), ".severally");
+    CONFIG_PATH = process.env.SEVERALLY_CONFIG || [path2.join(CONFIG_HOME, "config.jsonc"), path2.join(CONFIG_HOME, "config.json")].find((p) => fs2.existsSync(p)) || path2.join(CONFIG_HOME, "config.json");
+    configError = null;
+    CONFIG = (() => {
+      try {
+        return parseJsonc(fs2.readFileSync(CONFIG_PATH, "utf8"));
+      } catch (err) {
+        if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
+        return {};
+      }
+    })();
+    BUILT = buildConsultants(CONFIG);
+    if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join("; ")}`;
+    if (!configError && ![void 0, "", "on", "off"].includes(process.env.SEVERALLY_NETWORK)) {
+      configError = `SEVERALLY_NETWORK must be "on" or "off", not ${JSON.stringify(process.env.SEVERALLY_NETWORK)}`;
+    }
+    FROM = configError ? buildConsultants({}) : BUILT;
+    LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
+    usable = configError ? {} : CONFIG;
+    cfgCli = (id2) => {
+      if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
+        return { enabled: false, note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}` };
+      }
+      return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
+    };
+    cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
+    num = (name, dflt, min, max) => {
+      const raw = process.env[name];
+      if (raw === void 0 || raw === "") return dflt;
+      const v = Number(raw);
+      if (!Number.isFinite(v)) return dflt;
+      return Math.min(max, Math.max(min, v));
+    };
+    limit = (name, fromCfg, dflt, min, max) => {
+      const fromEnv = num(name, null, min, max);
+      if (fromEnv !== null) return fromEnv;
+      if (typeof fromCfg === "number" && Number.isFinite(fromCfg)) return Math.min(max, Math.max(min, fromCfg));
+      return dflt;
+    };
+    str = (name, dflt) => {
+      const raw = process.env[name];
+      return raw === void 0 || raw === "" ? dflt : raw;
+    };
+    CALLER_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
+      codex: "codex",
+      gpt: "codex",
+      chatgpt: "codex",
+      openai: "codex",
+      "claude-code": "claude-code",
+      claude: "claude-code",
+      anthropic: "claude-code",
+      antigravity: "antigravity",
+      agy: "antigravity",
+      gemini: "antigravity",
+      google: "antigravity",
+      opencode: "opencode",
+      glm: "opencode"
+    }));
+    CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
+    MODES = ["explore", "review", "debate"];
+    VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
+    STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
+    binFor = (id2, envName, dflt) => {
+      const fromEnv = process.env[envName];
+      if (fromEnv !== void 0 && fromEnv !== "") return expandHome(fromEnv);
+      const fromCfg = cfgCli(id2).bin;
+      return expandHome(typeof fromCfg === "string" && fromCfg !== "" ? fromCfg : dflt);
+    };
+    disabledNote = (id2) => {
+      const n = cfgCli(id2).note;
+      return typeof n === "string" && n.trim() !== "" ? n.trim() : null;
+    };
+    isEnabled = (id2, cli) => {
+      const flag = cfgCli(id2).enabled;
+      if (typeof flag === "boolean") return flag;
+      return isInstalled(cli);
+    };
+    CODEX_BIN = binFor("codex", "SEVERALLY_CODEX_BIN", "codex");
+    CLAUDE_BIN = binFor("claude-code", "SEVERALLY_CLAUDE_BIN", "claude");
+    AGY_BIN = binFor("antigravity", "SEVERALLY_AGY_BIN", "agy");
+    OPENCODE_BIN = binFor("opencode", "SEVERALLY_OPENCODE_BIN", "opencode");
+    extras = (id2) => ({ extraArgs: cfgCli(id2).args ?? [], extraEnv: cfgCli(id2).env ?? {} });
+    POLICY = Object.freeze({
+      home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
+      // Per CLI: how to launch it and whether it can run here. What runs on it is
+      // a consultant's business.
+      clis: Object.freeze({
+        codex: Object.freeze({
+          cli: CODEX_BIN,
+          available: isEnabled("codex", CODEX_BIN),
+          note: disabledNote("codex"),
+          label: "Codex CLI",
+          ...extras("codex")
+        }),
+        "claude-code": Object.freeze({
+          cli: CLAUDE_BIN,
+          available: isEnabled("claude-code", CLAUDE_BIN),
+          note: disabledNote("claude-code"),
+          label: "Claude Code CLI",
+          ...extras("claude-code")
+        }),
+        // Where the real Antigravity credentials live is credentialsHome() below,
+        // not a field here: the sandbox reads it per job (see timeoutMs()).
+        antigravity: Object.freeze({
+          cli: AGY_BIN,
+          available: isEnabled("antigravity", AGY_BIN),
+          note: disabledNote("antigravity"),
+          label: "Antigravity CLI",
+          ...extras("antigravity")
+        }),
+        opencode: Object.freeze({
+          cli: OPENCODE_BIN,
+          available: isEnabled("opencode", OPENCODE_BIN),
+          note: disabledNote("opencode"),
+          label: "OpenCode CLI",
+          ...extras("opencode"),
+          // opencode.json `provider` definitions copied into the sandbox config:
+          // the only way to reach a provider the sandbox's empty HOME would not
+          // know, such as a local OpenAI-compatible server.
+          provider: cfgCli("opencode").provider ?? {}
+        })
+      }),
+      // Who can be asked, in config order, and how a name that fits several is
+      // settled. See consultants.mjs.
+      consultants: FROM.consultants,
+      ranking: FROM.ranking,
+      // Grace period between SIGTERM and SIGKILL of the child process group.
+      killGraceMs: limit("SEVERALLY_KILL_GRACE_MS", cfgServer.kill_grace_ms, 5e3, 500, 6e4),
+      // Automatic re-runs of a consultation that failed with a transient error
+      // (rate_limited, cli_error), inside the job's original time budget. The
+      // wait before the n-th re-run is retryBackoffMs * 3^(n-1).
+      maxAutoRetries: limit("SEVERALLY_MAX_AUTO_RETRIES", cfgServer.max_auto_retries, 2, 0, 3),
+      retryBackoffMs: limit("SEVERALLY_RETRY_BACKOFF_MS", cfgServer.retry_backoff_ms, 5e3, 0, 6e4),
+      // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
+      maxRounds: limit("SEVERALLY_MAX_ROUNDS", cfgServer.max_rounds, 5, 1, 20),
+      // Default 9 so several independent consultations can run at once; a
+      // "consult everyone" fan-out (the three peers plus a fresh session of the
+      // caller's own CLI) fits well inside it. The ceiling equals the default:
+      // going beyond that is an operator decision with quota to match.
+      maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
+      maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
+      // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
+      // clients allow a tool call, so a long wait does not blow up as a client-side
+      // timeout while the consultation is still healthy; a client registration
+      // that is known to wait longer raises it (scripts/install.mjs).
+      // "off" takes the web away from every consultation, whatever the request
+      // asks; "on" leaves it to each request's own network.
+      // Either source can close it; neither can reopen what the other closed.
+      network: [process.env.SEVERALLY_NETWORK, cfgServer.network].includes("off") ? "off" : "on",
+      maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
+      input: Object.freeze({
+        questionMax: 4e3,
+        objectiveMax: 4e3,
+        proposalMax: 2e4,
+        constraintMax: 1e3,
+        constraintsMax: 20,
+        factMax: 6e3,
+        factsMax: 40,
+        counterpointMax: 4e3,
+        counterpointsMax: 20,
+        artifactsMax: 10,
+        artifactExcerptMax: 2e4,
+        artifactNameMax: 200,
+        // expose_paths: how many paths a lead may name, and what the copy of
+        // them may add up to. Fixed like every other input cap -- a consultant
+        // that can be pointed at more of the disk by configuration is a
+        // different consultant, not a tuned one.
+        exposePathsMax: 20,
+        exposeFilesMax: 500,
+        exposeBytesMax: 5e6,
+        totalCharsMax: 12e4
+      }),
+      output: Object.freeze({
+        // Raw child stdout/stderr kept per stream before truncation.
+        rawCaptureMax: 4e5,
+        summaryMax: 8e3,
+        itemTextMax: 4e3,
+        listMax: 30,
+        referencesMax: 40
+      })
+    });
+    PROTECTED_HOME_PATHS = Object.freeze([
+      ".ssh",
+      ".gnupg",
+      ".aws",
+      ".azure",
+      ".kube",
+      ".docker",
+      ".config/gcloud",
+      ".config/gh",
+      ".config/hub",
+      ".netrc",
+      ".npmrc",
+      ".pypirc",
+      ".git-credentials",
+      ".cargo/credentials",
+      ".cargo/credentials.toml",
+      ".terraform.d",
+      ".vault-token",
+      "Library/Keychains",
+      ".codex",
+      ".claude",
+      ".claude.json",
+      ".gemini",
+      ".config/opencode",
+      ".local/share/opencode"
+    ]);
+    PROTECTED_SEVERALLY_PATHS = Object.freeze([
+      "history",
+      "backups",
+      "config.json",
+      "config.jsonc",
+      "homes",
+      // Where homes lived before 1.7: one left by an interrupted run can still hold an auth.json copy.
+      "jobs/*/home"
+    ]);
+    PROTECTED_FILE_NAMES = Object.freeze([
+      ".env",
+      ".env.*",
+      ".npmrc",
+      ".netrc",
+      ".pypirc",
+      ".git-credentials",
+      "id_rsa",
+      "id_ed25519",
+      "id_ecdsa",
+      "id_dsa"
+    ]);
+    escapeRe = (s2) => s2.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    PATHS_CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
+    artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
+  }
+});
+
 // node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
@@ -92,7 +1333,7 @@ __export(util_exports, {
   hexToUint8Array: () => hexToUint8Array,
   hide: () => hide,
   installLazyProp: () => installLazyProp,
-  isObject: () => isObject,
+  isObject: () => isObject2,
   isPlainObject: () => isPlainObject,
   issue: () => issue,
   joinValues: () => joinValues,
@@ -299,11 +1540,11 @@ function esc(str2) {
 function slugify(input2) {
   return input2.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
-function isObject(data) {
+function isObject2(data) {
   return typeof data === "object" && data !== null && !Array.isArray(data);
 }
 function isPlainObject(o) {
-  if (isObject(o) === false)
+  if (isObject2(o) === false)
     return false;
   const ctor = o.constructor;
   if (ctor === void 0)
@@ -311,7 +1552,7 @@ function isPlainObject(o) {
   if (typeof ctor !== "function")
     return true;
   const prot = ctor.prototype;
-  if (isObject(prot) === false)
+  if (isObject2(prot) === false)
     return false;
   if (Object.prototype.hasOwnProperty.call(prot, "isPrototypeOf") === false) {
     return false;
@@ -3445,7 +4686,7 @@ var init_schemas = __esm({
         }
         return propValues;
       });
-      const isObject3 = isObject;
+      const isObject3 = isObject2;
       const catchall = def.catchall;
       let value;
       const memo3 = globalConfig.memoizer;
@@ -3589,7 +4830,7 @@ var init_schemas = __esm({
         return doc.compile();
       };
       let fastpass;
-      const isObject3 = isObject;
+      const isObject3 = isObject2;
       const jit = !globalConfig.jitless;
       const allowsEval2 = allowsEval;
       const fastEnabled = jit && allowsEval2.value;
@@ -3727,7 +4968,7 @@ var init_schemas = __esm({
       const disc = cached(() => discriminatorMap(def));
       inst._zod.parse = (payload, ctx) => {
         const input2 = payload.value;
-        if (!isObject(input2)) {
+        if (!isObject2(input2)) {
           payload.issues.push({
             code: "invalid_type",
             expected: "object",
@@ -35248,1247 +36489,6 @@ var init_stdio = __esm({
   }
 });
 
-// src/jsonc.mjs
-function stripJsonc(text2) {
-  const out = [];
-  let inString = false;
-  let i = 0;
-  const blankBack = () => {
-    for (let j = out.length - 1; j >= 0; j--) {
-      const c = out[j];
-      if (c === " " || c === "\n" || c === "\r" || c === "	") continue;
-      if (c === ",") out[j] = " ";
-      return;
-    }
-  };
-  while (i < text2.length) {
-    const c = text2[i];
-    const next = text2[i + 1];
-    if (inString) {
-      out.push(c);
-      if (c === "\\") {
-        out.push(next ?? "");
-        i += 2;
-        continue;
-      }
-      if (c === '"') inString = false;
-      i++;
-      continue;
-    }
-    if (c === '"') {
-      inString = true;
-      out.push(c);
-      i++;
-      continue;
-    }
-    if (c === "/" && next === "/") {
-      while (i < text2.length && text2[i] !== "\n") {
-        out.push(" ");
-        i++;
-      }
-      continue;
-    }
-    if (c === "/" && next === "*") {
-      out.push(" ", " ");
-      i += 2;
-      while (i < text2.length && !(text2[i] === "*" && text2[i + 1] === "/")) {
-        out.push(text2[i] === "\n" ? "\n" : " ");
-        i++;
-      }
-      out.push(" ", " ");
-      i += 2;
-      continue;
-    }
-    if (c === "}" || c === "]") blankBack();
-    out.push(c);
-    i++;
-  }
-  return out.join("");
-}
-function parseJsonc(text2) {
-  return JSON.parse(stripJsonc(text2));
-}
-var init_jsonc = __esm({
-  "src/jsonc.mjs"() {
-  }
-});
-
-// node_modules/isexe/windows.js
-var require_windows = __commonJS({
-  "node_modules/isexe/windows.js"(exports, module) {
-    module.exports = isexe;
-    isexe.sync = sync;
-    var fs13 = __require("fs");
-    function checkPathExt(path14, options) {
-      var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
-      if (!pathext) {
-        return true;
-      }
-      pathext = pathext.split(";");
-      if (pathext.indexOf("") !== -1) {
-        return true;
-      }
-      for (var i = 0; i < pathext.length; i++) {
-        var p = pathext[i].toLowerCase();
-        if (p && path14.substr(-p.length).toLowerCase() === p) {
-          return true;
-        }
-      }
-      return false;
-    }
-    function checkStat(stat, path14, options) {
-      if (!stat.isSymbolicLink() && !stat.isFile()) {
-        return false;
-      }
-      return checkPathExt(path14, options);
-    }
-    function isexe(path14, options, cb) {
-      fs13.stat(path14, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path14, options));
-      });
-    }
-    function sync(path14, options) {
-      return checkStat(fs13.statSync(path14), path14, options);
-    }
-  }
-});
-
-// node_modules/isexe/mode.js
-var require_mode = __commonJS({
-  "node_modules/isexe/mode.js"(exports, module) {
-    module.exports = isexe;
-    isexe.sync = sync;
-    var fs13 = __require("fs");
-    function isexe(path14, options, cb) {
-      fs13.stat(path14, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, options));
-      });
-    }
-    function sync(path14, options) {
-      return checkStat(fs13.statSync(path14), options);
-    }
-    function checkStat(stat, options) {
-      return stat.isFile() && checkMode(stat, options);
-    }
-    function checkMode(stat, options) {
-      var mod = stat.mode;
-      var uid = stat.uid;
-      var gid = stat.gid;
-      var myUid = options.uid !== void 0 ? options.uid : process.getuid && process.getuid();
-      var myGid = options.gid !== void 0 ? options.gid : process.getgid && process.getgid();
-      var u = parseInt("100", 8);
-      var g = parseInt("010", 8);
-      var o = parseInt("001", 8);
-      var ug = u | g;
-      var ret = mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
-      return ret;
-    }
-  }
-});
-
-// node_modules/isexe/index.js
-var require_isexe = __commonJS({
-  "node_modules/isexe/index.js"(exports, module) {
-    var fs13 = __require("fs");
-    var core;
-    if (process.platform === "win32" || global.TESTING_WINDOWS) {
-      core = require_windows();
-    } else {
-      core = require_mode();
-    }
-    module.exports = isexe;
-    isexe.sync = sync;
-    function isexe(path14, options, cb) {
-      if (typeof options === "function") {
-        cb = options;
-        options = {};
-      }
-      if (!cb) {
-        if (typeof Promise !== "function") {
-          throw new TypeError("callback not provided");
-        }
-        return new Promise(function(resolve, reject) {
-          isexe(path14, options || {}, function(er, is) {
-            if (er) {
-              reject(er);
-            } else {
-              resolve(is);
-            }
-          });
-        });
-      }
-      core(path14, options || {}, function(er, is) {
-        if (er) {
-          if (er.code === "EACCES" || options && options.ignoreErrors) {
-            er = null;
-            is = false;
-          }
-        }
-        cb(er, is);
-      });
-    }
-    function sync(path14, options) {
-      try {
-        return core.sync(path14, options || {});
-      } catch (er) {
-        if (options && options.ignoreErrors || er.code === "EACCES") {
-          return false;
-        } else {
-          throw er;
-        }
-      }
-    }
-  }
-});
-
-// node_modules/which/which.js
-var require_which = __commonJS({
-  "node_modules/which/which.js"(exports, module) {
-    var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path14 = __require("path");
-    var COLON = isWindows ? ";" : ":";
-    var isexe = require_isexe();
-    var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
-    var getPathInfo = (cmd, opt) => {
-      const colon = opt.colon || COLON;
-      const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
-        // windows always checks the cwd first
-        ...isWindows ? [process.cwd()] : [],
-        ...(opt.path || process.env.PATH || /* istanbul ignore next: very unusual */
-        "").split(colon)
-      ];
-      const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
-      const pathExt = isWindows ? pathExtExe.split(colon) : [""];
-      if (isWindows) {
-        if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
-          pathExt.unshift("");
-      }
-      return {
-        pathEnv,
-        pathExt,
-        pathExtExe
-      };
-    };
-    var which2 = (cmd, opt, cb) => {
-      if (typeof opt === "function") {
-        cb = opt;
-        opt = {};
-      }
-      if (!opt)
-        opt = {};
-      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
-      const found = [];
-      const step = (i) => new Promise((resolve, reject) => {
-        if (i === pathEnv.length)
-          return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
-        const ppRaw = pathEnv[i];
-        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path14.join(pathPart, cmd);
-        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        resolve(subStep(p, i, 0));
-      });
-      const subStep = (p, i, ii) => new Promise((resolve, reject) => {
-        if (ii === pathExt.length)
-          return resolve(step(i + 1));
-        const ext = pathExt[ii];
-        isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
-          if (!er && is) {
-            if (opt.all)
-              found.push(p + ext);
-            else
-              return resolve(p + ext);
-          }
-          return resolve(subStep(p, i, ii + 1));
-        });
-      });
-      return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
-    };
-    var whichSync = (cmd, opt) => {
-      opt = opt || {};
-      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
-      const found = [];
-      for (let i = 0; i < pathEnv.length; i++) {
-        const ppRaw = pathEnv[i];
-        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path14.join(pathPart, cmd);
-        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
-        for (let j = 0; j < pathExt.length; j++) {
-          const cur = p + pathExt[j];
-          try {
-            const is = isexe.sync(cur, { pathExt: pathExtExe });
-            if (is) {
-              if (opt.all)
-                found.push(cur);
-              else
-                return cur;
-            }
-          } catch (ex) {
-          }
-        }
-      }
-      if (opt.all && found.length)
-        return found;
-      if (opt.nothrow)
-        return null;
-      throw getNotFoundError(cmd);
-    };
-    module.exports = which2;
-    which2.sync = whichSync;
-  }
-});
-
-// node_modules/path-key/index.js
-var require_path_key = __commonJS({
-  "node_modules/path-key/index.js"(exports, module) {
-    "use strict";
-    var pathKey = (options = {}) => {
-      const environment = options.env || process.env;
-      const platform = options.platform || process.platform;
-      if (platform !== "win32") {
-        return "PATH";
-      }
-      return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
-    };
-    module.exports = pathKey;
-    module.exports.default = pathKey;
-  }
-});
-
-// node_modules/cross-spawn/lib/util/resolveCommand.js
-var require_resolveCommand = __commonJS({
-  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
-    "use strict";
-    var path14 = __require("path");
-    var which2 = require_which();
-    var getPathKey = require_path_key();
-    function resolveCommandAttempt(parsed, withoutPathExt) {
-      const env = parsed.options.env || process.env;
-      const cwd = process.cwd();
-      const hasCustomCwd = parsed.options.cwd != null;
-      const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
-      if (shouldSwitchCwd) {
-        try {
-          process.chdir(parsed.options.cwd);
-        } catch (err) {
-        }
-      }
-      let resolved;
-      try {
-        resolved = which2.sync(parsed.command, {
-          path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path14.delimiter : void 0
-        });
-      } catch (e) {
-      } finally {
-        if (shouldSwitchCwd) {
-          process.chdir(cwd);
-        }
-      }
-      if (resolved) {
-        resolved = path14.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
-      }
-      return resolved;
-    }
-    function resolveCommand(parsed) {
-      return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
-    }
-    module.exports = resolveCommand;
-  }
-});
-
-// node_modules/cross-spawn/lib/util/escape.js
-var require_escape = __commonJS({
-  "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
-    "use strict";
-    var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
-    function escapeCommand(arg) {
-      arg = arg.replace(metaCharsRegExp, "^$1");
-      return arg;
-    }
-    function escapeArgument(arg, doubleEscapeMetaChars) {
-      arg = `${arg}`;
-      arg = arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
-      arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
-      arg = `"${arg}"`;
-      arg = arg.replace(metaCharsRegExp, "^$1");
-      if (doubleEscapeMetaChars) {
-        arg = arg.replace(metaCharsRegExp, "^$1");
-      }
-      return arg;
-    }
-    module.exports.command = escapeCommand;
-    module.exports.argument = escapeArgument;
-  }
-});
-
-// node_modules/shebang-regex/index.js
-var require_shebang_regex = __commonJS({
-  "node_modules/shebang-regex/index.js"(exports, module) {
-    "use strict";
-    module.exports = /^#!(.*)/;
-  }
-});
-
-// node_modules/shebang-command/index.js
-var require_shebang_command = __commonJS({
-  "node_modules/shebang-command/index.js"(exports, module) {
-    "use strict";
-    var shebangRegex = require_shebang_regex();
-    module.exports = (string4 = "") => {
-      const match = string4.match(shebangRegex);
-      if (!match) {
-        return null;
-      }
-      const [path14, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path14.split("/").pop();
-      if (binary === "env") {
-        return argument;
-      }
-      return argument ? `${binary} ${argument}` : binary;
-    };
-  }
-});
-
-// node_modules/cross-spawn/lib/util/readShebang.js
-var require_readShebang = __commonJS({
-  "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
-    "use strict";
-    var fs13 = __require("fs");
-    var shebangCommand = require_shebang_command();
-    function readShebang(command) {
-      const size = 150;
-      const buffer = Buffer.alloc(size);
-      let fd;
-      try {
-        fd = fs13.openSync(command, "r");
-        fs13.readSync(fd, buffer, 0, size, 0);
-        fs13.closeSync(fd);
-      } catch (e) {
-      }
-      return shebangCommand(buffer.toString());
-    }
-    module.exports = readShebang;
-  }
-});
-
-// node_modules/cross-spawn/lib/parse.js
-var require_parse = __commonJS({
-  "node_modules/cross-spawn/lib/parse.js"(exports, module) {
-    "use strict";
-    var path14 = __require("path");
-    var resolveCommand = require_resolveCommand();
-    var escape3 = require_escape();
-    var readShebang = require_readShebang();
-    var isWin = process.platform === "win32";
-    var isExecutableRegExp = /\.(?:com|exe)$/i;
-    var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
-    function detectShebang(parsed) {
-      parsed.file = resolveCommand(parsed);
-      const shebang = parsed.file && readShebang(parsed.file);
-      if (shebang) {
-        parsed.args.unshift(parsed.file);
-        parsed.command = shebang;
-        return resolveCommand(parsed);
-      }
-      return parsed.file;
-    }
-    function parseNonShell(parsed) {
-      if (!isWin) {
-        return parsed;
-      }
-      const commandFile = detectShebang(parsed);
-      const needsShell = !isExecutableRegExp.test(commandFile);
-      if (parsed.options.forceShell || needsShell) {
-        const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path14.normalize(parsed.command);
-        parsed.command = escape3.command(parsed.command);
-        parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
-        const shellCommand = [parsed.command].concat(parsed.args).join(" ");
-        parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
-        parsed.command = process.env.comspec || "cmd.exe";
-        parsed.options.windowsVerbatimArguments = true;
-      }
-      return parsed;
-    }
-    function parse3(command, args, options) {
-      if (args && !Array.isArray(args)) {
-        options = args;
-        args = null;
-      }
-      args = args ? args.slice(0) : [];
-      options = Object.assign({}, options);
-      const parsed = {
-        command,
-        args,
-        options,
-        file: void 0,
-        original: {
-          command,
-          args
-        }
-      };
-      return options.shell ? parsed : parseNonShell(parsed);
-    }
-    module.exports = parse3;
-  }
-});
-
-// node_modules/cross-spawn/lib/enoent.js
-var require_enoent = __commonJS({
-  "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
-    "use strict";
-    var isWin = process.platform === "win32";
-    function notFoundError(original, syscall) {
-      return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
-        code: "ENOENT",
-        errno: "ENOENT",
-        syscall: `${syscall} ${original.command}`,
-        path: original.command,
-        spawnargs: original.args
-      });
-    }
-    function hookChildProcess(cp, parsed) {
-      if (!isWin) {
-        return;
-      }
-      const originalEmit = cp.emit;
-      cp.emit = function(name, arg1) {
-        if (name === "exit") {
-          const err = verifyENOENT(arg1, parsed);
-          if (err) {
-            return originalEmit.call(cp, "error", err);
-          }
-        }
-        return originalEmit.apply(cp, arguments);
-      };
-    }
-    function verifyENOENT(status2, parsed) {
-      if (isWin && status2 === 1 && !parsed.file) {
-        return notFoundError(parsed.original, "spawn");
-      }
-      return null;
-    }
-    function verifyENOENTSync(status2, parsed) {
-      if (isWin && status2 === 1 && !parsed.file) {
-        return notFoundError(parsed.original, "spawnSync");
-      }
-      return null;
-    }
-    module.exports = {
-      hookChildProcess,
-      verifyENOENT,
-      verifyENOENTSync,
-      notFoundError
-    };
-  }
-});
-
-// node_modules/cross-spawn/index.js
-var require_cross_spawn = __commonJS({
-  "node_modules/cross-spawn/index.js"(exports, module) {
-    "use strict";
-    var cp = __require("child_process");
-    var parse3 = require_parse();
-    var enoent = require_enoent();
-    function spawn2(command, args, options) {
-      const parsed = parse3(command, args, options);
-      const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
-      enoent.hookChildProcess(spawned, parsed);
-      return spawned;
-    }
-    function spawnSync2(command, args, options) {
-      const parsed = parse3(command, args, options);
-      const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
-      result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
-      return result;
-    }
-    module.exports = spawn2;
-    module.exports.spawn = spawn2;
-    module.exports.sync = spawnSync2;
-    module.exports._parse = parse3;
-    module.exports._enoent = enoent;
-  }
-});
-
-// src/platform.mjs
-import fs from "node:fs";
-import path from "node:path";
-import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from "node:child_process";
-function batchInvocation(command, args, options) {
-  if (process.platform !== "win32") return null;
-  const resolved = findCommand(command, options);
-  if (!resolved || !/\.(cmd|bat)$/i.test(resolved)) return null;
-  const forwarding = /%\*/.test(fs.readFileSync(resolved, "utf8"));
-  const line = [import_escape.default.command(resolved), ...args.map((arg) => import_escape.default.argument(arg, forwarding))].join(" ");
-  return {
-    command: process.env.ComSpec || "cmd.exe",
-    args: ["/d", "/s", "/c", `"${line}"`],
-    options: { ...options, windowsHide: true, windowsVerbatimArguments: true }
-  };
-}
-function spawnCommand(command, args, options = {}) {
-  const batch = batchInvocation(command, args, options);
-  return batch ? nativeSpawn(batch.command, batch.args, batch.options) : (0, import_cross_spawn.default)(command, args, options);
-}
-function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
-  if (typeof command !== "string" || !command) return null;
-  cwd = path.resolve(cwd);
-  const windows = process.platform === "win32";
-  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
-  const explicit = command.includes("/") || windows && command.includes("\\");
-  const dirs = explicit ? [cwd] : [
-    ...windows ? [cwd] : [],
-    ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)
-  ];
-  for (const dir of dirs) {
-    const candidate = path.resolve(cwd, dir.replace(/^"(.*)"$/, "$1"), command);
-    const found = import_which.default.sync(candidate, { nothrow: true, pathExt: value("PATHEXT") });
-    if (found) return found;
-  }
-  if (explicit) {
-    const candidate = path.resolve(cwd, command);
-    try {
-      if (!fs.statSync(candidate).isFile()) return null;
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {
-    }
-  }
-  return null;
-}
-function execCommandSync(command, args, options = {}) {
-  const opts = { windowsHide: true, encoding: "utf8", ...options };
-  const batch = batchInvocation(command, args, opts);
-  const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
-  }
-  return result.stdout;
-}
-var import_which, import_cross_spawn, import_escape;
-var init_platform = __esm({
-  "src/platform.mjs"() {
-    import_which = __toESM(require_which(), 1);
-    import_cross_spawn = __toESM(require_cross_spawn(), 1);
-    import_escape = __toESM(require_escape(), 1);
-  }
-});
-
-// src/consultants.mjs
-function normalizeName(raw) {
-  if (typeof raw !== "string") return raw;
-  return raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
-}
-function modelWords(model) {
-  const s2 = String(model ?? "").toLowerCase();
-  return s2.slice(s2.lastIndexOf("/") + 1).split(/[-._#:\s]+/).filter(Boolean);
-}
-function modelStem(model) {
-  const words = modelWords(model);
-  const at = words.findIndex(isDigitWord);
-  return at === -1 ? words : words.slice(0, at);
-}
-function modelVersion(model) {
-  const words = modelWords(model);
-  const at = words.findIndex(isDigitWord);
-  if (at === -1) return null;
-  const digits = [];
-  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, "")));
-  return digits;
-}
-function vendorOf(model, explicit = null) {
-  if (typeof explicit === "string" && explicit.trim() !== "") return explicit.trim().toLowerCase();
-  const first = modelStem(model)[0] ?? "";
-  if (/^o\d/.test(first)) return "openai";
-  return STEM_VENDORS[first] ?? null;
-}
-function matchesWords(model, wanted) {
-  return containsRun(modelWords(model), modelWords(wanted));
-}
-function byRanking(cands, ranking) {
-  const index = (c) => {
-    const i = ranking.findIndex((r) => normalizeName(r) === normalizeName(c.name) || matchesWords(c.model, r));
-    return i === -1 ? Infinity : i;
-  };
-  const best = Math.min(...cands.map(index));
-  return best === Infinity ? cands : cands.filter((c) => index(c) === best);
-}
-function byTier(cands, tier) {
-  if (!tier.family(cands)) return cands;
-  const rank = (c) => {
-    const words = modelWords(c.model);
-    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
-  };
-  const ranks = cands.map(rank);
-  if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
-  const best = Math.min(...ranks);
-  return cands.filter((_, i) => ranks[i] === best);
-}
-function byVersion(cands) {
-  const stem = modelStem(cands[0].model).join("-");
-  const versions = cands.map((c) => modelVersion(c.model));
-  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
-  const best = versions.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
-  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
-}
-function rankCandidates(cands, ranking = []) {
-  let left = byRanking(cands, ranking);
-  for (const tier of TIERS) {
-    if (left.length === 1) break;
-    left = byTier(left, tier);
-  }
-  if (left.length > 1) left = byVersion(left);
-  return left.length === 1 ? left[0] : null;
-}
-function resolveConsultant(input2, consultants, ranking = []) {
-  const key = normalizeName(input2);
-  if (typeof key !== "string" || key === "") return { none: true };
-  const own2 = consultants.find((c) => normalizeName(c.name) === key);
-  if (own2) return { consultant: own2 };
-  let cands;
-  if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
-  else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
-  else cands = consultants.filter((c) => matchesWords(c.model, input2));
-  if (cands.length === 0) return { none: true };
-  if (cands.length === 1) return { consultant: cands[0] };
-  const winner = rankCandidates(cands, ranking);
-  return winner ? { consultant: winner } : { ambiguous: cands };
-}
-function sameModel(callerModel, consultantModel) {
-  const a = modelWords(callerModel);
-  const b = modelWords(consultantModel);
-  if (a.length && a.length === b.length && a.every((w, i) => w === b[i])) return "same";
-  if (containsRun(a, b) || containsRun(b, a)) return "unknown";
-  return "different";
-}
-function buildConsultants(config2) {
-  const problems = [];
-  const global2 = [];
-  const broken = {};
-  const brokenClis = {};
-  const fault = (msg) => {
-    problems.push(msg);
-    global2.push(msg);
-  };
-  const cfg = isObject2(config2) ? config2 : {};
-  if (!isObject2(config2)) fault("the config file must hold a JSON object");
-  for (const key of Object.keys(cfg)) {
-    if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
-  }
-  if (isObject2(cfg.server) && cfg.server.network !== void 0 && !["on", "off"].includes(cfg.server.network)) {
-    fault('server.network must be "on" or "off"');
-  }
-  let ranking = [];
-  if (cfg.ranking !== void 0) {
-    if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== "")) ranking = cfg.ranking.map((r) => r.trim());
-    else fault("ranking must be an array of non-empty strings");
-  }
-  if (cfg.clis !== void 0) {
-    if (!isObject2(cfg.clis)) fault("clis must be an object keyed by CLI");
-    else {
-      for (const [id2, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(id2)) {
-          problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
-          continue;
-        }
-        const before = problems.length;
-        if (!isObject2(def)) {
-          problems.push(`clis.${id2} must be an object`);
-          brokenClis[id2] = problems.slice(before);
-          continue;
-        }
-        for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
-        if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`clis.${id2}.enabled: must be true or false`);
-        for (const k of ["bin", "note"]) if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`clis.${id2}.${k}: must be a string`);
-        if (def.args !== void 0 && !(Array.isArray(def.args) && def.args.every((a) => typeof a === "string"))) problems.push(`clis.${id2}.args: must be an array of strings`);
-        if (def.env !== void 0 && !(isObject2(def.env) && Object.values(def.env).every((v) => typeof v === "string"))) problems.push(`clis.${id2}.env: must be an object of strings`);
-        if (def.provider !== void 0) {
-          if (id2 !== "opencode") problems.push(`clis.${id2}.provider: only OpenCode takes provider definitions`);
-          else if (!(isObject2(def.provider) && Object.values(def.provider).every(isObject2))) problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
-        }
-        if (problems.length > before) brokenClis[id2] = problems.slice(before);
-      }
-    }
-  }
-  const consultants = [];
-  if (cfg.consultants === void 0) {
-    for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
-  } else if (!isObject2(cfg.consultants)) {
-    fault("consultants must be an object keyed by name");
-  } else {
-    const seen = /* @__PURE__ */ new Map();
-    for (const [name, def] of Object.entries(cfg.consultants)) {
-      const at = `consultants.${name}`;
-      if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) {
-        problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`);
-        continue;
-      }
-      if (RESERVED_NAMES.includes(name)) {
-        problems.push(`${at}: "${name}" is reserved`);
-        continue;
-      }
-      const before = problems.length;
-      if (!isObject2(def)) {
-        problems.push(`${at} must be an object`);
-        broken[name] = problems.slice(before);
-        continue;
-      }
-      for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
-      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
-      if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
-      for (const k of ["effort", "vendor", "note"]) {
-        if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
-      }
-      if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`${at}.enabled: must be true or false`);
-      for (const k of ["timeout_ms", "max_budget_usd"]) {
-        if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k]))) problems.push(`${at}.${k}: must be a number`);
-      }
-      if (def.max_budget_usd !== void 0 && def.cli !== "claude-code") problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
-      if (def.effort !== void 0 && def.cli === "antigravity") problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
-      if (problems.length > before) {
-        broken[name] = problems.slice(before);
-        continue;
-      }
-      const pair = `${def.cli}
-${def.model.trim()}`;
-      if (seen.has(pair)) {
-        problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
-        broken[name] = problems.slice(before);
-        continue;
-      }
-      seen.set(pair, name);
-      consultants.push(make(name, def));
-    }
-  }
-  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
-}
-function make(name, def) {
-  const model = def.model.trim();
-  return Object.freeze({
-    name,
-    cli: def.cli,
-    model,
-    effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
-    timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
-    maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
-    vendor: vendorOf(model, def.vendor ?? null),
-    enabled: def.enabled !== false,
-    note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
-  });
-}
-var CLI_IDS, DEFAULT_MODELS, CLI_VENDORS, table, CLI_ALIASES, VENDOR_WORDS, STEM_VENDORS, sameStem, TIERS, RESERVED_NAMES, isDigitWord, containsRun, compareVersions, TOP_KEYS, CLI_KEYS, CONSULTANT_KEYS, isObject2, clamp;
-var init_consultants = __esm({
-  "src/consultants.mjs"() {
-    CLI_IDS = Object.freeze(["codex", "claude-code", "antigravity", "opencode"]);
-    DEFAULT_MODELS = Object.freeze({
-      codex: "gpt-6-astra",
-      "claude-code": "claude-opus-5-5",
-      antigravity: "gemini-4-argon-high",
-      opencode: "zai-coding-plan/glm-5.3"
-    });
-    CLI_VENDORS = Object.freeze({ codex: "openai", "claude-code": "anthropic", antigravity: "google", opencode: null });
-    table = (entries) => Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), entries));
-    CLI_ALIASES = table({
-      codex: "codex",
-      "claude-code": "claude-code",
-      antigravity: "antigravity",
-      agy: "antigravity",
-      opencode: "opencode"
-    });
-    VENDOR_WORDS = table({ openai: "openai", chatgpt: "openai", anthropic: "anthropic", google: "google" });
-    STEM_VENDORS = table({
-      gpt: "openai",
-      claude: "anthropic",
-      gemini: "google",
-      glm: "zai",
-      deepseek: "deepseek",
-      nemotron: "nvidia"
-    });
-    sameStem = (cands) => new Set(cands.map((c) => modelStem(c.model).join("-"))).size === 1;
-    TIERS = Object.freeze([
-      { words: ["opus", "sonnet", "haiku"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "claude") },
-      { words: ["ultra", "pro", "flash", "lite"], family: (cands) => cands.every((c) => modelStem(c.model)[0] === "gemini") },
-      // Effort words: the last word of the name, between otherwise like models.
-      { words: ["max", "xhigh", "high", "medium", "low"], family: sameStem, last: true }
-    ]);
-    RESERVED_NAMES = Object.freeze(["all"]);
-    isDigitWord = (w) => /^v?\d+$/.test(w);
-    containsRun = (hay, needle) => needle.length > 0 && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
-    compareVersions = (a, b) => {
-      for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const d = (a[i] ?? -1) - (b[i] ?? -1);
-        if (d !== 0) return d;
-      }
-      return 0;
-    };
-    TOP_KEYS = ["server", "clis", "consultants", "ranking"];
-    CLI_KEYS = ["enabled", "note", "bin", "args", "env", "provider"];
-    CONSULTANT_KEYS = ["cli", "model", "effort", "timeout_ms", "max_budget_usd", "vendor", "enabled", "note"];
-    isObject2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-    clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-  }
-});
-
-// src/policy.mjs
-import fs2 from "node:fs";
-import os from "node:os";
-import path2 from "node:path";
-function configProblem() {
-  return configError;
-}
-function configWarnings() {
-  return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
-}
-function brokenConsultantNames() {
-  return configError ? [] : Object.keys(BUILT.broken);
-}
-function brokenConsultant(name) {
-  const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
-  return p ? `the config file has a mistake in it: ${p.join("; ")}` : null;
-}
-function isInstalled(command) {
-  return findCommand(command) !== null;
-}
-function resolveCaller(raw) {
-  const key = normalizeName(raw);
-  return typeof key === "string" && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
-}
-function detectCaller(env = process.env) {
-  if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
-  if (env.CODEX_HOME || env.CODEX_SANDBOX || env.CODEX_SANDBOX_NETWORK_DISABLED) return "codex";
-  if (Object.keys(env).some((k) => k.startsWith("AGY_") || k.startsWith("ANTIGRAVITY_"))) return "antigravity";
-  return null;
-}
-function expandHome(value) {
-  if (typeof value !== "string") return value;
-  if (value === "~") return os.homedir();
-  return /^~[\\/]/.test(value) ? path2.join(os.homedir(), value.slice(2)) : value;
-}
-function timeoutMs(consultant) {
-  return consultant?.timeoutMs ?? limit("SEVERALLY_TIMEOUT_MS", cfgServer.timeout_ms, 18e5, 1e3, 72e5);
-}
-function agyExitGraceMs() {
-  return {
-    afterResult: limit("SEVERALLY_AGY_AFTER_RESULT_MS", void 0, 1e4, 100, 6e5),
-    afterFinish: limit("SEVERALLY_AGY_AFTER_FINISH_MS", void 0, 6e4, 100, 6e5)
-  };
-}
-function credentialsHome() {
-  return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
-}
-function opencodeCredentialsHome() {
-  return str("SEVERALLY_OPENCODE_CRED_HOME", os.homedir());
-}
-function protectedRoots() {
-  const fwd = (p) => p.replaceAll("\\", "/");
-  return [
-    ...PROTECTED_HOME_PATHS.map((rel) => fwd(path2.join(os.homedir(), rel))),
-    ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path2.join(POLICY.home, rel)))
-  ];
-}
-function protectedRootPatterns(extraRoots = []) {
-  return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map((r) => `^${escapeRe(r.replace(/\/+$/, "")).replaceAll("*", "[^/]+")}(/|$)`);
-}
-function protectedNamePatterns() {
-  return PROTECTED_FILE_NAMES.map((n) => `^${escapeRe(n).replaceAll("*", ".*")}$`);
-}
-function isProtectedPath(abs) {
-  const flags = PATHS_CASE_INSENSITIVE ? "i" : "";
-  const roots = protectedRootPatterns().map((p) => new RegExp(p, flags));
-  const names = protectedNamePatterns().map((p) => new RegExp(p, flags));
-  let real = abs;
-  try {
-    real = fs2.realpathSync.native(abs);
-  } catch {
-  }
-  return [abs, real].some((p) => {
-    const fwd = p.replaceAll("\\", "/");
-    return roots.some((re) => re.test(fwd)) || names.some((re) => re.test(path2.basename(fwd)));
-  });
-}
-function consultantByName(name) {
-  return POLICY.consultants.find((c) => c.name === name);
-}
-function consultantAvailable(c) {
-  return c.enabled && POLICY.clis[c.cli].available;
-}
-function unavailableReason(c) {
-  if (!c || consultantAvailable(c)) return null;
-  if (!c.enabled) return c.note ?? "turned off in the operator configuration";
-  const cli = POLICY.clis[c.cli];
-  if (cli.note) return cli.note;
-  if (!isInstalled(cli.cli)) return `${cli.cli} is not installed here`;
-  return "turned off in the operator configuration";
-}
-function availableConsultants() {
-  return POLICY.consultants.filter(consultantAvailable);
-}
-function limitsSummary() {
-  const list = availableConsultants();
-  const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
-  return {
-    available_targets: list.map((c) => c.name),
-    // A consultant or CLI out of use because of a mistake in its own section.
-    ...LOCAL.length ? { config_mistakes: configWarnings() } : {},
-    clis: by((c) => c.cli),
-    models: by((c) => c.model),
-    // Per consultant, because they no longer share one budget.
-    timeout_ms: by(timeoutMs),
-    max_rounds_per_chain: POLICY.maxRounds,
-    // "off": the operator has taken the web away from every consultation.
-    network: POLICY.network,
-    max_concurrent_jobs: POLICY.maxConcurrent,
-    max_wait_ms: POLICY.maxWaitMs,
-    input_char_budget: POLICY.input.totalCharsMax,
-    // Stated so it is true of all three consultants. Reading is allowed for
-    // every one of them -- what keeps a consultation brief-only is that the
-    // child starts in an empty working directory and is never told where the
-    // repository is, not that it cannot read. Codex is additionally sandboxed
-    // read-only rather than execution-free, so do not advertise "no execution".
-    consultant_permissions: "web search/browse and reading local files allowed, but the consultant starts in an empty working directory and is not told where your repository is -- unless context.expose_paths names files or directories, which are copied read-only into that working directory and are then the only part of your repository it has; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
-  };
-}
-var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
-var init_policy = __esm({
-  "src/policy.mjs"() {
-    init_jsonc();
-    init_platform();
-    init_consultants();
-    CONFIG_HOME = process.env.SEVERALLY_HOME || path2.join(os.homedir(), ".severally");
-    CONFIG_PATH = process.env.SEVERALLY_CONFIG || [path2.join(CONFIG_HOME, "config.jsonc"), path2.join(CONFIG_HOME, "config.json")].find((p) => fs2.existsSync(p)) || path2.join(CONFIG_HOME, "config.json");
-    configError = null;
-    CONFIG = (() => {
-      try {
-        return parseJsonc(fs2.readFileSync(CONFIG_PATH, "utf8"));
-      } catch (err) {
-        if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
-        return {};
-      }
-    })();
-    BUILT = buildConsultants(CONFIG);
-    if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join("; ")}`;
-    if (!configError && ![void 0, "", "on", "off"].includes(process.env.SEVERALLY_NETWORK)) {
-      configError = `SEVERALLY_NETWORK must be "on" or "off", not ${JSON.stringify(process.env.SEVERALLY_NETWORK)}`;
-    }
-    FROM = configError ? buildConsultants({}) : BUILT;
-    LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
-    usable = configError ? {} : CONFIG;
-    cfgCli = (id2) => {
-      if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
-        return { enabled: false, note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}` };
-      }
-      return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
-    };
-    cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
-    num = (name, dflt, min, max) => {
-      const raw = process.env[name];
-      if (raw === void 0 || raw === "") return dflt;
-      const v = Number(raw);
-      if (!Number.isFinite(v)) return dflt;
-      return Math.min(max, Math.max(min, v));
-    };
-    limit = (name, fromCfg, dflt, min, max) => {
-      const fromEnv = num(name, null, min, max);
-      if (fromEnv !== null) return fromEnv;
-      if (typeof fromCfg === "number" && Number.isFinite(fromCfg)) return Math.min(max, Math.max(min, fromCfg));
-      return dflt;
-    };
-    str = (name, dflt) => {
-      const raw = process.env[name];
-      return raw === void 0 || raw === "" ? dflt : raw;
-    };
-    CALLER_ALIASES = Object.freeze(Object.assign(/* @__PURE__ */ Object.create(null), {
-      codex: "codex",
-      gpt: "codex",
-      chatgpt: "codex",
-      openai: "codex",
-      "claude-code": "claude-code",
-      claude: "claude-code",
-      anthropic: "claude-code",
-      antigravity: "antigravity",
-      agy: "antigravity",
-      gemini: "antigravity",
-      google: "antigravity",
-      opencode: "opencode",
-      glm: "opencode"
-    }));
-    CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
-    MODES = ["explore", "review", "debate"];
-    VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
-    STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
-    binFor = (id2, envName, dflt) => {
-      const fromEnv = process.env[envName];
-      if (fromEnv !== void 0 && fromEnv !== "") return expandHome(fromEnv);
-      const fromCfg = cfgCli(id2).bin;
-      return expandHome(typeof fromCfg === "string" && fromCfg !== "" ? fromCfg : dflt);
-    };
-    disabledNote = (id2) => {
-      const n = cfgCli(id2).note;
-      return typeof n === "string" && n.trim() !== "" ? n.trim() : null;
-    };
-    isEnabled = (id2, cli) => {
-      const flag = cfgCli(id2).enabled;
-      if (typeof flag === "boolean") return flag;
-      return isInstalled(cli);
-    };
-    CODEX_BIN = binFor("codex", "SEVERALLY_CODEX_BIN", "codex");
-    CLAUDE_BIN = binFor("claude-code", "SEVERALLY_CLAUDE_BIN", "claude");
-    AGY_BIN = binFor("antigravity", "SEVERALLY_AGY_BIN", "agy");
-    OPENCODE_BIN = binFor("opencode", "SEVERALLY_OPENCODE_BIN", "opencode");
-    extras = (id2) => ({ extraArgs: cfgCli(id2).args ?? [], extraEnv: cfgCli(id2).env ?? {} });
-    POLICY = Object.freeze({
-      home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
-      // Per CLI: how to launch it and whether it can run here. What runs on it is
-      // a consultant's business.
-      clis: Object.freeze({
-        codex: Object.freeze({
-          cli: CODEX_BIN,
-          available: isEnabled("codex", CODEX_BIN),
-          note: disabledNote("codex"),
-          label: "Codex CLI",
-          ...extras("codex")
-        }),
-        "claude-code": Object.freeze({
-          cli: CLAUDE_BIN,
-          available: isEnabled("claude-code", CLAUDE_BIN),
-          note: disabledNote("claude-code"),
-          label: "Claude Code CLI",
-          ...extras("claude-code")
-        }),
-        // Where the real Antigravity credentials live is credentialsHome() below,
-        // not a field here: the sandbox reads it per job (see timeoutMs()).
-        antigravity: Object.freeze({
-          cli: AGY_BIN,
-          available: isEnabled("antigravity", AGY_BIN),
-          note: disabledNote("antigravity"),
-          label: "Antigravity CLI",
-          ...extras("antigravity")
-        }),
-        opencode: Object.freeze({
-          cli: OPENCODE_BIN,
-          available: isEnabled("opencode", OPENCODE_BIN),
-          note: disabledNote("opencode"),
-          label: "OpenCode CLI",
-          ...extras("opencode"),
-          // opencode.json `provider` definitions copied into the sandbox config:
-          // the only way to reach a provider the sandbox's empty HOME would not
-          // know, such as a local OpenAI-compatible server.
-          provider: cfgCli("opencode").provider ?? {}
-        })
-      }),
-      // Who can be asked, in config order, and how a name that fits several is
-      // settled. See consultants.mjs.
-      consultants: FROM.consultants,
-      ranking: FROM.ranking,
-      // Grace period between SIGTERM and SIGKILL of the child process group.
-      killGraceMs: limit("SEVERALLY_KILL_GRACE_MS", cfgServer.kill_grace_ms, 5e3, 500, 6e4),
-      // Automatic re-runs of a consultation that failed with a transient error
-      // (rate_limited, cli_error), inside the job's original time budget. The
-      // wait before the n-th re-run is retryBackoffMs * 3^(n-1).
-      maxAutoRetries: limit("SEVERALLY_MAX_AUTO_RETRIES", cfgServer.max_auto_retries, 2, 0, 3),
-      retryBackoffMs: limit("SEVERALLY_RETRY_BACKOFF_MS", cfgServer.retry_backoff_ms, 5e3, 0, 6e4),
-      // Default: 1 initial round + 4 follow-ups; operators may allow up to 20 total.
-      maxRounds: limit("SEVERALLY_MAX_ROUNDS", cfgServer.max_rounds, 5, 1, 20),
-      // Default 9 so several independent consultations can run at once; a
-      // "consult everyone" fan-out (the three peers plus a fresh session of the
-      // caller's own CLI) fits well inside it. The ceiling equals the default:
-      // going beyond that is an operator decision with quota to match.
-      maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
-      maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
-      // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
-      // clients allow a tool call, so a long wait does not blow up as a client-side
-      // timeout while the consultation is still healthy; a client registration
-      // that is known to wait longer raises it (scripts/install.mjs).
-      // "off" takes the web away from every consultation, whatever the request
-      // asks; "on" leaves it to each request's own network.
-      // Either source can close it; neither can reopen what the other closed.
-      network: [process.env.SEVERALLY_NETWORK, cfgServer.network].includes("off") ? "off" : "on",
-      maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
-      input: Object.freeze({
-        questionMax: 4e3,
-        objectiveMax: 4e3,
-        proposalMax: 2e4,
-        constraintMax: 1e3,
-        constraintsMax: 20,
-        factMax: 6e3,
-        factsMax: 40,
-        counterpointMax: 4e3,
-        counterpointsMax: 20,
-        artifactsMax: 10,
-        artifactExcerptMax: 2e4,
-        artifactNameMax: 200,
-        // expose_paths: how many paths a lead may name, and what the copy of
-        // them may add up to. Fixed like every other input cap -- a consultant
-        // that can be pointed at more of the disk by configuration is a
-        // different consultant, not a tuned one.
-        exposePathsMax: 20,
-        exposeFilesMax: 500,
-        exposeBytesMax: 5e6,
-        totalCharsMax: 12e4
-      }),
-      output: Object.freeze({
-        // Raw child stdout/stderr kept per stream before truncation.
-        rawCaptureMax: 4e5,
-        summaryMax: 8e3,
-        itemTextMax: 4e3,
-        listMax: 30,
-        referencesMax: 40
-      })
-    });
-    PROTECTED_HOME_PATHS = Object.freeze([
-      ".ssh",
-      ".gnupg",
-      ".aws",
-      ".azure",
-      ".kube",
-      ".docker",
-      ".config/gcloud",
-      ".config/gh",
-      ".config/hub",
-      ".netrc",
-      ".npmrc",
-      ".pypirc",
-      ".git-credentials",
-      ".cargo/credentials",
-      ".cargo/credentials.toml",
-      ".terraform.d",
-      ".vault-token",
-      "Library/Keychains",
-      ".codex",
-      ".claude",
-      ".claude.json",
-      ".gemini",
-      ".config/opencode",
-      ".local/share/opencode"
-    ]);
-    PROTECTED_SEVERALLY_PATHS = Object.freeze([
-      "history",
-      "backups",
-      "config.json",
-      "config.jsonc",
-      "homes",
-      // Where homes lived before 1.7: one left by an interrupted run can still hold an auth.json copy.
-      "jobs/*/home"
-    ]);
-    PROTECTED_FILE_NAMES = Object.freeze([
-      ".env",
-      ".env.*",
-      ".npmrc",
-      ".netrc",
-      ".pypirc",
-      ".git-credentials",
-      "id_rsa",
-      "id_ed25519",
-      "id_ecdsa",
-      "id_dsa"
-    ]);
-    escapeRe = (s2) => s2.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
-    PATHS_CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
-    artifactKinds = ["code", "log", "doc", "data", "diff", "spec", "test-output", "config"];
-  }
-});
-
 // src/schema.mjs
 import path3 from "node:path";
 function charCount(req) {
@@ -41350,6 +41350,13 @@ var init_export = __esm({
 });
 
 // src/server.mjs
+var server_exports = {};
+__export(server_exports, {
+  SEVERALLY_VERSION: () => SEVERALLY_VERSION,
+  createServer: () => createServer,
+  main: () => main,
+  staleInstall: () => staleInstall
+});
 import fs11 from "node:fs";
 import os5 from "node:os";
 import path13 from "node:path";
@@ -41591,7 +41598,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.3.1";
+    SEVERALLY_VERSION = "2.4.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -41680,6 +41687,26 @@ function registration({ cmd, checks }) {
   }
   return ran ? "not registered" : `could not tell (${cmd} ${checks.map((a) => a.join(" ")).join(" / ")} failed)`;
 }
+function login(cli) {
+  const check2 = LOGIN[cli];
+  if (!check2) return "not checked (no login status command)";
+  if (!findCommand(check2.cmd)) return "not installed";
+  let out;
+  let ok = true;
+  try {
+    out = execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
+  } catch (err) {
+    if (typeof err.status !== "number") return `could not tell (${check2.cmd} ${check2.args.join(" ")} failed)`;
+    out = `${err.stdout ?? ""}`;
+    ok = false;
+  }
+  try {
+    const v = check2.read(out, ok);
+    return v === true ? "logged in" : v || "not logged in";
+  } catch {
+    return `could not tell (${check2.cmd} ${check2.args.join(" ")} answered in an unexpected form)`;
+  }
+}
 function status() {
   const lines = [`severally ${SEVERALLY_VERSION}`, ""];
   const problem = configProblem();
@@ -41697,12 +41724,13 @@ function status() {
   ${stale.fix}` : "copies: every installed copy is this version", "");
   lines.push("clients:");
   for (const client of CLIENTS) lines.push(`  ${client.label.padEnd(12)} ${registration(client)}`);
-  lines.push("", "login: not checked -- an installed, registered CLI may still be logged out or out of quota; the first consultation is what shows it");
+  lines.push("", "login (out of quota is not checked; the first consultation shows it):");
+  for (const cli of [...new Set(POLICY.consultants.map((c) => c.cli))]) lines.push(`  ${cli.padEnd(12)} ${login(cli)}`);
   process.stdout.write(`${lines.join("\n")}
 `);
   return problem ? 1 : 0;
 }
-var CLIENTS;
+var CLIENTS, LOGIN;
 var init_status = __esm({
   "src/status.mjs"() {
     init_policy();
@@ -41714,12 +41742,28 @@ var init_status = __esm({
       { label: "Antigravity", cmd: "agy", checks: [["mcp", "list"]] },
       { label: "OpenCode", cmd: "opencode", checks: [["mcp", "list"]] }
     ];
+    LOGIN = {
+      "claude-code": { cmd: "claude", args: ["auth", "status", "--json"], read: (out) => JSON.parse(out).loggedIn === true },
+      // Codex prints its answer on stderr; the exit status carries the verdict.
+      codex: { cmd: "codex", args: ["login", "status"], read: (out, ok) => ok },
+      // OpenCode can also take keys from the environment, so no saved credential
+      // is a warning, not a verdict.
+      opencode: { cmd: "opencode", args: ["auth", "list"], read: (out) => {
+        const n = out.split("\n").filter((l) => /\bstored\b/.test(l)).length;
+        return n ? `${n} saved credential${n > 1 ? "s" : ""}` : "no saved credentials (keys in the environment still work)";
+      } }
+    };
   }
 });
 
 // bin/severally-mcp.mjs
-init_server();
 import fs12 from "node:fs";
+var major = Number(process.versions.node.split(".")[0]);
+if (major < 22) {
+  process.stderr.write(`severally: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again
+`);
+  process.exit(1);
+}
 if (process.argv[2] === "install") {
   const installer = new URL("../scripts/install.mjs", import.meta.url);
   if (!fs12.existsSync(installer)) {
@@ -41732,7 +41776,8 @@ if (process.argv[2] === "install") {
   const { status: status2 } = await Promise.resolve().then(() => (init_status(), status_exports));
   process.exitCode = status2();
 } else {
-  main().catch((err) => {
+  const { main: main2 } = await Promise.resolve().then(() => (init_server(), server_exports));
+  main2().catch((err) => {
     process.stderr.write(`severally: fatal: ${err?.stack ?? err}
 `);
     process.exit(1);

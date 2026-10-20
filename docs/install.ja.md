@@ -12,8 +12,10 @@ npx はパッケージを自分のキャッシュに取ってきて、そこか�
 
 README に書いた Node.js 22 以降とログイン済みの CLI のほかに、次の条件があります。
 
-- macOS / Linux では、npm のグローバルな実行ファイルのディレクトリが `PATH` に入っていること。既定のプラグイン方式
-  （下記）は、Codex が起動する `severally-mcp` コマンドをそこに入れます。`--manual` を付ければ不要です。
+- macOS / Linux では、npm のグローバルのフォルダについて必要なことはありません。既定のプラグイン方式（下記）は
+  `npm install -g` で、Codex のプラグインが起動する `severally-mcp` コマンドを `PATH` に置きます。npm がグローバルに
+  入れられないとき（たとえば sudo が要る、npm のグローバルのフォルダが `PATH` に無い）は、インストーラが代わりに
+  Codex を直接登録します。ほかに必要なことはありません。`--manual` を付ければ、このコマンドは要りません。
 - Windows では、PowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
   `PATHEXT` から探します（`.exe`、`.cmd`、`.bat`、空白を含むパスにも対応します）。
 
@@ -44,7 +46,11 @@ node scripts/install.mjs
 
 `npx -y severally-mcp@latest status` を実行すると、相談を始めずに、まとめて確かめられます。設定ファイルが正しいか、
 この機械から使える相談相手（使えないものはその理由）、入っている写しの版がそろっているか、どのクライアントに
-severally が登録されているかを表示します。CLI にログインしているかは確かめません。それは最初の相談で分かります。
+severally が登録されているか、各 CLI にログインしているかを表示します。ログインの確認は、各 CLI 自身の状態確認
+コマンドを読むだけで、プロンプトは送りません。Claude Code は `claude auth status`、Codex は `codex login status` です。
+OpenCode は `opencode auth list` で保存されている認証情報の数を見ます（環境変数のキーでも動くので、保存が無くても
+警告にとどめます）。Antigravity にはそうしたコマンドが無いので「not checked」と表示します。使用枠を使い切って
+いないかは確かめません。それは最初の相談で分かります。
 
 クライアントごとに自分で確かめるときは、再起動したあとに次を実行します。持っていない CLI の行は飛ばしてください。
 
@@ -76,7 +82,8 @@ Node.js 22 以降が `PATH` に入っている必要があります。ツール�
 Codex、Antigravity、OpenCode からも使うなら、クローンしてインストーラも実行します（[クローンから入れる](#クローンから入れる)を参照）。
 インストーラはマーケットプレイス版を見つけると、Claude Code はそちらに任せます。マーケットプレイス版より先に
 インストーラを実行していた場合は、もう一度実行してください。そのままだと Claude Code が severally を二重に読み込みます。
-インストーラは、自分が以前に入れた Claude Code 用の写しと登録を、バックアップしてから取り除きます。
+インストーラは、自分が以前に入れた Claude Code 用の写しと登録を、バックアップしてから取り除きます。マーケットプレイス版が
+入ったあとは、同じインストーラの実行でそれも更新されます（[更新](#更新)を参照）。
 
 ## 2 つのインストール方式
 
@@ -95,9 +102,13 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 
 - サーバを依存パッケージごと `~/.severally/runtime/severally-mcp.mjs` に写します。どの登録も、クローンした
   フォルダではなく、この写しを指します。
-- プラグイン方式では、npm のグローバルなインストールも行います。これで、Codex が起動する `severally-mcp` コマンドが
-  入ります。`--skip-global` を付けるとこの手順を飛ばしますが、`PATH` 上の `severally-mcp` がすでに写した runtime を
-  指している場合しか受け付けません。手動方式ではグローバルなインストールは要りません。
+- macOS / Linux のプラグイン方式では、runtime を `severally-runtime` というパッケージ名で npm のグローバルにも入れます。
+  これで、Codex のプラグインが起動する `severally-mcp` コマンドが入ります。以前のインストールが残した `severally-mcp`
+  という名前のグローバルなパッケージは、先に `npm uninstall -g severally-mcp` で取り除きます。npm がコマンドを
+  グローバルに入れられないとき、または `PATH` の先頭にないときも、インストーラは止まらず、代わりに Codex を直接
+  登録して、そう表示します。登録は `--manual` と同じ `codex mcp add` で、長い `consult_get` の待ちも同じです。
+  `--skip-global` を付けるとグローバルなインストールを飛ばしますが、`PATH` 上の `severally-mcp` がすでに写した
+  runtime を指している場合しか受け付けません。手動方式ではグローバルなインストールは要りません。
 - クライアントの設定は、各 CLI のコマンド（`plugin add` / `mcp add`）だけで変えます。例外は手動で登録する Codex で、
   `config.toml` の `[mcp_servers.severally]` の表に `tool_timeout_sec = 660` の 1 行も書きます（Codex のプラグインと
   同じ長い待ちにするためで、`codex mcp add` では設定できません）。表にすでに `tool_timeout_sec` があれば、その値を
@@ -108,20 +119,28 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 - 方式を切り替えると、もう一方の方式で残った重複の登録を、バックアップしてから取り除きます。
 - Claude Code にマーケットプレイス版の severally がすでに入っていれば、Claude Code には登録しません。以前に
   インストーラが入れた Claude Code 用の写し（`~/.claude/skills/severally`）とユーザスコープの登録も取り除きます。
+  マーケットプレイス版の更新も行います（[更新](#更新)を参照）。
+- 最後に、Claude Code があり、`~/.claude/settings.json` が severally の手元で完結する 5 つのツールをまだ許可して
+  いなければ、足すかどうかを訊きます（次の節を参照）。このファイルのほかの部分は変えません。
 - Codex のマーケットプレイスのファイル `.agents/plugins/marketplace.json` は、このリポジトリから写します。
   公開されているマーケットプレイスは使いません。
 
 ## 外に何も送らないツールの許可の確認を省く
 
 `consult_start` 以外の 5 つのツールは手元で完結します。`consult_get`（相談が動いている間、繰り返し呼ぶ）、`consult_list`、
-`consult_cancel`、`consult_record`、`consult_export` です。どのクライアントにも許可リストに
-ツールを足すコマンドが無いので、インストーラは触りません。手で足してください。`consult_start` は確認を残します。
-ほかのベンダーに材料を送るのはこの呼び出しだからです。
+`consult_cancel`、`consult_record`、`consult_export` です。`consult_start` は確認を残します。ほかのベンダーに材料を
+送るのはこの呼び出しなので、インストーラも足しません。
 
 - **Claude Code**: Skill が、呼ばれたターンの間はこの 5 つを許可します（`allowed-tools`）。そのため相談のポーリングで
-  毎回は確認が出ません。代わりに Skill 自体の承認を 1 度求められます。後のターン（判定の記録や追加質問）でも省くには、
-  `~/.claude/settings.json` に書きます（プラグイン方式の場合。`--manual` では
-  `mcp__plugin_severally_severally__` を `mcp__severally__` に読み替えます）。
+  毎回は確認が出ません。代わりに Skill 自体の承認を 1 度求められます。後のターン（判定の記録や追加質問）でも省くために、
+  インストーラが足すかどうかを訊きます。インストールの最後に、Claude Code があり、`~/.claude/settings.json` が
+  この 5 つをまだ許可していなければ、端末で「Let Claude Code run ... without asking each time? [Y/n]」と訊きます
+  （既定は Y）。`--allow-local-tools` を付けると、訊かずに足します（スクリプトからのインストール向け）。端末が無く、
+  フラグも無いときは何も変えず、フラグを付けてやり直す方法を表示します。先に `settings.json` をバックアップし、
+  ほかの設定は残し、同じ規則を二重には足しません。規則の接頭辞は、プラグイン方式とマーケットプレイス版では
+  `mcp__plugin_severally_severally__`、手動方式では `mcp__severally__` です。手で足すときは、
+  `~/.claude/settings.json` に次を書きます（`--manual` では `mcp__plugin_severally_severally__` を
+  `mcp__severally__` に読み替えます）。
   ```json
   { "permissions": { "allow": [
     "mcp__plugin_severally_severally__consult_get", "mcp__plugin_severally_severally__consult_list",
@@ -138,6 +157,8 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   ```
 - **OpenCode** は、自分の `permission` の設定で変えていなければ、MCP ツールを確認なしで使います。
 - **Antigravity**: MCP ツールを 1 つずつ許可する規則の書き方を確かめていないので、ここでは扱いません。
+
+インストーラは、Codex・Antigravity・OpenCode の許可には触りません。
 
 ### 相談の開始の確認も省く
 
@@ -161,11 +182,15 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 クローンしたフォルダそのものを登録していた古いバージョンで入れた場合は、一度だけ `--force` を付けてください。既存の登録が、
 写した runtime を指すように切り替わります。付けなければ、既存の登録はそのまま残ります。
 
-マーケットプレイスから入れた場合は、Claude Code で `/plugin marketplace update severally` を実行してから再起動します。
+マーケットプレイスから入れた場合は、Claude Code にマーケットプレイス版の severally がすでに入っていれば、インストーラが
+`claude plugin marketplace update severally` と `claude plugin update severally@<マーケットプレイス名>` も実行します。
+そのため `npx -y severally-mcp@latest install` を 1 回実行すれば、すべての写しが同じバージョンになります。失敗したときは、
+Claude Code の中で実行するコマンド `/plugin marketplace update severally` を表示します。そのあと Claude Code を
+再起動してください。Claude Code だけなら、インストーラの代わりにこのコマンドを自分で実行しても構いません。
 自動の更新は既定では無効です。有効にするには、`/plugin` の Marketplaces で severally を選び、Enable auto-update を
-選びます。Codex、Antigravity、OpenCode からも使っている場合は、インストーラも実行し直してください。この 3 つは
-`~/.severally/runtime` にある別の写しを使い、どちらの写しも同じ `~/.severally/config.json` を読みます。設定の書き方が
-変わるリリースでは、両方を同じバージョンにそろえてください。`~/.severally/runtime` か `~/.claude/skills/severally` の
+選びます。Codex、Antigravity、OpenCode は `~/.severally/runtime` にある別の写しを使い、どちらの写しも同じ
+`~/.severally/config.json` を読みます。インストーラが両方を同じバージョンにそろえます。設定の書き方が変わる
+リリースでは、これが大事になります。`~/.severally/runtime` か `~/.claude/skills/severally` の
 写しが、答えているサーバと違うバージョンなら、`consult_start` の応答の `stale_install` がそれを知らせます。中身は、
 それぞれの写しのバージョンと、そろえるためのコマンドです。
 
@@ -190,7 +215,8 @@ Remove-Item -LiteralPath "$HOME/.codex/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.gemini/config/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.config/opencode/skills/severally" -Recurse -Force
 Remove-Item -LiteralPath "$HOME/.severally/runtime" -Recurse -Force
-# 以前にグローバルなコマンドを入れていた場合だけ:
+# 以前にグローバルなコマンドを入れていた場合だけ（古い名前は以前のインストール用）:
+npm.cmd uninstall -g severally-runtime
 npm.cmd uninstall -g severally-mcp
 ```
 
@@ -208,7 +234,8 @@ rm -rf ~/.gemini/config/skills/severally
 # "mcp" オブジェクトから "severally" の項目を手で消す）:
 #   ~/.config/opencode/opencode.json(c) を編集する
 rm -rf ~/.config/opencode/skills/severally
-npm uninstall -g severally-mcp
+npm uninstall -g severally-runtime
+npm uninstall -g severally-mcp    # 以前のインストールが残していた場合だけ
 rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```
 
@@ -222,7 +249,8 @@ agy    mcp remove severally
 # "severally" の項目を手で消す
 rm -rf ~/.claude/skills/severally ~/.codex/skills/severally ~/.gemini/config/skills/severally \
        ~/.config/opencode/skills/severally
-# 以前にグローバルなコマンドを入れていた場合だけ:
+# 以前にグローバルなコマンドを入れていた場合だけ（古い名前は以前のインストール用）:
+npm uninstall -g severally-runtime
 npm uninstall -g severally-mcp
 rm -rf ~/.severally/runtime ~/.severally/marketplace
 ```

@@ -85,8 +85,6 @@ What a consultant can read and do is under [What a consultant can see and do](#w
 - Node.js 22 or newer
 - At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
   fresh Claude Code session.
-- On macOS and Linux, npm's global executable directory on `PATH`: the default install puts a `severally-mcp`
-  command there for Codex to launch. `--manual` does without it.
 
 The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
 routes and the real CLIs have been tried on Linux only.
@@ -94,12 +92,21 @@ routes and the real CLIs have been tried on Linux only.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.3.1 install
+npx -y severally-mcp@2.4.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
 would change without changing anything. Then restart the clients: a running session does not reload the new
 registration.
+
+If you use only Claude Code, you can install from its plugin marketplace instead: run `/plugin marketplace add coz-a/severally`
+and then `/plugin install severally@severally` in Claude Code, and restart it. The one line above is the main route,
+since it registers every CLI it finds. Details are in
+[docs/install.md](docs/install.md#from-the-claude-code-plugin-marketplace).
+
+On macOS and Linux, the default install also runs `npm install -g` to put a `severally-mcp` command on `PATH`, which
+only Codex's plugin needs. If npm cannot install it globally (for example it needs sudo, or npm's global folder is
+not on `PATH`), the installer registers Codex directly instead and says so. Nothing else is needed.
 
 Installing from the Claude Code plugin marketplace or from a clone, checking the registration, and what the
 installer changes are in [docs/install.md](docs/install.md).
@@ -107,7 +114,7 @@ installer changes are in [docs/install.md](docs/install.md).
 ### Command line
 
 ```bash
-npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global]
+npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |
@@ -116,11 +123,14 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 | `--manual` | registers the MCP server and copies the Skill instead of installing the plugin (the default on Windows) |
 | `--force` | registers again where severally is already registered, instead of leaving it as it is |
 | `--skip-global` | skips the global npm install in plugin mode, when `severally-mcp` on `PATH` is already this install |
+| `--allow-local-tools` | adds severally's five local tools to Claude Code's allow list without asking; `consult_start` still asks |
 
 What each mode changes is in [docs/install.md](docs/install.md#two-install-modes).
 
 `npx -y severally-mcp@latest status` shows what is set up without starting a consultation: the config file, the
-consultants this machine can reach, the installed copies' versions and which clients have severally registered.
+consultants this machine can reach, the installed copies' versions, which clients have severally registered and
+whether each CLI is logged in. The login check reads the CLI's own status command and sends no prompt; running out
+of quota is not checked, and the first consultation shows it.
 
 ### Updating
 
@@ -131,8 +141,8 @@ npx -y severally-mcp@latest install
 ```
 
 With `@latest`, npx asks npm for the newest version every time, so an older copy it already has is not used.
-Then restart the clients. Installed from the Claude Code plugin marketplace: see
-[docs/install.md](docs/install.md#updating). What changed in each version is in the
+If Claude Code has severally from its plugin marketplace, the same line updates that copy too (details in
+[docs/install.md](docs/install.md#updating)). Then restart the clients. What changed in each version is in the
 [releases](https://github.com/coz-a/severally/releases).
 
 ### Uninstall

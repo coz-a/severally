@@ -37,7 +37,14 @@ const args = process.argv.slice(2);
 fs.appendFileSync(process.env.INSTALL_LOG, JSON.stringify([cli,...args])+'\\n');
 const file = process.env.INSTALL_REGISTRY;
 const state = JSON.parse(fs.readFileSync(file,'utf8'));
-if(cli==='npm') {
+if(cli==='opencode' && args[1]==='add' && args.includes('--global') && process.env.STUB_OPENCODE_NO_GLOBAL) {
+  // opencode 1.19 has no --global: usage on stderr, exit 1.
+  console.error('opencode mcp add [name]'); process.exit(1);
+}
+if(cli==='npm' && args[0]==='install' && process.env.STUB_NPM_FAIL) {
+  // What npm says without write access to its global folder.
+  console.error('npm error code EACCES'); process.exit(243);
+} else if(cli==='npm') {
   process.stdout.write(execFileSync(process.execPath,[process.env.INSTALL_NPM_CLI,...args,'--prefix',process.env.INSTALL_PREFIX,
     '--ignore-scripts','--no-audit','--no-fund'],{stdio:'pipe'}));
 } else if(cli==='claude' && args[0]==='plugin' && args[1]==='list') {
@@ -380,6 +387,11 @@ for (const mode of [['--manual'], []]) {
     assert.equal(state.claude, undefined, 'no direct Claude Code registration');
     assert.equal(fs.existsSync(skill), false, 'the installer copy must not sit beside the marketplace plugin');
     assert.match(out, /marketplace/);
+    // The marketplace copy is brought to this release in the same run.
+    const calls = fs.readFileSync(f.log, 'utf8');
+    assert.ok(calls.includes(JSON.stringify(['claude', 'plugin', 'marketplace', 'update', 'severally'])));
+    assert.ok(calls.includes(JSON.stringify(['claude', 'plugin', 'update', 'severally@severally'])));
+    assert.match(out, /updated severally@severally/);
     assert.deepEqual(state.agy, [process.execPath, path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
   });
 }
@@ -499,4 +511,82 @@ test('POSIX OpenCode registered before the long wait is kept, and the installer 
   fs.writeFileSync(f.registry, JSON.stringify({ opencode: ['node', 'x'] }));
   const out = f.install('--manual');
   assert.match(out, /OpenCode[\s\S]*lacks the long consult_get wait[\s\S]*--force adds it/);
+});
+
+// Without a global severally-mcp command (npm needs sudo, or its folder is not
+// on PATH) the install still finishes: Codex is registered directly, as
+// --manual does, since only its plugin needs the global command.
+for (const [why, setup] of [
+  ['npm cannot install globally', (f) => { f.env.STUB_NPM_FAIL = '1'; }],
+  ["npm's global folder is not on PATH", (f) => { f.env.PATH = f.env.PATH.replace(`${path.join(f.dir, 'prefix', 'bin')}:`, ''); }],
+]) {
+  test(`POSIX plugin mode registers Codex directly when ${why}`, { skip: !posix }, (t) => {
+    const f = fixture(t);
+    setup(f);
+    const out = f.install('--force');
+    const state = JSON.parse(fs.readFileSync(f.registry, 'utf8'));
+    const runtime = path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs');
+    assert.deepEqual(state.codex, [process.execPath, runtime], 'Codex is registered with the runtime itself');
+    assert.equal(state.marketplace, undefined, 'and not through the plugin that would need the global command');
+    assert.match(out, /Codex will be registered directly/);
+    assert.ok(fs.existsSync(path.join(f.dir, '.codex', 'skills', 'severally', 'SKILL.md')));
+    assert.ok(fs.existsSync(path.join(f.dir, '.claude', 'skills', 'severally')), 'Claude Code still gets the plugin');
+  });
+}
+
+// The runtime goes global under its own name, so npx never mistakes it for the
+// npm package; the copy an older install put there under the package's name goes.
+test('POSIX the runtime replaces a global severally-mcp package with severally-runtime', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const lib = path.join(f.dir, 'prefix', 'lib', 'node_modules');
+  const old = path.join(f.dir, 'old-runtime');
+  fs.mkdirSync(old, { recursive: true });
+  fs.writeFileSync(path.join(old, 'package.json'), JSON.stringify({ name: 'severally-mcp', version: '2.3.1', bin: { 'severally-mcp': 'x.mjs' } }));
+  fs.writeFileSync(path.join(old, 'x.mjs'), '');
+  execFileSync(process.execPath, [f.env.INSTALL_NPM_CLI, 'install', '-g', old, '--install-links=false', '--prefix', path.join(f.dir, 'prefix')],
+    { env: f.env, stdio: 'pipe' });
+  assert.ok(fs.existsSync(path.join(lib, 'severally-mcp')));
+  f.install('--force');
+  assert.equal(fs.existsSync(path.join(lib, 'severally-mcp')), false);
+  assert.equal(fs.realpathSync(path.join(lib, 'severally-runtime')), fs.realpathSync(path.join(f.dir, '.severally', 'runtime')));
+  assert.equal(fs.realpathSync(path.join(f.dir, 'prefix', 'bin', 'severally-mcp')),
+    fs.realpathSync(path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')));
+});
+
+// The five tools that send nothing out are allowed in Claude Code only when
+// asked (a prompt at a terminal, or --allow-local-tools); consult_start never.
+test('POSIX --allow-local-tools allows the five local tools in Claude Code, once, keeping other settings', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const settings = path.join(f.dir, '.claude', 'settings.json');
+  fs.mkdirSync(path.dirname(settings), { recursive: true });
+  fs.writeFileSync(settings, JSON.stringify({ model: 'sonnet', permissions: { allow: ['Bash(ls)'] } }));
+  const out = f.install('--allow-local-tools');
+  const saved = JSON.parse(fs.readFileSync(settings, 'utf8'));
+  assert.equal(saved.model, 'sonnet');
+  assert.deepEqual(saved.permissions.allow, ['Bash(ls)', ...['get', 'list', 'cancel', 'record', 'export']
+    .map((t) => `mcp__plugin_severally_severally__consult_${t}`)]);
+  assert.match(out, /allowed in/);
+  f.install('--allow-local-tools');
+  assert.equal(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow.length, 6, 'a rerun adds nothing twice');
+  const manual = fixture(t);
+  manual.install('--manual', '--allow-local-tools');
+  const allow = JSON.parse(fs.readFileSync(path.join(manual.dir, '.claude', 'settings.json'), 'utf8')).permissions.allow;
+  assert.ok(allow.includes('mcp__severally__consult_get') && !allow.some((a) => a.endsWith('consult_start')));
+});
+
+test('POSIX without a terminal or --allow-local-tools, Claude Code settings are left alone and the flag is named', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const out = f.install();
+  assert.equal(fs.existsSync(path.join(f.dir, '.claude', 'settings.json')), false);
+  assert.match(out, /rerun with --allow-local-tools/);
+});
+
+test('POSIX an opencode without --global is registered by a second add without it', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  f.env.STUB_OPENCODE_NO_GLOBAL = '1';
+  const out = f.install('--force');
+  const runtime = path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs');
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.registry, 'utf8')).opencode, [process.execPath, runtime]);
+  assert.doesNotMatch(out, /OpenCode[\s\S]*failed/);
+  assert.ok(fs.readFileSync(f.log, 'utf8').includes(JSON.stringify(['opencode', 'mcp', 'add', 'severally', '--env', 'SEVERALLY_MAX_WAIT_MS=600000', '--', process.execPath, runtime])));
 });

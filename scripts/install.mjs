@@ -27,17 +27,27 @@
 // client's own CLI rather than hand-edited, and every file this touches is
 // backed up first under ~/.severally/backups/<timestamp>/.
 //
-//   node scripts/install.mjs [--dry-run] [--manual] [--skip-global] [--force]
+// When the global npm install cannot be made (npm needs sudo, or npm's global
+// folder is not on PATH), plugin mode registers Codex directly instead, so the
+// install still finishes.
+//
+//   node scripts/install.mjs [--dry-run] [--manual] [--skip-global] [--force] [--allow-local-tools]
 
 import { copyTree, execCommandSync, findCommand } from '../src/platform.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
+
+if (Number(process.versions.node.split('.')[0]) < 22) {
+  console.error(`severally-install: Node.js 22 or newer is needed (this is ${process.versions.node}); update Node.js and run it again`);
+  process.exit(1);
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PLUGIN = path.join(root, 'plugins', 'severally');
-const FLAGS = ['--dry-run', '--manual', '--skip-global', '--force'];
+const FLAGS = ['--dry-run', '--manual', '--skip-global', '--force', '--allow-local-tools'];
 const argv = new Set(process.argv.slice(2));
 // A word the installer does not know is refused before anything changes: a
 // shell that passes a pasted "# add --dry-run ..." comment on as arguments
@@ -164,13 +174,18 @@ function installRuntime() {
   return installed;
 }
 
+const RUNTIME_PACKAGE = 'severally-runtime';
+// Why plugin mode registers Codex directly (no global command), or null.
+let codexDirect = null;
+let globalRoot = null;
 // Run from a global install of the npm package, the global install below
 // would replace the very package this script and its plugin files are read
 // from. Refused before anything changes.
 if (mode === 'plugin' && !skipGlobal) {
-  const globalRoot = tryRun('npm', ['root', '-g'], { real: true });
+  const npmRoot = tryRun('npm', ['root', '-g'], { real: true });
+  globalRoot = npmRoot.ok ? npmRoot.out.trim() || null : null;
   const inside = (dir) => { try { return fs.realpathSync(root).startsWith(fs.realpathSync(dir) + path.sep); } catch { return false; } };
-  if (globalRoot.ok && globalRoot.out.trim() && inside(globalRoot.out.trim())) {
+  if (globalRoot && inside(globalRoot)) {
     throw new Error('severally-install was run from a global npm install of severally-mcp, which installing would replace. '
       + 'Remove it (npm uninstall -g severally-mcp), then run npx -y severally-mcp@latest install, or install from a clone.');
   }
@@ -184,11 +199,14 @@ const marketplaceRoot = path.join(home, '.severally', 'marketplace');
 if (mode === 'plugin') {
   // npm may symlink a directory install. Its source must therefore be the
   // persistent runtime, never the user's disposable checkout.
+  // The runtime goes global under a name of its own: under the npm package's
+  // name and version, npx would run this installer-less copy for
+  // `npx severally-mcp@<that version> install` instead of fetching the package.
   const packageFile = path.join(runtimeDir, 'package.json');
   const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   if (!dryRun) {
     backup(packageFile);
-    fs.writeFileSync(packageFile, `${JSON.stringify({ name: metadata.name, version: metadata.version,
+    fs.writeFileSync(packageFile, `${JSON.stringify({ name: RUNTIME_PACKAGE, version: metadata.version,
       type: 'module', bin: { 'severally-mcp': 'severally-mcp.mjs' } }, null, 2)}\n`);
     fs.chmodSync(serverCommand[1], 0o755);
   }
@@ -199,14 +217,23 @@ if (mode === 'plugin') {
     }
     log('   --skip-global: using the existing runtime command');
   } else {
-    run('npm', ['install', '-g', runtimeDir, '--install-links=false'], { cwd: dryRun ? root : runtimeDir });
+    // Installs before the rename put the runtime there under the package's
+    // own name; its severally-mcp command would collide with the new one.
+    if (globalRoot && fs.existsSync(path.join(globalRoot, metadata.name))) {
+      const r = tryRun('npm', ['uninstall', '-g', metadata.name]);
+      log(r.ok ? `   removed the global ${metadata.name} package (the runtime is now ${RUNTIME_PACKAGE})` : `   could not remove the global ${metadata.name} package: ${r.out}`);
+    }
+    const r = tryRun('npm', ['install', '-g', runtimeDir, '--install-links=false'], { cwd: dryRun ? root : runtimeDir });
     if (which('nodenv')) tryRun('nodenv', ['rehash']);
-    if (!dryRun) {
+    if (!r.ok) {
+      codexDirect = `npm could not install the severally-mcp command globally (${r.out.split('\n').find((l) => /ERR|EACCES|EPERM/.test(l)) ?? r.out.split('\n')[0]})`;
+    } else if (!dryRun) {
       const installedCommand = runtimeCommand();
       if (!installedCommand || fs.realpathSync(installedCommand) !== fs.realpathSync(serverCommand[1])) {
-        throw new Error('The installed severally-mcp runtime command is not first on PATH. Fix PATH and rerun, or use --manual.');
+        codexDirect = "npm's global severally-mcp command is not first on PATH";
       }
     }
+    if (codexDirect) log(`   ${codexDirect}; Codex will be registered directly instead, which needs no global command`);
   }
   if (dryRun) {
     backupTree(marketplaceRoot);
@@ -405,7 +432,13 @@ const CLIENTS = [
     remove: () => ({ ok: true, out: 'opencode has no mcp remove; re-adding replaces the entry' }),
     // OpenCode sets no deadline of its own on a tool call (a 610 s call came
     // back), so it gets the long consult_get wait with no timeout to pair.
-    add: (bin) => tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--env', LONG_WAIT, '--', ...bin]),
+    // opencode 1.19 (its npm release) has no --global and always writes the
+    // global config; it is asked again without the flag, from the home
+    // folder, and the check after the add confirms where it landed.
+    add: (bin) => {
+      const r = tryRun('opencode', ['mcp', 'add', 'severally', '--global', '--env', LONG_WAIT, '--', ...bin]);
+      return r.ok ? r : tryRun('opencode', ['mcp', 'add', 'severally', '--env', LONG_WAIT, '--', ...bin], { cwd: home });
+    },
     keptNote: () => {
       const text = [path.join(xdgConfig, 'opencode', 'opencode.json'), path.join(xdgConfig, 'opencode', 'opencode.jsonc')]
         .map((f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } }).join('\n');
@@ -423,6 +456,7 @@ const CLIENTS = [
     skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
 ];
+const codexClient = CLIENTS.find((c) => c.bin === 'codex');
 const antigravityClient = CLIENTS.find((c) => c.bin === 'agy');
 const opencodeClient = CLIENTS.find((c) => c.bin === 'opencode');
 
@@ -511,13 +545,15 @@ function installClientDirectly(client, bin) {  step(`Registering with ${client.l
 // severally@severally) loads that copy, and a skills-dir copy or user-scope
 // registration from this installer would load beside it as a second server
 // and skill (verified with claude 2.1.302). Claude Code is left to it.
+// Returns the plugin's id (severally@<marketplace>), or false.
 function claudeHasMarketplacePlugin() {
   if (!which('claude')) return false;
   const r = tryRun('claude', ['plugin', 'list', '--json'], { real: true });
   try {
-    return r.ok && JSON.parse(r.out).some((p) => /^severally@/.test(p.id) && p.id !== 'severally@skills-dir');
+    return (r.ok && JSON.parse(r.out).find((p) => /^severally@/.test(p.id) && p.id !== 'severally@skills-dir')?.id) || false;
   } catch { return false; }
 }
+const claudeMarketplace = claudeHasMarketplacePlugin();
 
 function leaveClaudeToMarketplace() {
   step('Claude Code has severally from the marketplace; leaving Claude Code to it');
@@ -532,9 +568,24 @@ function leaveClaudeToMarketplace() {
     const r = tryRun('claude', ['mcp', 'remove', '--scope', 'user', 'severally']);
     log(r.ok ? '   removed the user-scope MCP registration' : `   could not remove the user-scope registration: ${r.out}`);
   }
-  log('   update Claude Code with /plugin marketplace update severally, then restart it');
+  // Brought to this release too, so one install run updates every copy.
+  const updated = tryRun('claude', ['plugin', 'marketplace', 'update', 'severally'], { timeout: 120_000 }).ok
+    && tryRun('claude', ['plugin', 'update', claudeMarketplace], { timeout: 120_000 }).ok;
+  log(updated ? `   updated ${claudeMarketplace} from its marketplace`
+    : '   could not update it here; in Claude Code run /plugin marketplace update severally');
 }
-const claudeMarketplace = claudeHasMarketplacePlugin();
+
+// A previous plugin installation would otherwise retain its old checkout
+// marketplace alongside a new direct server registration.
+function removeCodexLocalMarketplace() {
+  if (!which('codex')) return;
+  const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
+  if (known.ok && known.out.includes('severally-local')) {
+    backup(path.join(codexHome, 'config.toml'));
+    tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', 'severally-local']);
+    run('codex', ['plugin', 'marketplace', 'remove', 'severally-local']);
+  }
+}
 
 if (mode === 'plugin') {
   // ------------------------------------------------------------- plugin mode
@@ -563,36 +614,41 @@ if (mode === 'plugin') {
     }
   }
 
-  step('Installing the plugin into Codex (managed local marketplace)');
-  if (!which('codex')) {
-    log('   codex CLI not found on PATH — skipped');
+  if (codexDirect && which('codex')) {
+    removeCodexLocalMarketplace();
+    installClientDirectly(codexClient, serverCommand);
   } else {
-    backup(path.join(codexHome, 'config.toml'));
-    const marketplace = 'severally-local';
-    const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
-    if (!known.ok) throw new Error(`Could not inspect Codex marketplaces: ${known.out}`);
-    // Refresh our own registration even when already present: older installs
-    // registered the checkout here. Reusing it would retain that dependency.
-    if (known.out.includes(marketplace)) {
-      tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', marketplace]);
-      run('codex', ['plugin', 'marketplace', 'remove', marketplace]);
-    }
-    run('codex', ['plugin', 'marketplace', 'add', marketplaceRoot]);
-    log(`   marketplace added: ${marketplace} -> ${marketplaceRoot}`);
-    const r = tryRun('codex', ['plugin', 'add', `severally@${marketplace}`]);
-    log(r.ok ? '   plugin installed' : `   plugin install failed: ${r.out}`);
-    if (!r.ok) process.exitCode = 1;
-    // Same duplication concern on the Codex side.
-    const dup = tryRun('codex', ['mcp', 'get', 'severally'], { real: true });
-    if (dup.ok) {
-      const rm = tryRun('codex', ['mcp', 'remove', 'severally']);
-      log(rm.ok ? '   removed the duplicate global MCP registration' : `   could not remove the duplicate registration: ${rm.out}`);
-    }
-    const strayCodexSkill = path.join(codexHome, 'skills', 'severally');
-    if (fs.existsSync(strayCodexSkill)) {
-      const s2 = backupTree(strayCodexSkill);
-      if (!dryRun) fs.rmSync(strayCodexSkill, { recursive: true, force: true });
-      log(`   removed the hand-copied skill (the plugin supplies it); backup: ${s2}`);
+    step('Installing the plugin into Codex (managed local marketplace)');
+    if (!which('codex')) {
+      log('   codex CLI not found on PATH — skipped');
+    } else {
+      backup(path.join(codexHome, 'config.toml'));
+      const marketplace = 'severally-local';
+      const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
+      if (!known.ok) throw new Error(`Could not inspect Codex marketplaces: ${known.out}`);
+      // Refresh our own registration even when already present: older installs
+      // registered the checkout here. Reusing it would retain that dependency.
+      if (known.out.includes(marketplace)) {
+        tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', marketplace]);
+        run('codex', ['plugin', 'marketplace', 'remove', marketplace]);
+      }
+      run('codex', ['plugin', 'marketplace', 'add', marketplaceRoot]);
+      log(`   marketplace added: ${marketplace} -> ${marketplaceRoot}`);
+      const r = tryRun('codex', ['plugin', 'add', `severally@${marketplace}`]);
+      log(r.ok ? '   plugin installed' : `   plugin install failed: ${r.out}`);
+      if (!r.ok) process.exitCode = 1;
+      // Same duplication concern on the Codex side.
+      const dup = tryRun('codex', ['mcp', 'get', 'severally'], { real: true });
+      if (dup.ok) {
+        const rm = tryRun('codex', ['mcp', 'remove', 'severally']);
+        log(rm.ok ? '   removed the duplicate global MCP registration' : `   could not remove the duplicate registration: ${rm.out}`);
+      }
+      const strayCodexSkill = path.join(codexHome, 'skills', 'severally');
+      if (fs.existsSync(strayCodexSkill)) {
+        const s2 = backupTree(strayCodexSkill);
+        if (!dryRun) fs.rmSync(strayCodexSkill, { recursive: true, force: true });
+        log(`   removed the hand-copied skill (the plugin supplies it); backup: ${s2}`);
+      }
     }
   }
 
@@ -605,21 +661,51 @@ if (mode === 'plugin') {
   installClientDirectly(opencodeClient, serverCommand);
 } else {
   // ------------------------------------------------------------- manual mode
-  // A previous plugin installation would otherwise retain its old checkout
-  // marketplace alongside the new direct server registration.
-  if (which('codex')) {
-    const known = tryRun('codex', ['plugin', 'marketplace', 'list'], { real: true });
-    if (known.ok && known.out.includes('severally-local')) {
-      backup(path.join(codexHome, 'config.toml'));
-      tryRun('codex', ['plugin', 'remove', 'severally', '--marketplace', 'severally-local']);
-      run('codex', ['plugin', 'marketplace', 'remove', 'severally-local']);
-    }
-  }
+  removeCodexLocalMarketplace();
   for (const client of CLIENTS) {
     if (client.bin === 'claude' && claudeMarketplace) leaveClaudeToMarketplace();
     else installClientDirectly(client, serverCommand);
   }
 }
+
+// ---------------------------------------------------------------- local tools
+// Five of the six tools stay on this machine; Claude Code asks before each
+// call unless they are allowed, so a first consultation can stop on prompt
+// after prompt. Offered here, never assumed: consult_start, which sends the
+// brief out, keeps asking.
+const LOCAL_TOOLS = ['consult_get', 'consult_list', 'consult_cancel', 'consult_record', 'consult_export'];
+async function allowLocalTools() {
+  if (!which('claude')) return;
+  const prefix = mode === 'plugin' || claudeMarketplace ? 'mcp__plugin_severally_severally__' : 'mcp__severally__';
+  const settingsFile = path.join(home, '.claude', 'settings.json');
+  let settings = {};
+  try { settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch (err) {
+    if (err.code !== 'ENOENT') { log(`   could not read ${settingsFile} (${err.message}); left as it is`); return; }
+  }
+  const allow = settings.permissions?.allow ?? [];
+  const missing = LOCAL_TOOLS.map((t) => prefix + t).filter((t) => !allow.includes(t));
+  if (!missing.length) return;
+  step('Claude Code tool permissions');
+  let yes = argv.has('--allow-local-tools');
+  if (!yes && process.stdin.isTTY && process.stdout.isTTY && !dryRun) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question(`   Let Claude Code run ${LOCAL_TOOLS.join(', ')} without asking each time?\n`
+      + '   They send nothing off this machine; consult_start, which does, still asks. [Y/n] ');
+    rl.close();
+    yes = !/^\s*n/i.test(answer);
+  }
+  if (!yes) {
+    log(`   not changed; rerun with --allow-local-tools to allow them in ${settingsFile}`);
+    return;
+  }
+  if (dryRun) { log(`   [dry-run] add ${missing.join(', ')} to permissions.allow in ${settingsFile}`); return; }
+  backup(settingsFile);
+  settings.permissions = { ...settings.permissions, allow: [...allow, ...missing] };
+  fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+  fs.writeFileSync(settingsFile, `${JSON.stringify(settings, null, 2)}\n`);
+  log(`   allowed in ${settingsFile}: ${missing.join(', ')}`);
+}
+await allowLocalTools();
 
 // ---------------------------------------------------------------- summary
 step('Done');
@@ -632,7 +718,7 @@ if (keptRegistrations) {
 log(mode === 'plugin' ? `
 Verify with:
   claude plugin details severally
-  codex  plugin list
+  ${codexDirect ? 'codex  mcp get severally' : 'codex  plugin list'}
   agy    mcp list
   opencode mcp list
 

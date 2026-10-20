@@ -83,8 +83,6 @@ flowchart TB
 - Node.js 22 以降
 - インストールしてログインした CLI（4 つのうち少なくとも 1 つ）。1 つで足り、Claude Code だけでも、新しい
   Claude Code のセッションに相談できます。
-- macOS と Linux では、npm のグローバルの実行ディレクトリが `PATH` にあること。既定のインストールは、Codex が
-  起動する `severally-mcp` コマンドをそこに置きます。`--manual` なら要りません。
 
 インストーラとサーバは Linux・macOS・Windows でテストしています。Claude Code と Codex のマーケットプレイスからの
 導入と、実際の CLI での動作を試したのは Linux だけです。
@@ -92,12 +90,21 @@ flowchart TB
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.3.1 install
+npx -y severally-mcp@2.4.0 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
 変えずに変更内容だけを表示します。終わったら、クライアントを再起動してください。動いているセッションは、新しい
 登録を読み直しません。
+
+Claude Code だけで使うなら、プラグインマーケットプレイスから入れることもできます。Claude Code で
+`/plugin marketplace add coz-a/severally`、続けて `/plugin install severally@severally` を実行し、Claude Code を
+再起動します。見つかった CLI すべてに登録できる上の 1 行が基本の方法です。詳しくは
+[docs/install.ja.md](docs/install.ja.md#claude-code-のプラグインマーケットプレイスから入れる) にあります。
+
+macOS と Linux の既定のインストールは、`npm install -g` で `severally-mcp` コマンドを `PATH` に置きます。要るのは
+Codex のプラグインだけです。npm がグローバルに入れられないとき（たとえば sudo が要る、npm のグローバルのフォルダが
+`PATH` に無い）は、インストーラが代わりに Codex を直接登録し、そう表示します。ほかに必要なことはありません。
 
 Claude Code のプラグインマーケットプレイスから入れる方法、クローンから入れる方法、登録の確かめ方、インストーラが
 変えるものは、[docs/install.ja.md](docs/install.ja.md) にあります。
@@ -105,7 +112,7 @@ Claude Code のプラグインマーケットプレイスから入れる方法�
 ### コマンドライン
 
 ```bash
-npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global]
+npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |
@@ -114,11 +121,14 @@ npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-glo
 | `--manual` | プラグインを入れる代わりに、MCP サーバを登録して Skill を写す（Windows の既定） |
 | `--force` | すでに登録してあっても、そのままにせず登録し直す |
 | `--skip-global` | プラグイン方式で npm のグローバルなインストールを飛ばす。`PATH` 上の `severally-mcp` がすでにこのインストールを指しているときだけ使える |
+| `--allow-local-tools` | severally の手元で完結する 5 つのツールを、確認なしで Claude Code の許可リストに足す。`consult_start` は確認を残す |
 
 方式ごとに何が変わるかは [docs/install.ja.md](docs/install.ja.md#2-つのインストール方式) にあります。
 
 `npx -y severally-mcp@latest status` を実行すると、相談を始めずに、設定ファイル・この機械から使える相談相手・
-入っている写しの版・どのクライアントに登録されているかを表示します。
+入っている写しの版・どのクライアントに登録されているか・各 CLI にログインしているかを表示します。ログインの確認は
+CLI 自身の状態確認コマンドを読むだけで、プロンプトは送りません。使用枠を使い切っていないかは確かめません。それは
+最初の相談で分かります。
 
 ### 更新
 
@@ -129,8 +139,8 @@ npx -y severally-mcp@latest install
 ```
 
 `@latest` を付けると、npx は毎回 npm に最新版を問い合わせます。手元に古い写しがあっても、それは使いません。
-終わったら、クライアントを再起動してください。Claude Code のプラグインマーケットプレイスから入れた場合は、
-[docs/install.ja.md](docs/install.ja.md#更新) を見てください。版ごとの変更点は
+Claude Code にマーケットプレイス版の severally が入っていれば、同じ 1 行でその写しも更新されます（詳しくは
+[docs/install.ja.md](docs/install.ja.md#更新)）。終わったら、クライアントを再起動してください。版ごとの変更点は
 [リリース](https://github.com/coz-a/severally/releases)にあります。
 
 ### アンインストール

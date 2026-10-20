@@ -9,7 +9,7 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
-export const SEVERALLY_VERSION = '2.3.1';
+export const SEVERALLY_VERSION = '2.4.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
