@@ -35484,10 +35484,10 @@ var POLICY = Object.freeze({
   // going beyond that is an operator decision with quota to match.
   maxConcurrent: limit("SEVERALLY_MAX_CONCURRENT", cfgServer.max_concurrent, 9, 1, 9),
   maxJobsRetained: limit("SEVERALLY_MAX_JOBS_RETAINED", cfgServer.max_jobs_retained, 200, 20, 2e3),
-  // Upper bound for consult_get(wait_ms), and its default. 45 s stays under the
-  // 60 s some MCP clients allow a tool call, so a long wait does not blow up as
-  // a client-side timeout while the consultation is still healthy; a client
-  // registration that is known to wait longer raises it (scripts/install.mjs).
+  // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
+  // clients allow a tool call, so a long wait does not blow up as a client-side
+  // timeout while the consultation is still healthy; a client registration
+  // that is known to wait longer raises it (scripts/install.mjs).
   maxWaitMs: limit("SEVERALLY_MAX_WAIT_MS", cfgServer.max_wait_ms, 45e3, 0, 6e5),
   input: Object.freeze({
     questionMax: 4e3,
@@ -38771,6 +38771,12 @@ var JobManager = class {
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
       groupFollowup: Boolean(fromGroup)
     });
+    if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
+      throw new RequestError(
+        `the members of group "${followupTo}" no longer resolve to the consultants that answered them; follow up each member by its job_id`,
+        "followup_target_mismatch"
+      );
+    }
     if (parent && parent.target !== req.target) {
       throw new RequestError(
         `follow-up must go to the same consultant as job "${parent.job_id}" (${parent.target})`,
@@ -38820,13 +38826,14 @@ var JobManager = class {
     for (const jid of group.job_ids) {
       const member = this.jobs.get(jid) ?? loadRound(jid);
       if (!member) {
-        skipped.push({ job_id: jid, target: null, reason: "no longer in the history" });
+        skipped.push({ job_id: jid, target: null, reason: "not found: aged out of the history, or still running in another severally process" });
         continue;
       }
       const rounds = this.#chainRounds(member.chain_id);
       const latest = rounds.filter((j) => !["failed", "cancelled"].includes(j.status)).sort((a, b) => b.round - a.round)[0];
       const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
-      const reason = !latest ? `${member.status}, so there is no answer to follow up` : latest.status !== "completed" ? `round ${latest.round} is still ${latest.status}` : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds` : null;
+      const consultant = consultantByName(member.target);
+      const reason = !latest ? `${member.status}, so there is no answer to follow up` : latest.status !== "completed" ? `round ${latest.round} is still ${latest.status}` : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds` : !consultant || !consultantAvailable(consultant) ? "this consultant is no longer configured or available here" : null;
       if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
       else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
     }
@@ -39171,6 +39178,10 @@ var JobManager = class {
         }
         const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
         interpreted = adapter.interpret({ ...run, lastMessageText });
+        const { recoveredError } = interpreted;
+        if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
+          interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
+        }
         if (interpreted.ok) break;
         if (run.stalled && !interpreted.usageRaw) {
           return this.#fail(
@@ -39227,8 +39238,6 @@ var JobManager = class {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
-            const { recoveredError } = interpreted;
-            if (recoveredError) return this.#fail(job, recoveredError.failureKind, recoveredError.message);
             return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
           }
         } else {
@@ -39642,6 +39651,15 @@ async function settled(promise2, ms, signal) {
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", stop);
+  }
+}
+function parses(text2) {
+  try {
+    normalizeResult(text2);
+    return true;
+  } catch (err) {
+    if (err instanceof OutputError) return false;
+    throw err;
   }
 }
 function recordableIds(result) {
@@ -40186,7 +40204,7 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 
 // src/server.mjs
 var SEVERALLY_VERSION = "2.0.0";
-var DEFAULT_WAIT_MS = POLICY.maxWaitMs;
+var DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
 var PROGRESS_EVERY_MS = 15e3;
 var semver = (v) => String(v).split(".").map(Number);
 var older = (a, b) => {

@@ -217,10 +217,16 @@ test('a follow-up to a group is refused when no member can take one, or when it 
     () => mgr.start(reviewRequest({ target: 'codex', followup_to: first.group_id })),
     (e) => e.code === 'followup_group_targets',
   );
-  for (const j of first.jobs) mgr.jobs.get(j.job_id).status = 'cancelled';
+  // A member whose consultant is no longer configured is skipped, not re-resolved.
+  mgr.jobs.get(first.jobs[1].job_id).target = 'renamed-away';
+  const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
+  assert.deepEqual(next.skipped.map((x) => x.target), ['renamed-away']);
+  assert.match(next.skipped[0].reason, /no longer configured/);
+  await mgr.jobs.get(next.job_id).promise;
+  for (const jid of [...first.jobs.map((j) => j.job_id), next.job_id]) mgr.jobs.get(jid).status = 'cancelled';
   assert.throws(
     () => mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id })),
-    (e) => e.code === 'followup_nothing_to_continue' && /codex/.test(e.message) && /claude-code/.test(e.message),
+    (e) => e.code === 'followup_nothing_to_continue' && /codex/.test(e.message) && /renamed-away/.test(e.message),
   );
   assert.throws(
     () => mgr.start(reviewRequest({ target: undefined, followup_to: 'group_000000000000' })),

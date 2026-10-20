@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { POLICY, VERDICTS, limitsSummary, timeoutMs, detectCaller, configProblem, consultantByName } from './policy.mjs';
+import { POLICY, VERDICTS, limitsSummary, timeoutMs, detectCaller, configProblem, consultantByName, consultantAvailable } from './policy.mjs';
 import { vendorOf, sameModel, CLI_VENDORS } from './consultants.mjs';
 import { parseRequest, RequestError, charCount } from './schema.mjs';
 import { renderBrief, renderGuardrails, briefRecord } from './brief.mjs';
@@ -340,6 +340,12 @@ export class JobManager {
       groupFollowup: Boolean(fromGroup),
     });
 
+    if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
+      throw new RequestError(
+        `the members of group "${followupTo}" no longer resolve to the consultants that answered them; follow up each member by its job_id`,
+        'followup_target_mismatch',
+      );
+    }
     if (parent && parent.target !== req.target) {
       throw new RequestError(
         `follow-up must go to the same consultant as job "${parent.job_id}" (${parent.target})`,
@@ -398,16 +404,20 @@ export class JobManager {
     for (const jid of group.job_ids) {
       const member = this.jobs.get(jid) ?? store.loadRound(jid);
       if (!member) {
-        skipped.push({ job_id: jid, target: null, reason: 'no longer in the history' });
+        skipped.push({ job_id: jid, target: null, reason: 'not found: aged out of the history, or still running in another severally process' });
         continue;
       }
       const rounds = this.#chainRounds(member.chain_id);
       const latest = rounds.filter((j) => !['failed', 'cancelled'].includes(j.status)).sort((a, b) => b.round - a.round)[0];
       const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
+      // The name is kept, not re-resolved: a consultant renamed or turned off
+      // since is skipped, never continued by whichever one answers to it now.
+      const consultant = consultantByName(member.target);
       const reason = !latest ? `${member.status}, so there is no answer to follow up`
         : latest.status !== 'completed' ? `round ${latest.round} is still ${latest.status}`
           : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds`
-            : null;
+            : !consultant || !consultantAvailable(consultant) ? 'this consultant is no longer configured or available here'
+              : null;
       if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
       else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
     }
@@ -840,6 +850,12 @@ export class JobManager {
         }
         const lastMessageText = invocation.lastMessagePath ? store.readIfExists(invocation.lastMessagePath) : '';
         interpreted = adapter.interpret({ ...run, lastMessageText });
+        // An answer after an error the CLI reported is kept only if it parses;
+        // otherwise it is that error, re-run like any other.
+        const { recoveredError } = interpreted;
+        if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
+          interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
+        }
         if (interpreted.ok) break;
         // No envelope at all: what stderr holds is the dump from stopping it,
         // not a message to classify. Not re-run, as it may have spent its quota.
@@ -900,10 +916,6 @@ export class JobManager {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
-            // An answer that does not parse after a reported error is that
-            // error, not an output problem: it keeps the error's kind.
-            const { recoveredError } = interpreted;
-            if (recoveredError) return this.#fail(job, recoveredError.failureKind, recoveredError.message);
             return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
           }
         } else {
@@ -1422,6 +1434,16 @@ async function settled(promise, ms, signal) {
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', stop);
+  }
+}
+
+function parses(text) {
+  try {
+    normalizeResult(text);
+    return true;
+  } catch (err) {
+    if (err instanceof OutputError) return false;
+    throw err;
   }
 }
 

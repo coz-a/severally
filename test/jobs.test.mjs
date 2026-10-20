@@ -241,6 +241,8 @@ test('a Codex error the turn recovered from keeps the answer, with a caveat; a f
     assert.equal(view.status, 'failed', behavior);
     assert.equal(view.failure.kind, 'rate_limited', behavior);
     assert.equal(view.result, null, behavior);
+    // A transient error is re-run, whether or not an unreadable answer followed it.
+    assert.ok(view.retries.length > 0, behavior);
   }
 });
 

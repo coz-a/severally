@@ -214,10 +214,10 @@ export const POLICY = Object.freeze({
   // going beyond that is an operator decision with quota to match.
   maxConcurrent: limit('SEVERALLY_MAX_CONCURRENT', cfgServer.max_concurrent, 9, 1, 9),
   maxJobsRetained: limit('SEVERALLY_MAX_JOBS_RETAINED', cfgServer.max_jobs_retained, 200, 20, 2000),
-  // Upper bound for consult_get(wait_ms), and its default. 45 s stays under the
-  // 60 s some MCP clients allow a tool call, so a long wait does not blow up as
-  // a client-side timeout while the consultation is still healthy; a client
-  // registration that is known to wait longer raises it (scripts/install.mjs).
+  // Upper bound for consult_get(wait_ms). 45 s stays under the 60 s some MCP
+  // clients allow a tool call, so a long wait does not blow up as a client-side
+  // timeout while the consultation is still healthy; a client registration
+  // that is known to wait longer raises it (scripts/install.mjs).
   maxWaitMs: limit('SEVERALLY_MAX_WAIT_MS', cfgServer.max_wait_ms, 45_000, 0, 600_000),
 
   input: Object.freeze({

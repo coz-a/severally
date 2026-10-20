@@ -12,9 +12,11 @@ import { exportChain, ExportError } from './export.mjs';
 export const SEVERALLY_VERSION = '2.0.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
-// would otherwise return at once and be repeated. It is max_wait_ms itself,
-// 45 s unless the registration of a client known to wait longer raised it.
-const DEFAULT_WAIT_MS = POLICY.maxWaitMs;
+// would otherwise return at once and be repeated. Up to 45 s, under the 60 s
+// some clients allow a tool call -- unless this client's own registration
+// raised the limit (SEVERALLY_MAX_WAIT_MS), which says the client waits that
+// long. The config file is shared by every client, so it cannot say that.
+const DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45_000);
 // While consult_get waits, the client hears from it this often: a client that
 // counts silence against the call keeps it open.
 const PROGRESS_EVERY_MS = 15_000;
