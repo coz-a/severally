@@ -1178,7 +1178,7 @@ test('a path that does not exist is refused before a job exists', async () => {
     () => mgr.start(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: [missing] } })),
     (err) => err.code === 'expose_path_invalid' && err.message.includes(missing),
   );
-  assert.equal(mgr.list().length, 0, 'no job may have been created');
+  assert.equal(mgr.list().filter((j) => j.this_session).length, 0, 'no job may have been created');
 });
 
 test('a tree over the size cap is refused before a job exists', async () => {
@@ -1190,7 +1190,7 @@ test('a tree over the size cap is refused before a job exists', async () => {
     () => mgr.start(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: [repo] } })),
     (err) => err.code === 'expose_paths_too_large',
   );
-  assert.equal(mgr.list().length, 0);
+  assert.equal(mgr.list().filter((j) => j.this_session).length, 0);
 });
 
 // A consultation with no exposed paths must read exactly as it did before.

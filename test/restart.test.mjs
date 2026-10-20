@@ -243,3 +243,29 @@ test('two servers cannot both continue one consultation at once: the second foll
   assert.equal(r3.round, 3);
   await b.jobs.get(r3.job_id).promise;
 });
+
+test('consult_list shows earlier sessions\' consultations too, newest first, each once', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const a = new JobManager();
+  const one = a.start(reviewRequest());
+  await a.jobs.get(one.job_id).promise;
+  const fan = a.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await Promise.all(fan.jobs.map((j) => a.jobs.get(j.job_id).promise));
+
+  const b = new JobManager();
+  const mine = b.start(reviewRequest());
+  await b.jobs.get(mine.job_id).promise;
+  const listed = b.list({ limit: 4 });
+  assert.equal(listed[0].job_id, mine.job_id, 'this session\'s newest first');
+  const ids = listed.map((j) => j.job_id);
+  assert.equal(new Set(ids).size, ids.length, 'each consultation once');
+  for (const j of fan.jobs) assert.ok(ids.includes(j.job_id), 'an earlier session\'s fan-out is listed');
+  const member = listed.find((j) => j.job_id === fan.jobs[0].job_id);
+  assert.equal(member.group_id, fan.group_id);
+  assert.match(member.summary, /Stub consultant summary/);
+  assert.equal(member.status, 'completed');
+  for (let i = 1; i < listed.length; i++) assert.ok(listed[i - 1].created_at >= listed[i].created_at);
+  // What it lists can be used: recorded against from this session.
+  b.record({ job_id: member.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }] });
+  assert.deepEqual(b.list({ limit: 4 }).find((j) => j.job_id === member.job_id).verdicts, { confirmed: 1 });
+});

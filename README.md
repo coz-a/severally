@@ -336,7 +336,7 @@ it exposes, go to each consultant's model. Every argument is described in the to
 | `consult_get` | Waits for a consultation and returns its state or answer; with `ids`, just those points of the answer |
 | `consult_cancel` | Stops a consultation or a whole fan-out, and its consultant processes |
 | `consult_record` | Writes the lead's verdicts on an answer's points, and what the answer added |
-| `consult_list` | Lists this session's recent consultations, with the usage each consultant reported |
+| `consult_list` | Lists recent consultations, earlier sessions' included, with the usage each consultant reported in this session |
 | `consult_export` | Returns a consultation, follow-ups and verdicts included, as Markdown |
 
 The arguments of `consult_start` that matter most:

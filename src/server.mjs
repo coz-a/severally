@@ -316,8 +316,8 @@ export function createServer(manager = new JobManager()) {
       title: 'List recent consultations',
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
-        'Recent consultations from this session, newest first: status, one-line summary, initiator; and '
-        + 'usage_totals, the tokens (and cost, where the CLI reports one) each consultant reported this session, '
+        'Recent consultations, earlier sessions\' too (this_session is false), newest first, with their ids, '
+        + 'status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, '
         + 'retries included. A figure a CLI does not report is named under not_reported, not counted as zero.',
       inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional() }),
     },

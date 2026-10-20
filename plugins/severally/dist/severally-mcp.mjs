@@ -38073,6 +38073,22 @@ function indexRow(jobId) {
   }
   return null;
 }
+function indexRows() {
+  return readIfExists(path6.join(POLICY.home, "history", "index.jsonl")).split("\n").flatMap((line) => {
+    try {
+      return line.trim() ? [JSON.parse(line)] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+function loadRoundAt(row) {
+  try {
+    return JSON.parse(fs4.readFileSync(roundPath(row.chain_id, row.round), "utf8"));
+  } catch {
+    return null;
+  }
+}
 function writeDiagnostics(chainId, round, text2) {
   fs4.mkdirSync(path6.join(POLICY.home, "history", chainId), { recursive: true, mode: 448 });
   const file2 = roundPath(chainId, round).replace(/\.json$/, ".diagnostics.txt");
@@ -40032,11 +40048,37 @@ var init_jobs = __esm({
         rec.next_step = nextStep(job);
         return compactBrief(rec, detail);
       }
+      // This session's consultations and the history's, so an earlier session's
+      // job_id and group_id can still be followed up and recorded against. The
+      // index only picks and orders; each row shown is read from its round, which
+      // holds the verdicts written since. Memory wins over disk for the same job.
       list({ limit: limit2 = 20 } = {}) {
-        return this.order.slice(-limit2).reverse().map((jid) => {
-          const j = this.jobs.get(jid);
+        const here = this.order.map((jid) => this.jobs.get(jid));
+        const seen = new Set(here.map((j) => j.job_id));
+        const elsewhere = [];
+        for (const jobId of listRunning()) {
+          if (seen.has(jobId)) continue;
+          const rec = this.#fromDisk(jobId);
+          if (rec) {
+            seen.add(jobId);
+            elsewhere.push({ rec });
+          }
+        }
+        for (const row of indexRows()) if (!seen.has(row.job_id)) {
+          seen.add(row.job_id);
+          elsewhere.push({ row });
+        }
+        const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? "";
+        const picked = [];
+        for (const x of [...here, ...elsewhere].sort((p, q) => at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0)) {
+          if (picked.length >= limit2) break;
+          const j = x.row ? loadRoundAt(x.row) : x.rec ?? x;
+          if (j) picked.push(j);
+        }
+        return picked.map((j) => {
           return {
             job_id: j.job_id,
+            group_id: j.group_id ?? null,
             chain_id: j.chain_id,
             round: j.round,
             target: j.target,
@@ -40049,7 +40091,8 @@ var init_jobs = __esm({
             duration_ms: j.duration_ms,
             summary: j.result ? j.result.summary.slice(0, 200) : null,
             recorded: Boolean(j.record),
-            verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
+            verdicts: j.record?.entries ? tally(j.record.entries.map((e) => e.verdict)) : null,
+            this_session: this.jobs.has(j.job_id),
             predicted: Boolean(j.prediction),
             reflected: Boolean(j.reflection),
             initiator: j.initiator ?? null
@@ -41437,7 +41480,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "List recent consultations",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: "Recent consultations from this session, newest first: status, one-line summary, initiator; and usage_totals, the tokens (and cost, where the CLI reports one) each consultant reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
+      description: "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
       inputSchema: external_exports.object({ limit: external_exports.number().int().min(1).max(100).optional() })
     },
     async ({ limit: limit2 }) => ok({

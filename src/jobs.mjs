@@ -226,14 +226,33 @@ export class JobManager {
     return compactBrief(rec, detail);
   }
 
+  // This session's consultations and the history's, so an earlier session's
+  // job_id and group_id can still be followed up and recorded against. The
+  // index only picks and orders; each row shown is read from its round, which
+  // holds the verdicts written since. Memory wins over disk for the same job.
   list({ limit = 20 } = {}) {
-    return this.order
-      .slice(-limit)
-      .reverse()
-      .map((jid) => {
-        const j = this.jobs.get(jid);
+    const here = this.order.map((jid) => this.jobs.get(jid));
+    const seen = new Set(here.map((j) => j.job_id));
+    const elsewhere = [];
+    for (const jobId of store.listRunning()) {
+      if (seen.has(jobId)) continue;
+      const rec = this.#fromDisk(jobId);
+      if (rec) { seen.add(jobId); elsewhere.push({ rec }); }
+    }
+    for (const row of store.indexRows()) if (!seen.has(row.job_id)) { seen.add(row.job_id); elsewhere.push({ row }); }
+    const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? '';
+    const picked = [];
+    // Round files are read only for the rows shown; one that cannot be read is passed over.
+    for (const x of [...here, ...elsewhere].sort((p, q) => (at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0))) {
+      if (picked.length >= limit) break;
+      const j = x.row ? store.loadRoundAt(x.row) : x.rec ?? x;
+      if (j) picked.push(j);
+    }
+    return picked
+      .map((j) => {
         return {
           job_id: j.job_id,
+          group_id: j.group_id ?? null,
           chain_id: j.chain_id,
           round: j.round,
           target: j.target,
@@ -246,7 +265,8 @@ export class JobManager {
           duration_ms: j.duration_ms,
           summary: j.result ? j.result.summary.slice(0, 200) : null,
           recorded: Boolean(j.record),
-          verdicts: j.record ? tally(j.record.entries.map((e) => e.verdict)) : null,
+          verdicts: j.record?.entries ? tally(j.record.entries.map((e) => e.verdict)) : null,
+          this_session: this.jobs.has(j.job_id),
           predicted: Boolean(j.prediction),
           reflected: Boolean(j.reflection),
           initiator: j.initiator ?? null,

@@ -63,6 +63,18 @@ function indexRow(jobId) {
   return null;
 }
 
+/** Every row of the history index, in the order written; a damaged line is skipped. */
+export function indexRows() {
+  return readIfExists(path.join(POLICY.home, 'history', 'index.jsonl')).split('\n').flatMap((line) => {
+    try { return line.trim() ? [JSON.parse(line)] : []; } catch { return []; }
+  });
+}
+
+/** The round file an index row points at, or null. */
+export function loadRoundAt(row) {
+  try { return JSON.parse(fs.readFileSync(roundPath(row.chain_id, row.round), 'utf8')); } catch { return null; }
+}
+
 export const roundPath = (chainId, round) =>
   path.join(POLICY.home, 'history', chainId, `round-${String(round).padStart(2, '0')}.json`);
 
