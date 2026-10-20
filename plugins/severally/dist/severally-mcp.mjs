@@ -36504,6 +36504,14 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     throw new RequestError(`request failed validation: ${issues.join("; ")}`, "invalid_request", issues);
   }
   const req = parsed.data;
+  for (const k of ["constraints", "success_criteria"]) {
+    if (req.context[k] === void 0) continue;
+    if (req[k] !== void 0) {
+      throw new RequestError(`pass ${k} once: at the top of the request or inside context, not both`, "invalid_request");
+    }
+    req[k] = req.context[k];
+    delete req.context[k];
+  }
   req.network ??= "on";
   req.success_criteria ??= [];
   req.constraints ??= [];
@@ -36650,7 +36658,10 @@ var init_schema = __esm({
       // A follow-up only: copy again, as they are now, the paths the parent
       // round exposed. Never implied -- what reaches another vendor's model is
       // what the lead named in this call.
-      expose_from_parent: external_exports.boolean().optional()
+      expose_from_parent: external_exports.boolean().optional(),
+      // Read as the request's own: a lead often nests them beside the facts.
+      constraints: external_exports.array(trimmed(L.constraintMax, "context.constraints[]")).max(L.constraintsMax).optional(),
+      success_criteria: external_exports.array(trimmed(L.constraintMax, "context.success_criteria[]")).max(L.constraintsMax).optional()
     }).strict();
     targetSpec = external_exports.string().trim().min(1, "target must not be empty").max(120, "target exceeds 120 characters").regex(/^[^\p{Cc}\p{Cf}]+$/u, "target must be a single line of printable characters");
     INITIATORS = ["user"];
@@ -39635,7 +39646,7 @@ function inherit(raw, round) {
   const out = raw.network === void 0 && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
   for (const k of ["objective", "success_criteria", "constraints"]) {
-    if (out[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
   }
   const ctx = { ...raw.context ?? {} };
   for (const k of ["facts", "proposal", "counterpoints"]) {

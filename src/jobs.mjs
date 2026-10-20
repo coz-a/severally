@@ -1565,7 +1565,7 @@ function inherit(raw, round) {
   const out = raw.network === undefined && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
   for (const k of ['objective', 'success_criteria', 'constraints']) {
-    if (out[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+    if (out[k] === undefined && raw.context?.[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
   }
   const ctx = { ...(raw.context ?? {}) };
   for (const k of ['facts', 'proposal', 'counterpoints']) {

@@ -55,6 +55,9 @@ export const contextSchema = z
     // round exposed. Never implied -- what reaches another vendor's model is
     // what the lead named in this call.
     expose_from_parent: z.boolean().optional(),
+    // Read as the request's own: a lead often nests them beside the facts.
+    constraints: z.array(trimmed(L.constraintMax, 'context.constraints[]')).max(L.constraintsMax).optional(),
+    success_criteria: z.array(trimmed(L.constraintMax, 'context.success_criteria[]')).max(L.constraintsMax).optional(),
   })
   .strict();
 
@@ -160,6 +163,14 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   // Left without a default in the schema, so that a follow-up can tell a list
   // it left out (inherited from the round before, jobs.mjs) from one it
   // emptied on purpose: the tool layer applies the schema's defaults first.
+  for (const k of ['constraints', 'success_criteria']) {
+    if (req.context[k] === undefined) continue;
+    if (req[k] !== undefined) {
+      throw new RequestError(`pass ${k} once: at the top of the request or inside context, not both`, 'invalid_request');
+    }
+    req[k] = req.context[k];
+    delete req.context[k];
+  }
   req.network ??= 'on';
   req.success_criteria ??= [];
   req.constraints ??= [];

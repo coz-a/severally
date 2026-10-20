@@ -1376,3 +1376,13 @@ test('a follow-up that leaves out network keeps the earlier round\'s; a caller\'
   const full = mgr.view(r2.job_id, { detail: 'full' });
   assert.ok(full.brief.artifacts.some((a) => a.name === 'git diff of the fix'));
 });
+
+test('a follow-up that passes constraints inside context replaces the earlier ones', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const r1 = mgr.start(reviewRequest());
+  await finish(mgr, r1.job_id);
+  const r2 = mgr.start({ followup_to: r1.job_id, question: 'q', context: { constraints: ['Only the client may change'] } });
+  await finish(mgr, r2.job_id);
+  assert.deepEqual(mgr.view(r2.job_id, { detail: 'full' }).brief.constraints, ['Only the client may change']);
+});
