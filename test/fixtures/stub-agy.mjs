@@ -111,6 +111,8 @@ function run() {
   if (behavior === 'unknown_tool') {
     // A later agy release that renamed its read tool again: the hook refuses the new name.
     envelope({ event: 'step_update', step_update: { step_index: 1, tool_name: 'open_file', state: 'ERROR' } });
+    // A shell call severally refuses on purpose: not a renamed reader, so not named.
+    envelope({ event: 'step_update', step_update: { step_index: 2, tool_name: 'run_command', state: 'ERROR' } });
   }
   if (behavior === 'denied') {
     envelope({

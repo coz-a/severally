@@ -39951,9 +39951,9 @@ function unreadCaveat(calls, readTools) {
 }
 function refusedToolCaveat(calls, allowed) {
   if (!calls || !allowed) return null;
-  const names = Object.keys(calls).filter((k) => k.endsWith(":error")).map((k) => k.slice(0, -":error".length)).filter((t) => !allowed.includes(t));
+  const names = Object.keys(calls).filter((k) => k.endsWith(":error")).map((k) => k.slice(0, -":error".length)).filter((t) => !allowed.includes(t) && /read|view|open/i.test(t));
   if (!names.length) return null;
-  return `the consultant's CLI called ${names.join(", ")}, which severally does not allow, and was refused; a new CLI release may have renamed a tool`;
+  return `the consultant's CLI called ${names.join(", ")}, which severally does not allow, and was refused; a new CLI release may have renamed its file-reading tool`;
 }
 function sameVendorCaveat(caller, callerModel, consultant) {
   const callerCli = CLI_IDS.find((c) => c === caller);

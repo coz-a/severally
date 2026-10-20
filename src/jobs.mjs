@@ -2136,8 +2136,12 @@ function unreadCaveat(calls, readTools) {
   return `files were exposed, but no call to read one succeeded (${how})`;
 }
 
-// A refused call to a tool outside the allowlist is most often a tool the CLI
-// renamed in a new release; naming it lets one consultation show the cause.
+// A refused call to a tool outside the allowlist that looks like a file
+// reader is most often the CLI's read tool renamed in a new release; naming
+// it lets one consultation show the cause. The tools severally refuses on
+// purpose (agy tries run_command even for a trivial question) are left out:
+// reporting them would be noise, and they are not renamed readers.
+// ponytail: a name heuristic; a reader named otherwise goes unreported until the unread note shows it.
 /**
  * @param {Record<string, number> | null | undefined} calls
  * @param {readonly string[] | undefined} allowed
@@ -2148,9 +2152,9 @@ function refusedToolCaveat(calls, allowed) {
   const names = Object.keys(calls)
     .filter((k) => k.endsWith(':error'))
     .map((k) => k.slice(0, -':error'.length))
-    .filter((t) => !allowed.includes(t));
+    .filter((t) => !allowed.includes(t) && /read|view|open/i.test(t));
   if (!names.length) return null;
-  return `the consultant's CLI called ${names.join(', ')}, which severally does not allow, and was refused; a new CLI release may have renamed a tool`;
+  return `the consultant's CLI called ${names.join(', ')}, which severally does not allow, and was refused; a new CLI release may have renamed its file-reading tool`;
 }
 
 // A lead may legitimately name its own CLI as the consultant: a fresh child
