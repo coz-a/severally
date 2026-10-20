@@ -6,7 +6,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import {
   POLICY, CALLER_INPUTS, MODES, STANCES, artifactKinds,
-  resolveCaller, availableConsultants, consultantAvailable, unavailableReason,
+  resolveCaller, availableConsultants, consultantAvailable, unavailableReason, brokenConsultant,
 } from './policy.mjs';
 import { normalizeName, resolveConsultant } from './consultants.mjs';
 
@@ -42,10 +42,10 @@ const gitRevision = z.string().trim().min(1).max(200)
 
 export const contextSchema = z
   .object({
-    facts: z.array(trimmed(L.factMax, 'context.facts[]')).max(L.factsMax).default([]),
+    facts: z.array(trimmed(L.factMax, 'context.facts[]')).max(L.factsMax).optional(),
     proposal: z.string().trim().max(L.proposalMax).nullish(),
-    counterpoints: z.array(trimmed(L.counterpointMax, 'context.counterpoints[]')).max(L.counterpointsMax).default([]),
-    artifacts: z.array(artifactSchema).max(L.artifactsMax).default([]),
+    counterpoints: z.array(trimmed(L.counterpointMax, 'context.counterpoints[]')).max(L.counterpointsMax).optional(),
+    artifacts: z.array(artifactSchema).max(L.artifactsMax).optional(),
     expose_paths: z.array(exposedPathSchema).max(L.exposePathsMax).default([]),
     // The lead's uncommitted (or since-`base`) change: its diff goes in the
     // brief and the files it touches are copied, under workspace/repo/ at
@@ -100,13 +100,13 @@ export const requestSchema = z
     // "off" takes web search and browsing away from every consultant in this
     // round, for a brief that must not leave the machine through a URL. The
     // consultant still reads the brief and the disk; it reaches nothing else.
-    network: z.enum(NETWORK_MODES).default('on'),
+    network: z.enum(NETWORK_MODES).optional(),
     question: trimmed(L.questionMax, 'question'),
     // Optional: most consultations state what they are after in the question
     // itself, and a second field that repeats it is friction, not information.
     objective: trimmed(L.objectiveMax, 'objective').nullish(),
-    success_criteria: z.array(trimmed(L.constraintMax, 'success_criteria[]')).max(L.constraintsMax).default([]),
-    constraints: z.array(trimmed(L.constraintMax, 'constraints[]')).max(L.constraintsMax).default([]),
+    success_criteria: z.array(trimmed(L.constraintMax, 'success_criteria[]')).max(L.constraintsMax).optional(),
+    constraints: z.array(trimmed(L.constraintMax, 'constraints[]')).max(L.constraintsMax).optional(),
     // prefault, not default: zod 4 returns a default as is, skipping the inner defaults (expose_paths among them).
     context: contextSchema.prefault({}),
     // Written by the lead before the consultant is launched, kept on this
@@ -157,6 +157,13 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
   const req = parsed.data;
+  // Left without a default in the schema, so that a follow-up can tell a list
+  // it left out (inherited from the round before, jobs.mjs) from one it
+  // emptied on purpose: the tool layer applies the schema's defaults first.
+  req.network ??= 'on';
+  req.success_criteria ??= [];
+  req.constraints ??= [];
+  for (const k of ['facts', 'counterpoints', 'artifacts']) req.context[k] ??= [];
   const hasSingle = req.target !== undefined && req.target !== null;
   const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
   if (hasSingle && hasMany) {
@@ -192,6 +199,9 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     chosen = named.map((name) => {
       let r = resolveConsultant(name, reachable, POLICY.ranking);
       if (r.none) r = resolveConsultant(name, POLICY.consultants, POLICY.ranking);
+      if (r.none && brokenConsultant(name)) {
+        throw new RequestError(`consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`, 'target_unavailable');
+      }
       if (r.none) {
         throw new RequestError(`no consultant answers to ${JSON.stringify(name)}; available: ${listed()}`, 'unknown_target');
       }
@@ -278,7 +288,8 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0
     && !req.context.expose_diff && !req.context.expose_from_parent) {
     throw new RequestError(
-      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request',
+      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request'
+        + (isFollowup ? '; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown' : ''),
       'context_required',
     );
   }

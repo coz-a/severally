@@ -84,6 +84,16 @@ function installerFixture(t) {
       fs.writeFileSync(path.join(cfgDir, 'opencode.json'), JSON.stringify({ mcp: { servers: { severally: { command: args.slice(-2) } } } }));
     }
     if (action === 'remove') delete registry[cli];
+    // codex keeps each server as a table in config.toml; the installer adds tool_timeout_sec to it.
+    if (cli === 'codex' && (action === 'add' || action === 'remove')) {
+      const cfg = path.join(process.env.CODEX_HOME, 'config.toml');
+      const kept = (fs.existsSync(cfg) ? fs.readFileSync(cfg, 'utf8') : '').split('\\n').filter(Boolean);
+      let skip = false;
+      const rest = kept.filter((l) => { if (l.startsWith('[')) skip = l.startsWith('[mcp_servers.severally'); return !skip; });
+      if (action === 'add') rest.push('[mcp_servers.severally]', 'command = "x"');
+      fs.mkdirSync(path.dirname(cfg), { recursive: true });
+      fs.writeFileSync(cfg, rest.join('\\n') + '\\n');
+    }
     if (action === 'add' || action === 'remove') fs.writeFileSync(file, JSON.stringify(registry));`;
   fs.writeFileSync(path.join(dir, 'cli.mjs'), fake);
   for (const cli of ['claude', 'codex', 'agy', 'opencode']) {
@@ -118,6 +128,10 @@ test('Windows installation runs independently after deleting the source checkout
   for (const args of registrations) {
     assert.deepEqual(args.slice(-2), [process.execPath, installed]);
   }
+  // Codex gets the long wait: the env on the server and tool_timeout_sec in its table.
+  const codexAdd = registrations.find((args) => args[0] === 'codex');
+  assert.ok(codexAdd.join(' ').includes('--env SEVERALLY_MAX_WAIT_MS=600000'));
+  assert.match(fs.readFileSync(path.join(dir, '.codex', 'config.toml'), 'utf8'), /\[mcp_servers\.severally\]\ntool_timeout_sec = 660\n/);
   for (const relative of ['.claude/skills/severally', '.codex/skills/severally', '.gemini/config/skills/severally', '.config/opencode/skills/severally']) {
     assert.ok(fs.existsSync(path.join(dir, relative, 'SKILL.md')));
   }

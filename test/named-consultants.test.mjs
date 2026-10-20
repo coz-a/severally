@@ -92,3 +92,34 @@ test('with a config mistake nothing can be started, but the history can still be
   assert.match(r.start.message, /targets/);
   assert.equal(r.list, true);
 });
+
+test('a mistake in one consultant takes only that one out of use, and says why', () => {
+  const cfg = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'severally-part-')), 'config.json');
+  fs.writeFileSync(cfg, JSON.stringify({
+    clis: { 'claude-code': { enabled: 'no' } },
+    consultants: {
+      codex: { cli: 'codex', model: 'gpt-6-astra' },
+      gemini: { cli: 'antigravity', model: 'gemini-4-argon-high', effort: 'high' },
+      opus: { cli: 'claude-code', model: 'claude-opus-5-5' },
+    },
+  }));
+  const policyUrl = new URL('../src/policy.mjs', import.meta.url).href;
+  const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    const { configProblem, configWarnings, limitsSummary } = await import(${JSON.stringify(policyUrl)});
+    const { JobManager } = await import(${JSON.stringify(jobsUrl)});
+    const mgr = new JobManager();
+    const attempt = (target) => { try { const s = mgr.start({ ...${JSON.stringify(reviewRequest())}, target }); mgr.cancel(s.job_id); return { ok: true }; } catch (err) { return { code: err.code, message: err.message }; } };
+    console.log(JSON.stringify({ problem: configProblem(), warnings: configWarnings(), available: limitsSummary().available_targets,
+      codex: attempt('codex'), gemini: attempt('gemini'), opus: attempt('opus') }));
+  `], { env: { ...process.env, SEVERALLY_CONFIG: cfg }, encoding: 'utf8' });
+  const r = JSON.parse(out.trim().split('\n').pop());
+  assert.equal(r.problem, null);
+  assert.equal(r.warnings.length, 2);
+  assert.deepEqual(r.available, ['codex']);
+  assert.equal(r.codex.ok, true);
+  assert.equal(r.gemini.code, 'target_unavailable');
+  assert.match(r.gemini.message, /mistake in it: consultants\.gemini\.effort/);
+  assert.equal(r.opus.code, 'target_unavailable');
+  assert.match(r.opus.message, /mistake in clis\.claude-code/);
+});

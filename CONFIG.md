@@ -16,10 +16,13 @@ executable path with forward slashes (`"bin": "C:/Tools/claude.exe"`) or escaped
 (`"bin": "C:\\Tools\\claude.exe"`). Where a key also has an
 environment variable (a CLI's `bin`, the server-wide limits), the variable wins over the file.
 
-**A mistake stops everything.** An unknown key, a consultant without a `cli` or `model`, a syntax error: the
-server still starts, but every `consult_start` is refused with `config_invalid` and the reason, which is also
-written to stderr at startup. It does not fall back to defaults, because that would quietly re-enable a CLI
-you turned off.
+**A mistake is kept to where it is.** A mistake inside one consultant (an unknown key, a missing `cli` or
+`model`, `effort` on an Antigravity consultant) takes only that consultant out of use; asking for it is refused
+with `target_unavailable` and the reason. A mistake inside `clis.<cli>` turns that CLI off. Everything else keeps
+working, and each mistake is written to stderr at startup and listed under `config_mistakes` in the limits a
+refused request returns. A mistake in the file as a whole (a syntax error, an unknown top-level key, `clis`,
+`consultants` or `ranking` of the wrong shape) still refuses every `consult_start` with `config_invalid`. None of
+them falls back to defaults, because that would quietly re-enable a CLI you turned off.
 
 **Comments are fine.** `//` and `/* */` comments and trailing commas are stripped before parsing, in both a
 `.json` and a `.jsonc` file — use whichever extension your editor is happy with (if it flags comments in

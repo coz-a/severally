@@ -393,3 +393,18 @@ test('consult_get with ids on a running consultation answers the poll as usual',
     await close();
   }
 });
+
+test('over MCP, a follow-up with only followup_to and the question is accepted, and an explicit empty list is kept', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  const call = async (request) => client.callTool({ name: 'consult_start', arguments: { request } });
+  const { debateRequest } = await import('./helpers.mjs');
+  const first = payload(await call(debateRequest()));
+  await client.callTool({ name: 'consult_get', arguments: { job_id: first.job_id, wait_ms: 20000 } });
+  const empty = await call({ followup_to: first.job_id, question: 'q', context: { counterpoints: [] } });
+  assert.equal(payload(empty).error, 'counterpoints_required');
+  const next = await call({ followup_to: first.job_id, question: 'Which counterpoint is strongest?' });
+  assert.equal(next.isError, undefined, next.content[0].text);
+  assert.equal(payload(next).round, 2);
+  await close();
+});

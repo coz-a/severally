@@ -249,8 +249,49 @@ const codexHome = process.env.CODEX_HOME ?? path.join(home, '.codex');
 // .mcp.json carries the same value for Claude Code, and its Codex manifest
 // with tool_timeout_sec 660 (codex 0.163 stops a tool call at 300 s by
 // default, progress notwithstanding). `codex mcp add` cannot set that
-// timeout, so a --manual Codex keeps 45 s.
+// timeout, so a --manual Codex gets it as one line written into config.toml
+// under [mcp_servers.severally] (see the Codex row), together with the env;
+// both or neither, since the wait without the timeout would outlast Codex's
+// own deadline.
 const LONG_WAIT = 'SEVERALLY_MAX_WAIT_MS=600000';
+const CODEX_TIMEOUT_SEC = 660;
+const codexConfig = path.join(codexHome, 'config.toml');
+// The user's own tool_timeout_sec, read before --force removes the table that holds it.
+let priorCodexTimeout;
+
+// Where [mcp_servers.severally] sits in config.toml, and what it holds.
+// A minimal text read, not a TOML parser: the table runs to the next header
+// that is not one of its own sub-tables (codex may put env in one).
+function codexTable() {
+  let lines;
+  try { lines = fs.readFileSync(codexConfig, 'utf8').split('\n'); } catch (err) { return { reason: `cannot read ${codexConfig}: ${err.message}` }; }
+  const start = lines.findIndex((l) => /^\s*\[\s*mcp_servers\.severally\s*\]/.test(l));
+  if (start < 0) return { reason: `${codexConfig} has no [mcp_servers.severally] table` };
+  let end = lines.findIndex((l, i) => i > start && /^\s*\[/.test(l) && !/^\s*\[\s*mcp_servers\.severally\./.test(l));
+  if (end < 0) end = lines.length;
+  const block = lines.slice(start + 1, end).join('\n');
+  const timeout = block.match(/^\s*tool_timeout_sec\s*=\s*(\d+(?:\.\d+)?)/m)?.[1];
+  return { lines, start, timeout: timeout === undefined ? undefined : Number(timeout), wait: /SEVERALLY_MAX_WAIT_MS\s*=\s*"?\d+/.test(block) };
+}
+
+// The wait follows the timeout Codex will enforce: 15 s under the user's own
+// tool_timeout_sec when that is short, else the full 600000 ms.
+function codexPlan() {
+  const sec = priorCodexTimeout ?? CODEX_TIMEOUT_SEC;
+  return { sec, ms: sec < 615 ? Math.max(0, Math.floor((sec - 15) * 1000)) : 600000 };
+}
+
+// Inserts tool_timeout_sec right after the table header. Returns why it could
+// not, or null.
+function writeCodexTimeout(sec) {
+  const t = codexTable();
+  if (t.reason) return t.reason;
+  if (t.timeout !== undefined) return null; // never overwrite the user's value
+  t.lines.splice(t.start + 1, 0, `tool_timeout_sec = ${sec}`);
+  try { fs.writeFileSync(codexConfig, t.lines.join('\n')); } catch (err) { return `cannot write ${codexConfig}: ${err.message}`; }
+  return null;
+}
+
 const claudeSkillsDir = path.join(home, '.claude', 'skills');
 
 // ---------------------------------------------------------------- clients
@@ -279,8 +320,35 @@ const CLIENTS = [
     label: 'Codex',
     backup: [path.join(codexHome, 'config.toml')],
     isRegistered: () => tryRun('codex', ['mcp', 'get', 'severally'], { real: true }).ok,
-    remove: () => tryRun('codex', ['mcp', 'remove', 'severally']),
-    add: (bin) => tryRun('codex', ['mcp', 'add', 'severally', '--', ...bin]),
+    remove: () => {
+      priorCodexTimeout = codexTable().timeout;
+      return tryRun('codex', ['mcp', 'remove', 'severally']);
+    },
+    // The long wait is the env plus tool_timeout_sec in config.toml, both or neither.
+    add: (bin) => {
+      const { sec, ms } = codexPlan();
+      const r = tryRun('codex', ['mcp', 'add', 'severally', '--env', `SEVERALLY_MAX_WAIT_MS=${ms}`, '--', ...bin]);
+      if (!r.ok) return r;
+      if (dryRun) {
+        log(`   [dry-run] write tool_timeout_sec = ${sec} into ${codexConfig} under [mcp_servers.severally]`);
+        return r;
+      }
+      const why = writeCodexTimeout(sec);
+      if (!why) {
+        log(`   consult_get waits up to ${ms / 1000} s (SEVERALLY_MAX_WAIT_MS=${ms}, tool_timeout_sec = ${sec})`);
+        return r;
+      }
+      const back = tryRun('codex', ['mcp', 'remove', 'severally']);
+      if (!back.ok) return back;
+      log(`   the long consult_get wait was not set (it stays 45 s): ${why}`);
+      return tryRun('codex', ['mcp', 'add', 'severally', '--', ...bin]);
+    },
+    keptNote: () => {
+      const t = codexTable();
+      if (t.timeout === undefined || !t.wait) {
+        log(`   this registration lacks the long consult_get wait (45 s); --force adds it (SEVERALLY_MAX_WAIT_MS and tool_timeout_sec = ${CODEX_TIMEOUT_SEC})`);
+      }
+    },
     skillFrom: path.join(PLUGIN, 'skills', 'codex', 'severally'),
     skillTo: path.join(codexHome, 'skills', 'severally'),
   },
@@ -381,6 +449,7 @@ function installClientDirectly(client, bin) {  step(`Registering with ${client.l
   if (client.isRegistered() && !force) {
     keptRegistrations = true;
     log('   already registered; leaving it as it is (use --force to re-register)');
+    client.keptNote?.();
   } else {
     if (client.isRegistered()) client.remove();
     const r = client.add(bin);

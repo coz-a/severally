@@ -334,6 +334,12 @@ export class JobManager {
       parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
 
+    if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
+      rawRequest = { ...rawRequest, target: parent.target };
+    }
+    // A fan-out's members were all handed the same brief, so any one of them holds it.
+    if (parent || fromGroup) rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
+
     const req = parseRequest(rawRequest, {
       isFollowup: Boolean(parent || fromGroup),
       parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -363,8 +369,13 @@ export class JobManager {
     // Admit or refuse the whole fan-out: a half-started group would leave the
     // lead comparing answers to a question only some consultants were asked.
     // The cap counts every severally process on this home, through the seats.
-    const seats = req.targets.map((target) => ({
+    // A follow-up's seat also names the chain and round it opens, so that two
+    // servers continuing one consultation at once cannot both take a round
+    // number: neither sees the other's round in its history until it ends.
+    const chainOf = (i) => (fromGroup ? fromGroup.links[i] : parent ? { parent, round } : null);
+    const seats = req.targets.map((target, i) => ({
       job_id: id('job'),
+      ...(chainOf(i) ? { chain_id: chainOf(i).parent.chain_id, round: chainOf(i).round } : {}),
       // Twice the budget plus an hour: the deadline is wall-clock, the budget is
       // not, so a suspended laptop must not make a live owner look overdue.
       owner: {
@@ -373,6 +384,14 @@ export class JobManager {
       },
     }));
     const taken = store.takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === 'alive');
+    if (taken.chainBusy) {
+      const { live, mine } = taken.chainBusy;
+      throw new RequestError(
+        `another severally process has already continued this consultation: job "${live.job_id}" is round ${live.round ?? mine.round}`
+        + '; wait for it (consult_get) and follow up the latest round',
+        'followup_not_latest',
+      );
+    }
     if (!taken.ok) {
       throw new RequestError(
         `this would run ${taken.live + seats.length} consultations at once; the cap is ${POLICY.maxConcurrent}`
@@ -891,8 +910,12 @@ export class JobManager {
         break;
       }
 
+      // Without an answer, a process left holding the pipes is the failure to report.
+      const leftover = run.pipesForced
+        && `${invocation.command} exited, but a process it started kept its output open and was stopped`;
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
+        if (leftover) return this.#fail(job, 'cli_error', leftover, interpreted.message);
         return this.#fail(job, interpreted.failureKind, interpreted.message);
       }
 
@@ -916,6 +939,7 @@ export class JobManager {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
+            if (leftover) return this.#fail(job, 'cli_error', leftover, err.message);
             return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
           }
         } else {
@@ -928,6 +952,7 @@ export class JobManager {
         adviceCaveat(normalized),
         sameVendorCaveat(job.caller, job.caller_model, consultant),
         interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
+        leftover && 'the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)',
       ].filter(Boolean);
       // No `advice_usable` verdict here. It was always true, so it carried no
       // information -- and worse, it read as the server vouching for advice it
@@ -1484,6 +1509,37 @@ function text(value) {
   return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}\n…[truncated by severally]` : t;
 }
 
+// A follow-up restates what the round before was given unless it says
+// otherwise: the lead sends the new question, not the whole brief again. Only
+// a key left out is inherited -- one passed, even as an empty list, replaces
+// it -- and the validation that follows sees the result. Files are not:
+// copying them again stays expose_from_parent, named in the call (schema.mjs).
+function inherit(raw, round) {
+  const { brief } = round;
+  // A round kept off the web stays off: the material it carries over is the same.
+  const out = raw.network === undefined && round.network ? { ...raw, network: round.network } : { ...raw };
+  if (!brief) return out;
+  for (const k of ['objective', 'success_criteria', 'constraints']) {
+    if (out[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) out[k] = brief[k];
+  }
+  const ctx = { ...(raw.context ?? {}) };
+  for (const k of ['facts', 'proposal', 'counterpoints']) {
+    if (ctx[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
+  }
+  // The diff expose_diff added is not the lead's material: it is taken again
+  // (or replaced) through expose_from_parent, against the files as they are now.
+  // It is the last artifact (appended after the lead's own), so only that one is dropped.
+  const artifacts = [...(brief.artifacts ?? [])];
+  const last = artifacts.at(-1);
+  if (brief.expose_paths?.entries?.some((e) => e.kind === 'diff') && last?.kind === 'diff' && last.name.startsWith('git diff ')) artifacts.pop();
+  if (ctx.artifacts === undefined && artifacts.length) {
+    // Stored with null for an absent language or source; the request schema takes them as optional strings.
+    ctx.artifacts = artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)));
+  }
+  out.context = ctx;
+  return out;
+}
+
 function adviceCaveat(normalized) {
   const { result, quality } = normalized;
   const notes = [];
@@ -1491,7 +1547,11 @@ function adviceCaveat(normalized) {
     notes.push('the consultant reported its evidence as insufficient: treat this as a request for more material, not as advice');
   } else if (result.evidence_basis === 'thin') {
     notes.push('the consultant reported thin evidence: weigh the findings accordingly');
+  } else if (!result.evidence_basis) {
+    notes.push('the consultant did not say how well its evidence supports the answer (evidence_basis)');
   }
+  // Read first in a comparison; a missing one is shown as null there, and named here.
+  if (!result.stance) notes.push('the answer gives no bottom line (stance): read the summary and findings for one before relying on it');
   if (quality.findings_without_grounds > 0) {
     notes.push(`${quality.findings_without_grounds} finding(s) arrived without grounds: do not adopt them without checking`);
   }

@@ -76,6 +76,26 @@ if(cli==='npm') {
     }
   }
 }
+// Real codex keeps each server as a [mcp_servers.<name>] table in
+// $CODEX_HOME/config.toml: 'mcp add' writes it (with env = { ... } when --env
+// was given), 'mcp remove' deletes it, and 'mcp get' reads it.
+// STUB_CODEX_NO_TABLE makes 'mcp add' exit 0 without writing the table.
+if(cli==='codex' && args[0]==='mcp') {
+  const cfg = path.join(process.env.CODEX_HOME,'config.toml');
+  const text = fs.existsSync(cfg) ? fs.readFileSync(cfg,'utf8') : '';
+  let skip = false;
+  const kept = text.split('\\n').filter((l) => { if (l.startsWith('[')) skip = l.startsWith('[mcp_servers.severally'); return !skip; });
+  const has = kept.length !== text.split('\\n').length;
+  if(args[1]==='get') process.exitCode = has ? 0 : 1;
+  if(args[1]==='remove') fs.writeFileSync(cfg, kept.join('\\n'));
+  if(args[1]==='add' && !process.env.STUB_ADD_SILENT && !process.env.STUB_CODEX_NO_TABLE) {
+    const e = args.indexOf('--env');
+    const rest = args.slice(args.indexOf('--')+1);
+    const table = ['[mcp_servers.severally]', 'command = ' + JSON.stringify(rest[0]), 'args = ' + JSON.stringify(rest.slice(1)),
+      ...(e >= 0 ? ['env = { ' + args[e+1].replace('=', ' = "') + '" }'] : [])];
+    fs.writeFileSync(cfg, kept.join('\\n').replace(/\\n*$/, '\\n') + table.join('\\n') + '\\n');
+  }
+}
 fs.writeFileSync(file,JSON.stringify(state));
 `;
   for (const cli of ['codex', 'claude', 'agy', 'npm', 'opencode']) fs.writeFileSync(path.join(bin, cli), script, { mode: 0o755 });
@@ -158,6 +178,101 @@ test('POSIX manual mode needs no global npm install and registers the copied run
   const longWait = (cli) => adds.find((args) => args[0] === cli).includes('SEVERALLY_MAX_WAIT_MS=600000');
   assert.equal(longWait('claude'), true);
   for (const cli of ['agy', 'opencode']) assert.equal(longWait(cli), false, cli);
+});
+
+// A manually registered Codex gets the same long consult_get wait as the
+// plugin: SEVERALLY_MAX_WAIT_MS on the server and tool_timeout_sec in
+// config.toml, both or neither.
+const codexAdds = (f) => fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse)
+  .filter((args) => args[0] === 'codex' && args[1] === 'mcp' && args[2] === 'add');
+const codexConfig = (f) => fs.readFileSync(path.join(f.dir, '.codex', 'config.toml'), 'utf8');
+// No leftover marketplace either: removing one rewrites config.toml in the fake.
+const setCodexTable = (f, lines) => {
+  fs.writeFileSync(f.registry, '{}');
+  fs.writeFileSync(path.join(f.dir, '.codex', 'config.toml'),
+    `# mine\n[mcp_servers.severally]\ncommand = "old"\nargs = ["old.mjs"]\n${lines}\n[other]\nkey = 1\n`);
+};
+const waitEnv = (ms) => `env = { SEVERALLY_MAX_WAIT_MS = "${ms}" }`;
+
+test('POSIX manual Codex registration carries the long wait and tool_timeout_sec together', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  f.install('--manual');
+  const [add, ...more] = codexAdds(f);
+  assert.equal(more.length, 0);
+  assert.deepEqual(add.slice(3, 5), ['severally', '--env']);
+  assert.equal(add[5], 'SEVERALLY_MAX_WAIT_MS=600000');
+  const toml = codexConfig(f);
+  assert.match(toml, /\[mcp_servers\.severally\]\ntool_timeout_sec = 660\ncommand = /);
+  assert.ok(toml.includes(waitEnv(600000)));
+});
+
+test('POSIX manual Codex keeps an existing registration without the long wait and says --force adds it', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  setCodexTable(f, '');
+  const before = codexConfig(f);
+  const out = f.install('--manual');
+  assert.equal(codexAdds(f).length, 0);
+  assert.equal(codexConfig(f), before);
+  assert.match(out, /lacks the long consult_get wait.*--force adds it/);
+  f.install('--manual', '--force');
+  assert.equal(codexAdds(f).length, 1);
+  assert.match(codexConfig(f), /tool_timeout_sec = 660\n/);
+  assert.ok(codexConfig(f).includes(waitEnv(600000)));
+  assert.match(codexConfig(f), /\[other\]\nkey = 1\n/, 'other tables survive the re-registration');
+});
+
+test('POSIX manual Codex with the long wait already in place is left alone without a note', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  setCodexTable(f, `tool_timeout_sec = 660\n${waitEnv(600000)}`);
+  const before = codexConfig(f);
+  const out = f.install('--manual');
+  assert.equal(codexAdds(f).length, 0);
+  assert.equal(codexConfig(f), before);
+  assert.doesNotMatch(out, /lacks the long/);
+});
+
+test('POSIX manual Codex --force keeps the user\'s own tool_timeout_sec and sets the wait 15 s under a short one', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  setCodexTable(f, `tool_timeout_sec = 120\n${waitEnv(45000)}`);
+  f.install('--manual', '--force');
+  assert.equal(codexAdds(f)[0][5], 'SEVERALLY_MAX_WAIT_MS=105000');
+  const toml = codexConfig(f);
+  assert.equal(toml.match(/tool_timeout_sec/g).length, 1);
+  assert.match(toml, /tool_timeout_sec = 120\n/);
+  assert.ok(toml.includes(waitEnv(105000)));
+});
+
+test('POSIX manual Codex --force with a long tool_timeout_sec of the user\'s keeps it and uses the full wait', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  setCodexTable(f, 'tool_timeout_sec = 900');
+  f.install('--manual', '--force');
+  assert.equal(codexAdds(f)[0][5], 'SEVERALLY_MAX_WAIT_MS=600000');
+  assert.match(codexConfig(f), /tool_timeout_sec = 900\n/);
+  assert.equal(codexConfig(f).match(/tool_timeout_sec/g).length, 1);
+});
+
+test('POSIX manual Codex registers without the env when tool_timeout_sec cannot be written', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  f.env.STUB_CODEX_NO_TABLE = '1'; // codex mcp add exits 0 but leaves no [mcp_servers.severally] table
+  const out = f.install('--manual');
+  const adds = codexAdds(f);
+  assert.equal(adds.length, 2);
+  assert.ok(adds[0].includes('--env'));
+  assert.equal(adds[1].includes('--env'), false, 'the long wait is not left without its timeout');
+  assert.deepEqual(adds[1].slice(-2), [process.execPath, path.join(f.dir, '.severally', 'runtime', 'severally-mcp.mjs')]);
+  assert.match(out, /long consult_get wait was not set.*no \[mcp_servers\.severally\] table/);
+  assert.doesNotMatch(codexConfig(f), /tool_timeout_sec/);
+});
+
+test('POSIX manual Codex dry-run changes nothing and says what it would write', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  setCodexTable(f, '');
+  const before = codexConfig(f);
+  const out = f.install('--manual', '--dry-run', '--force');
+  assert.equal(codexConfig(f), before);
+  assert.equal(codexAdds(f).length, 0);
+  assert.match(out, /\[dry-run\] codex mcp add severally --env SEVERALLY_MAX_WAIT_MS=600000/);
+  assert.match(out, /\[dry-run\] write tool_timeout_sec = 660 into .*config\.toml under \[mcp_servers\.severally\]/);
 });
 
 // opencode resolves its global config from XDG_CONFIG_HOME when set (its own

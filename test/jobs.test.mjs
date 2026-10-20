@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { sandboxEnv, reviewRequest, exploreRequest, antigravityRequest, opencodeRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest, exploreRequest, debateRequest, antigravityRequest, opencodeRequest, waitFor } from './helpers.mjs';
 
 // The four default consultants plus a second one on Codex, so a test can ask
 // a consultant that shares its CLI with another. POLICY freezes at first
@@ -1234,4 +1234,145 @@ test('the Claude Code consultant loses its whole-disk read scope once paths are 
   assert.deepEqual(scoped[scoped.indexOf('--tools') + 1].split(','), ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep']);
 
   delete process.env.STUB_ARGV_OUT;
+});
+
+test('a follow-up needs only followup_to and the question: target, premises and proposal come from the round before', async () => {
+  const briefOut = path.join(os.tmpdir(), `pc-brief-inherit-${Date.now()}.txt`);
+  process.env.STUB_BEHAVIOR = 'ok';
+  for (const first of [reviewRequest(), debateRequest()]) {
+    const mgr = new JobManager();
+    const r1 = mgr.start(first);
+    await finish(mgr, r1.job_id);
+    let parent = r1.job_id;
+    // Across a restart too: the parent's brief is read back from the history.
+    for (const m of [mgr, new JobManager()]) {
+      process.env.STUB_BRIEF_OUT = briefOut;
+      const r2 = m.start({ followup_to: parent, question: 'What would change your bottom line?' });
+      assert.equal(r2.mode, first.mode);
+      assert.equal(m.view(r2.job_id).target, 'codex');
+      assert.equal((await finish(m, r2.job_id)).status, 'completed');
+      const brief = fs.readFileSync(briefOut, 'utf8');
+      const current = brief.slice(0, brief.indexOf('Earlier rounds'));
+      assert.match(current, /What would change your bottom line\?/);
+      assert.ok(current.includes(first.context.proposal), 'the proposal is restated');
+      assert.ok(current.includes(first.context.facts[0]), 'the facts are restated');
+      for (const c of first.constraints ?? []) assert.ok(current.includes(c));
+      for (const c of first.context.counterpoints ?? []) assert.ok(current.includes(c));
+      // The next follow-up continues from this round, inheriting what it inherited.
+      parent = r2.job_id;
+    }
+  }
+  delete process.env.STUB_BRIEF_OUT;
+  fs.rmSync(briefOut, { force: true });
+});
+
+test('a field the follow-up passes replaces the earlier one; an explicit empty list stays empty', async () => {
+  const briefOut = path.join(os.tmpdir(), `pc-brief-override-${Date.now()}.txt`);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const r1 = mgr.start(debateRequest());
+  await finish(mgr, r1.job_id);
+  assert.throws(
+    () => mgr.start({ followup_to: r1.job_id, question: 'q', context: { counterpoints: [] } }),
+    (e) => e.code === 'counterpoints_required',
+  );
+  assert.throws(
+    () => mgr.start({ followup_to: r1.job_id, question: 'q', target: 'claude-code' }),
+    (e) => e.code === 'followup_target_mismatch',
+  );
+  process.env.STUB_BRIEF_OUT = briefOut;
+  const r2 = mgr.start({ followup_to: r1.job_id, question: 'q', context: { proposal: 'Write-behind after all.' } });
+  await finish(mgr, r2.job_id);
+  const brief = fs.readFileSync(briefOut, 'utf8');
+  const current = brief.slice(0, brief.indexOf('Earlier rounds'));
+  assert.match(current, /Write-behind after all\./);
+  assert.doesNotMatch(current, /Write-through, because/);
+  assert.match(current, /Order writes are 200\/s peak\./, 'facts left out are still inherited');
+  delete process.env.STUB_BRIEF_OUT;
+  fs.rmSync(briefOut, { force: true });
+});
+
+// A consultant that finished but left a process holding its output pipes open.
+// POSIX only: the grandchild is killed through the process group.
+const orphanCase = async (behavior, env = {}) => {
+  const pidOut = path.join(os.tmpdir(), `pc-orphan-${process.pid}-${Date.now()}.txt`);
+  Object.assign(process.env, { STUB_BEHAVIOR: behavior, STUB_GRANDCHILD_PID_OUT: pidOut, ...env });
+  const { JobManager: M } = await import(`../src/jobs.mjs?orphan=${behavior}${Date.now()}`);
+  const mgr = new M();
+  const t0 = Date.now();
+  const started = mgr.start(reviewRequest());
+  return { mgr, started, t0, pidOut, gone: async () => {
+    const pid = Number(fs.readFileSync(pidOut, 'utf8'));
+    await waitFor(() => { try { process.kill(pid, 0); return false; } catch { return true; } }, { timeoutMs: 8000 });
+    delete process.env.STUB_GRANDCHILD_PID_OUT;
+    fs.rmSync(pidOut, { force: true });
+  } };
+};
+
+test('a consultant that exits leaving a process on its pipes still closes, its answer kept with a caveat', { skip: process.platform === 'win32' }, async () => {
+  for (const behavior of ['orphan_pipe', 'orphan_pipe_stubborn']) {
+    const c = await orphanCase(behavior);
+    const view = await finish(c.mgr, c.started.job_id);
+    assert.ok(Date.now() - c.t0 < 8000, `${behavior} closed in ${Date.now() - c.t0} ms`);
+    assert.equal(view.status, 'completed', behavior);
+    assert.match(view.quality.caveat, /kept its output open/);
+    await c.gone();
+  }
+});
+
+test('a leftover process with no answer behind it is a cli_error, not advice', { skip: process.platform === 'win32' }, async () => {
+  const c = await orphanCase('orphan_pipe_invalid');
+  const view = await finish(c.mgr, c.started.job_id);
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'cli_error');
+  await c.gone();
+});
+
+test('a deadline or a cancel ends a consultant whose pipes a leftover process holds', { skip: process.platform === 'win32' }, async () => {
+  const c = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '1500' });
+  const view = await finish(c.mgr, c.started.job_id);
+  assert.equal(view.failure.kind, 'timeout');
+  await c.gone();
+  const d = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '20000' });
+  await new Promise((r) => setTimeout(r, 400));
+  d.mgr.cancel(d.started.job_id);
+  const cancelled = await finish(d.mgr, d.started.job_id);
+  assert.equal(cancelled.status, 'cancelled');
+  assert.ok(Date.now() - d.t0 < 8000);
+  await d.gone();
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
+});
+
+test('an answer without a bottom line or an evidence basis comes back completed, with a caveat that says so', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  for (const [patch, re] of [
+    [{ stance: null }, /no bottom line \(stance\)/],
+    [{ stance: 'maybe' }, /no bottom line \(stance\)/],
+    [{ evidence_basis: null }, /did not say how well its evidence supports/],
+  ]) {
+    process.env.STUB_ANSWER_PATCH = JSON.stringify(patch);
+    const view = await finish(mgr, mgr.start(reviewRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    assert.match(view.quality.caveat ?? '', re, JSON.stringify(patch));
+  }
+  delete process.env.STUB_ANSWER_PATCH;
+  const clean = await finish(mgr, mgr.start(reviewRequest()).job_id);
+  assert.doesNotMatch(clean.quality.caveat ?? '', /bottom line|evidence supports/);
+});
+
+test('a follow-up that leaves out network keeps the earlier round\'s; a caller\'s own diff artifact carries over', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const req = reviewRequest({ network: 'off' });
+  req.context = { ...req.context, artifacts: [{ name: 'git diff of the fix', kind: 'diff', excerpt: '+cap retries' }] };
+  const r1 = mgr.start(req);
+  await finish(mgr, r1.job_id);
+  const r2 = mgr.start({ followup_to: r1.job_id, question: 'q' });
+  const view = await finish(mgr, r2.job_id);
+  assert.equal(view.network, 'off');
+  const r3 = mgr.start({ followup_to: r2.job_id, question: 'q', network: 'on' });
+  assert.equal((await finish(mgr, r3.job_id)).network, 'on');
+  const full = mgr.view(r2.job_id, { detail: 'full' });
+  assert.ok(full.brief.artifacts.some((a) => a.name === 'git diff of the fix'));
 });

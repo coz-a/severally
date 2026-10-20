@@ -206,6 +206,16 @@ export function takeSeats(seats, cap, held) {
       if (seat && held(seat)) live.push(seat);
       else try { fs.rmSync(path.join(seatsDir(), name), { force: true }); } catch { /* best effort */ }
     }
+    // A chain runs one round at a time, across processes: a live seat on the
+    // same chain, or a round file already at the number chosen, means another
+    // server continued it first.
+    for (const mine of seats.filter((x) => x.chain_id)) {
+      let other = live.find((x) => x.chain_id === mine.chain_id);
+      if (!other && fs.existsSync(roundPath(mine.chain_id, mine.round))) {
+        try { other = { job_id: JSON.parse(fs.readFileSync(roundPath(mine.chain_id, mine.round), 'utf8')).job_id, round: mine.round }; } catch { other = { job_id: '(unreadable)', round: mine.round }; }
+      }
+      if (other) return { ok: false, chainBusy: { live: other, mine } };
+    }
     if (live.length + seats.length > cap) {
       return { ok: false, live: live.length, elsewhere: live.filter((x) => x.owner?.pid !== process.pid).length };
     }

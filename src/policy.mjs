@@ -35,21 +35,41 @@ const CONFIG = (() => {
   }
 })();
 
-// Every mistake in the file, not only a syntax error. A config with any of
-// them is not run on defaults: the server still starts, so the operator can
-// read why, but every consultation is refused (jobs.mjs) -- falling back would
-// quietly re-enable a CLI the operator turned off.
+// A mistake that leaves the whole file untrustworthy (unreadable, an unknown
+// top-level key, a section of the wrong shape) is not run on defaults: the
+// server still starts, so the operator can read why, but every consultation is
+// refused (jobs.mjs) -- falling back would quietly re-enable a CLI the
+// operator turned off. A mistake inside one consultant or one CLI only takes
+// that one out of use, with the reason.
 const BUILT = buildConsultants(CONFIG);
-if (!configError && BUILT.problems.length) configError = `${CONFIG_PATH}: ${BUILT.problems.join('; ')}`;
+if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join('; ')}`;
 const FROM = configError ? buildConsultants({}) : BUILT;
+const LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
 
-/** What is wrong with the config file, or null. Reported at startup; while set, nothing can be started. */
+/** What is wrong with the config file as a whole, or null. Reported at startup; while set, nothing can be started. */
 export function configProblem() {
   return configError;
 }
 
+/** The mistakes kept to one consultant or one CLI, each of which is out of use until fixed. */
+export function configWarnings() {
+  return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
+}
+
+/** Why the consultant of this name is out of use because of a config mistake, or null. */
+export function brokenConsultant(name) {
+  const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
+  return p ? `the config file has a mistake in it: ${p.join('; ')}` : null;
+}
+
 const usable = configError ? {} : CONFIG;
-const cfgCli = (id) => (usable.clis && typeof usable.clis === 'object' ? usable.clis[id] ?? {} : {});
+// A CLI whose own section has a mistake is off, whatever else the section says.
+const cfgCli = (id) => {
+  if (Object.hasOwn(BUILT.brokenClis, id) && !configError) {
+    return { enabled: false, note: `turned off: the config file has a mistake in clis.${id}: ${BUILT.brokenClis[id].join('; ')}` };
+  }
+  return usable.clis && typeof usable.clis === 'object' ? usable.clis[id] ?? {} : {};
+};
 const cfgServer = usable.server && typeof usable.server === 'object' ? usable.server : {};
 
 /**
@@ -389,6 +409,8 @@ export function limitsSummary() {
   const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
   return {
     available_targets: list.map((c) => c.name),
+    // A consultant or CLI out of use because of a mistake in its own section.
+    ...(LOCAL.length ? { config_mistakes: configWarnings() } : {}),
     clis: by((c) => c.cli),
     models: by((c) => c.model),
     // Per consultant, because they no longer share one budget.

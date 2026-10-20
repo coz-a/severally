@@ -39,6 +39,8 @@ function answer(overrides = {}) {
     next_checks: [{ check: 'Load test', method: 'Replay peak traffic', expected_signal: 'p99 under 300ms' }],
     remaining_disagreements: [],
     references: [{ title: 'brief', url: '(brief)', relevance: 'supplied excerpt' }],
+    // A test that needs a thinner answer than the default merges its fields in.
+    ...(process.env.STUB_ANSWER_PATCH ? JSON.parse(process.env.STUB_ANSWER_PATCH) : {}),
     ...overrides,
   });
 }
@@ -102,6 +104,22 @@ function run() {
     const gc = spawn(process.execPath, ['-e', 'setInterval(()=>{},1e9)'], { stdio: 'ignore' });
     if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));
     setInterval(() => {}, 1e9);
+    return;
+  }
+  // The answer is written and the stub exits 0, but a grandchild it started
+  // keeps stdout and stderr open (inherited, not ignored), so the pipes never
+  // close on their own. _stubborn: the grandchild also shrugs off SIGTERM.
+  // _invalid: no answer, only the leftover process. _hang: the stub itself
+  // wedges too, for a deadline or a cancel.
+  if (behavior.startsWith('orphan_pipe')) {
+    const code = behavior.includes('stubborn') ? "process.on('SIGTERM',()=>{});setInterval(()=>{},1e9)" : 'setInterval(()=>{},1e9)';
+    const gc = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'inherit', 'inherit'] });
+    if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));
+    out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
+    if (behavior.endsWith('_hang')) { setInterval(() => {}, 1e9); return; }
+    if (lastMessagePath && !behavior.endsWith('_invalid')) fs.writeFileSync(lastMessagePath, answer());
+    // Give the grandchild a moment to start before the stub goes.
+    setTimeout(() => process.exit(0), 200);
     return;
   }
   if (behavior === 'leak_secret') {
