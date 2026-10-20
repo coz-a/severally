@@ -13,6 +13,7 @@ export const asConsultant = (cli, extra = {}) => ({
   effort: null,
   timeoutMs: null,
   maxBudgetUsd: null,
+  fallbackModel: null,
   vendor: null,
   enabled: true,
   note: null,

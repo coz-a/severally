@@ -642,6 +642,7 @@ test('an answer whose consultant read none of the exposed files says so', async 
   const renamed = await finish(mgr, mgr.start({ ...req, context: { ...req.context, expose_paths: [dir] } }).job_id);
   assert.match(renamed.quality.caveat, /none was made/);
   assert.match(renamed.quality.caveat, /called open_file, which severally does not allow/);
+  assert.doesNotMatch(renamed.quality.caveat, /run_command/, 'a tool refused on purpose is not reported as renamed');
   process.env.STUB_BEHAVIOR = 'ok';
   const bare = await finish(mgr, mgr.start(req).job_id);
   assert.doesNotMatch(bare.quality.caveat ?? '', /files were exposed|does not allow/);

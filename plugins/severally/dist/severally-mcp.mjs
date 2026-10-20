@@ -863,7 +863,7 @@ function buildConsultants(config2) {
         if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
       if (!cliIds.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
       if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
-      for (const k of ["effort", "vendor", "note"]) {
+      for (const k of ["effort", "fallback_model", "vendor", "note"]) {
         if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
       }
       if (def.enabled !== void 0 && typeof def.enabled !== "boolean") problems.push(`${at}.enabled: must be true or false`);
@@ -871,6 +871,10 @@ function buildConsultants(config2) {
         if (def[k] !== void 0 && !(typeof def[k] === "number" && Number.isFinite(def[k])))
           problems.push(`${at}.${k}: must be a number`);
       }
+      if (typeof def.fallback_model === "string" && def.fallback_model.trim() === "")
+        problems.push(`${at}.fallback_model: must not be empty`);
+      else if (typeof def.fallback_model === "string" && def.fallback_model.trim() === String(def.model).trim())
+        problems.push(`${at}.fallback_model: must differ from model; the fallback is for when the model's quota is used up`);
       if (def.max_budget_usd !== void 0 && def.cli !== "claude-code")
         problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
       if (def.effort !== void 0 && def.cli === "antigravity")
@@ -905,6 +909,7 @@ function make(name, def) {
     effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
     timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
     maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
+    fallbackModel: typeof def.fallback_model === "string" && def.fallback_model.trim() !== "" ? def.fallback_model.trim() : null,
     vendor: vendorOf(model, def.vendor),
     enabled: def.enabled !== false,
     note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
@@ -958,7 +963,7 @@ var init_consultants = __esm({
     };
     TOP_KEYS = ["server", "clis", "consultants", "ranking"];
     CLI_KEYS = ["enabled", "note", "bin", "args", "env", "provider"];
-    CONSULTANT_KEYS = ["cli", "model", "effort", "timeout_ms", "max_budget_usd", "vendor", "enabled", "note"];
+    CONSULTANT_KEYS = ["cli", "model", "effort", "timeout_ms", "max_budget_usd", "fallback_model", "vendor", "enabled", "note"];
     isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
     clamp = (v, min, max) => Math.min(max, Math.max(min, v));
   }
@@ -39946,9 +39951,9 @@ function unreadCaveat(calls, readTools) {
 }
 function refusedToolCaveat(calls, allowed) {
   if (!calls || !allowed) return null;
-  const names = Object.keys(calls).filter((k) => k.endsWith(":error")).map((k) => k.slice(0, -":error".length)).filter((t) => !allowed.includes(t));
+  const names = Object.keys(calls).filter((k) => k.endsWith(":error")).map((k) => k.slice(0, -":error".length)).filter((t) => !allowed.includes(t) && /read|view|open/i.test(t));
   if (!names.length) return null;
-  return `the consultant's CLI called ${names.join(", ")}, which severally does not allow, and was refused; a new CLI release may have renamed a tool`;
+  return `the consultant's CLI called ${names.join(", ")}, which severally does not allow, and was refused; a new CLI release may have renamed its file-reading tool`;
 }
 function sameVendorCaveat(caller, callerModel, consultant) {
   const callerCli = CLI_IDS.find((c) => c === caller);
@@ -40951,20 +40956,26 @@ var init_jobs = __esm({
           this.#mark(job);
           const t0 = Date.now();
           if (adapter.prepare) await adapter.prepare();
-          const invocation = adapter.buildInvocation({
-            workdir,
-            schemaPath,
-            guardrails: renderGuardrails(Boolean(req._snapshot), req.network),
-            sandbox,
-            consultant,
-            hasExposedPaths: Boolean(req._snapshot),
-            network: req.network
-          });
-          const argsProblem = extraArgsProblem(cli, invocation.args, t.extraArgs);
-          if (argsProblem) return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${argsProblem}`);
-          invocation.args = withExtraArgs(invocation.args, t.extraArgs);
-          assertNoForbiddenFlags(cli, invocation.args);
-          job.boundary = adapter.boundary?.({ args: invocation.args, sandbox, network: req.network, hasExposedPaths: Boolean(req._snapshot) }) ?? null;
+          const launch = (c) => {
+            const invocation2 = adapter.buildInvocation({
+              workdir,
+              schemaPath,
+              guardrails: renderGuardrails(Boolean(req._snapshot), req.network),
+              sandbox,
+              consultant: c,
+              hasExposedPaths: Boolean(req._snapshot),
+              network: req.network
+            });
+            const problem = extraArgsProblem(cli, invocation2.args, t.extraArgs);
+            if (problem) return problem;
+            invocation2.args = withExtraArgs(invocation2.args, t.extraArgs);
+            assertNoForbiddenFlags(cli, invocation2.args);
+            job.boundary = adapter.boundary?.({ args: invocation2.args, sandbox, network: req.network, hasExposedPaths: Boolean(req._snapshot) }) ?? null;
+            return invocation2;
+          };
+          const first = launch(consultant);
+          if (typeof first === "string") return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${first}`);
+          let invocation = first;
           const attempt = (timeout) => {
             const { handle, done } = runChild({
               command: invocation.command,
@@ -40988,6 +40999,7 @@ var init_jobs = __esm({
           let interpreted;
           let authTried = false;
           let autoRetries = 0;
+          let fallenBack = false;
           for (; ; ) {
             job.tool_calls = adapter.toolCalls?.(run) ?? null;
             job.duration_ms = Date.now() - t0;
@@ -41043,6 +41055,22 @@ var init_jobs = __esm({
                 run = await attempt(remaining);
                 continue;
               }
+            }
+            if (interpreted.failureKind === "usage_limit" && consultant.fallbackModel && !fallenBack && remaining >= MIN_RETRY_MS) {
+              fallenBack = true;
+              const fallback = consultant.fallbackModel;
+              const next = launch({ ...consultant, model: fallback });
+              if (typeof next === "string") return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${next}`);
+              invocation = next;
+              job.retries.push({
+                failure_kind: interpreted.failureKind,
+                reason: `${job.model} quota used up; re-run on ${fallback}`,
+                at: (/* @__PURE__ */ new Date()).toISOString(),
+                usage: adapter.usageRecord(interpreted.usageRaw)
+              });
+              job.model = fallback;
+              run = await attempt(remaining);
+              continue;
             }
             const wait = POLICY.retryBackoffMs * 3 ** autoRetries;
             if (AUTO_RETRY_KINDS.includes(interpreted.failureKind) && autoRetries < POLICY.maxAutoRetries && remaining - wait >= MIN_RETRY_MS) {
@@ -41101,6 +41129,7 @@ var init_jobs = __esm({
             sameVendorCaveat(job.caller, job.caller_model, consultant),
             interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
             leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)",
+            fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
             req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
             refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS)
           ].filter(Boolean);
@@ -42112,7 +42141,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.4.2";
+    SEVERALLY_VERSION = "2.5.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

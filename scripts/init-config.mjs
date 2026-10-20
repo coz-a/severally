@@ -47,6 +47,7 @@ export function renderConfig() {
     '  //   effort           reasoning effort (default high); antigravity takes it from the model name instead',
     "  //   timeout_ms       this consultant's own budget in ms (default: server timeout_ms, max 7200000)",
     '  //   max_budget_usd   claude-code only: spending cap per consultation (default 10, 0.05-20)',
+    "  //   fallback_model   a model to run instead, once, when model's quota is used up (usage_limit)",
     '  //   vendor           the lineage, when the model name does not say (e.g. "nvidia")',
     '  //   enabled, note    as for clis, for this consultant alone',
     '  //',
@@ -117,7 +118,7 @@ function main() {
   }
   console.log('');
   console.log('clis.<cli>: enabled  note  bin  args  env');
-  console.log('consultants.<name>: cli  model  effort  timeout_ms  max_budget_usd  vendor  enabled  note');
+  console.log('consultants.<name>: cli  model  effort  timeout_ms  max_budget_usd  fallback_model  vendor  enabled  note');
   console.log('   more: CONFIG.md (what each key does), config.example.json (a working example).');
   console.log('   Restart the client after editing.');
   console.log('   comments and trailing commas are fine; name it config.jsonc if your editor prefers that');

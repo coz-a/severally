@@ -65,6 +65,15 @@ function run() {
     });
     process.exit(1);
   }
+  if (behavior === 'quota_by_model' && process.argv[process.argv.indexOf('--model') + 1] === process.env.STUB_QUOTA_MODEL) {
+    // agy 1.4.3 on a used-up model quota: exit 3 at once, the error in the stream's result event and on stderr.
+    const error = 'Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 79h29m32s.';
+    envelope({ event: 'result', result: { conversation_id: '', status: 'ERROR', response: '', error, usage } });
+    process.stderr.write(
+      `AGY_ERROR: ${JSON.stringify({ short_error: `RESOURCE_EXHAUSTED (code 429): ${error}`, retryable: true })}\n`,
+    );
+    process.exit(3);
+  }
   if (behavior === 'auth') {
     envelope({
       conversation_id: '',
@@ -102,6 +111,8 @@ function run() {
   if (behavior === 'unknown_tool') {
     // A later agy release that renamed its read tool again: the hook refuses the new name.
     envelope({ event: 'step_update', step_update: { step_index: 1, tool_name: 'open_file', state: 'ERROR' } });
+    // A shell call severally refuses on purpose: not a renamed reader, so not named.
+    envelope({ event: 'step_update', step_update: { step_index: 2, tool_name: 'run_command', state: 'ERROR' } });
   }
   if (behavior === 'denied') {
     envelope({
