@@ -39,6 +39,8 @@ function answer(overrides = {}) {
     next_checks: [{ check: 'Load test', method: 'Replay peak traffic', expected_signal: 'p99 under 300ms' }],
     remaining_disagreements: [],
     references: [{ title: 'brief', url: '(brief)', relevance: 'supplied excerpt' }],
+    // A test that needs a thinner answer than the default merges its fields in.
+    ...(process.env.STUB_ANSWER_PATCH ? JSON.parse(process.env.STUB_ANSWER_PATCH) : {}),
     ...overrides,
   });
 }

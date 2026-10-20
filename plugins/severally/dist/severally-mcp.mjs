@@ -39771,7 +39771,10 @@ function adviceCaveat(normalized) {
     notes.push("the consultant reported its evidence as insufficient: treat this as a request for more material, not as advice");
   } else if (result.evidence_basis === "thin") {
     notes.push("the consultant reported thin evidence: weigh the findings accordingly");
+  } else if (!result.evidence_basis) {
+    notes.push("the consultant did not say how well its evidence supports the answer (evidence_basis)");
   }
+  if (!result.stance) notes.push("the answer gives no bottom line (stance): read the summary and findings for one before relying on it");
   if (quality.findings_without_grounds > 0) {
     notes.push(`${quality.findings_without_grounds} finding(s) arrived without grounds: do not adopt them without checking`);
   }

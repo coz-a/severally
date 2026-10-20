@@ -1342,3 +1342,21 @@ test('a deadline or a cancel ends a consultant whose pipes a leftover process ho
   await d.gone();
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
 });
+
+test('an answer without a bottom line or an evidence basis comes back completed, with a caveat that says so', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  for (const [patch, re] of [
+    [{ stance: null }, /no bottom line \(stance\)/],
+    [{ stance: 'maybe' }, /no bottom line \(stance\)/],
+    [{ evidence_basis: null }, /did not say how well its evidence supports/],
+  ]) {
+    process.env.STUB_ANSWER_PATCH = JSON.stringify(patch);
+    const view = await finish(mgr, mgr.start(reviewRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    assert.match(view.quality.caveat ?? '', re, JSON.stringify(patch));
+  }
+  delete process.env.STUB_ANSWER_PATCH;
+  const clean = await finish(mgr, mgr.start(reviewRequest()).job_id);
+  assert.doesNotMatch(clean.quality.caveat ?? '', /bottom line|evidence supports/);
+});
