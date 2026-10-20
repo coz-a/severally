@@ -46,6 +46,7 @@ import { redact } from './redact.mjs';
  * @property {string} [base]
  * @property {string[]} [changes]
  * @property {boolean} [changed] a follow-up's copy of a parent path: whether its bytes changed since
+ * @property {boolean} [inherited] a follow-up copied it again from the parent round
  */
 
 /**
@@ -403,7 +404,7 @@ function copyMasked(abs, dest) {
     // means the original was never valid utf8 text, so redact()'s decode
     // would silently replace bytes with U+FFFD and corrupt the file --
     // treat it like binary and copy it through instead.
-    if (Buffer.from(text, 'utf8').equals(buf)) out = Buffer.from(/** @type {string} */ (redact(text)), 'utf8');
+    if (Buffer.from(text, 'utf8').equals(buf)) out = Buffer.from(redact(text), 'utf8');
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
   fs.writeFileSync(dest, out, { mode: 0o600 });

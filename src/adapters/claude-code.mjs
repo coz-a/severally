@@ -36,6 +36,8 @@ import { CONSULT_RESULT_SCHEMA } from '../result-schema.mjs';
 /** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
 /** @typedef {import('../run.mjs').Invocation} Invocation */
 /** @typedef {import('../run.mjs').Interpreted} Interpreted */
+/** @typedef {import('../run.mjs').UsageRecord} UsageRecord */
+/** @typedef {import('../run.mjs').Boundary} Boundary */
 
 // --add-dir is not listed: the adapter passes `--add-dir /` itself, and
 // assertNoForbiddenFlags refuses any other value. --restricted confines the
@@ -210,7 +212,10 @@ export function interpret({ stdout, stderr, code }) {
   return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
 
-/** @param {any} payload */
+/**
+ * @param {any} payload the CLI's result JSON
+ * @returns {UsageRecord | null}
+ */
 export function usageRecord(payload) {
   if (!payload) return null;
   const u = payload.usage ?? {};
@@ -231,6 +236,7 @@ export function usageRecord(payload) {
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
  * @param {{ args: string[], hasExposedPaths?: boolean }} req
+ * @returns {Boundary}
  */
 export function boundary({ args, hasExposedPaths }) {
   const tools = args[args.indexOf('--tools') + 1];

@@ -791,7 +791,8 @@ function buildConsultants(config2) {
   for (const key of Object.keys(cfg)) {
     if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
   }
-  if (isObject(cfg.server) && cfg.server.network !== void 0 && !["on", "off"].includes(cfg.server.network)) {
+  const networkModes = ["on", "off"];
+  if (isObject(cfg.server) && cfg.server.network !== void 0 && !networkModes.includes(cfg.server.network)) {
     fault('server.network must be "on" or "off"');
   }
   let ranking = [];
@@ -800,14 +801,12 @@ function buildConsultants(config2) {
       ranking = cfg.ranking.map((r) => r.trim());
     else fault("ranking must be an array of non-empty strings");
   }
+  const cliIds = CLI_IDS;
   if (cfg.clis !== void 0) {
     if (!isObject(cfg.clis)) fault("clis must be an object keyed by CLI");
     else {
       for (const [id2, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(
-          /** @type {CliId} */
-          id2
-        )) {
+        if (!cliIds.includes(id2)) {
           problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
           continue;
         }
@@ -861,7 +860,7 @@ function buildConsultants(config2) {
       }
       for (const k of Object.keys(def))
         if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
-      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
+      if (!cliIds.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
       if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
       for (const k of ["effort", "vendor", "note"]) {
         if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
@@ -879,15 +878,19 @@ function buildConsultants(config2) {
         broken[name] = problems.slice(before);
         continue;
       }
-      const pair = `${def.cli}
-${def.model.trim()}`;
+      const valid = (
+        /** @type {ConsultantDef} */
+        def
+      );
+      const pair = `${valid.cli}
+${valid.model.trim()}`;
       if (seen.has(pair)) {
         problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
         broken[name] = problems.slice(before);
         continue;
       }
       seen.set(pair, name);
-      consultants.push(make(name, def));
+      consultants.push(make(name, valid));
     }
   }
   return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
@@ -901,7 +904,7 @@ function make(name, def) {
     effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
     timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
     maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
-    vendor: vendorOf(model, def.vendor ?? null),
+    vendor: vendorOf(model, def.vendor),
     enabled: def.enabled !== false,
     note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
   });
@@ -1110,7 +1113,7 @@ var init_policy = __esm({
     }
     FROM = configError ? buildConsultants({}) : BUILT;
     LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
-    usable = configError ? {} : CONFIG;
+    usable = configError || !isObject(CONFIG) ? {} : CONFIG;
     cfgCli = (id2) => {
       if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
         return {
@@ -1118,9 +1121,10 @@ var init_policy = __esm({
           note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}`
         };
       }
-      return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
+      const def = isObject(usable.clis) ? usable.clis[id2] : void 0;
+      return isObject(def) ? def : {};
     };
-    cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
+    cfgServer = isObject(usable.server) ? usable.server : {};
     num = (name, dflt, min, max) => {
       const raw = process.env[name];
       if (raw === void 0 || raw === "") return dflt;
@@ -1158,7 +1162,8 @@ var init_policy = __esm({
     CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
     MODES = ["explore", "review", "debate"];
     VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
-    STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
+    STANCES = /** @type {const} */
+    ["proceed", "do_not_proceed", "alternative", "undetermined"];
     binFor = (id2, envName, dflt) => {
       const fromEnv = process.env[envName];
       if (fromEnv !== void 0 && fromEnv !== "") return expandHome(fromEnv);
@@ -1178,7 +1183,16 @@ var init_policy = __esm({
     CLAUDE_BIN = binFor("claude-code", "SEVERALLY_CLAUDE_BIN", "claude");
     AGY_BIN = binFor("antigravity", "SEVERALLY_AGY_BIN", "agy");
     OPENCODE_BIN = binFor("opencode", "SEVERALLY_OPENCODE_BIN", "opencode");
-    extras = (id2) => ({ extraArgs: cfgCli(id2).args ?? [], extraEnv: cfgCli(id2).env ?? {} });
+    extras = (id2) => ({
+      extraArgs: (
+        /** @type {string[]} */
+        cfgCli(id2).args ?? []
+      ),
+      extraEnv: (
+        /** @type {Record<string, string>} */
+        cfgCli(id2).env ?? {}
+      )
+    });
     POLICY = Object.freeze({
       home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
       // Per CLI: how to launch it and whether it can run here. What runs on it is
@@ -1217,7 +1231,7 @@ var init_policy = __esm({
           // the only way to reach a provider the sandbox's empty HOME would not
           // know, such as a local OpenAI-compatible server.
           provider: (
-            /** @type {Record<string, any>} */
+            /** @type {Record<string, Record<string, unknown>>} */
             cfgCli("opencode").provider ?? {}
           )
         })
@@ -36538,8 +36552,8 @@ var init_stdio = __esm({
 import path3 from "node:path";
 function charCount(req) {
   let n = req.question.length + (req.objective?.length ?? 0);
-  for (const c of req.constraints) n += c.length;
-  for (const c of req.success_criteria) n += c.length;
+  for (const c of req.constraints ?? []) n += c.length;
+  for (const c of req.success_criteria ?? []) n += c.length;
   for (const f of req.context.facts) n += f.length;
   for (const c of req.context.counterpoints) n += c.length;
   if (req.context.proposal) n += req.context.proposal.length;
@@ -36611,10 +36625,7 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
           "target_ambiguous"
         );
       }
-      return (
-        /** @type {Consultant} */
-        r.consultant
-      );
+      return r.consultant;
     });
     const off = [...new Set(chosen.filter((c) => !consultantAvailable(c)))];
     if (off.length) {
@@ -36647,7 +36658,10 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
   const proposal = (req.context.proposal ?? "").trim();
   req.context.proposal = proposal.length ? proposal : null;
   req.mode ??= parentMode ?? (!req.context.proposal ? "explore" : req.context.counterpoints.length ? "debate" : "review");
-  const total = charCount(req);
+  const total = charCount(
+    /** @type {CountedRequest} */
+    req
+  );
   if (total > L.totalCharsMax) {
     throw new RequestError(
       `request payload is ${total} characters, over the ${L.totalCharsMax} character budget; trim artifacts/facts to the passages that matter`,
@@ -36893,19 +36907,30 @@ function looksLikeCode(name, value) {
 function redact(value) {
   if (value === null || value === void 0) return value;
   if (typeof value === "string") {
-    let out = value;
-    for (const [re, rep] of PATTERNS) out = out.replace(
-      re,
-      /** @type {any} */
-      rep
+    let out = (
+      /** @type {string} */
+      value
     );
-    return out;
+    for (const [re, rep] of PATTERNS) out = typeof rep === "string" ? out.replace(re, rep) : out.replace(re, rep);
+    return (
+      /** @type {T} */
+      /** @type {unknown} */
+      out
+    );
   }
-  if (Array.isArray(value)) return value.map(redact);
+  if (Array.isArray(value)) return (
+    /** @type {T} */
+    /** @type {unknown} */
+    value.map(redact)
+  );
   if (typeof value === "object") {
     const out = {};
     for (const [k, v] of Object.entries(value)) out[k] = redact(v);
-    return out;
+    return (
+      /** @type {T} */
+      /** @type {unknown} */
+      out
+    );
   }
   return value;
 }
@@ -37163,11 +37188,7 @@ function copyMasked(abs, dest) {
   let out = buf;
   if (!isBinary(buf)) {
     const text2 = buf.toString("utf8");
-    if (Buffer.from(text2, "utf8").equals(buf)) out = Buffer.from(
-      /** @type {string} */
-      redact(text2),
-      "utf8"
-    );
+    if (Buffer.from(text2, "utf8").equals(buf)) out = Buffer.from(redact(text2), "utf8");
   }
   fs3.mkdirSync(path4.dirname(dest), { recursive: true, mode: 448 });
   fs3.writeFileSync(dest, out, { mode: 384 });
@@ -37671,15 +37692,33 @@ function clampText(v, max) {
 }
 function level(v, fallback = null) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
-  return LEVELS.includes(t) ? t : fallback;
+  return LEVELS.includes(
+    /** @type {Level} */
+    t
+  ) ? (
+    /** @type {Level} */
+    t
+  ) : fallback;
 }
 function basis(v) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
-  return BASIS.includes(t) ? t : null;
+  return BASIS.includes(
+    /** @type {EvidenceBasis} */
+    t
+  ) ? (
+    /** @type {EvidenceBasis} */
+    t
+  ) : null;
 }
 function stance(v) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
-  return STANCES.includes(t) ? t : null;
+  return STANCES.includes(
+    /** @type {Stance} */
+    t
+  ) ? (
+    /** @type {Stance} */
+    t
+  ) : null;
 }
 function extractJson(text2) {
   if (typeof text2 !== "string") return null;
@@ -37739,7 +37778,10 @@ function mapList(raw, fields, { requiredField, idPrefix = null }) {
       item[key] = kind === "level" ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
     if (!item[requiredField]) continue;
-    out.push(item);
+    out.push(
+      /** @type {T} */
+      item
+    );
   }
   return out;
 }
@@ -37818,10 +37860,16 @@ function normalizeResult(raw) {
     ).filter((r) => r.title || r.url)
   };
   const listTruncated = Object.fromEntries(
-    ["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax).map((k) => [k, src[k].length])
+    ["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].flatMap((k) => {
+      const v = src[k];
+      return Array.isArray(v) && v.length > O.listMax ? [[k, v.length]] : [];
+    })
   );
   const missing = RESULT_KEYS.filter((k) => {
-    const v = result[k];
+    const v = (
+      /** @type {Record<string, unknown>} */
+      result[k]
+    );
     return v === null || v === void 0 || Array.isArray(v) && v.length === 0;
   });
   const groundless = result.findings.filter((f) => !f.grounds).length;
@@ -38660,7 +38708,10 @@ function toolCalls({ stdout }) {
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
 function usageRecord(raw) {
-  const u = raw ?? {};
+  const u = (
+    /** @type {Record<string, number>} */
+    raw ?? {}
+  );
   const pick2 = (...names) => {
     for (const n of names) if (typeof u[n] === "number") return u[n];
     return null;
@@ -39236,14 +39287,18 @@ function usageRecord3(payload) {
   };
 }
 function boundary3({ sandbox }) {
+  const { tools } = (
+    /** @type {Sandbox} */
+    sandbox
+  );
   return {
     reads: "whole disk",
     shell: "none",
-    web: sandbox.tools.includes("search_web"),
+    web: tools.includes("search_web"),
     writes: false,
     mcp: false,
     protected_paths: "denied (tool hook)",
-    tools: [...sandbox.tools]
+    tools: [...tools]
   };
 }
 var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, stopSignal;
@@ -39702,14 +39757,18 @@ function usageRecord4(raw) {
   };
 }
 function boundary4({ sandbox }) {
+  const { tools } = (
+    /** @type {Sandbox} */
+    sandbox
+  );
   return {
     reads: "whole disk",
     shell: "none",
-    web: sandbox.tools.includes("webfetch"),
+    web: tools.includes("webfetch"),
     writes: false,
     mcp: false,
     protected_paths: "denied (permission rules)",
-    tools: [...sandbox.tools]
+    tools: [...tools]
   };
 }
 var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4;
@@ -39868,13 +39927,16 @@ function inherit(raw, round) {
   const { brief } = round;
   const out = raw.network === void 0 && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
-  for (const k of ["objective", "success_criteria", "constraints"]) {
-    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length))
-      out[k] = brief[k];
+  const topKeys = ["objective", "success_criteria", "constraints"];
+  for (const k of topKeys) {
+    const v = brief[k];
+    if (out[k] === void 0 && raw.context?.[k] === void 0 && v != null && !(Array.isArray(v) && !v.length)) out[k] = v;
   }
   const ctx = { ...raw.context ?? {} };
-  for (const k of ["facts", "proposal", "counterpoints"]) {
-    if (ctx[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
+  const contextKeys = ["facts", "proposal", "counterpoints"];
+  for (const k of contextKeys) {
+    const v = brief[k];
+    if (ctx[k] === void 0 && v != null && !(Array.isArray(v) && !v.length)) ctx[k] = v;
   }
   const artifacts = [...brief.artifacts ?? []];
   const last = artifacts.at(-1);
@@ -40203,19 +40265,10 @@ var init_jobs = __esm({
        * @returns {StoredRound | null}
        */
       #fromDisk(jobId) {
-        const done = (
-          /** @type {Round | null} */
-          loadRound(jobId)
-        );
+        const done = loadRound(jobId);
         if (done) return done;
-        const live = (
-          /** @type {StoredRound | null} */
-          loadRunning(jobId)
-        );
-        if (!live) return (
-          /** @type {Round | null} */
-          loadRound(jobId)
-        );
+        const live = loadRunning(jobId);
+        if (!live) return loadRound(jobId);
         const state = ownerState(jobId, live.owner);
         return state === "alive" ? live : this.#interrupt(jobId, live, state);
       }
@@ -40230,10 +40283,7 @@ var init_jobs = __esm({
        * @returns {Round}
        */
       #interrupt(jobId, rec, state) {
-        const done = (
-          /** @type {Round | null} */
-          loadRound(jobId)
-        );
+        const done = loadRound(jobId);
         if (done) {
           removeRunning(jobId);
           return done;
@@ -40260,17 +40310,14 @@ var init_jobs = __esm({
       /** Close out the consultations whose process died, and remove their job directories. */
       sweepInterrupted() {
         for (const jobId of listRunning()) {
-          const rec = (
-            /** @type {StoredRound | null} */
-            loadRunning(jobId)
-          );
+          const rec = loadRunning(jobId);
           const state = rec && ownerState(jobId, rec.owner);
           if (rec && state && state !== "alive") this.#interrupt(jobId, rec, state);
         }
       }
       /**
        * @param {StoredRound} rec
-       * @returns {JobView}
+       * @returns {FullView}
        */
       #diskView(rec) {
         const elsewhere = Boolean(rec.owner);
@@ -40374,17 +40421,11 @@ var init_jobs = __esm({
         const seen = new Set(here.map((j) => j.job_id));
         const elsewhere = [];
         for (const jobId of listRunning()) {
-          const live = (
-            /** @type {StoredRound | null} */
-            seen.has(jobId) ? null : loadRunning(jobId)
-          );
+          const live = seen.has(jobId) ? null : loadRunning(jobId);
           if (!live) continue;
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
-          const saved = (
-            /** @type {Round | null} */
-            state === "alive" ? null : loadRoundAt(live)
-          );
+          const saved = state === "alive" ? null : loadRoundAt(live);
           elsewhere.push({
             rec: state === "alive" ? live : saved ?? /** @type {Round} */
             { ...live, status: "failed", failure: { kind: "interrupted" } }
@@ -40440,7 +40481,7 @@ var init_jobs = __esm({
         const by = {};
         const reported = {};
         for (const j of this.jobs.values()) {
-          const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter(Boolean);
+          const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter((u) => u != null);
           if (!attempts.length) continue;
           const t = by[j.target] ??= { consultations: 0, attempts: 0 };
           const seen = reported[j.target] ??= /* @__PURE__ */ new Set();
@@ -40454,12 +40495,13 @@ var init_jobs = __esm({
               }
           }
         }
+        const out = {};
         for (const [target, t] of Object.entries(by)) {
-          t.not_reported = USAGE_FIGURES.filter((k) => !reported[target].has(k));
+          out[target] = { ...t, not_reported: USAGE_FIGURES.filter((k) => !reported[target].has(k)) };
         }
-        return by;
+        return out;
       }
-      /** @param {Record<string, any>} rawRequest the tool arguments, not yet validated */
+      /** @param {RawRequest} rawRequest the tool arguments, not yet validated */
       start(rawRequest) {
         if (process.env.SEVERALLY_ACTIVE === "1") {
           throw new RequestError(
@@ -40482,8 +40524,7 @@ var init_jobs = __esm({
           fromGroup = this.#groupParents(followupTo);
           rawRequest = { ...rawRequest, targets: fromGroup.links.map((l) => l.parent.target) };
         } else if (followupTo) {
-          parent = this.jobs.get(followupTo) ?? /** @type {Round | null} */
-          loadRound(followupTo);
+          parent = this.jobs.get(followupTo) ?? loadRound(followupTo);
           if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, "unknown_job");
           if (parent.status !== "completed") {
             throw new RequestError(
@@ -40593,8 +40634,7 @@ var init_jobs = __esm({
         const links = [];
         const skipped = [];
         for (const jid of group.job_ids) {
-          const member = this.jobs.get(jid) ?? /** @type {Round | null} */
-          loadRound(jid);
+          const member = this.jobs.get(jid) ?? loadRound(jid);
           if (!member) {
             skipped.push({
               job_id: jid,
@@ -40656,7 +40696,10 @@ var init_jobs = __esm({
               if (req.context.expose_diff) {
                 exposeManifest.skipped.push({ source: d.source, reason: "replaced", exposed_as: d.exposed_as });
               } else {
-                if (reexposeChange(snapshot, d, exposeManifest)) exposeManifest.entries.at(-1).inherited = true;
+                if (reexposeChange(snapshot, d, exposeManifest)) {
+                  const added = exposeManifest.entries.at(-1);
+                  if (added) added.inherited = true;
+                }
               }
             }
             if (req.context.expose_diff) {
@@ -40665,7 +40708,7 @@ var init_jobs = __esm({
               if (diff) {
                 req.context.artifacts = [
                   ...req.context.artifacts,
-                  { name: `git diff ${exposeManifest.entries.at(-1).base}`, kind: "diff", language: "diff", excerpt: diff }
+                  { name: `git diff ${exposeManifest.entries.at(-1)?.base}`, kind: "diff", language: "diff", excerpt: diff }
                 ];
               }
             }
@@ -40829,10 +40872,7 @@ var init_jobs = __esm({
        * @returns {Round[]}
        */
       #chainRounds(chainId) {
-        const byRound = new Map(
-          /** @type {Round[]} */
-          loadChain(chainId).map((j) => [j.round, j])
-        );
+        const byRound = new Map(loadChain(chainId).map((j) => [j.round, j]));
         for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
         return [...byRound.values()];
       }
@@ -41079,8 +41119,7 @@ var init_jobs = __esm({
               throw err;
             }
           }
-          job.result = /** @type {ConsultResult} */
-          normalized.result;
+          job.result = normalized.result;
           const notes = [
             adviceCaveat(normalized),
             sameVendorCaveat(job.caller, job.caller_model, consultant),
@@ -41147,7 +41186,7 @@ var init_jobs = __esm({
       // consultant did not produce and a word outside VERDICTS, then stores what
       // was written. It never decides that a finding was adopted, and it never
       // fills in a verdict the lead did not write.
-      /** @param {Record<string, any>} [input] */
+      /** @param {RawRecord} [input] */
       record(input2 = {}) {
         if (input2.records !== void 0) return this.#recordMany(input2);
         const allowed = ["job_id", "entries", "reflection"];
@@ -41167,7 +41206,7 @@ var init_jobs = __esm({
       // record is checked before anything is written, so a bad id leaves the
       // history as it was; then each job is written on its own, and a write that
       // fails is named in the answer rather than reported as saved.
-      /** @param {Record<string, any>} input */
+      /** @param {RawRecord} input */
       #recordMany(input2) {
         const extra = Object.keys(input2).filter((k) => k !== "records");
         if (extra.length) {
@@ -41211,7 +41250,7 @@ var init_jobs = __esm({
       // Everything that can be wrong with a record, found before anything is
       // written: what the job's record and reflection become, or a RequestError.
       /**
-       * @param {{job_id?: any, entries?: any[], reflection?: any}} rec
+       * @param {RawRecord} rec
        * @returns {RecordChange}
        */
       #checkRecord({ job_id: jobId, entries, reflection }) {
@@ -41222,8 +41261,7 @@ var init_jobs = __esm({
           );
         }
         const live = this.jobs.get(jobId);
-        const job = live ?? /** @type {Round | null} */
-        loadRound(jobId);
+        const job = live ?? loadRound(jobId);
         if (!job) {
           throw new RequestError(`no consultation with job_id "${jobId}" in this session or in ~/.severally/history`, "unknown_job");
         }
@@ -41281,10 +41319,7 @@ var init_jobs = __esm({
         }
         const newRecord = entries === void 0 ? void 0 : {
           updated_at: now,
-          entries: ids.filter((id2) => merged.has(id2)).map((id2) => (
-            /** @type {RecordEntry} */
-            merged.get(id2)
-          ))
+          entries: ids.flatMap((id2) => merged.get(id2) ?? [])
         };
         return { job, live, record: newRecord, reflection: newReflection };
       }
@@ -41452,8 +41487,7 @@ var init_jobs = __esm({
         if (!group) return null;
         return this.#shapeGroup(
           group,
-          /** @type {JobView[]} */
-          group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean),
+          group.job_ids.map((jid) => this.view(jid, opts)).filter((v) => v != null),
           opts
         );
       }
@@ -41776,7 +41810,7 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, "unknown_chain");
   }
   const first = (
-    /** @type {Stored} */
+    /** @type {Round} */
     perChain.find((c) => c.rounds.length)?.rounds[0]
   );
   const lines = [
@@ -42205,10 +42239,7 @@ function registration({ cmd, checks }) {
   let ran = false;
   for (const args of checks) {
     try {
-      const out = (
-        /** @type {string} */
-        execCommandSync(cmd, args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] })
-      );
+      const out = execCommandSync(cmd, args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
       ran = true;
       if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return "registered (listed by the client)";
     } catch (err) {
@@ -42225,8 +42256,7 @@ function login(cli) {
   let out;
   let ok = true;
   try {
-    out = /** @type {string} */
-    execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
+    out = execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
   } catch (e) {
     const err = (
       /** @type {{ status?: unknown, stdout?: unknown }} */

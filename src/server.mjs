@@ -339,7 +339,7 @@ export function createServer(manager = new JobManager()) {
     async ({ job_id, entries, reflection, records }) => {
       try {
         if (records !== undefined) {
-          /** @type {Record<string, any>} */
+          /** @type {Record<string, unknown>} */
           const out = manager.record(
             Object.fromEntries(Object.entries({ job_id, entries, reflection, records }).filter(([, v]) => v !== undefined)),
           );

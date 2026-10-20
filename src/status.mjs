@@ -46,9 +46,7 @@ function registration({ cmd, checks }) {
   let ran = false;
   for (const args of checks) {
     try {
-      const out = /** @type {string} */ (
-        execCommandSync(cmd, args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] })
-      );
+      const out = execCommandSync(cmd, args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
       ran = true;
       if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return 'registered (listed by the client)';
     } catch (err) {
@@ -89,9 +87,7 @@ function login(cli) {
   let out;
   let ok = true;
   try {
-    out = /** @type {string} */ (
-      execCommandSync(check.cmd, check.args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] })
-    );
+    out = execCommandSync(check.cmd, check.args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
     const err = /** @type {{ status?: unknown, stdout?: unknown }} */ (e);
     if (typeof err.status !== 'number') return `could not tell (${check.cmd} ${check.args.join(' ')} failed)`;

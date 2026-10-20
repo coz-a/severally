@@ -21,6 +21,33 @@ export class OutputError extends Error {
 
 const O = POLICY.output;
 
+/** @typedef {'high' | 'medium' | 'low'} Level */
+/** @typedef {'sufficient' | 'thin' | 'insufficient'} EvidenceBasis */
+/** @typedef {(typeof STANCES)[number]} Stance */
+/** @typedef {{ id: string, point: string, grounds: string | null, impact: string | null, severity: Level | null, confidence: Level | null }} Finding */
+/** @typedef {{ option: string, tradeoffs: string | null, when_preferred: string | null }} Alternative */
+/** @typedef {{ id: string, item: string, why_it_matters: string | null, how_to_obtain: string | null }} Unknown */
+/** @typedef {{ condition: string, changes_to: string | null }} DecisionChanger */
+/** @typedef {{ id: string, check: string, method: string | null, expected_signal: string | null }} NextCheck */
+/** @typedef {{ topic: string, your_position: string | null, why_unresolved: string | null }} RemainingDisagreement */
+/** @typedef {{ title: string | null, url: string | null, relevance: string | null }} Reference */
+
+/**
+ * The validated consult result, in the shape of CONSULT_RESULT_SCHEMA.
+ * @typedef {object} ConsultResult
+ * @property {string} summary
+ * @property {Level | null} confidence
+ * @property {EvidenceBasis | null} evidence_basis
+ * @property {Stance | null} stance
+ * @property {Finding[]} findings
+ * @property {Alternative[]} alternatives
+ * @property {Unknown[]} unknowns
+ * @property {DecisionChanger[]} decision_changers
+ * @property {NextCheck[]} next_checks
+ * @property {RemainingDisagreement[]} remaining_disagreements
+ * @property {Reference[]} references
+ */
+
 /**
  * @param {unknown} v
  * @param {number} max
@@ -33,41 +60,43 @@ function clampText(v, max) {
   return t.length > max ? `${t.slice(0, max)}\n…[truncated by severally]` : t;
 }
 
+/** @type {Level[]} */
 const LEVELS = ['high', 'medium', 'low'];
+/** @type {EvidenceBasis[]} */
 const BASIS = ['sufficient', 'thin', 'insufficient'];
 
 /**
  * @param {unknown} v
- * @param {string | null} [fallback]
- * @returns {string | null}
+ * @param {Level | null} [fallback]
+ * @returns {Level | null}
  */
 function level(v, fallback = null) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return LEVELS.includes(t) ? t : fallback;
+  return LEVELS.includes(/** @type {Level} */ (t)) ? /** @type {Level} */ (t) : fallback;
 }
 
 /**
  * @param {unknown} v
- * @returns {string | null}
+ * @returns {EvidenceBasis | null}
  */
 function basis(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return BASIS.includes(t) ? t : null;
+  return BASIS.includes(/** @type {EvidenceBasis} */ (t)) ? /** @type {EvidenceBasis} */ (t) : null;
 }
 
 /**
  * @param {unknown} v
- * @returns {string | null}
+ * @returns {Stance | null}
  */
 function stance(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return STANCES.includes(t) ? t : null;
+  return STANCES.includes(/** @type {Stance} */ (t)) ? /** @type {Stance} */ (t) : null;
 }
 
 /**
  * Extract a JSON object from raw model text (fenced block, or first balanced object).
  * @param {unknown} text
- * @returns {Record<string, any> | null}
+ * @returns {Record<string, unknown> | null}
  */
 export function extractJson(text) {
   if (typeof text !== 'string') return null;
@@ -126,31 +155,32 @@ export function extractJson(text) {
 // never read from the answer: a consultant that numbered its own findings
 // cannot make one of them impersonate another.
 /**
+ * @template T
  * @param {unknown} raw
  * @param {Record<string, 'text' | 'level'>} fields
  * @param {{ requiredField: string, idPrefix?: string | null }} options
- * @returns {Record<string, any>[]}
+ * @returns {T[]}
  */
 function mapList(raw, fields, { requiredField, idPrefix = null }) {
   if (!Array.isArray(raw)) return [];
-  /** @type {Record<string, any>[]} */
+  /** @type {T[]} */
   const out = [];
   for (const entry of raw.slice(0, O.listMax)) {
     if (!entry || typeof entry !== 'object') continue;
-    /** @type {Record<string, any>} */
+    /** @type {Record<string, unknown>} */
     const item = idPrefix ? { id: `${idPrefix}${out.length + 1}` } : {};
     for (const [key, kind] of Object.entries(fields)) {
       item[key] = kind === 'level' ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
     if (!item[requiredField]) continue;
-    out.push(item);
+    out.push(/** @type {T} */ (item));
   }
   return out;
 }
 
 /**
- * @param {object|string} raw  parsed JSON object, or raw text to mine one out of
- * @returns {{result: Record<string, any>, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
+ * @param {Record<string, unknown> | string} raw  parsed JSON object, or raw text to mine one out of
+ * @returns {{result: ConsultResult, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
  */
 export function normalizeResult(raw) {
   const objIn = typeof raw === 'string' ? extractJson(raw) : raw;
@@ -164,7 +194,7 @@ export function normalizeResult(raw) {
     throw new OutputError('consultant response has no usable "summary" field', JSON.stringify(src).slice(0, 2000));
   }
 
-  /** @type {Record<string, any>} */
+  /** @type {ConsultResult} */
   const result = {
     summary,
     confidence: level(src.confidence),
@@ -227,29 +257,30 @@ export function normalizeResult(raw) {
     ),
     references: (Array.isArray(src.references) ? src.references : [])
       .slice(0, O.referencesMax)
-      .map((/** @type {any} */ r) =>
+      .map((r) =>
         r && typeof r === 'object'
           ? { title: clampText(r.title, 300), url: clampText(r.url, 1000), relevance: clampText(r.relevance, 600) }
           : { title: clampText(r, 300), url: null, relevance: null },
       )
-      .filter((/** @type {any} */ r) => r.title || r.url),
+      .filter((r) => r.title || r.url),
   };
 
   // The lists are cut to O.listMax before anything else looks at them; say how
   // long the ones that were cut had been, so the cut is not silent.
   const listTruncated = Object.fromEntries(
-    ['findings', 'alternatives', 'unknowns', 'decision_changers', 'next_checks', 'remaining_disagreements']
-      .filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax)
-      .map((k) => [k, src[k].length]),
+    ['findings', 'alternatives', 'unknowns', 'decision_changers', 'next_checks', 'remaining_disagreements'].flatMap((k) => {
+      const v = src[k];
+      return Array.isArray(v) && v.length > O.listMax ? [[k, v.length]] : [];
+    }),
   );
 
   const missing = RESULT_KEYS.filter((k) => {
-    const v = result[k];
+    const v = /** @type {Record<string, unknown>} */ (result)[k];
     return v === null || v === undefined || (Array.isArray(v) && v.length === 0);
   });
 
   // Grounds are the point of the exercise: a finding without them is not evidence.
-  const groundless = result.findings.filter((/** @type {any} */ f) => !f.grounds).length;
+  const groundless = result.findings.filter((f) => !f.grounds).length;
 
   return {
     result,

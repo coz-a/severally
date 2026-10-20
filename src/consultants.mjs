@@ -154,7 +154,7 @@ export function modelVersion(model) {
 /**
  * The operator's word wins; otherwise the stem decides, and an unknown stem is null rather than a guess.
  * @param {unknown} model
- * @param {string | null} [explicit]
+ * @param {unknown} [explicit]
  * @returns {string | null}
  */
 export function vendorOf(model, explicit = null) {
@@ -250,6 +250,8 @@ export function rankCandidates(cands, ranking = []) {
   return left.length === 1 ? left[0] : null;
 }
 
+/** @typedef {{ none: true, consultant?: undefined, ambiguous?: undefined } | { none?: undefined, consultant: Consultant, ambiguous?: undefined } | { none?: undefined, consultant?: undefined, ambiguous: readonly Consultant[] }} Resolution */
+
 /**
  * What a requested name means: a consultant's own name, then a CLI name, then
  * a vendor word, then the words of a model id. Several candidates are ranked;
@@ -257,7 +259,7 @@ export function rankCandidates(cands, ranking = []) {
  * @param {unknown} input
  * @param {readonly Consultant[]} consultants
  * @param {readonly string[]} [ranking]
- * @returns {{ none?: true, consultant?: Consultant, ambiguous?: readonly Consultant[] }}
+ * @returns {Resolution}
  */
 export function resolveConsultant(input, consultants, ranking = []) {
   const key = normalizeName(input);
@@ -318,9 +320,9 @@ const CLI_KEYS = ['enabled', 'note', 'bin', 'args', 'env', 'provider'];
 const CONSULTANT_KEYS = ['cli', 'model', 'effort', 'timeout_ms', 'max_budget_usd', 'vendor', 'enabled', 'note'];
 /**
  * @param {unknown} v
- * @returns {v is Record<string, any>}
+ * @returns {v is Record<string, unknown>}
  */
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 /**
  * @param {number} v
  * @param {number} min
@@ -363,7 +365,9 @@ export function buildConsultants(config) {
 
   // The one server key that is not a number to clamp: a wrong value cannot
   // be read as either setting, and reading it as "on" would open the web.
-  if (isObject(cfg.server) && cfg.server.network !== undefined && !['on', 'off'].includes(cfg.server.network)) {
+  /** @type {readonly unknown[]} */
+  const networkModes = ['on', 'off'];
+  if (isObject(cfg.server) && cfg.server.network !== undefined && !networkModes.includes(cfg.server.network)) {
     fault('server.network must be "on" or "off"');
   }
 
@@ -374,11 +378,13 @@ export function buildConsultants(config) {
     else fault('ranking must be an array of non-empty strings');
   }
 
+  /** @type {readonly unknown[]} */
+  const cliIds = CLI_IDS;
   if (cfg.clis !== undefined) {
     if (!isObject(cfg.clis)) fault('clis must be an object keyed by CLI');
     else {
       for (const [id, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(/** @type {CliId} */ (id))) {
+        if (!cliIds.includes(id)) {
           problems.push(`clis.${id}: unknown CLI (known: ${CLI_IDS.join(', ')})`);
           continue;
         }
@@ -436,7 +442,7 @@ export function buildConsultants(config) {
       }
       for (const k of Object.keys(def))
         if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(', ')})`);
-      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
+      if (!cliIds.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
       if (typeof def.model !== 'string' || def.model.trim() === '') problems.push(`${at}.model: required`);
       for (const k of ['effort', 'vendor', 'note']) {
         if (def[k] !== undefined && typeof def[k] !== 'string') problems.push(`${at}.${k}: must be a string`);
@@ -455,22 +461,36 @@ export function buildConsultants(config) {
         broken[name] = problems.slice(before);
         continue;
       }
-      const pair = `${def.cli}\n${def.model.trim()}`;
+      const valid = /** @type {ConsultantDef} */ (def);
+      const pair = `${valid.cli}\n${valid.model.trim()}`;
       if (seen.has(pair)) {
         problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
         broken[name] = problems.slice(before);
         continue;
       }
       seen.set(pair, name);
-      consultants.push(make(name, def));
+      consultants.push(make(name, valid));
     }
   }
   return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global, broken, brokenClis };
 }
 
 /**
+ * A consultant's definition in the config file, once it has passed validation.
+ * @typedef {object} ConsultantDef
+ * @property {CliId} cli
+ * @property {string} model
+ * @property {unknown} [effort]
+ * @property {unknown} [timeout_ms]
+ * @property {unknown} [max_budget_usd]
+ * @property {unknown} [vendor]
+ * @property {unknown} [enabled]
+ * @property {unknown} [note]
+ */
+
+/**
  * @param {string} name
- * @param {Record<string, any>} def a definition that has passed validation
+ * @param {ConsultantDef} def a definition that has passed validation
  * @returns {Consultant}
  */
 function make(name, def) {
@@ -482,7 +502,7 @@ function make(name, def) {
     effort: typeof def.effort === 'string' && def.effort.trim() !== '' ? def.effort.trim() : null,
     timeoutMs: typeof def.timeout_ms === 'number' ? clamp(def.timeout_ms, 1_000, 7_200_000) : null,
     maxBudgetUsd: typeof def.max_budget_usd === 'number' ? clamp(def.max_budget_usd, 0.05, 20) : null,
-    vendor: vendorOf(model, def.vendor ?? null),
+    vendor: vendorOf(model, def.vendor),
     enabled: def.enabled !== false,
     note: typeof def.note === 'string' && def.note.trim() !== '' ? def.note.trim() : null,
   });

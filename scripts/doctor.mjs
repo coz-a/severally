@@ -97,7 +97,7 @@ function codexSandboxRead(file, word) {
 
 const SUB_AGENT_TOOL = /subagent|spawn_agent|collab_tool_call|^task(:|$)|^agent(:|$)/i;
 
-/** @param {Record<string, any>} view */
+/** @param {JobView} view */
 function subAgentRow(view) {
   if (!view.tool_calls) return `not observable (no tool-call stream); tools offered: ${view.boundary?.tools ?? 'unknown'}`;
   if (Object.keys(view.tool_calls).length === 0) return 'inconclusive: the stream shows no tool calls at all';
@@ -130,9 +130,8 @@ for (const { name: target, cli } of consultants) {
   const { _secret, ...request } = probe(dir, secret, rootCanary);
 
   const mgr = new JobManager();
-  /** @type {Record<string, any>} */
   const started = mgr.start({ target, ...request });
-  if (!started.job_id) {
+  if (!('job_id' in started)) {
     rows.push({ target, error: JSON.stringify(started) });
     failed = true;
     for (const d of [dir, rootDir]) fs.rmSync(d, { recursive: true, force: true });

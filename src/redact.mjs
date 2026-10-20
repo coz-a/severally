@@ -81,22 +81,24 @@ const PATTERNS = [
 
 /**
  * Any JSON-like value in, the same shape out with its strings scrubbed.
- * @param {any} value
- * @returns {any}
+ * @template T
+ * @param {T} value
+ * @returns {T}
  */
 export function redact(value) {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') {
-    let out = value;
-    for (const [re, rep] of PATTERNS) out = out.replace(re, /** @type {any} */ (rep));
-    return out;
+    let out = /** @type {string} */ (value);
+    // The same call either way: replace() has one overload for a string and one for a function.
+    for (const [re, rep] of PATTERNS) out = typeof rep === 'string' ? out.replace(re, rep) : out.replace(re, rep);
+    return /** @type {T} */ (/** @type {unknown} */ (out));
   }
-  if (Array.isArray(value)) return value.map(redact);
+  if (Array.isArray(value)) return /** @type {T} */ (/** @type {unknown} */ (value.map(redact)));
   if (typeof value === 'object') {
-    /** @type {Record<string, any>} */
+    /** @type {Record<string, unknown>} */
     const out = {};
     for (const [k, v] of Object.entries(value)) out[k] = redact(v);
-    return out;
+    return /** @type {T} */ (/** @type {unknown} */ (out));
   }
   return value;
 }

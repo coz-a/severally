@@ -37,137 +37,82 @@ import * as opencode from './adapters/opencode.mjs';
 /** @typedef {import('./store.mjs').Seat} Seat */
 /** @typedef {NonNullable<Seat['owner']>} JobOwner Who runs a consultation: the severally process, and when it counts as overdue. */
 /** @typedef {import('./brief.mjs').PriorRound} PriorRound */
-/** @typedef {import('./brief.mjs').BriefRequest & {context: any, [key: string]: any}} ParsedRequest A validated request (see parseRequest). */
-
 /**
- * @typedef {object} JobFailure
- * @property {string} kind
- * @property {string} message
- * @property {string | null} detail
- * @property {boolean} retriable
- * @property {boolean} delivered_advice
+ * A validated request (see parseRequest), with what the job manager adds to it.
+ * @typedef {import('./brief.mjs').BriefRequest & {
+ *   target: string,
+ *   targets: string[],
+ *   fanout: boolean,
+ *   caller: string | null,
+ *   caller_model: string | null,
+ *   initiator: string | null,
+ *   followup_to: string | null,
+ *   prediction?: {expected: string, worry: string} | null,
+ *   context: {facts: string[], counterpoints: string[], expose_paths: string[], expose_diff?: {repo: string, base?: string} | null, expose_from_parent?: boolean},
+ *   _snapshot?: string,
+ * }} ParsedRequest
  */
 
 /**
- * What the lead wrote about one point of an answer.
- * @typedef {object} RecordEntry
- * @property {string} id
- * @property {string} verdict
- * @property {string | null} effect
- * @property {string | null} note
- * @property {string} recorded_at
+ * The tool arguments, not yet validated; only the keys inherit() and start() look at are named.
+ * @typedef {{target?: unknown, targets?: unknown[] | null, network?: unknown, context?: Record<string, unknown> | null, [key: string]: unknown}} RawRequest
  */
 
-/**
- * The lead's verdicts on a round. The counts are present in a view
- * (recordSummary), not in what the history keeps.
- * @typedef {object} JobRecord
- * @property {string} updated_at
- * @property {RecordEntry[]} entries
- * @property {Record<string, number>} [verdicts]
- * @property {{recordable: number, recorded: number}} [coverage]
- * @property {string[]} [unrecorded]
- */
+/** @typedef {import('./store.mjs').JobFailure} JobFailure */
+/** @typedef {import('./store.mjs').RecordEntry} RecordEntry */
+/** @typedef {import('./store.mjs').JobRecord} JobRecord */
+/** @typedef {import('./store.mjs').Reflection} Reflection */
+/** @typedef {import('./store.mjs').Prediction} Prediction */
+/** @typedef {import('./store.mjs').ResultItem} ResultItem */
+/** @typedef {import('./store.mjs').ConsultResult} ConsultResult */
+/** @typedef {import('./store.mjs').Round} Round */
+/** @typedef {import('./store.mjs').BriefRecord} BriefRecord */
+/** @typedef {import('./store.mjs').RetryRecord} RetryRecord */
+/** @typedef {import('./store.mjs').IndexRow} IndexRow */
+/** @typedef {import('./store.mjs').BriefExposeEntry} BriefExposeEntry */
 
-/**
- * What the answer added over what the lead expected, in the lead's words.
- * @typedef {object} Reflection
- * @property {string} delta
- * @property {string[]} related_item_ids
- * @property {string} recorded_at
- */
+/** @typedef {Partial<Round> & {rec?: StoredRound, row?: IndexRow}} Candidate A consultation to list: one held here, a marker, or an index row. */
 
-/**
- * Written before the consultant is launched and never sent to it.
- * @typedef {object} Prediction
- * @property {any} expected
- * @property {any} worry
- * @property {string} recorded_at
- */
-
-/** @typedef {Record<string, any> & {id: string}} ResultItem One finding, unknown or next check of an answer. */
-
-/**
- * A consultant's normalized answer (see normalizeResult).
- * @typedef {object} ConsultResult
- * @property {string} summary
- * @property {string} [stance]
- * @property {string} [confidence]
- * @property {string} [evidence_basis]
- * @property {ResultItem[]} findings
- * @property {ResultItem[]} unknowns
- * @property {ResultItem[]} next_checks
- * @property {Record<string, any>[]} alternatives
- * @property {Record<string, any>[]} decision_changers
- * @property {Record<string, any>[]} remaining_disagreements
- * @property {Record<string, any>[]} references
- */
-
-/**
- * One consultation as the history keeps it (see JobManager#record) and as the
- * process running it describes it.
- * @typedef {object} Round
- * @property {string} job_id
- * @property {string} chain_id
- * @property {string | null} [group_id]
- * @property {number} round
- * @property {string} target
- * @property {string} cli
- * @property {string | null} [vendor]
- * @property {string} [caller]
- * @property {string | null} [caller_model]
- * @property {string | null} [initiator]
- * @property {'on' | 'off'} [network]
- * @property {any} [boundary]
- * @property {Record<string, any>[]} [retries]
- * @property {any} [partial_output]
- * @property {any} [tool_calls]
- * @property {any} [diagnostics]
- * @property {string} mode
- * @property {string} status
- * @property {string} model
- * @property {string} question
- * @property {any} brief
- * @property {Prediction | null} [prediction]
- * @property {Reflection | null} [reflection]
- * @property {JobRecord | null} [record]
- * @property {string} created_at
- * @property {string | null} started_at
- * @property {string | null} finished_at
- * @property {number | null} duration_ms
- * @property {ConsultResult | null} result
- * @property {Record<string, any> | null} quality
- * @property {Record<string, any> | null} usage
- * @property {JobFailure | null} failure
- * @property {number | null} [references_count]
- * @property {string | null} followup_to
- * @property {number} [rounds_used]
- * @property {number} [rounds_remaining]
- */
-
-/** @typedef {Partial<Round> & {rec?: StoredRound, row?: any}} Candidate A consultation to list: one held here, a marker, or an index row. */
-
-/** @typedef {Round & {owner?: JobOwner}} StoredRound A round, or the marker of one still running elsewhere. */
+/** @typedef {import('./store.mjs').RunningRecord} StoredRound A round, or the marker of one still running elsewhere. */
 
 /**
  * A consultation this process runs: the round, plus what only a live process has.
- * @typedef {Round & {group_id: string, retries: Record<string, any>[], cancelRequested: boolean, _cancelFns: Array<() => void>, _request: Record<string, any>, _owner?: JobOwner, _handle?: ProcHandle, promise?: Promise<unknown>}} Job
+ * @typedef {Round & {group_id: string, retries: RetryRecord[], cancelRequested: boolean, _cancelFns: Array<() => void>, _request: ParsedRequest, _owner?: JobOwner, _handle?: ProcHandle, promise?: Promise<unknown>}} Job
  */
 
 /**
- * A round as consult_get shows it.
- * @typedef {Round & {cancellable?: boolean, progress?: string | null, brief_note?: string, limits?: any, next_step?: string, cancel_effect?: string}} JobView
+ * What a view adds to a round.
+ * @typedef {object} ViewExtras
+ * @property {boolean} [cancellable]
+ * @property {string | null} [progress]
+ * @property {string} [brief_note]
+ * @property {ReturnType<typeof limitsSummary> | null} [limits]
+ * @property {string} [next_step]
+ * @property {string} [cancel_effect]
+ */
+
+/**
+ * The brief as consult_get names it by default: its size and sha256, where it is kept, what was copied.
+ * @typedef {object} BriefSummary
+ * @property {number} chars
+ * @property {string} sha256
+ * @property {string} history_file
+ * @property {({skipped: Record<string, number>} & import('./expose-paths.mjs').ExposeTotals) | null} exposed
+ * @property {string} full_with
+ */
+
+/** @typedef {Round & ViewExtras} FullView A round as consult_get shows it with `detail: "full"`. */
+
+/** @typedef {Omit<Round, 'brief'> & ViewExtras & {brief: BriefRecord | BriefSummary | null}} JobView A round as consult_get shows it. */
+
+/**
+ * A consult_record call, or one of its `records`, as sent: not yet validated. The job_id is only ever looked up, so it is not narrowed.
+ * @typedef {{job_id?: any, entries?: Array<{id?: unknown, verdict?: unknown, effect?: unknown, note?: unknown} | null>, reflection?: {delta?: unknown, related_item_ids?: unknown} | null, [key: string]: unknown}} RawRecord
  */
 
 /** @typedef {{job: Round, live: Job | undefined, record?: JobRecord, reflection?: Reflection}} RecordChange What a record call would write, checked and not yet written. */
 
-/**
- * The files a request handed over, as copied (see expose-paths.mjs).
- * @typedef {object} ExposeManifest
- * @property {any[]} entries
- * @property {{files: number, bytes: number}} totals
- * @property {any[]} skipped
- */
+/** @typedef {import('./expose-paths.mjs').ExposeManifest} ExposeManifest */
 
 /**
  * @typedef {object} GroupLink
@@ -302,11 +247,11 @@ export class JobManager {
    * @returns {StoredRound | null}
    */
   #fromDisk(jobId) {
-    const done = /** @type {Round | null} */ (store.loadRound(jobId));
+    const done = store.loadRound(jobId);
     if (done) return done;
-    const live = /** @type {StoredRound | null} */ (store.loadRunning(jobId));
+    const live = store.loadRunning(jobId);
     // Its owner may have finished between the two reads: the round is there now.
-    if (!live) return /** @type {Round | null} */ (store.loadRound(jobId));
+    if (!live) return store.loadRound(jobId);
     const state = ownerState(jobId, live.owner);
     return state === 'alive' ? live : this.#interrupt(jobId, live, state);
   }
@@ -322,7 +267,7 @@ export class JobManager {
    * @returns {Round}
    */
   #interrupt(jobId, rec, state) {
-    const done = /** @type {Round | null} */ (store.loadRound(jobId));
+    const done = store.loadRound(jobId);
     if (done) {
       store.removeRunning(jobId);
       return done;
@@ -353,7 +298,7 @@ export class JobManager {
   /** Close out the consultations whose process died, and remove their job directories. */
   sweepInterrupted() {
     for (const jobId of store.listRunning()) {
-      const rec = /** @type {StoredRound | null} */ (store.loadRunning(jobId));
+      const rec = store.loadRunning(jobId);
       const state = rec && ownerState(jobId, rec.owner);
       if (rec && state && state !== 'alive') this.#interrupt(jobId, rec, state);
     }
@@ -361,7 +306,7 @@ export class JobManager {
 
   /**
    * @param {StoredRound} rec
-   * @returns {JobView}
+   * @returns {FullView}
    */
   #diskView(rec) {
     const elsewhere = Boolean(rec.owner);
@@ -441,7 +386,7 @@ export class JobManager {
       const rec = this.#fromDisk(jobId);
       return rec ? compactBrief(this.#diskView(rec), detail) : null;
     }
-    /** @type {JobView} */
+    /** @type {FullView} */
     const rec = this.#record(job);
     rec.cancellable = job.status === 'running' || job.status === 'queued';
     // While it runs, say what it is doing. "running" for twenty minutes tells
@@ -480,17 +425,17 @@ export class JobManager {
   list({ limit = 20 } = {}) {
     const here = this.order.map((jid) => /** @type {Job} */ (this.jobs.get(jid)));
     const seen = new Set(here.map((j) => j.job_id));
-    /** @type {Array<{rec?: StoredRound, row?: any}>} */
+    /** @type {Array<{rec?: StoredRound, row?: IndexRow}>} */
     const elsewhere = [];
     // Read only: a marker whose owner is gone is shown as interrupted, and
     // left for consult_get or the startup sweep to close out.
     for (const jobId of store.listRunning()) {
-      const live = /** @type {StoredRound | null} */ (seen.has(jobId) ? null : store.loadRunning(jobId));
+      const live = seen.has(jobId) ? null : store.loadRunning(jobId);
       if (!live) continue;
       seen.add(jobId);
       const state = ownerState(jobId, live.owner);
       // A round saved just before its owner died is the answer, whatever the marker says.
-      const saved = /** @type {Round | null} */ (state === 'alive' ? null : store.loadRoundAt(live));
+      const saved = state === 'alive' ? null : store.loadRoundAt(live);
       elsewhere.push({
         rec:
           state === 'alive'
@@ -546,12 +491,12 @@ export class JobManager {
    * but named under `not_reported`. Nothing is estimated.
    */
   usageTotals() {
-    /** @type {Record<string, Record<string, any>>} */
+    /** @type {Record<string, Record<string, number>>} */
     const by = {};
     /** @type {Record<string, Set<string>>} */
     const reported = {};
     for (const j of this.jobs.values()) {
-      const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter(Boolean);
+      const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter((u) => u != null);
       if (!attempts.length) continue;
       const t = (by[j.target] ??= { consultations: 0, attempts: 0 });
       const seen = (reported[j.target] ??= new Set());
@@ -565,13 +510,15 @@ export class JobManager {
           }
       }
     }
+    /** @type {Record<string, Record<string, number | string[]>>} */
+    const out = {};
     for (const [target, t] of Object.entries(by)) {
-      t.not_reported = USAGE_FIGURES.filter((k) => !reported[target].has(k));
+      out[target] = { ...t, not_reported: USAGE_FIGURES.filter((k) => !reported[target].has(k)) };
     }
-    return by;
+    return out;
   }
 
-  /** @param {Record<string, any>} rawRequest the tool arguments, not yet validated */
+  /** @param {RawRequest} rawRequest the tool arguments, not yet validated */
   start(rawRequest) {
     if (process.env.SEVERALLY_ACTIVE === '1') {
       throw new RequestError(
@@ -605,7 +552,7 @@ export class JobManager {
     } else if (followupTo) {
       // A job from an earlier server session is read back from the history,
       // so a restart does not end a consultation the lead is still checking.
-      parent = this.jobs.get(followupTo) ?? /** @type {Round | null} */ (store.loadRound(followupTo));
+      parent = this.jobs.get(followupTo) ?? store.loadRound(followupTo);
       if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, 'unknown_job');
       if (parent.status !== 'completed') {
         throw new RequestError(
@@ -734,7 +681,7 @@ export class JobManager {
     /** @type {GroupParents['skipped']} */
     const skipped = [];
     for (const jid of group.job_ids) {
-      const member = this.jobs.get(jid) ?? /** @type {Round | null} */ (store.loadRound(jid));
+      const member = this.jobs.get(jid) ?? store.loadRound(jid);
       if (!member) {
         skipped.push({
           job_id: jid,
@@ -788,7 +735,7 @@ export class JobManager {
     // than a job that fails having already spent a round of this chain.
     /** @type {ExposeManifest | null} */
     let exposeManifest = null;
-    /** @type {any[]} */
+    /** @type {BriefExposeEntry[]} */
     const parentEntries = req.context.expose_from_parent ? (parent.brief?.expose_paths?.entries ?? []) : [];
     if (req.context.expose_from_parent && parentEntries.length === 0) {
       throw new RequestError(
@@ -816,7 +763,10 @@ export class JobManager {
           if (req.context.expose_diff) {
             exposeManifest.skipped.push({ source: d.source, reason: 'replaced', exposed_as: d.exposed_as });
           } else {
-            if (reexposeChange(snapshot, d, exposeManifest)) exposeManifest.entries.at(-1).inherited = true;
+            if (reexposeChange(snapshot, d, exposeManifest)) {
+              const added = exposeManifest.entries.at(-1);
+              if (added) added.inherited = true;
+            }
           }
         }
         if (req.context.expose_diff) {
@@ -825,7 +775,7 @@ export class JobManager {
           if (diff) {
             req.context.artifacts = [
               ...req.context.artifacts,
-              { name: `git diff ${exposeManifest.entries.at(-1).base}`, kind: 'diff', language: 'diff', excerpt: diff },
+              { name: `git diff ${exposeManifest.entries.at(-1)?.base}`, kind: 'diff', language: 'diff', excerpt: diff },
             ];
           }
         }
@@ -1010,7 +960,7 @@ export class JobManager {
    */
   #chainRounds(chainId) {
     /** @type {Map<number, Round>} */
-    const byRound = new Map(/** @type {Round[]} */ (store.loadChain(chainId)).map((j) => [j.round, j]));
+    const byRound = new Map(store.loadChain(chainId).map((j) => [j.round, j]));
     for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
     return [...byRound.values()];
   }
@@ -1027,10 +977,12 @@ export class JobManager {
         const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
         // The checked points first, then the unchecked ones, each with the
         // lead's verdict and effect when there is one.
-        const ordered = (
-          /** @type {ResultItem[]} */ items,
-          /** @type {(x: any) => {point: string, grounds?: string | null}} */ shape,
-        ) =>
+        /**
+         * @template {ResultItem} T
+         * @param {T[]} items
+         * @param {(x: T) => {point: string, grounds?: string | null}} shape
+         */
+        const ordered = (items, shape) =>
           [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
             id: x.id,
             ...shape(x),
@@ -1349,7 +1301,7 @@ export class JobManager {
         }
       }
 
-      job.result = /** @type {ConsultResult} */ (normalized.result);
+      job.result = normalized.result;
       const notes = [
         adviceCaveat(normalized),
         sameVendorCaveat(job.caller, job.caller_model, consultant),
@@ -1432,7 +1384,7 @@ export class JobManager {
   // consultant did not produce and a word outside VERDICTS, then stores what
   // was written. It never decides that a finding was adopted, and it never
   // fills in a verdict the lead did not write.
-  /** @param {Record<string, any>} [input] */
+  /** @param {RawRecord} [input] */
   record(input = {}) {
     if (input.records !== undefined) return this.#recordMany(input);
     const allowed = ['job_id', 'entries', 'reflection'];
@@ -1456,7 +1408,7 @@ export class JobManager {
   // record is checked before anything is written, so a bad id leaves the
   // history as it was; then each job is written on its own, and a write that
   // fails is named in the answer rather than reported as saved.
-  /** @param {Record<string, any>} input */
+  /** @param {RawRecord} input */
   #recordMany(input) {
     const extra = Object.keys(input).filter((k) => k !== 'records');
     if (extra.length) {
@@ -1469,12 +1421,12 @@ export class JobManager {
     if (!Array.isArray(records) || records.length === 0) {
       throw new RequestError('records must be a non-empty array of { job_id, entries?, reflection? }', 'records_required');
     }
-    /** @type {Array<{index: number, job_id: any, error: string, message: string}>} */
+    /** @type {Array<{index: number, job_id: string | null, error: string, message: string}>} */
     const problems = [];
     /** @type {RecordChange[]} */
     const changes = [];
     const seen = new Set();
-    records.forEach((r, i) => {
+    records.forEach((/** @type {RawRecord} */ r, i) => {
       try {
         if (seen.has(r?.job_id))
           throw new RequestError(`job "${r.job_id}" appears twice; give each job one record`, 'duplicate_job');
@@ -1503,7 +1455,7 @@ export class JobManager {
   // Everything that can be wrong with a record, found before anything is
   // written: what the job's record and reflection become, or a RequestError.
   /**
-   * @param {{job_id?: any, entries?: any[], reflection?: any}} rec
+   * @param {RawRecord} rec
    * @returns {RecordChange}
    */
   #checkRecord({ job_id: jobId, entries, reflection }) {
@@ -1517,7 +1469,7 @@ export class JobManager {
     // back from its round file, so a verdict can still be written once the
     // checking -- which may take days -- is actually done.
     const live = this.jobs.get(jobId);
-    const job = live ?? /** @type {Round | null} */ (store.loadRound(jobId));
+    const job = live ?? store.loadRound(jobId);
     if (!job) {
       throw new RequestError(`no consultation with job_id "${jobId}" in this session or in ~/.severally/history`, 'unknown_job');
     }
@@ -1589,7 +1541,7 @@ export class JobManager {
         ? undefined
         : {
             updated_at: now,
-            entries: ids.filter((id) => merged.has(id)).map((id) => /** @type {RecordEntry} */ (merged.get(id))),
+            entries: ids.flatMap((id) => merged.get(id) ?? []),
           };
     return { job, live, record: newRecord, reflection: newReflection };
   }
@@ -1800,7 +1752,7 @@ export class JobManager {
     if (!group) return null;
     return this.#shapeGroup(
       group,
-      /** @type {JobView[]} */ (group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean)),
+      group.job_ids.map((jid) => this.view(jid, opts)).filter((v) => v != null),
       opts,
     );
   }
@@ -1911,7 +1863,7 @@ export class JobManager {
 // path order, so its re-copy can read as changed when it is not.
 /**
  * @param {ExposeManifest} manifest
- * @param {any[]} parentEntries
+ * @param {BriefExposeEntry[]} parentEntries
  */
 function markSinceParent(manifest, parentEntries) {
   const key = (/** @type {string} */ source, /** @type {string} */ kind) =>
@@ -1942,7 +1894,10 @@ function inheritedSummary(manifest) {
 // is the raw output stream, unparsed: material the lead may read, never an
 // answer, which is why it sits beside the failure and not in `result`.
 const PARTIAL_TAIL_CHARS = 8_000;
-/** @param {import('./run.mjs').ChildResult} run */
+/**
+ * @param {import('./run.mjs').ChildResult} run
+ * @returns {import('./store.mjs').PartialOutput | null}
+ */
 function partialOutput(run) {
   const out = String(run.stdout ?? '');
   if (!out.trim()) return null;
@@ -1983,7 +1938,7 @@ async function settled(promise, ms, signal) {
   }
 }
 
-/** @param {string} text */
+/** @param {string | Record<string, unknown>} text */
 function parses(text) {
   try {
     normalizeResult(text);
@@ -2055,39 +2010,35 @@ function text(value) {
 // it -- and the validation that follows sees the result. Files are not:
 // copying them again stays expose_from_parent, named in the call (schema.mjs).
 /**
- * @param {Record<string, any>} raw
+ * @param {RawRequest} raw
  * @param {Round} round
- * @returns {Record<string, any>}
+ * @returns {RawRequest}
  */
 function inherit(raw, round) {
   const { brief } = round;
   // A round kept off the web stays off: the material it carries over is the same.
-  /** @type {Record<string, any>} */
+  /** @type {RawRequest} */
   const out = raw.network === undefined && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
-  for (const k of ['objective', 'success_criteria', 'constraints']) {
-    if (
-      out[k] === undefined &&
-      raw.context?.[k] === undefined &&
-      brief[k] != null &&
-      !(Array.isArray(brief[k]) && !brief[k].length)
-    )
-      out[k] = brief[k];
+  /** @type {Array<'objective' | 'success_criteria' | 'constraints'>} */
+  const topKeys = ['objective', 'success_criteria', 'constraints'];
+  for (const k of topKeys) {
+    const v = brief[k];
+    if (out[k] === undefined && raw.context?.[k] === undefined && v != null && !(Array.isArray(v) && !v.length)) out[k] = v;
   }
   const ctx = { ...(raw.context ?? {}) };
-  for (const k of ['facts', 'proposal', 'counterpoints']) {
-    if (ctx[k] === undefined && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
+  /** @type {Array<'facts' | 'proposal' | 'counterpoints'>} */
+  const contextKeys = ['facts', 'proposal', 'counterpoints'];
+  for (const k of contextKeys) {
+    const v = brief[k];
+    if (ctx[k] === undefined && v != null && !(Array.isArray(v) && !v.length)) ctx[k] = v;
   }
   // The diff expose_diff added is not the lead's material: it is taken again
   // (or replaced) through expose_from_parent, against the files as they are now.
   // It is the last artifact (appended after the lead's own), so only that one is dropped.
   const artifacts = [...(brief.artifacts ?? [])];
   const last = artifacts.at(-1);
-  if (
-    brief.expose_paths?.entries?.some((/** @type {{kind: string}} */ e) => e.kind === 'diff') &&
-    last?.kind === 'diff' &&
-    last.name.startsWith('git diff ')
-  )
+  if (brief.expose_paths?.entries?.some((e) => e.kind === 'diff') && last?.kind === 'diff' && last.name.startsWith('git diff '))
     artifacts.pop();
   if (ctx.artifacts === undefined && artifacts.length) {
     // Stored with null for an absent language or source; the request schema takes them as optional strings.
@@ -2215,14 +2166,16 @@ function byTarget(m, budget) {
     return out;
   };
   const item = Math.min(ITEM_CHARS, budget / 10);
-  const list = (
-    /** @type {string} */ name,
-    /** @type {any[] | undefined} */ items = [],
-    /** @type {number} */ fields,
-    /** @type {(x: any, n: number) => unknown} */ build,
-    /** @type {number} */ part,
-    floor = MIN_TEXT_CHARS,
-  ) => {
+  /**
+   * @template T
+   * @param {string} name
+   * @param {T[] | undefined} items
+   * @param {number} fields
+   * @param {(x: T, n: number) => unknown} build
+   * @param {number} part
+   * @param {number} [floor]
+   */
+  const list = (name, items = [], fields, build, part, floor = MIN_TEXT_CHARS) => {
     if (full) return items.map((x) => build(x, Infinity));
     let share = left * part;
     // What one item takes with every text cut to nothing, so the rest of the
@@ -2435,7 +2388,7 @@ function cut(s, max) {
 // the round file, so both can be checked against it), where it is kept, and
 // what was copied -- skipped files counted by reason, not listed.
 /**
- * @param {JobView} view
+ * @param {FullView} view
  * @param {string} [detail]
  * @returns {JobView}
  */

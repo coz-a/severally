@@ -60,6 +60,8 @@ import { classifyMessage } from '../failures.mjs';
 /** @typedef {import('../run.mjs').ChildResult} ChildResult */
 /** @typedef {import('../run.mjs').Invocation} Invocation */
 /** @typedef {import('../run.mjs').Interpreted} Interpreted */
+/** @typedef {import('../run.mjs').UsageRecord} UsageRecord */
+/** @typedef {import('../run.mjs').Boundary} Boundary */
 
 export const FORBIDDEN_FLAGS = [
   '--dangerously-bypass-approvals-and-sandbox',
@@ -309,11 +311,11 @@ export function toolCalls({ stdout }) {
 }
 
 /**
- * @param {any} raw
- * @returns {Record<string, number | null>}
+ * @param {unknown} raw the usage figures interpret collected from the event stream
+ * @returns {UsageRecord}
  */
 export function usageRecord(raw) {
-  const u = raw ?? {};
+  const u = /** @type {Record<string, number>} */ (raw ?? {});
   /** @param {...string} names */
   const pick = (...names) => {
     for (const n of names) if (typeof u[n] === 'number') return u[n];
@@ -334,7 +336,7 @@ export function usageRecord(raw) {
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
  * @param {{ args: string[] }} launch
- * @returns {Record<string, any>}
+ * @returns {Boundary}
  */
 export function boundary({ args }) {
   return {

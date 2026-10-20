@@ -34,7 +34,9 @@ import { spawnCommand } from '../platform.mjs';
 /** @typedef {import('../run.mjs').ChildResult} ChildResult */
 /** @typedef {import('../run.mjs').Invocation} Invocation */
 /** @typedef {import('../run.mjs').Interpreted} Interpreted */
-/** @typedef {import('./opencode-sandbox.mjs').OpencodeSandbox} OpencodeSandbox */
+/** @typedef {import('../run.mjs').Sandbox} Sandbox */
+/** @typedef {import('../run.mjs').UsageRecord} UsageRecord */
+/** @typedef {import('../run.mjs').Boundary} Boundary */
 /** @typedef {import('../run.mjs').InterpretedOk} OpencodeOk */
 /** @typedef {import('../run.mjs').InterpretedFail} InterpretedFail */
 
@@ -177,7 +179,7 @@ export async function resetProbe() {
  * and the caller retries once. Strictly once per job; every other failure
  * kind -- an auth rejection, a usage limit, invalid output -- means a
  * respawn is wasted compute.
- * @param {{ interpreted: Interpreted, sandbox: OpencodeSandbox | undefined, model: string }} args
+ * @param {{ interpreted: Interpreted, sandbox: Sandbox | undefined, model: string }} args
  * @returns {boolean}
  */
 export function recoverAuthFailure({ interpreted, sandbox, model }) {
@@ -435,8 +437,8 @@ export function progress({ stdout }) {
 }
 
 /**
- * @param {any} raw
- * @returns {Record<string, number | null>}
+ * @param {any} raw the usage figures interpret collected from the event stream
+ * @returns {UsageRecord}
  */
 export function usageRecord(raw) {
   const r = raw ?? {};
@@ -459,17 +461,18 @@ export function usageRecord(raw) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
- * @param {{ sandbox: OpencodeSandbox }} launch
- * @returns {Record<string, any>}
+ * @param {{ sandbox: Sandbox | null }} launch
+ * @returns {Boundary}
  */
 export function boundary({ sandbox }) {
+  const { tools } = /** @type {Sandbox} */ (sandbox);
   return {
     reads: 'whole disk',
     shell: 'none',
-    web: sandbox.tools.includes('webfetch'),
+    web: tools.includes('webfetch'),
     writes: false,
     mcp: false,
     protected_paths: 'denied (permission rules)',
-    tools: [...sandbox.tools],
+    tools: [...tools],
   };
 }

@@ -23,6 +23,9 @@ export { prepareSandbox } from './antigravity-sandbox.mjs';
 /** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
 /** @typedef {import('../run.mjs').Invocation} Invocation */
 /** @typedef {import('../run.mjs').Interpreted} Interpreted */
+/** @typedef {import('../run.mjs').Sandbox} Sandbox */
+/** @typedef {import('../run.mjs').UsageRecord} UsageRecord */
+/** @typedef {import('../run.mjs').Boundary} Boundary */
 
 // Checked against `agy --help` at 1.1.28. These are inert in print mode as the
 // adapter builds it today; the list exists so a future edit that reaches for
@@ -237,7 +240,10 @@ export function interpret({ stdout, stderr, code }) {
   return { ok: true, text, usageRaw: payload, denials: payload.denied_actions ?? [] };
 }
 
-/** @param {any} payload */
+/**
+ * @param {any} payload the agy result envelope
+ * @returns {UsageRecord | null}
+ */
 export function usageRecord(payload) {
   if (!payload) return null;
   const u = payload.usage ?? {};
@@ -263,16 +269,18 @@ export function usageRecord(payload) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
- * @param {{ sandbox: { tools: readonly string[] } }} req
+ * @param {{ sandbox: Sandbox | null }} req
+ * @returns {Boundary}
  */
 export function boundary({ sandbox }) {
+  const { tools } = /** @type {Sandbox} */ (sandbox);
   return {
     reads: 'whole disk',
     shell: 'none',
-    web: sandbox.tools.includes('search_web'),
+    web: tools.includes('search_web'),
     writes: false,
     mcp: false,
     protected_paths: 'denied (tool hook)',
-    tools: [...sandbox.tools],
+    tools: [...tools],
   };
 }

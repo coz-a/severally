@@ -8,25 +8,157 @@ import path from 'node:path';
 import { POLICY } from './policy.mjs';
 
 /**
- * A finished (or interrupted) round as written to history/<chain>/round-NN.json.
- * jobs.mjs builds it; only the fields this module reads are named.
- * @typedef {object} RoundRecord
- * @property {string} job_id
- * @property {string} chain_id
- * @property {number} round
- * @property {any} [target]
- * @property {any} [cli]
- * @property {any} [initiator]
- * @property {any} [mode]
- * @property {any} [status]
- * @property {any} [failure]
- * @property {any} [model]
- * @property {any} [created_at]
- * @property {any} [duration_ms]
- * @property {any} [verdicts]
+ * @typedef {object} JobFailure
+ * @property {string} kind
+ * @property {string} message
+ * @property {string | null} detail
+ * @property {boolean} retriable
+ * @property {boolean} delivered_advice
  */
 
-/** @typedef {RoundRecord & { owner?: Seat['owner'] }} RunningRecord The in-progress marker: a round record so far, plus who runs it. */
+/**
+ * What the lead wrote about one point of an answer.
+ * @typedef {object} RecordEntry
+ * @property {string} id
+ * @property {string} verdict
+ * @property {string | null} effect
+ * @property {string | null} note
+ * @property {string} recorded_at
+ */
+
+/**
+ * The lead's verdicts on a round. The counts are present in a view
+ * (recordSummary), not in what the history keeps.
+ * @typedef {object} JobRecord
+ * @property {string} updated_at
+ * @property {RecordEntry[]} entries
+ * @property {Record<string, number>} [verdicts]
+ * @property {{recordable: number, recorded: number}} [coverage]
+ * @property {string[]} [unrecorded]
+ */
+
+/**
+ * What the answer added over what the lead expected, in the lead's words.
+ * @typedef {object} Reflection
+ * @property {string} delta
+ * @property {string[]} related_item_ids
+ * @property {string} recorded_at
+ */
+
+/**
+ * Written before the consultant is launched and never sent to it.
+ * @typedef {object} Prediction
+ * @property {string} expected
+ * @property {string} worry
+ * @property {string} recorded_at
+ */
+
+/** @typedef {import('./parse-result.mjs').ConsultResult} ConsultResult A consultant's normalized answer (see normalizeResult). */
+/** @typedef {import('./parse-result.mjs').Finding | import('./parse-result.mjs').Unknown | import('./parse-result.mjs').NextCheck} ResultItem One finding, unknown or next check of an answer. */
+/** @typedef {import('./run.mjs').Boundary} Boundary What the consultant could and could not do, as its launch set it. */
+/** @typedef {import('./run.mjs').UsageRecord} UsageRecord */
+
+/**
+ * What the server derived from a normalized answer and the checks around it.
+ * @typedef {object} Quality
+ * @property {string[]} missing_sections
+ * @property {number} findings_without_grounds
+ * @property {boolean} unsourced
+ * @property {Record<string, number>} [list_truncated]
+ * @property {import('./parse-result.mjs').EvidenceBasis | null} [evidence_basis]
+ * @property {string | null} [caveat]
+ */
+
+/**
+ * The material the lead handed over, as the round keeps it (see briefRecord).
+ * @typedef {object} BriefRecord
+ * @property {string | null} objective
+ * @property {string[]} success_criteria
+ * @property {string[]} constraints
+ * @property {string[]} facts
+ * @property {string | null} proposal
+ * @property {string[]} counterpoints
+ * @property {Array<{name: string, kind: string, language: string | null, source: string | null, excerpt: string}>} artifacts
+ * @property {{entries: BriefExposeEntry[], totals: import('./expose-paths.mjs').ExposeTotals, skipped: import('./expose-paths.mjs').SkippedPath[]} | null} expose_paths
+ */
+
+/**
+ * @typedef {object} BriefExposeEntry
+ * @property {number} index
+ * @property {string} source
+ * @property {string} exposed_as
+ * @property {string} kind
+ * @property {number} files
+ * @property {number} bytes
+ * @property {string | null} sha256
+ * @property {string} [base]
+ * @property {string[]} [changes]
+ * @property {boolean} [changed_since_parent]
+ */
+
+/**
+ * The tail of what a timed-out consultant had written (raw, unparsed).
+ * @typedef {object} PartialOutput
+ * @property {true} partial
+ * @property {number} chars_total
+ * @property {boolean} capture_truncated
+ * @property {string} tail
+ * @property {string} stopped_at
+ * @property {string} note
+ */
+
+/**
+ * One earlier attempt of a consultation that was run again.
+ * @typedef {object} RetryRecord
+ * @property {string} failure_kind
+ * @property {string} reason
+ * @property {string} at
+ * @property {UsageRecord | null} usage
+ */
+
+/**
+ * One consultation as the history keeps it (see JobManager#record) and as the
+ * process running it describes it; written to history/<chain>/round-NN.json.
+ * @typedef {object} Round
+ * @property {string} job_id
+ * @property {string} chain_id
+ * @property {string | null} [group_id]
+ * @property {number} round
+ * @property {string} target
+ * @property {string} cli
+ * @property {string | null} [vendor]
+ * @property {string | null} [caller]
+ * @property {string | null} [caller_model]
+ * @property {string | null} [initiator]
+ * @property {'on' | 'off'} [network]
+ * @property {Boundary | null} [boundary]
+ * @property {RetryRecord[]} [retries]
+ * @property {PartialOutput | null} [partial_output]
+ * @property {Record<string, number> | null} [tool_calls]
+ * @property {string | null} [diagnostics]
+ * @property {string} mode
+ * @property {string} status
+ * @property {string} model
+ * @property {string} question
+ * @property {BriefRecord | null} brief
+ * @property {Prediction | null} [prediction]
+ * @property {Reflection | null} [reflection]
+ * @property {JobRecord | null} [record]
+ * @property {string} created_at
+ * @property {string | null} started_at
+ * @property {string | null} finished_at
+ * @property {number | null} duration_ms
+ * @property {ConsultResult | null} result
+ * @property {Quality | null} quality
+ * @property {UsageRecord | null} usage
+ * @property {JobFailure | null} failure
+ * @property {number | null} [references_count]
+ * @property {string | null} followup_to
+ * @property {number} [rounds_used]
+ * @property {number} [rounds_remaining]
+ */
+
+/** @typedef {Round & { owner?: Seat['owner'] }} RunningRecord The in-progress marker: a round record so far, plus who runs it. */
 
 /**
  * One line of history/index.jsonl.
@@ -34,15 +166,15 @@ import { POLICY } from './policy.mjs';
  * @property {string} job_id
  * @property {string} chain_id
  * @property {number} round
- * @property {any} [target]
- * @property {any} [cli]
- * @property {any} [initiator]
- * @property {any} [mode]
- * @property {any} [status]
- * @property {any} [failure_kind]
- * @property {any} [model]
- * @property {any} [created_at]
- * @property {any} [duration_ms]
+ * @property {string} target
+ * @property {string | null} cli
+ * @property {string | null} initiator
+ * @property {string} mode
+ * @property {string} status
+ * @property {string | null} failure_kind
+ * @property {string} model
+ * @property {string} created_at
+ * @property {number | null} duration_ms
  */
 
 /**
@@ -51,17 +183,15 @@ import { POLICY } from './policy.mjs';
  * @property {string} job_id
  * @property {string} [chain_id] set on a follow-up: the chain it continues
  * @property {number} [round] set on a follow-up: the round it opens
- * @property {{ pid: number, deadline_at: string, [key: string]: any }} [owner]
+ * @property {{ pid: number, deadline_at: string }} [owner]
  */
 
 /**
  * What takeSeats says: `chainBusy` when the chain already has a round under way,
  * otherwise `live` (the seats held) and, when the cap is hit, `elsewhere`.
- * @typedef {object} SeatResult
- * @property {boolean} ok
- * @property {number} [live]
- * @property {number} [elsewhere]
- * @property {{ live: Seat, mine: Seat }} [chainBusy]
+ * @typedef {{ ok: true, live: number, elsewhere?: undefined, chainBusy?: undefined }
+ *   | { ok: false, live?: undefined, elsewhere?: undefined, chainBusy: { live: Seat, mine: Seat } }
+ *   | { ok: false, live: number, elsewhere: number, chainBusy?: undefined }} SeatResult
  */
 
 /**
@@ -173,7 +303,7 @@ export function indexRows() {
 /**
  * The round file an index row points at, or null.
  * @param {{ chain_id: string, round: number }} row
- * @returns {RoundRecord | null}
+ * @returns {Round | null}
  */
 export function loadRoundAt(row) {
   try {
@@ -205,7 +335,7 @@ export function writeDiagnostics(chainId, round, text) {
 
 /**
  * @param {string} jobId
- * @returns {RoundRecord | null}
+ * @returns {Round | null}
  */
 export function loadRound(jobId) {
   const row = indexRow(jobId);
@@ -221,7 +351,7 @@ export function loadRound(jobId) {
 // from an earlier server session needs the rounds before it, not just one.
 /**
  * @param {string} chainId
- * @returns {RoundRecord[]}
+ * @returns {Round[]}
  */
 export function loadChain(chainId) {
   const dir = path.join(POLICY.home, 'history', chainId);
@@ -248,7 +378,7 @@ export function loadChain(chainId) {
 // lead adding a verdict to it later. index.jsonl stays one line per
 // consultation, so counting rounds there never counts edits.
 /**
- * @param {RoundRecord} record
+ * @param {Round} record
  * @param {{ appendIndex?: boolean }} [opts]
  */
 export function persistRound(record, { appendIndex = true } = {}) {

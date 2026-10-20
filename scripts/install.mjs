@@ -88,7 +88,7 @@ const step = (s) => log(`\n== ${s}`);
 /**
  * @param {string} cmd
  * @param {string[]} args
- * @param {Record<string, any> & { real?: boolean }} [opts]
+ * @param {import('../src/platform.mjs').ExecOptions & { real?: boolean }} [opts]
  */
 function run(cmd, args, opts = {}) {
   const { real, ...spawnOpts } = opts;
@@ -102,12 +102,12 @@ function run(cmd, args, opts = {}) {
 /**
  * @param {string} cmd
  * @param {string[]} args
- * @param {Record<string, any> & { real?: boolean }} [opts]
+ * @param {import('../src/platform.mjs').ExecOptions & { real?: boolean }} [opts]
  * @returns {RunResult}
  */
 function tryRun(cmd, args, opts) {
   try {
-    return { ok: true, out: /** @type {string} */ (run(cmd, args, opts)) };
+    return { ok: true, out: run(cmd, args, opts) };
   } catch (e) {
     const err = /** @type {{ stdout?: unknown, stderr?: unknown, message?: unknown }} */ (e);
     return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? ''}`.trim() || String(err.message) };
@@ -804,7 +804,7 @@ async function allowLocalTools() {
   if (!which('claude')) return;
   const prefix = mode === 'plugin' || claudeMarketplace ? 'mcp__plugin_severally_severally__' : 'mcp__severally__';
   const settingsFile = path.join(home, '.claude', 'settings.json');
-  /** @type {Record<string, any>} */
+  /** @type {{ permissions?: { allow?: string[] } & Record<string, unknown> } & Record<string, unknown>} */
   let settings = {};
   try {
     settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));

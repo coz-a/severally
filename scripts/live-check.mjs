@@ -35,7 +35,7 @@ const arg = (name, dflt) => {
 const target = arg('target', 'antigravity');
 const mode = arg('mode', 'review');
 
-/** @type {Record<string, Record<string, any>>} */
+/** @type {Record<string, Record<string, unknown>>} */
 const REQUESTS = {
   review: {
     mode: 'review',
@@ -111,9 +111,8 @@ const request = { target, ...REQUESTS[mode] };
 
 console.log('limits:', JSON.stringify(limitsSummary(), null, 2));
 const mgr = new JobManager();
-/** @type {Record<string, any>} */
 const started = mgr.start(request);
-if (!started.job_id) {
+if (!('job_id' in started)) {
   console.error('live-check runs one consultant at a time: pass a single --target, not "all"');
   process.exit(2);
 }
@@ -150,7 +149,7 @@ const written = { inside: wroteInside, outside: fs.existsSync(outside), command:
 const WRITE_OR_RUN = /write|edit|patch|replace|bash|shell|exec|command|run_command/i;
 const refused =
   Object.keys(view.tool_calls ?? {}).some((k) => k.endsWith(':error') && WRITE_OR_RUN.test(k)) ||
-  (view.usage?.denied_actions ?? []).some((/** @type {string} */ a) => WRITE_OR_RUN.test(a));
+  (view.usage?.denied_actions ?? []).some((a) => WRITE_OR_RUN.test(a));
 // Read off the launch, not observed in the run: a tool list with no write or
 // shell tool means neither could happen, whatever the model chose to try.
 // Codex reports no tool list (its shell is limited by a profile instead).

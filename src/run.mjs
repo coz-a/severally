@@ -275,12 +275,54 @@ export class ProcHandle {
  */
 
 /**
+ * The synthesised HOME of one consultation, as an adapter's prepareSandbox
+ * returns it; what the adapters share of it.
+ * @typedef {object} Sandbox
+ * @property {string} root
+ * @property {string} credentials 'symlink', 'copy' or 'missing'
+ * @property {string} credentialsSource
+ * @property {readonly string[]} tools
+ * @property {Record<string, string>} env
+ * @property {() => void} cleanup
+ * @property {(provider: string) => boolean} [seed] insert the provider's credential into the session database (OpenCode only)
+ */
+
+/**
+ * What a consultant was launched with, read off the invocation: the boundary
+ * record kept beside each answer. Facts about the launch, not a claim about
+ * what the consultant did.
+ * @typedef {object} Boundary
+ * @property {string} reads
+ * @property {string} shell
+ * @property {boolean} web
+ * @property {boolean} writes
+ * @property {boolean} mcp
+ * @property {string} protected_paths
+ * @property {string[] | null} tools
+ */
+
+/**
+ * What a consultation used, as far as its CLI says; null where it does not say.
+ * @typedef {object} UsageRecord
+ * @property {number | null} input_tokens
+ * @property {number | null} cached_input_tokens
+ * @property {number | null} output_tokens
+ * @property {number | null} total_tokens
+ * @property {number | null} cost_usd
+ * @property {number | null} web_search_requests
+ * @property {number | null} [turns]
+ * @property {number | null} [thinking_tokens]
+ * @property {number | null} [reasoning_tokens]
+ * @property {string[] | null} [denied_actions]
+ */
+
+/**
  * What jobs.mjs hands buildInvocation; each adapter reads the fields it needs.
  * @typedef {object} BuildRequest
  * @property {string} workdir
  * @property {string} schemaPath
  * @property {string} guardrails
- * @property {any} sandbox the adapter's own prepareSandbox result, if it has one
+ * @property {Sandbox | null} sandbox the adapter's own prepareSandbox result, if it has one
  * @property {import('./consultants.mjs').Consultant} consultant
  * @property {boolean} [hasExposedPaths]
  * @property {'on' | 'off'} [network]
@@ -289,8 +331,8 @@ export class ProcHandle {
 /**
  * What an adapter's interpret makes of a finished child: an answer (text is a
  * JSON object or the raw text to mine one out of), or a classified failure.
- * @typedef {{ ok: true, text: any, usageRaw: any, payload?: any, events?: number, denials?: any[], recoveredError?: { failureKind: string, message: string } | null, earlierTextParts?: string[] }} InterpretedOk
- * @typedef {{ ok: false, failureKind: string, message: string, usageRaw: any, payload?: any, events?: number }} InterpretedFail
+ * @typedef {{ ok: true, text: string | Record<string, unknown>, usageRaw: unknown, payload?: unknown, events?: number, denials?: unknown[], recoveredError?: { failureKind: string, message: string } | null, earlierTextParts?: string[] }} InterpretedOk
+ * @typedef {{ ok: false, failureKind: string, message: string, usageRaw: unknown, payload?: unknown, events?: number }} InterpretedFail
  * @typedef {InterpretedOk | InterpretedFail} Interpreted
  */
 
@@ -302,14 +344,14 @@ export class ProcHandle {
  * @property {readonly string[]} RESERVED_FLAGS
  * @property {(req: BuildRequest) => Invocation} buildInvocation
  * @property {(run: Partial<ChildResult> & { lastMessageText?: string }) => Interpreted} interpret
- * @property {(raw: any) => Record<string, any> | null} usageRecord
- * @property {(args: { args: string[], sandbox: any, network?: 'on' | 'off', hasExposedPaths?: boolean }) => Record<string, any>} [boundary]
+ * @property {(raw: unknown) => UsageRecord | null} usageRecord
+ * @property {(args: { args: string[], sandbox: Sandbox | null, network?: 'on' | 'off', hasExposedPaths?: boolean }) => Boundary} [boundary]
  * @property {(run: { stdout: string }) => string | null} [progress]
  * @property {(run: { stdout: string }) => Record<string, number> | null} [toolCalls]
  * @property {() => Promise<void>} [prepare]
- * @property {(args: { workdir: string, network?: 'on' | 'off' }) => any} [prepareSandbox]
- * @property {(args: { run: ChildResult, sandbox: any }) => string} [diagnostics]
- * @property {(args: { interpreted: Interpreted, sandbox: any, model: string }) => boolean} [recoverAuthFailure]
+ * @property {(args: { workdir: string, network?: 'on' | 'off' }) => Sandbox} [prepareSandbox]
+ * @property {(args: { run: ChildResult, sandbox: Sandbox }) => string} [diagnostics]
+ * @property {(args: { interpreted: Interpreted, sandbox: Sandbox, model: string }) => boolean} [recoverAuthFailure]
  * @property {(line: string) => string} [compactLine]
  * @property {(line: string) => number | null | undefined} [settleAfter]
  * @property {NodeJS.Signals} [stopSignal]

@@ -85,7 +85,7 @@ export function stripJsonc(text) {
 /**
  * JSON.parse, tolerating comments and trailing commas.
  * @param {string} text
- * @returns {any}
+ * @returns {unknown}
  */
 export function parseJsonc(text) {
   return JSON.parse(stripJsonc(text));

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseJsonc } from './jsonc.mjs';
 import { findCommand } from './platform.mjs';
-import { buildConsultants, normalizeName } from './consultants.mjs';
+import { buildConsultants, isObject, normalizeName } from './consultants.mjs';
 
 /** @typedef {import('./consultants.mjs').Consultant} Consultant */
 /** @typedef {import('./consultants.mjs').CliId} CliId */
@@ -27,7 +27,7 @@ const CONFIG_PATH =
 
 /** @type {string | null} */
 let configError = null;
-/** @type {Record<string, any>} the parsed config file, before validation */
+/** @type {unknown} the parsed config file, before validation */
 const CONFIG = (() => {
   try {
     return parseJsonc(fs.readFileSync(CONFIG_PATH, 'utf8'));
@@ -83,12 +83,12 @@ export function brokenConsultant(name) {
   return p ? `the config file has a mistake in it: ${p.join('; ')}` : null;
 }
 
-/** @type {Record<string, any>} */
-const usable = configError ? {} : CONFIG;
+/** @type {Record<string, unknown>} */
+const usable = configError || !isObject(CONFIG) ? {} : CONFIG;
 // A CLI whose own section has a mistake is off, whatever else the section says.
 /**
  * @param {string} id
- * @returns {Record<string, any>}
+ * @returns {Record<string, unknown>}
  */
 const cfgCli = (id) => {
   if (Object.hasOwn(BUILT.brokenClis, id) && !configError) {
@@ -97,10 +97,10 @@ const cfgCli = (id) => {
       note: `turned off: the config file has a mistake in clis.${id}: ${BUILT.brokenClis[id].join('; ')}`,
     };
   }
-  return usable.clis && typeof usable.clis === 'object' ? (usable.clis[id] ?? {}) : {};
+  const def = isObject(usable.clis) ? usable.clis[id] : undefined;
+  return isObject(def) ? def : {};
 };
-/** @type {Record<string, any>} */
-const cfgServer = usable.server && typeof usable.server === 'object' ? usable.server : {};
+const cfgServer = isObject(usable.server) ? usable.server : {};
 
 /**
  * Is this command runnable here? Absolute/relative paths are checked as given.
@@ -215,7 +215,7 @@ export const VERDICTS = ['unverified', 'confirmed', 'not_applicable', 'unverifia
 // The consultant's own one-word bottom line. Also what the lead may predict
 // before asking -- the same vocabulary, so a prediction and an answer can be
 // read side by side without anyone translating between two scales.
-export const STANCES = ['proceed', 'do_not_proceed', 'alternative', 'undetermined'];
+export const STANCES = /** @type {const} */ (['proceed', 'do_not_proceed', 'alternative', 'undetermined']);
 
 /**
  * A leading ~ is a shell courtesy, not a path: nothing expands it here, so
@@ -276,7 +276,10 @@ const OPENCODE_BIN = binFor('opencode', 'SEVERALLY_OPENCODE_BIN', 'opencode');
  * @param {string} id
  * @returns {{ extraArgs: string[], extraEnv: Record<string, string> }}
  */
-const extras = (id) => ({ extraArgs: cfgCli(id).args ?? [], extraEnv: cfgCli(id).env ?? {} });
+const extras = (id) => ({
+  extraArgs: /** @type {string[]} */ (cfgCli(id).args ?? []),
+  extraEnv: /** @type {Record<string, string>} */ (cfgCli(id).env ?? {}),
+});
 
 export const POLICY = Object.freeze({
   home: str('SEVERALLY_HOME', path.join(os.homedir(), '.severally')),
@@ -316,7 +319,7 @@ export const POLICY = Object.freeze({
       // opencode.json `provider` definitions copied into the sandbox config:
       // the only way to reach a provider the sandbox's empty HOME would not
       // know, such as a local OpenAI-compatible server.
-      provider: /** @type {Record<string, any>} */ (cfgCli('opencode').provider ?? {}),
+      provider: /** @type {Record<string, Record<string, unknown>>} */ (cfgCli('opencode').provider ?? {}),
     }),
   }),
   // Who can be asked, in config order, and how a name that fits several is

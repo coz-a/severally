@@ -13,10 +13,9 @@ import path from 'node:path';
 import { POLICY } from './policy.mjs';
 import { humanSize } from './expose-paths.mjs';
 
-/**
- * A stored round or brief: parsed from the history files, so its shape is whatever was written.
- * @typedef {Record<string, any>} Stored
- */
+/** @typedef {import('./store.mjs').Round} Round A round parsed from the history files. */
+/** @typedef {import('./store.mjs').BriefRecord} BriefRecord */
+/** @typedef {import('./store.mjs').JobRecord} JobRecord */
 
 export class ExportError extends Error {
   /**
@@ -43,7 +42,7 @@ function readJson(p) {
 
 /**
  * @param {string} chainId
- * @returns {Stored[]}
+ * @returns {Round[]}
  */
 function roundsOf(chainId) {
   const dir = path.join(historyDir(), chainId);
@@ -108,7 +107,7 @@ function fence(text, language) {
   return [`${marker}${language ?? ''}`, text, marker];
 }
 
-/** @param {Stored | null | undefined} brief */
+/** @param {BriefRecord | null | undefined} brief */
 function briefSection(brief) {
   if (!brief) return ['*(the brief was not recorded for this round)*', ''];
   /** @type {string[]} */
@@ -163,7 +162,7 @@ function briefSection(brief) {
       out.push(`- ${e.exposed_as} (${e.kind}, ${e.files} file(s), ${humanSize(e.bytes)}${since}) -- from ${e.source}`);
     }
     /** @param {string} reason */
-    const count = (reason) => (exposed.skipped ?? []).filter((/** @type {Stored} */ x) => x.reason === reason).length;
+    const count = (reason) => (exposed.skipped ?? []).filter((x) => x.reason === reason).length;
     if (count('symlink')) out.push(`- ${count('symlink')} symlink(s) inside those directories were skipped, not followed`);
     if (count('protected')) out.push(`- ${count('protected')} credential or history path(s) were left out on purpose`);
     if (count('gone')) out.push(`- ${count('gone')} path(s) from the earlier round no longer existed and were not copied again`);
@@ -179,17 +178,17 @@ function briefSection(brief) {
 // entry says so out loud: "nobody looked at this" is the thing a record of a
 // decision most easily loses.
 /**
- * @param {Stored | null | undefined} record
+ * @param {JobRecord | null | undefined} record
  * @param {string} id
  */
 function verdictLine(record, id) {
-  const entry = (record?.entries ?? []).find((/** @type {Stored} */ e) => e.id === id);
+  const entry = (record?.entries ?? []).find((e) => e.id === id);
   if (!entry) return '  - checked: no verdict recorded';
   const tail = [entry.effect, entry.note ? `(${entry.note})` : null].filter(Boolean).join(' ');
   return `  - checked: ${entry.verdict}${tail ? ` -- ${tail}` : ''}`;
 }
 
-/** @param {Stored} round */
+/** @param {Round} round */
 function answerSection(round) {
   const r = round.result;
   if (!r) {
@@ -269,8 +268,8 @@ function answerSection(round) {
 // once per consultant buries the answers in repetition. Compared, not judged:
 // identical text is named as identical, anything else is printed in full.
 /**
- * @param {Stored} round
- * @param {Stored | null} previousBrief
+ * @param {Round} round
+ * @param {BriefRecord | null} previousBrief
  */
 function roundSection(round, previousBrief) {
   const secs = round.duration_ms == null ? null : (round.duration_ms / 1000).toFixed(1);
@@ -328,7 +327,7 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, 'unknown_chain');
   }
 
-  const first = /** @type {Stored} */ (perChain.find((c) => c.rounds.length)?.rounds[0]);
+  const first = /** @type {Round} */ (perChain.find((c) => c.rounds.length)?.rounds[0]);
   const lines = [
     `# Consultation record: ${first.question}`,
     '',
@@ -341,7 +340,7 @@ export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     'ways, both are printed and the difference is left standing.',
     '',
   ];
-  /** @type {Stored | null} */
+  /** @type {BriefRecord | null} */
   let previousBrief = null;
   for (const chain of perChain) {
     for (const round of chain.rounds) {

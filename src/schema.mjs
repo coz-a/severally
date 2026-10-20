@@ -18,7 +18,7 @@ import {
 } from './policy.mjs';
 import { normalizeName, resolveConsultant } from './consultants.mjs';
 
-/** @typedef {ReturnType<typeof availableConsultants>[number]} Consultant */
+/** @typedef {import('./consultants.mjs').Consultant} Consultant */
 
 const L = POLICY.input;
 /**
@@ -150,11 +150,22 @@ export const requestSchema = z
   })
   .strict();
 
-/** @param {Record<string, any>} req The request after parseRequest has filled in its defaults. */
+/**
+ * What charCount reads of a request, once parseRequest has filled in its defaults.
+ * @typedef {{
+ *   question: string,
+ *   objective?: string | null,
+ *   constraints?: string[],
+ *   success_criteria?: string[],
+ *   context: { facts: string[], counterpoints: string[], proposal?: string | null, artifacts: { name: string, excerpt: string }[] },
+ * }} CountedRequest
+ */
+
+/** @param {CountedRequest} req */
 export function charCount(req) {
   let n = req.question.length + (req.objective?.length ?? 0);
-  for (const c of req.constraints) n += c.length;
-  for (const c of req.success_criteria) n += c.length;
+  for (const c of req.constraints ?? []) n += c.length;
+  for (const c of req.success_criteria ?? []) n += c.length;
   for (const f of req.context.facts) n += f.length;
   for (const c of req.context.counterpoints) n += c.length;
   if (req.context.proposal) n += req.context.proposal.length;
@@ -189,7 +200,8 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
-  // Filled in below with what the request resolves to (targets, caller, ...).
+  // Filled in below with what the request resolves to (targets, caller, ...)
+  // through keys named at run time; jobs.mjs reads the result as a ParsedRequest.
   /** @type {Record<string, any>} */
   const req = parsed.data;
   // Left without a default in the schema, so that a follow-up can tell a list
@@ -261,11 +273,11 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
       if (r.ambiguous) {
         throw new RequestError(
           `${JSON.stringify(name)} fits more than one consultant and no ranking rule decides between ` +
-            `${r.ambiguous.map((/** @type {Consultant} */ c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')}; name one of them`,
+            `${r.ambiguous.map((c) => `${c.name} (${c.cli}, ${c.model})`).join(', ')}; name one of them`,
           'target_ambiguous',
         );
       }
-      return /** @type {Consultant} */ (r.consultant);
+      return r.consultant;
     });
     const off = [...new Set(chosen.filter((c) => !consultantAvailable(c)))];
     if (off.length) {
@@ -305,7 +317,7 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   // mode that was given.
   req.mode ??= parentMode ?? (!req.context.proposal ? 'explore' : req.context.counterpoints.length ? 'debate' : 'review');
 
-  const total = charCount(req);
+  const total = charCount(/** @type {CountedRequest} */ (req));
   if (total > L.totalCharsMax) {
     throw new RequestError(
       `request payload is ${total} characters, over the ${L.totalCharsMax} character budget; trim artifacts/facts to the passages that matter`,

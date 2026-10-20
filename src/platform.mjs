@@ -82,10 +82,12 @@ export function findCommand(command, { cwd = process.cwd(), env = process.env } 
   return null;
 }
 
+/** @typedef {Omit<import('node:child_process').SpawnSyncOptionsWithStringEncoding, 'cwd' | 'encoding'> & { cwd?: string, encoding?: BufferEncoding }} ExecOptions */
+
 /**
  * @param {string} command
  * @param {readonly string[]} args
- * @param {Omit<import('node:child_process').SpawnSyncOptionsWithStringEncoding, 'cwd' | 'encoding'> & { cwd?: string, encoding?: BufferEncoding }} [options]
+ * @param {ExecOptions} [options]
  * @returns {string}
  */
 export function execCommandSync(command, args, options = {}) {
