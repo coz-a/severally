@@ -94,7 +94,7 @@ routes and the real CLIs have been tried on Linux only.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.1.0 install
+npx -y severally-mcp@2.2.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
