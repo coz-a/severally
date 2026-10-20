@@ -30,7 +30,7 @@
     "docs"
   ],
   "engines": {
-    "node": ">=20.10"
+    "node": ">=22"
   },
   "scripts": {
     "test": "node scripts/test.mjs",

@@ -10,7 +10,7 @@ npx はパッケージを自分のキャッシュに取ってきて、そこか�
 
 ## 必要なもの
 
-README に書いた Node.js 20.10 以降とログイン済みの CLI のほかに、次の条件があります。
+README に書いた Node.js 22 以降とログイン済みの CLI のほかに、次の条件があります。
 
 - macOS / Linux では、npm のグローバルな実行ファイルのディレクトリが `PATH` に入っていること。既定のプラグイン方式
   （下記）は、Codex が起動する `severally-mcp` コマンドをそこに入れます。`--manual` を付ければ不要です。
@@ -66,7 +66,7 @@ Claude Code だけで使うなら、クローンもインストーラも要り�
 ```
 
 Claude Code を再起動し、`claude plugin details severally` で確かめます。プラグインはサーバを `node` で起動するので、
-Node.js 20.10 以降が `PATH` に入っている必要があります。ツールは `mcp__plugin_severally_severally__*` の名前で
+Node.js 22 以降が `PATH` に入っている必要があります。ツールは `mcp__plugin_severally_severally__*` の名前で
 現れます。この方法を実機で確かめたのは Linux だけです。
 
 Codex、Antigravity、OpenCode からも使うなら、クローンしてインストーラも実行します（[クローンから入れる](#クローンから入れる)を参照）。
