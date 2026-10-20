@@ -19,6 +19,7 @@ import {
 import { normalizeName, resolveConsultant } from './consultants.mjs';
 
 /** @typedef {import('./consultants.mjs').Consultant} Consultant */
+/** @typedef {import('./consultants.mjs').CliId} CliId */
 
 const L = POLICY.input;
 /**
@@ -154,11 +155,48 @@ export const requestSchema = z
  * What charCount reads of a request, once parseRequest has filled in its defaults.
  * @typedef {{
  *   question: string,
- *   objective?: string | null,
- *   constraints?: string[],
- *   success_criteria?: string[],
- *   context: { facts: string[], counterpoints: string[], proposal?: string | null, artifacts: { name: string, excerpt: string }[] },
+ *   objective?: string | null | undefined,
+ *   constraints?: string[] | undefined,
+ *   success_criteria?: string[] | undefined,
+ *   context: { facts: string[], counterpoints: string[], proposal?: string | null | undefined, artifacts: { name: string, excerpt: string }[] },
  * }} CountedRequest
+ */
+
+/** @typedef {'explore' | 'review' | 'debate'} Mode */
+/** @typedef {z.output<typeof requestSchema>} ValidRequest */
+/** @typedef {z.output<typeof contextSchema>} ValidContext */
+
+/**
+ * A request as parseRequest returns it: validated, defaults filled in, the
+ * consultant(s) resolved. `target` is the first of `targets`.
+ * @typedef {Omit<
+ *   ValidRequest,
+ *   'target' | 'targets' | 'caller' | 'caller_model' | 'initiator' | 'followup_to' | 'mode' | 'network' | 'success_criteria' | 'constraints' | 'context'
+ * > & {
+ *   target: string,
+ *   targets: string[],
+ *   fanout: boolean,
+ *   caller: CliId | null,
+ *   caller_model: string | null,
+ *   initiator: string | null,
+ *   followup_to: string | null,
+ *   mode: Mode,
+ *   network: 'on' | 'off',
+ *   success_criteria: string[],
+ *   constraints: string[],
+ *   context: Omit<ValidContext, 'constraints' | 'success_criteria' | 'facts' | 'counterpoints' | 'artifacts' | 'proposal'> & {
+ *     facts: string[],
+ *     counterpoints: string[],
+ *     artifacts: ValidContext['artifacts'] & {},
+ *     proposal: string | null,
+ *   },
+ * }} ParsedRequest
+ */
+
+/**
+ * parseRequest's working copy: the request as it is until the defaults are filled in.
+ * `constraints` and `success_criteria` may still sit inside the context at first.
+ * @typedef {ParsedRequest & { context: { constraints?: string[] | undefined, success_criteria?: string[] | undefined } }} DraftRequest
  */
 
 /** @param {CountedRequest} req */
@@ -192,7 +230,8 @@ export class RequestError extends Error {
  * `isFollowup` is decided by the caller (the job store resolves followup_to first);
  * `groupFollowup` when followup_to named a fan-out, whose members are the targets.
  * @param {unknown} raw
- * @param {{ isFollowup?: boolean, parentMode?: string | null, groupFollowup?: boolean }} [options]
+ * @param {{ isFollowup?: boolean, parentMode?: Mode | null, groupFollowup?: boolean }} [options]
+ * @returns {ParsedRequest}
  */
 export function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowup = false } = {}) {
   const parsed = requestSchema.safeParse(raw);
@@ -200,25 +239,31 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
     throw new RequestError(`request failed validation: ${issues.join('; ')}`, 'invalid_request', issues);
   }
-  // Filled in below with what the request resolves to (targets, caller, ...)
-  // through keys named at run time; jobs.mjs reads the result as a ParsedRequest.
-  /** @type {Record<string, any>} */
-  const req = parsed.data;
+  // Filled in below with what the request resolves to (targets, caller, ...), so
+  // until it returns it is only partly a ParsedRequest: the validated data is
+  // typed as the finished shape and every field the shape adds is set before the return.
+  const req = /** @type {DraftRequest} */ (parsed.data);
   // Left without a default in the schema, so that a follow-up can tell a list
   // it left out (inherited from the round before, jobs.mjs) from one it
   // emptied on purpose: the tool layer applies the schema's defaults first.
-  for (const k of ['constraints', 'success_criteria']) {
-    if (req.context[k] === undefined) continue;
+  /** @param {'constraints' | 'success_criteria'} k */
+  const hoist = (k) => {
+    const inner = req.context[k];
+    if (inner === undefined) return;
     if (req[k] !== undefined) {
       throw new RequestError(`pass ${k} once: at the top of the request or inside context, not both`, 'invalid_request');
     }
-    req[k] = req.context[k];
+    req[k] = inner;
     delete req.context[k];
-  }
+  };
+  hoist('constraints');
+  hoist('success_criteria');
   req.network ??= 'on';
   req.success_criteria ??= [];
   req.constraints ??= [];
-  for (const k of ['facts', 'counterpoints', 'artifacts']) req.context[k] ??= [];
+  req.context.facts ??= [];
+  req.context.counterpoints ??= [];
+  req.context.artifacts ??= [];
   const hasSingle = req.target !== undefined && req.target !== null;
   const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
   if (hasSingle && hasMany) {
@@ -303,7 +348,7 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     );
   }
   req.targets = unique;
-  req.target = unique[0]; // single-target consumers (brief, history, adapters) keep working
+  req.target = /** @type {string} */ (unique[0]); // non-empty: every name in `named` resolved to a consultant; single-target consumers (brief, history, adapters) keep working
   req.fanout = unique.length > 1;
   req.caller = resolveCaller(req.caller ?? '') ?? null;
   req.caller_model = req.caller_model ?? null;
@@ -317,7 +362,7 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   // mode that was given.
   req.mode ??= parentMode ?? (!req.context.proposal ? 'explore' : req.context.counterpoints.length ? 'debate' : 'review');
 
-  const total = charCount(/** @type {CountedRequest} */ (req));
+  const total = charCount(req);
   if (total > L.totalCharsMax) {
     throw new RequestError(
       `request payload is ${total} characters, over the ${L.totalCharsMax} character budget; trim artifacts/facts to the passages that matter`,

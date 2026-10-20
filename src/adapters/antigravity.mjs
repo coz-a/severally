@@ -88,11 +88,29 @@ export function buildInvocation({ schemaPath, consultant }) {
 }
 
 /**
+ * The result envelope agy prints; the CLI controls it, so every field is optional.
+ * @typedef {object} AgyEnvelope
+ * @property {unknown} [status]
+ * @property {unknown} [error]
+ * @property {unknown} [response]
+ * @property {string | Record<string, unknown>} [structured_output]
+ * @property {({ action?: string } | null)[]} [denied_actions]
+ * @property {{ input_tokens?: unknown, cache_read_tokens?: unknown, output_tokens?: unknown, total_tokens?: unknown, thinking_tokens?: unknown }} [usage]
+ * @property {unknown} [num_turns]
+ */
+
+/**
+ * One NDJSON event: a `result` or `step_update` wrapper, or a bare envelope.
+ * @typedef {AgyEnvelope & { event?: string, result?: AgyEnvelope, step_update?: { step_index?: number, tool_name?: string, step_type?: string, state?: string } }} AgyEvent
+ */
+
+/**
  * Every complete NDJSON object agy wrote, oldest first.
  * @param {string} [stdout]
- * @returns {any[]}
+ * @returns {AgyEvent[]}
  */
 function events(stdout) {
+  /** @type {AgyEvent[]} */
   const out = [];
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -112,12 +130,10 @@ function events(stdout) {
  * when agy was run with --output-format json (as older configs and the unit
  * tests do).
  * @param {string} [stdout]
- * @returns {any}
+ * @returns {AgyEnvelope | null}
  */
 function finalEnvelope(stdout) {
-  const all = events(stdout);
-  for (let i = all.length - 1; i >= 0; i--) {
-    const e = all[i];
+  for (const e of events(stdout).reverse()) {
     if (e.event === 'result' && e.result && typeof e.result === 'object') return e.result;
     if (e.event === undefined && (e.status || e.response || e.structured_output)) return e;
   }
@@ -134,10 +150,10 @@ function finalEnvelope(stdout) {
  * @returns {string | null}
  */
 export function progress({ stdout }) {
-  const steps = events(stdout).filter((e) => e.event === 'step_update' && e.step_update);
-  if (!steps.length) return null;
-  const last = steps[steps.length - 1].step_update;
-  const seen = new Set(steps.map((s) => s.step_update.step_index)).size;
+  const steps = events(stdout).flatMap((e) => (e.event === 'step_update' && e.step_update ? [e.step_update] : []));
+  const last = steps.at(-1);
+  if (!last) return null;
+  const seen = new Set(steps.map((s) => s.step_index)).size;
   const what = last.tool_name ? `tool ${last.tool_name}` : (last.step_type ?? 'a step');
   return `${seen} step(s), last was ${what} (${last.state ?? 'state unknown'})`;
 }
@@ -148,13 +164,14 @@ export function progress({ stdout }) {
  * @returns {Record<string, number>}
  */
 export function toolCalls({ stdout }) {
+  /** @type {Map<unknown, string>} */
   const seen = new Map();
   for (const e of events(stdout)) {
     const s = e.event === 'step_update' ? e.step_update : null;
     if (s?.tool_name)
       seen.set(s.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s.state ?? '') ? `${s.tool_name}:error` : s.tool_name);
   }
-  return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+  return [...seen.values()].reduce((/** @type {Record<string, number>} */ o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
 
 /**
@@ -241,10 +258,12 @@ export function interpret({ stdout, stderr, code }) {
 }
 
 /**
- * @param {any} payload the agy result envelope
+ * @param {unknown} raw the agy result envelope, as interpret kept it
  * @returns {UsageRecord | null}
  */
-export function usageRecord(payload) {
+export function usageRecord(raw) {
+  // interpret's usageRaw is the AgyEnvelope it found (or null).
+  const payload = /** @type {AgyEnvelope | null} */ (raw);
   if (!payload) return null;
   const u = payload.usage ?? {};
   const num = (/** @type {unknown} */ v) => (typeof v === 'number' ? v : null);
@@ -260,7 +279,7 @@ export function usageRecord(payload) {
     // Which permissions the sandbox refused. A denied read_url usually explains
     // a thin evidence basis, so it is worth keeping in the record.
     denied_actions: Array.isArray(payload.denied_actions)
-      ? payload.denied_actions.map((/** @type {any} */ d) => d?.action).filter(Boolean)
+      ? payload.denied_actions.flatMap((d) => (d?.action ? [d.action] : []))
       : null,
   };
 }
@@ -273,6 +292,7 @@ export function usageRecord(payload) {
  * @returns {Boundary}
  */
 export function boundary({ sandbox }) {
+  // buildInvocation always runs with the sandbox prepareSandbox made.
   const { tools } = /** @type {Sandbox} */ (sandbox);
   return {
     reads: 'whole disk',

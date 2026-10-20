@@ -147,7 +147,10 @@ export function modelVersion(model) {
   const at = words.findIndex(isDigitWord);
   if (at === -1) return null;
   const digits = [];
-  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, '')));
+  for (const w of words.slice(at)) {
+    if (!isDigitWord(w)) break;
+    digits.push(Number(w.replace(/^v/, '')));
+  }
   return digits;
 }
 
@@ -214,7 +217,9 @@ function byTier(cands, tier) {
   /** @param {Consultant} c */
   const rank = (c) => {
     const words = modelWords(c.model);
-    return tier.last ? tier.words.indexOf(/** @type {string} */ (words.at(-1))) : tier.words.findIndex((w) => words.includes(w));
+    const last = words.at(-1);
+    if (tier.last) return last === undefined ? -1 : tier.words.indexOf(last);
+    return tier.words.findIndex((w) => words.includes(w));
   };
   const ranks = cands.map(rank);
   if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
@@ -224,12 +229,18 @@ function byTier(cands, tier) {
 
 /** @param {readonly Consultant[]} cands */
 function byVersion(cands) {
-  const stem = modelStem(cands[0].model).join('-');
-  const versions = cands.map((c) => modelVersion(c.model));
-  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join('-') !== stem)) return cands;
-  const known = /** @type {number[][]} */ (versions);
-  const best = known.reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
-  return cands.filter((_, i) => compareVersions(known[i], best) === 0);
+  const [first] = cands;
+  if (!first) return cands;
+  const stem = modelStem(first.model).join('-');
+  if (cands.some((c) => modelStem(c.model).join('-') !== stem)) return cands;
+  const versioned = [];
+  for (const c of cands) {
+    const version = modelVersion(c.model);
+    if (version === null) return cands;
+    versioned.push({ c, version });
+  }
+  const best = versioned.map((x) => x.version).reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
+  return versioned.filter((x) => compareVersions(x.version, best) === 0).map((x) => x.c);
 }
 
 /**
@@ -247,7 +258,7 @@ export function rankCandidates(cands, ranking = []) {
     left = byTier(left, tier);
   }
   if (left.length > 1) left = byVersion(left);
-  return left.length === 1 ? left[0] : null;
+  return left.length === 1 ? (left[0] ?? null) : null;
 }
 
 /** @typedef {{ none: true, consultant?: undefined, ambiguous?: undefined } | { none?: undefined, consultant: Consultant, ambiguous?: undefined } | { none?: undefined, consultant?: undefined, ambiguous: readonly Consultant[] }} Resolution */
@@ -270,8 +281,9 @@ export function resolveConsultant(input, consultants, ranking = []) {
   if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
   else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
   else cands = consultants.filter((c) => matchesWords(c.model, input));
-  if (cands.length === 0) return { none: true };
-  if (cands.length === 1) return { consultant: cands[0] };
+  const [only] = cands;
+  if (!only) return { none: true };
+  if (cands.length === 1) return { consultant: only };
   const winner = rankCandidates(cands, ranking);
   return winner ? { consultant: winner } : { ambiguous: cands };
 }
@@ -292,8 +304,12 @@ export function checkTargets(arg, available, all, ranking = []) {
   const first = new Map();
   for (const c of available) if (!first.has(c.cli)) first.set(c.cli, c);
   if (arg === null || arg === undefined) return [...first.values()];
-  const cli = CLI_ALIASES[/** @type {string} */ (normalizeName(arg))];
-  if (cli) return first.has(cli) ? [/** @type {Consultant} */ (first.get(cli))] : null;
+  const key = normalizeName(arg);
+  const cli = typeof key === 'string' ? CLI_ALIASES[key] : undefined;
+  if (cli) {
+    const hit = first.get(cli);
+    return hit ? [hit] : null;
+  }
   const r = resolveConsultant(arg, all, ranking);
   return r.consultant ? [r.consultant] : null;
 }
@@ -461,6 +477,7 @@ export function buildConsultants(config) {
         broken[name] = problems.slice(before);
         continue;
       }
+      // The checks above have all passed: cli is a known id and model a non-empty string.
       const valid = /** @type {ConsultantDef} */ (def);
       const pair = `${valid.cli}\n${valid.model.trim()}`;
       if (seen.has(pair)) {

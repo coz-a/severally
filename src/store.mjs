@@ -32,9 +32,9 @@ import { POLICY } from './policy.mjs';
  * @typedef {object} JobRecord
  * @property {string} updated_at
  * @property {RecordEntry[]} entries
- * @property {Record<string, number>} [verdicts]
- * @property {{recordable: number, recorded: number}} [coverage]
- * @property {string[]} [unrecorded]
+ * @property {Record<string, number> | undefined} [verdicts]
+ * @property {{recordable: number, recorded: number} | undefined} [coverage]
+ * @property {string[] | undefined} [unrecorded]
  */
 
 /**
@@ -55,6 +55,7 @@ import { POLICY } from './policy.mjs';
 
 /** @typedef {import('./parse-result.mjs').ConsultResult} ConsultResult A consultant's normalized answer (see normalizeResult). */
 /** @typedef {import('./parse-result.mjs').Finding | import('./parse-result.mjs').Unknown | import('./parse-result.mjs').NextCheck} ResultItem One finding, unknown or next check of an answer. */
+/** @typedef {import('./schema.mjs').Mode} Mode */
 /** @typedef {import('./run.mjs').Boundary} Boundary What the consultant could and could not do, as its launch set it. */
 /** @typedef {import('./run.mjs').UsageRecord} UsageRecord */
 
@@ -64,9 +65,9 @@ import { POLICY } from './policy.mjs';
  * @property {string[]} missing_sections
  * @property {number} findings_without_grounds
  * @property {boolean} unsourced
- * @property {Record<string, number>} [list_truncated]
- * @property {import('./parse-result.mjs').EvidenceBasis | null} [evidence_basis]
- * @property {string | null} [caveat]
+ * @property {Record<string, number> | undefined} [list_truncated]
+ * @property {import('./parse-result.mjs').EvidenceBasis | null | undefined} [evidence_basis]
+ * @property {string | null | undefined} [caveat]
  */
 
 /**
@@ -91,9 +92,9 @@ import { POLICY } from './policy.mjs';
  * @property {number} files
  * @property {number} bytes
  * @property {string | null} sha256
- * @property {string} [base]
- * @property {string[]} [changes]
- * @property {boolean} [changed_since_parent]
+ * @property {string | undefined} [base]
+ * @property {string[] | undefined} [changes]
+ * @property {boolean | undefined} [changed_since_parent]
  */
 
 /**
@@ -122,28 +123,28 @@ import { POLICY } from './policy.mjs';
  * @typedef {object} Round
  * @property {string} job_id
  * @property {string} chain_id
- * @property {string | null} [group_id]
+ * @property {string | null | undefined} [group_id]
  * @property {number} round
  * @property {string} target
  * @property {string} cli
- * @property {string | null} [vendor]
- * @property {string | null} [caller]
- * @property {string | null} [caller_model]
- * @property {string | null} [initiator]
- * @property {'on' | 'off'} [network]
- * @property {Boundary | null} [boundary]
- * @property {RetryRecord[]} [retries]
- * @property {PartialOutput | null} [partial_output]
- * @property {Record<string, number> | null} [tool_calls]
- * @property {string | null} [diagnostics]
- * @property {string} mode
+ * @property {string | null | undefined} [vendor]
+ * @property {string | null | undefined} [caller]
+ * @property {string | null | undefined} [caller_model]
+ * @property {string | null | undefined} [initiator]
+ * @property {'on' | 'off' | undefined} [network]
+ * @property {Boundary | null | undefined} [boundary]
+ * @property {RetryRecord[] | undefined} [retries]
+ * @property {PartialOutput | null | undefined} [partial_output]
+ * @property {Record<string, number> | null | undefined} [tool_calls]
+ * @property {string | null | undefined} [diagnostics]
+ * @property {Mode} mode
  * @property {string} status
  * @property {string} model
  * @property {string} question
  * @property {BriefRecord | null} brief
- * @property {Prediction | null} [prediction]
- * @property {Reflection | null} [reflection]
- * @property {JobRecord | null} [record]
+ * @property {Prediction | null | undefined} [prediction]
+ * @property {Reflection | null | undefined} [reflection]
+ * @property {JobRecord | null | undefined} [record]
  * @property {string} created_at
  * @property {string | null} started_at
  * @property {string | null} finished_at
@@ -152,10 +153,10 @@ import { POLICY } from './policy.mjs';
  * @property {Quality | null} quality
  * @property {UsageRecord | null} usage
  * @property {JobFailure | null} failure
- * @property {number | null} [references_count]
+ * @property {number | null | undefined} [references_count]
  * @property {string | null} followup_to
- * @property {number} [rounds_used]
- * @property {number} [rounds_remaining]
+ * @property {number | undefined} [rounds_used]
+ * @property {number | undefined} [rounds_remaining]
  */
 
 /** @typedef {Round & { owner?: Seat['owner'] }} RunningRecord The in-progress marker: a round record so far, plus who runs it. */
@@ -181,9 +182,9 @@ import { POLICY } from './policy.mjs';
  * A seat file: one running consultation, shared by every severally process on one home.
  * @typedef {object} Seat
  * @property {string} job_id
- * @property {string} [chain_id] set on a follow-up: the chain it continues
- * @property {number} [round] set on a follow-up: the round it opens
- * @property {{ pid: number, deadline_at: string }} [owner]
+ * @property {string | undefined} [chain_id] set on a follow-up: the chain it continues
+ * @property {number | undefined} [round] set on a follow-up: the round it opens
+ * @property {{ pid: number, deadline_at: string } | undefined} [owner]
  */
 
 /**
@@ -199,7 +200,7 @@ import { POLICY } from './policy.mjs';
  * @typedef {object} Group
  * @property {string} group_id
  * @property {string} created_at
- * @property {string} mode
+ * @property {Mode} mode
  * @property {string} question
  * @property {string[]} job_ids
  */
@@ -501,7 +502,7 @@ function withSeatLock(fn) {
       fs.mkdirSync(lock);
       break;
     } catch (err) {
-      if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'EEXIST') throw err;
+      if (!(err instanceof Error && 'code' in err && err.code === 'EEXIST')) throw err;
       // Held for a few file operations at most: one this old was left by a
       // process that died holding it.
       try {
@@ -523,6 +524,13 @@ function withSeatLock(fn) {
     }
   }
 }
+
+/**
+ * A seat that continues a chain names it and the round it opens together.
+ * @param {Seat} seat
+ * @returns {seat is Seat & { chain_id: string, round: number }}
+ */
+const continuesChain = (seat) => Boolean(seat.chain_id);
 
 /**
  * Takes one seat per entry of `seats` ({ job_id, owner }), all or none.
@@ -565,7 +573,7 @@ export function takeSeats(seats, cap, held) {
     // A chain runs one round at a time, across processes: a live seat on the
     // same chain, or a round file already at the number chosen, means another
     // server continued it first.
-    for (const mine of /** @type {(Seat & { chain_id: string, round: number })[]} */ (seats.filter((x) => x.chain_id))) {
+    for (const mine of seats.filter(continuesChain)) {
       /** @type {Seat | undefined} */
       let other = live.find((x) => x.chain_id === mine.chain_id);
       if (!other && fs.existsSync(roundPath(mine.chain_id, mine.round))) {

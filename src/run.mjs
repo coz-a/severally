@@ -120,10 +120,9 @@ const OWN_PREFIX = {
 // the consultant needs them, wherever they were exported.
 /** @param {string} target */
 function providerEnvNames(target) {
-  const provider = JSON.stringify(
-    /** @type {Record<string, { provider?: unknown } | undefined>} */ (POLICY.clis)?.[target]?.provider ?? {},
-  );
-  return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
+  // Only OpenCode's section carries provider definitions.
+  const provider = JSON.stringify(target === 'opencode' ? POLICY.clis.opencode.provider : {});
+  return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].flatMap(([, name]) => name ?? []));
 }
 
 /**
@@ -325,7 +324,7 @@ export class ProcHandle {
  * @property {Sandbox | null} sandbox the adapter's own prepareSandbox result, if it has one
  * @property {import('./consultants.mjs').Consultant} consultant
  * @property {boolean} [hasExposedPaths]
- * @property {'on' | 'off'} [network]
+ * @property {'on' | 'off' | undefined} [network]
  */
 
 /**
@@ -345,11 +344,11 @@ export class ProcHandle {
  * @property {(req: BuildRequest) => Invocation} buildInvocation
  * @property {(run: Partial<ChildResult> & { lastMessageText?: string }) => Interpreted} interpret
  * @property {(raw: unknown) => UsageRecord | null} usageRecord
- * @property {(args: { args: string[], sandbox: Sandbox | null, network?: 'on' | 'off', hasExposedPaths?: boolean }) => Boundary} [boundary]
+ * @property {(args: { args: string[], sandbox: Sandbox | null, network?: 'on' | 'off' | undefined, hasExposedPaths?: boolean }) => Boundary} [boundary]
  * @property {(run: { stdout: string }) => string | null} [progress]
  * @property {(run: { stdout: string }) => Record<string, number> | null} [toolCalls]
  * @property {() => Promise<void>} [prepare]
- * @property {(args: { workdir: string, network?: 'on' | 'off' }) => Sandbox} [prepareSandbox]
+ * @property {(args: { workdir: string, network?: 'on' | 'off' | undefined }) => Sandbox} [prepareSandbox]
  * @property {(args: { run: ChildResult, sandbox: Sandbox }) => string} [diagnostics]
  * @property {(args: { interpreted: Interpreted, sandbox: Sandbox, model: string }) => boolean} [recoverAuthFailure]
  * @property {(line: string) => string} [compactLine]
@@ -387,18 +386,16 @@ export function runChild({
   settleAfter = null,
   stopSignal = 'SIGTERM',
 }) {
-  const child = /** @type {import('node:child_process').ChildProcessWithoutNullStreams} */ (
-    spawn(command, args, {
-      cwd,
-      // PWD is the parent's otherwise, and opencode takes its project root from
-      // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
-      // consultant gets its working directory as PWD, never where the server runs.
-      env: env && cwd ? { ...env, PWD: cwd } : env,
-      detached: process.platform !== 'win32', // POSIX process group; Windows uses taskkill /T
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-  );
+  const child = spawn(command, args, {
+    cwd,
+    // PWD is the parent's otherwise, and opencode takes its project root from
+    // it: on 2026-10-17 a consultant globbed the lead's own directory. Every
+    // consultant gets its working directory as PWD, never where the server runs.
+    env: env && cwd ? { ...env, PWD: cwd } : env,
+    detached: process.platform !== 'win32', // POSIX process group; Windows uses taskkill /T
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
   const cap = POLICY.output.rawCaptureMax;
 
   let stdout = '';
@@ -415,7 +412,7 @@ export function runChild({
   let settleTimer;
   let settleAt = Infinity;
   const watch = (/** @type {string} */ line) => {
-    const ms = /** @type {NonNullable<typeof settleAfter>} */ (settleAfter)(line);
+    const ms = settleAfter?.(line);
     if (ms == null || Date.now() + ms >= settleAt) return;
     settleAt = Date.now() + ms;
     clearTimeout(settleTimer);
@@ -452,7 +449,7 @@ export function runChild({
   const compact = compactLine ?? ((/** @type {string} */ l) => l);
   const flushLines = () => {
     const lines = pending.split('\n');
-    pending = /** @type {string} */ (lines.pop());
+    pending = lines.pop() ?? '';
     for (const l of lines) {
       if (settleAfter) watch(l);
       append('out', `${compact(l)}\n`);

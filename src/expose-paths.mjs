@@ -28,7 +28,7 @@ import { redact } from './redact.mjs';
  * A path left out of the copy, with why: 'ignored', 'symlink', 'protected',
  * 'submodule', 'gone', 'masked' or 'replaced'. `exposed_as` names it where a
  * follow-up carries over an earlier round's entry.
- * @typedef {{ source: string, reason: string, exposed_as?: string }} SkippedPath
+ * @typedef {{ source: string, reason: string, exposed_as?: string | undefined }} SkippedPath
  */
 
 /**
@@ -43,7 +43,7 @@ import { redact } from './redact.mjs';
  * @property {number} bytes
  * @property {string[]} paths
  * @property {string | null} [sha256]
- * @property {string} [base]
+ * @property {string | undefined} [base]
  * @property {string[]} [changes]
  * @property {boolean} [changed] a follow-up's copy of a parent path: whether its bytes changed since
  * @property {boolean} [inherited] a follow-up copied it again from the parent round
@@ -61,10 +61,10 @@ import { redact } from './redact.mjs';
  * @typedef {object} ExposedEntryRecord
  * @property {number} index
  * @property {string} source
- * @property {string} [exposed_as]
- * @property {string} [kind]
- * @property {string} [base]
- * @property {string[]} [changes]
+ * @property {string | undefined} [exposed_as]
+ * @property {string | undefined} [kind]
+ * @property {string | undefined} [base]
+ * @property {string[] | undefined} [changes]
  */
 
 /** @typedef {{ path: string, status: string }} RepoChange */
@@ -80,6 +80,9 @@ export class ExposeError extends Error {
     this.code = code;
   }
 }
+
+/** @param {unknown} err */
+const messageOf = (err) => (err instanceof Error ? err.message : String(err));
 
 /**
  * A size a reader can judge at a glance; the brief is read, not parsed.
@@ -140,7 +143,7 @@ function statEntry(source) {
   try {
     stat = fs.lstatSync(source);
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${/** @type {Error} */ (err).message}`, 'not_found');
+    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${messageOf(err)}`, 'not_found');
   }
   if (stat.isSymbolicLink()) {
     throw new ExposeError(`expose_paths entry "${source}" is a symlink; name the path it points at instead`, 'invalid_type');
@@ -169,7 +172,7 @@ function walkDir(root, dir, onFile, totals, skipped) {
     // entries were created.
     items = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${/** @type {Error} */ (err).message}`, 'not_found');
+    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${messageOf(err)}`, 'not_found');
   }
   for (const item of items) {
     const child = path.join(dir, item.name);
@@ -213,7 +216,11 @@ function walkDir(root, dir, onFile, totals, skipped) {
 function byPathParts(a, b) {
   const x = a.split('/');
   const y = b.split('/');
-  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  for (const [i, part] of x.entries()) {
+    const other = y[i];
+    if (other === undefined) break;
+    if (part !== other) return part < other ? -1 : 1;
+  }
   return x.length - y.length;
 }
 
@@ -556,7 +563,7 @@ export function reexposeChange(workdir, entry, manifest) {
   const changes = [];
   for (const c of entry.changes ?? []) {
     const m = /^(.*) \(([^()]+)\)$/.exec(c);
-    const p = m ? m[1] : c;
+    const p = m?.[1] ?? c;
     if (p.includes('[REDACTED')) {
       manifest.skipped.push({ source: path.join(entry.source, p), reason: 'masked', exposed_as: `workspace/repo/${p}` });
       continue;
@@ -631,7 +638,7 @@ function git(cwd, args) {
   });
   if (r.error || r.status !== 0) {
     const why =
-      /** @type {NodeJS.ErrnoException} */ (r.error)?.code === 'ENOENT'
+      r.error && 'code' in r.error && r.error.code === 'ENOENT'
         ? 'git is not on PATH'
         : String(r.stderr ?? r.error?.message ?? '').trim();
     throw new ExposeError(`context.expose_diff: git ${args[0]} failed in "${cwd}": ${why}`, 'not_found');
@@ -650,7 +657,7 @@ const nulSplit = (buf) => buf.toString('utf8').split('\0').filter(Boolean);
  * left out of the copy and of the diff. Returns the diff text, masked and cut
  * to maxChars, for the brief.
  * @param {string} workdir
- * @param {{ repo: string, base?: string }} source
+ * @param {{ repo: string, base?: string | undefined }} source
  * @param {ExposeManifest} manifest
  * @param {number} maxChars
  * @returns {string}
@@ -663,7 +670,11 @@ export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars)
   );
   /** @type {RepoChange[]} */
   const changes = [];
-  for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
+  for (let i = 0; i + 1 < tokens.length; i += 2) {
+    const status = tokens[i];
+    const file = tokens[i + 1];
+    if (status !== undefined && file !== undefined) changes.push({ status, path: file });
+  }
   for (const p of nulSplit(git(top, ['ls-files', '--others', '--exclude-standard', '-z'])))
     changes.push({ status: 'untracked', path: p });
 

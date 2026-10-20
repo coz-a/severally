@@ -60,6 +60,15 @@ function clampText(v, max) {
   return t.length > max ? `${t.slice(0, max)}\n…[truncated by severally]` : t;
 }
 
+/**
+ * Narrows a string to one of the listed values.
+ * @template {string} T
+ * @param {readonly T[]} list
+ * @param {string} t
+ * @returns {t is T}
+ */
+const oneOf = (list, t) => list.some((x) => x === t);
+
 /** @type {Level[]} */
 const LEVELS = ['high', 'medium', 'low'];
 /** @type {EvidenceBasis[]} */
@@ -72,7 +81,7 @@ const BASIS = ['sufficient', 'thin', 'insufficient'];
  */
 function level(v, fallback = null) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return LEVELS.includes(/** @type {Level} */ (t)) ? /** @type {Level} */ (t) : fallback;
+  return oneOf(LEVELS, t) ? t : fallback;
 }
 
 /**
@@ -81,7 +90,7 @@ function level(v, fallback = null) {
  */
 function basis(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return BASIS.includes(/** @type {EvidenceBasis} */ (t)) ? /** @type {EvidenceBasis} */ (t) : null;
+  return oneOf(BASIS, t) ? t : null;
 }
 
 /**
@@ -90,7 +99,7 @@ function basis(v) {
  */
 function stance(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return STANCES.includes(/** @type {Stance} */ (t)) ? /** @type {Stance} */ (t) : null;
+  return oneOf(STANCES, t) ? t : null;
 }
 
 /**
@@ -105,9 +114,7 @@ export function extractJson(text) {
   /** @type {string[]} */
   const candidates = [];
   if (trimmed.startsWith('{')) candidates.push(trimmed);
-  const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
-  let m;
-  while ((m = fence.exec(trimmed)) !== null) candidates.push(m[1].trim());
+  for (const [, body = ''] of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push(body.trim());
   // Longest balanced {...} run as a last resort.
   const start = trimmed.indexOf('{');
   if (start !== -1) {
@@ -173,6 +180,7 @@ function mapList(raw, fields, { requiredField, idPrefix = null }) {
       item[key] = kind === 'level' ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
     if (!item[requiredField]) continue;
+    // Every key of `fields` is a key of T, and the required one is set.
     out.push(/** @type {T} */ (item));
   }
   return out;
@@ -274,8 +282,10 @@ export function normalizeResult(raw) {
     }),
   );
 
+  /** @type {Record<string, unknown>} */
+  const fields = result;
   const missing = RESULT_KEYS.filter((k) => {
-    const v = /** @type {Record<string, unknown>} */ (result)[k];
+    const v = fields[k];
     return v === null || v === undefined || (Array.isArray(v) && v.length === 0);
   });
 

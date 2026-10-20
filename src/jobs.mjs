@@ -12,9 +12,10 @@ import {
   detectCaller,
   configProblem,
   consultantByName,
+  consultantNamed,
   consultantAvailable,
 } from './policy.mjs';
-import { vendorOf, sameModel, CLI_VENDORS } from './consultants.mjs';
+import { vendorOf, sameModel, CLI_VENDORS, CLI_IDS } from './consultants.mjs';
 import { parseRequest, RequestError, charCount } from './schema.mjs';
 import { renderBrief, renderGuardrails, briefRecord } from './brief.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
@@ -37,25 +38,11 @@ import * as opencode from './adapters/opencode.mjs';
 /** @typedef {import('./store.mjs').Seat} Seat */
 /** @typedef {NonNullable<Seat['owner']>} JobOwner Who runs a consultation: the severally process, and when it counts as overdue. */
 /** @typedef {import('./brief.mjs').PriorRound} PriorRound */
-/**
- * A validated request (see parseRequest), with what the job manager adds to it.
- * @typedef {import('./brief.mjs').BriefRequest & {
- *   target: string,
- *   targets: string[],
- *   fanout: boolean,
- *   caller: string | null,
- *   caller_model: string | null,
- *   initiator: string | null,
- *   followup_to: string | null,
- *   prediction?: {expected: string, worry: string} | null,
- *   context: {facts: string[], counterpoints: string[], expose_paths: string[], expose_diff?: {repo: string, base?: string} | null, expose_from_parent?: boolean},
- *   _snapshot?: string,
- * }} ParsedRequest
- */
+/** @typedef {import('./schema.mjs').ParsedRequest & {_snapshot?: string}} ParsedRequest A validated request (see parseRequest), with the copy of the exposed files the job manager adds. */
 
 /**
  * The tool arguments, not yet validated; only the keys inherit() and start() look at are named.
- * @typedef {{target?: unknown, targets?: unknown[] | null, network?: unknown, context?: Record<string, unknown> | null, [key: string]: unknown}} RawRequest
+ * @typedef {{target?: unknown, targets?: unknown[] | null | undefined, network?: unknown, context?: Record<string, unknown> | null | undefined, [key: string]: unknown}} RawRequest
  */
 
 /** @typedef {import('./store.mjs').JobFailure} JobFailure */
@@ -71,13 +58,11 @@ import * as opencode from './adapters/opencode.mjs';
 /** @typedef {import('./store.mjs').IndexRow} IndexRow */
 /** @typedef {import('./store.mjs').BriefExposeEntry} BriefExposeEntry */
 
-/** @typedef {Partial<Round> & {rec?: StoredRound, row?: IndexRow}} Candidate A consultation to list: one held here, a marker, or an index row. */
-
 /** @typedef {import('./store.mjs').RunningRecord} StoredRound A round, or the marker of one still running elsewhere. */
 
 /**
  * A consultation this process runs: the round, plus what only a live process has.
- * @typedef {Round & {group_id: string, retries: RetryRecord[], cancelRequested: boolean, _cancelFns: Array<() => void>, _request: ParsedRequest, _owner?: JobOwner, _handle?: ProcHandle, promise?: Promise<unknown>}} Job
+ * @typedef {Round & {group_id: string, caller: string | null, retries: RetryRecord[], cancelRequested: boolean, _cancelFns: Array<() => void>, _request: ParsedRequest, _owner?: JobOwner | undefined, _handle?: ProcHandle | undefined, promise?: Promise<unknown>}} Job
  */
 
 /**
@@ -110,7 +95,7 @@ import * as opencode from './adapters/opencode.mjs';
  * @typedef {{job_id?: any, entries?: Array<{id?: unknown, verdict?: unknown, effect?: unknown, note?: unknown} | null>, reflection?: {delta?: unknown, related_item_ids?: unknown} | null, [key: string]: unknown}} RawRecord
  */
 
-/** @typedef {{job: Round, live: Job | undefined, record?: JobRecord, reflection?: Reflection}} RecordChange What a record call would write, checked and not yet written. */
+/** @typedef {{job: Round, live: Job | undefined, record?: JobRecord | undefined, reflection?: Reflection | undefined}} RecordChange What a record call would write, checked and not yet written. */
 
 /** @typedef {import('./expose-paths.mjs').ExposeManifest} ExposeManifest */
 
@@ -156,7 +141,7 @@ import * as opencode from './adapters/opencode.mjs';
  * @property {string} [full_with]
  */
 
-/** @type {Record<string, Adapter>} */
+/** @type {Record<CliId, Adapter> & Record<string, Adapter | undefined>} */
 const ADAPTERS = { codex, 'claude-code': claudeCode, antigravity, opencode };
 
 // The recovery respawn runs only while this much of the original budget is
@@ -219,8 +204,8 @@ function ownerState(jobId, owner) {
     try {
       process.kill(owner.pid, 0);
       pidAlive = true;
-    } catch (/** @type {any} */ err) {
-      pidAlive = err.code === 'EPERM';
+    } catch (err) {
+      pidAlive = err instanceof Error && 'code' in err && err.code === 'EPERM';
     }
   if (!pidAlive) return 'dead';
   return Date.now() > Date.parse(owner.deadline_at) ? 'overdue' : 'alive';
@@ -309,17 +294,16 @@ export class JobManager {
    * @returns {FullView}
    */
   #diskView(rec) {
-    const elsewhere = Boolean(rec.owner);
     const { owner, ...view } = rec;
     return {
       ...view,
       cancellable: false,
       progress: null,
       record: view.record ? recordSummary(view) : null,
-      brief: elsewhere ? null : view.brief,
-      limits: elsewhere ? null : limitsSummary(),
-      next_step: elsewhere
-        ? `running in another severally process (pid ${/** @type {JobOwner} */ (owner).pid}); poll again later -- it can only be cancelled from that process`
+      brief: owner ? null : view.brief,
+      limits: owner ? null : limitsSummary(),
+      next_step: owner
+        ? `running in another severally process (pid ${owner.pid}); poll again later -- it can only be cancelled from that process`
         : nextStep(view),
     };
   }
@@ -329,7 +313,7 @@ export class JobManager {
   }
 
   /**
-   * @param {Round} job
+   * @param {Job} job
    * @returns {Round}
    */
   #record(job) {
@@ -377,7 +361,7 @@ export class JobManager {
   // consultation names it (size, sha256, round file) instead of repeating it.
   /**
    * @param {string} jobId
-   * @param {{detail?: string}} [opts]
+   * @param {{detail?: string | undefined}} [opts]
    * @returns {JobView | null}
    */
   view(jobId, { detail } = {}) {
@@ -386,6 +370,15 @@ export class JobManager {
       const rec = this.#fromDisk(jobId);
       return rec ? compactBrief(this.#diskView(rec), detail) : null;
     }
+    return this.#jobView(job, detail);
+  }
+
+  /**
+   * @param {Job} job
+   * @param {string | undefined} detail
+   * @returns {JobView}
+   */
+  #jobView(job, detail) {
     /** @type {FullView} */
     const rec = this.#record(job);
     rec.cancellable = job.status === 'running' || job.status === 'queued';
@@ -423,10 +416,16 @@ export class JobManager {
   // holds the verdicts written since. Memory wins over disk for the same job.
   /** @param {{limit?: number}} [opts] */
   list({ limit = 20 } = {}) {
-    const here = this.order.map((jid) => /** @type {Job} */ (this.jobs.get(jid)));
-    const seen = new Set(here.map((j) => j.job_id));
-    /** @type {Array<{rec?: StoredRound, row?: IndexRow}>} */
-    const elsewhere = [];
+    // Sorted by when each was created; a round file is read only for the rows shown.
+    /** @type {Array<{at: string, load: () => Round | null}>} */
+    const candidates = [];
+    const seen = new Set();
+    for (const jid of this.order) {
+      const job = this.jobs.get(jid);
+      if (!job) continue;
+      seen.add(job.job_id);
+      candidates.push({ at: job.created_at ?? '', load: () => job });
+    }
     // Read only: a marker whose owner is gone is shown as interrupted, and
     // left for consult_get or the startup sweep to close out.
     for (const jobId of store.listRunning()) {
@@ -436,27 +435,24 @@ export class JobManager {
       const state = ownerState(jobId, live.owner);
       // A round saved just before its owner died is the answer, whatever the marker says.
       const saved = state === 'alive' ? null : store.loadRoundAt(live);
-      elsewhere.push({
-        rec:
-          state === 'alive'
-            ? live
-            : (saved ?? /** @type {Round} */ ({ ...live, status: 'failed', failure: { kind: 'interrupted' } })),
-      });
+      // The marker of a round whose owner is gone: shown as interrupted, with no failure detail to give.
+      const rec =
+        state === 'alive'
+          ? live
+          : (saved ?? /** @type {Round} */ ({ ...live, status: 'failed', failure: { kind: 'interrupted' } }));
+      candidates.push({ at: rec.created_at ?? '', load: () => rec });
     }
     for (const row of store.indexRows())
       if (!seen.has(row.job_id)) {
         seen.add(row.job_id);
-        elsewhere.push({ row });
+        candidates.push({ at: row.created_at ?? '', load: () => store.loadRoundAt(row) });
       }
-    const at = (/** @type {Candidate} */ x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? '';
     /** @type {Round[]} */
     const picked = [];
-    /** @type {Candidate[]} */
-    const candidates = [...here, ...elsewhere];
-    // Round files are read only for the rows shown; one that cannot be read is passed over.
-    for (const x of candidates.sort((p, q) => (at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0))) {
+    // One that cannot be read is passed over.
+    for (const x of candidates.sort((p, q) => (q.at < p.at ? -1 : q.at > p.at ? 1 : 0))) {
       if (picked.length >= limit) break;
-      const j = /** @type {Round | null} */ (x.row ? store.loadRoundAt(x.row) : (x.rec ?? x));
+      const j = x.load();
       if (j) picked.push(j);
     }
     return picked.map((j) => {
@@ -491,7 +487,7 @@ export class JobManager {
    * but named under `not_reported`. Nothing is estimated.
    */
   usageTotals() {
-    /** @type {Record<string, Record<string, number>>} */
+    /** @type {Record<string, Record<string, number> & {consultations: number, attempts: number}>} */
     const by = {};
     /** @type {Record<string, Set<string>>} */
     const reported = {};
@@ -513,7 +509,7 @@ export class JobManager {
     /** @type {Record<string, Record<string, number | string[]>>} */
     const out = {};
     for (const [target, t] of Object.entries(by)) {
-      out[target] = { ...t, not_reported: USAGE_FIGURES.filter((k) => !reported[target].has(k)) };
+      out[target] = { ...t, not_reported: USAGE_FIGURES.filter((k) => !reported[target]?.has(k)) };
     }
     return out;
   }
@@ -534,7 +530,7 @@ export class JobManager {
     // Resolve the chain before validating, so follow-up rules can be applied.
     const followupTo =
       typeof rawRequest?.followup_to === 'string' && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
-    /** @type {(Round & {nextRound?: number}) | null} */
+    /** @type {(Round & {nextRound: number}) | null} */
     let parent = null;
     /** @type {GroupParents | null} */
     let fromGroup = null;
@@ -552,11 +548,11 @@ export class JobManager {
     } else if (followupTo) {
       // A job from an earlier server session is read back from the history,
       // so a restart does not end a consultation the lead is still checking.
-      parent = this.jobs.get(followupTo) ?? store.loadRound(followupTo);
-      if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, 'unknown_job');
-      if (parent.status !== 'completed') {
+      const found = this.jobs.get(followupTo) ?? store.loadRound(followupTo);
+      if (!found) throw new RequestError(`followup_to references unknown job "${followupTo}"`, 'unknown_job');
+      if (found.status !== 'completed') {
         throw new RequestError(
-          `followup_to job "${followupTo}" is ${parent.status}; only a completed consultation can be followed up`,
+          `followup_to job "${followupTo}" is ${found.status}; only a completed consultation can be followed up`,
           'followup_not_completed',
         );
       }
@@ -564,36 +560,30 @@ export class JobManager {
       // round goes after every round already there: numbering it parent + 1
       // would overwrite a later round's history file. A later round that
       // failed or was cancelled does not block a retry from the parent.
-      const rounds = this.#chainRounds(parent.chain_id);
-      const later = rounds.find(
-        (j) => j.round > /** @type {Round} */ (parent).round && !['failed', 'cancelled'].includes(j.status),
-      );
+      const rounds = this.#chainRounds(found.chain_id);
+      const later = rounds.find((j) => j.round > found.round && !['failed', 'cancelled'].includes(j.status));
       if (later) {
         throw new RequestError(
-          `job "${followupTo}" is round ${parent.round}, and this consultation already has round ${later.round} (job "${later.job_id}", ${later.status}); follow up the latest round`,
+          `job "${followupTo}" is round ${found.round}, and this consultation already has round ${later.round} (job "${later.job_id}", ${later.status}); follow up the latest round`,
           'followup_not_latest',
         );
       }
-      parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
+      parent = { ...found, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
     }
 
     if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
       rawRequest = { ...rawRequest, target: parent.target };
     }
     // A fan-out's members were all handed the same brief, so any one of them holds it.
-    if (parent || fromGroup)
-      rawRequest = inherit(
-        rawRequest,
-        /** @type {Round} */ (fromGroup ? (fromGroup.links[0].groupMember ?? fromGroup.links[0].parent) : parent),
-      );
+    const first = fromGroup?.links[0];
+    const inheritFrom = first ? (first.groupMember ?? first.parent) : parent;
+    if (inheritFrom) rawRequest = inherit(rawRequest, inheritFrom);
 
-    const req = /** @type {ParsedRequest} */ (
-      parseRequest(rawRequest, {
-        isFollowup: Boolean(parent || fromGroup),
-        parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
-        groupFollowup: Boolean(fromGroup),
-      })
-    );
+    const req = parseRequest(rawRequest, {
+      isFollowup: Boolean(parent || fromGroup),
+      parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+      groupFollowup: Boolean(fromGroup),
+    });
     // The operator's setting only ever closes: a request cannot reopen the web.
     if (POLICY.network === 'off') req.network = 'off';
 
@@ -609,7 +599,7 @@ export class JobManager {
         'followup_target_mismatch',
       );
     }
-    const round = parent ? /** @type {number} */ (parent.nextRound) : 1;
+    const round = parent ? parent.nextRound : 1;
     if (!fromGroup && round > POLICY.maxRounds) {
       throw new RequestError(
         `this consultation has used its ${POLICY.maxRounds} rounds (1 initial + ${POLICY.maxRounds - 1} follow-ups); decide with what you have, or start a new consultation with a materially different question`,
@@ -624,18 +614,21 @@ export class JobManager {
     // servers continuing one consultation at once cannot both take a round
     // number: neither sees the other's round in its history until it ends.
     const chainOf = (/** @type {number} */ i) => (fromGroup ? fromGroup.links[i] : parent ? { parent, round } : null);
-    const seats = req.targets.map((/** @type {string} */ target, /** @type {number} */ i) => ({
-      job_id: id('job'),
-      ...(chainOf(i) ? { chain_id: chainOf(i)?.parent.chain_id, round: chainOf(i)?.round } : {}),
-      // Twice the budget plus an hour: the deadline is wall-clock, the budget is
-      // not, so a suspended laptop must not make a live owner look overdue.
-      owner: {
-        pid: process.pid,
-        deadline_at: new Date(
-          Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 3_600_000,
-        ).toISOString(),
-      },
-    }));
+    const seats = req.targets.map((/** @type {string} */ target, /** @type {number} */ i) => {
+      const link = chainOf(i);
+      return {
+        job_id: id('job'),
+        ...(link ? { chain_id: link.parent.chain_id, round: link.round } : {}),
+        // Twice the budget plus an hour: the deadline is wall-clock, the budget is
+        // not, so a suspended laptop must not make a live owner look overdue.
+        owner: {
+          pid: process.pid,
+          deadline_at: new Date(
+            Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 3_600_000,
+          ).toISOString(),
+        },
+      };
+    });
     const taken = store.takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === 'alive');
     if (taken.chainBusy) {
       const { live, mine } = taken.chainBusy;
@@ -692,20 +685,27 @@ export class JobManager {
       }
       const rounds = this.#chainRounds(member.chain_id);
       const latest = rounds.filter((j) => !['failed', 'cancelled'].includes(j.status)).sort((a, b) => b.round - a.round)[0];
+      if (!latest) {
+        skipped.push({
+          job_id: member.job_id,
+          target: member.target,
+          reason: `${member.status}, so there is no answer to follow up`,
+        });
+        continue;
+      }
       const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
       // The name is kept, not re-resolved: a consultant renamed or turned off
       // since is skipped, never continued by whichever one answers to it now.
       const consultant = consultantByName(member.target);
-      const reason = !latest
-        ? `${member.status}, so there is no answer to follow up`
-        : latest.status !== 'completed'
+      const reason =
+        latest.status !== 'completed'
           ? `round ${latest.round} is still ${latest.status}`
           : nextRound > POLICY.maxRounds
             ? `has used its ${POLICY.maxRounds} rounds`
             : !consultant || !consultantAvailable(consultant)
               ? 'this consultant is no longer configured or available here'
               : null;
-      if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
+      if (reason) skipped.push({ job_id: latest.job_id, target: member.target, reason });
       else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
     }
     if (!links.length) {
@@ -726,7 +726,8 @@ export class JobManager {
   #admitted(req, links, seats, fromGroup = null) {
     // What expose_from_parent copies again: for a group, what that fan-out
     // exposed (one manifest, shared by its members); otherwise the parent's.
-    const parent = /** @type {Round} */ (links[0].groupMember ?? links[0].parent);
+    const first = links[0];
+    const parent = first?.groupMember ?? first?.parent;
     const groupId = id('group');
     // Copied once for the whole request, before a round is counted or a job
     // exists, into the group's own directory: every member is then handed the
@@ -736,10 +737,10 @@ export class JobManager {
     /** @type {ExposeManifest | null} */
     let exposeManifest = null;
     /** @type {BriefExposeEntry[]} */
-    const parentEntries = req.context.expose_from_parent ? (parent.brief?.expose_paths?.entries ?? []) : [];
+    const parentEntries = req.context.expose_from_parent ? (parent?.brief?.expose_paths?.entries ?? []) : [];
     if (req.context.expose_from_parent && parentEntries.length === 0) {
       throw new RequestError(
-        `context.expose_from_parent: job "${parent.job_id}" exposed no files, so there is nothing to copy again; name them in context.expose_paths`,
+        `context.expose_from_parent: job "${parent?.job_id}" exposed no files, so there is nothing to copy again; name them in context.expose_paths`,
         'nothing_to_inherit',
       );
     }
@@ -789,22 +790,26 @@ export class JobManager {
           !req.context.artifacts.length
         ) {
           throw new RequestError(
-            `context.expose_from_parent: nothing job "${parent.job_id}" exposed is there any more, and this request has no facts or artifacts`,
+            `context.expose_from_parent: nothing job "${parent?.job_id}" exposed is there any more, and this request has no facts or artifacts`,
             'nothing_to_inherit',
           );
         }
-      } catch (/** @type {any} */ err) {
+      } catch (err) {
         store.cleanupJobDir(groupId);
-        if (err instanceof RequestError || !err.code) throw err;
+        if (err instanceof RequestError || !(err instanceof Error) || !('code' in err) || !err.code) throw err;
         throw new RequestError(err.message, err.code === 'too_large' ? 'expose_paths_too_large' : 'expose_path_invalid');
       }
       req._snapshot = path.join(snapshot, 'workspace');
     }
     const members = req.targets.map((/** @type {string} */ target, /** @type {number} */ i) => {
-      const { parent: from, round } = links[i];
+      // One link and one seat per target: start() builds them from req.targets.
+      const link = links[i];
+      const seat = seats[i];
+      if (!link || !seat) throw new Error(`no follow-up link or seat for target "${target}"`);
+      const { parent: from, round } = link;
       const chainId = from ? from.chain_id : id('chain');
-      const jobId = seats[i].job_id;
-      const consultant = /** @type {Consultant} */ (consultantByName(target));
+      const jobId = seat.job_id;
+      const consultant = consultantNamed(target);
       /** @type {Job} */
       const job = {
         job_id: jobId,
@@ -861,18 +866,20 @@ export class JobManager {
       this.order.push(jobId);
       LIVE_HERE.add(jobId);
       this.#watchCancels();
-      job._owner = seats[i].owner;
+      job._owner = seat.owner;
       this.#mark(job);
       return job;
     });
     this.#evict();
 
+    const [firstMember] = members;
+    if (!firstMember) throw new Error('a consultation needs a target');
     /** @type {Group} */
     const group = {
       group_id: groupId,
       created_at: new Date().toISOString(),
       mode: req.mode,
-      question: members[0].question, // already redacted, and byte-identical across the group
+      question: firstMember.question, // already redacted, and byte-identical across the group
       job_ids: members.map((/** @type {Job} */ m) => m.job_id),
     };
     this.groups.set(groupId, group);
@@ -899,13 +906,13 @@ export class JobManager {
     if (req._snapshot) store.cleanupJobDir(groupId);
 
     // The members of a follow-up to a group can be at different rounds.
-    const { round } = members[0];
+    const { round } = firstMember;
     const sameRound = members.every((/** @type {Job} */ m) => m.round === round);
     const common = {
       group_id: groupId,
       ...(sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {}),
       ...(fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {}),
-      ...(parentEntries.length ? { exposed_from_parent: inheritedSummary(/** @type {ExposeManifest} */ (exposeManifest)) } : {}),
+      ...(parentEntries.length && exposeManifest ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {}),
       mode: req.mode,
       // Counted, not refused: a brief of facts alone is a legitimate
       // consultation, but one about code that hands over no file is one the
@@ -923,7 +930,7 @@ export class JobManager {
     };
 
     if (!req.fanout) {
-      const job = members[0];
+      const job = firstMember;
       return {
         ...common,
         job_id: job.job_id,
@@ -1006,7 +1013,8 @@ export class JobManager {
 
   #evict() {
     while (this.order.length > POLICY.maxJobsRetained) {
-      const oldest = /** @type {string} */ (this.order.shift());
+      const oldest = this.order.shift();
+      if (oldest === undefined) break;
       const j = this.jobs.get(oldest);
       if (j && (j.status === 'running' || j.status === 'queued')) {
         this.order.push(oldest); // never evict live work
@@ -1037,7 +1045,7 @@ export class JobManager {
    * @returns {Promise<Job>}
    */
   async #execute(job, req, chain, brief) {
-    const consultant = /** @type {Consultant} */ (consultantByName(job.target));
+    const consultant = consultantNamed(job.target);
     const cli = consultant.cli;
     const adapter = ADAPTERS[cli];
     const workdir = store.makeWorkdir(job.job_id);
@@ -1048,8 +1056,8 @@ export class JobManager {
     if (req._snapshot) {
       try {
         fs.cpSync(req._snapshot, path.join(workdir, 'workspace'), { recursive: true });
-      } catch (/** @type {any} */ err) {
-        return this.#fail(job, 'spawn_error', `could not copy the exposed files: ${err.message}`);
+      } catch (err) {
+        return this.#fail(job, 'spawn_error', `could not copy the exposed files: ${err instanceof Error ? err.message : err}`);
       }
     }
     // start() renders the brief and hands it in: every member of a fan-out is
@@ -1057,6 +1065,7 @@ export class JobManager {
     // added on a follow-up to the group.
     const text = brief ?? renderBrief(req, chain);
     const schemaPath = store.writeJobArtifact(job.job_id, 'response-schema.json', JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
+    // Left out, not undefined, when the request names none.
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir, network: req.network }) : null;
 
     try {
@@ -1556,14 +1565,14 @@ export class JobManager {
     // Unlike the round itself, a verdict exists nowhere else once this server
     // exits, so a failed write is the lead's to know about, not best effort.
     try {
-      store.persistRound(live ? this.#record(job) : job, { appendIndex: false });
-    } catch (/** @type {any} */ e) {
+      store.persistRound(live ? this.#record(live) : job, { appendIndex: false });
+    } catch (e) {
       // Not saved, so not shown as recorded either.
       Object.assign(job, was);
       return {
         job_id: job.job_id,
         error: 'record_not_saved',
-        message: `the verdict for "${job.job_id}" could not be written to the history (${e.message}); record it again`,
+        message: `the verdict for "${job.job_id}" could not be written to the history (${e instanceof Error ? e.message : e}); record it again`,
       };
     }
     // Counts only: the entries are what the lead just wrote, and
@@ -1581,7 +1590,7 @@ export class JobManager {
   /**
    * @param {string} jobId
    * @param {number | undefined} waitMs
-   * @param {{detail?: string}} [opts]
+   * @param {{detail?: string | undefined}} [opts]
    * @param {AbortSignal} [signal]
    */
   async wait(jobId, waitMs, opts, signal) {
@@ -1644,12 +1653,12 @@ export class JobManager {
       };
     }
     if (job.status !== 'running' && job.status !== 'queued') {
-      return { ...this.view(jobId), cancel_effect: `job was already ${job.status}` };
+      return { ...this.#jobView(job, undefined), cancel_effect: `job was already ${job.status}` };
     }
     job.cancelRequested = true;
     for (const fn of job._cancelFns) fn();
     if (job._handle) job._handle.stop();
-    return { ...this.view(jobId), status: 'cancelling', cancel_effect: 'consultant process group signalled' };
+    return { ...this.#jobView(job, undefined), status: 'cancelling', cancel_effect: 'consultant process group signalled' };
   }
 
   // Every field here is derived from the one `members` array it is handed, so a
@@ -1658,7 +1667,7 @@ export class JobManager {
   /**
    * @param {Group} group
    * @param {JobView[]} members
-   * @param {{detail?: string}} [opts]
+   * @param {{detail?: string | undefined}} [opts]
    */
   #shapeGroup(group, members, { detail } = {}) {
     const full = detail === 'full';
@@ -1721,7 +1730,7 @@ export class JobManager {
           ? `${missing} of ${group.job_ids.length} member consultation(s) have aged out of this session's history; the comparison below is partial`
           : null,
       members: trimmed,
-      comparison: /** @type {ReturnType<typeof comparison> | null} */ (null),
+      comparison: null,
       cancellable: live,
       next_step: cancelling
         ? 'poll consult_get with this group_id until every member reads cancelled'
@@ -1739,13 +1748,12 @@ export class JobManager {
     // While no one has finished there is nothing to set side by side, and an
     // empty column per consultant is only context spent on every poll.
     const anyFinished = members.some((m) => ['completed', 'failed', 'cancelled'].includes(m.status));
-    if (anyFinished) view.comparison = comparison(members, full ? Infinity : GROUP_CHARS - printed(view));
-    return view;
+    return anyFinished ? { ...view, comparison: comparison(members, full ? Infinity : GROUP_CHARS - printed(view)) } : view;
   }
 
   /**
    * @param {string} groupId
-   * @param {{detail?: string}} [opts]
+   * @param {{detail?: string | undefined}} [opts]
    */
   groupView(groupId, opts) {
     const group = this.groups.get(groupId) ?? store.loadGroup(groupId);
@@ -1760,7 +1768,7 @@ export class JobManager {
   /**
    * @param {string} groupId
    * @param {number | undefined} waitMs
-   * @param {{detail?: string}} [opts]
+   * @param {{detail?: string | undefined}} [opts]
    * @param {AbortSignal} [signal]
    */
   async waitGroup(groupId, waitMs, opts, signal) {
@@ -1803,7 +1811,7 @@ export class JobManager {
     // Shape the view from the cancel() results, not from a fresh read: the
     // children exit asynchronously, so a signalled member reads as
     // "cancelling" until it is reaped, and the whole payload must say so.
-    const members = /** @type {JobView[]} */ (group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean));
+    const members = group.job_ids.map((jid) => this.cancel(jid)).filter((v) => v != null);
     const total = group.job_ids.length;
     return {
       ...this.#shapeGroup(group, members),
@@ -1934,7 +1942,7 @@ async function settled(promise, ms, signal) {
     await (promise ? Promise.race([promise, until]) : until);
   } finally {
     clearTimeout(timer);
-    signal?.removeEventListener('abort', /** @type {() => void} */ (stop));
+    if (stop) signal?.removeEventListener('abort', stop);
   }
 }
 
@@ -1982,6 +1990,7 @@ function tally(values) {
  * @returns {JobRecord}
  */
 function recordSummary(job) {
+  // Callers pass a round that has a record, and a record is only written against an answer (#checkRecord).
   const record = /** @type {JobRecord} */ (job.record);
   const ids = recordableIds(/** @type {ConsultResult} */ (job.result));
   const written = new Set(record.entries.map((e) => e.id));
@@ -2087,8 +2096,8 @@ function adviceCaveat(normalized) {
 function sameVendorCaveat(caller, callerModel, consultant) {
   // The lead's lineage: its declared model if that names one, else its CLI's
   // own. An unknown lineage on either side is no caveat -- not a guess.
-  const callerVendor =
-    (callerModel ? vendorOf(callerModel) : null) ?? (caller ? (CLI_VENDORS[/** @type {CliId} */ (caller)] ?? null) : null);
+  const callerCli = CLI_IDS.find((c) => c === caller);
+  const callerVendor = (callerModel ? vendorOf(callerModel) : null) ?? (callerCli ? (CLI_VENDORS[callerCli] ?? null) : null);
   const vendor = consultant.vendor;
   if (!callerVendor || !vendor || callerVendor !== vendor) return null;
   // Say what a fresh session of the same lineage removes and what it keeps.
@@ -2125,12 +2134,13 @@ function sameVendorCaveat(caller, callerModel, consultant) {
 function comparison(members, budget) {
   // Each column first pays for its fixed fields; the rest is its budget.
   const each = (budget - COMPARISON_NOTE_CHARS) / Math.max(1, members.length) - COLUMN_FIXED_CHARS;
-  let columns = members.map((m) => byTarget(m, each));
+  const firstPass = members.map((m) => ({ m, column: byTarget(m, each) }));
+  let columns = firstPass.map((x) => x.column);
   // What the short answers did not spend goes to the ones that were cut.
   const cutShort = columns.filter((c) => c.truncated).length;
   if (each !== Infinity && cutShort) {
     const spare = columns.reduce((n, c) => n + (c.truncated ? 0 : Math.max(0, each + COLUMN_FIXED_CHARS - printed(c))), 0);
-    columns = members.map((m, i) => (columns[i].truncated ? byTarget(m, each + spare / cutShort) : columns[i]));
+    columns = firstPass.map(({ m, column }) => (column.truncated ? byTarget(m, each + spare / cutShort) : column));
   }
   return {
     by_target: columns,
@@ -2323,12 +2333,13 @@ export function pointsOf(view, ids) {
   const verdicts = new Map((view.record?.entries ?? []).map((e) => [e.id, e]));
   const lists = { finding: r.findings, unknown: r.unknowns, next_check: r.next_checks };
   const points = [...new Set(ids)].map((id) => {
-    const [kind, item] = /** @type {[string, ResultItem]} */ (
-      Object.entries(lists)
-        .map(([k, l]) => [k, l.find((x) => x.id === id)])
-        .find(([, x]) => x)
-    );
-    return { kind, ...item, recorded: verdicts.get(id) ?? null };
+    // Every id was checked against recordableIds above, so one list has it.
+    const [point] = Object.entries(lists).flatMap(([kind, l]) => {
+      const item = l.find((x) => x.id === id);
+      return item ? [{ kind, ...item }] : [];
+    });
+    if (!point) throw new RequestError(`"${id}" is not a point in this answer`, 'unknown_entry_id');
+    return { ...point, recorded: verdicts.get(id) ?? null };
   });
   return {
     job_id: view.job_id,
@@ -2451,7 +2462,7 @@ function nextStep(job) {
 // in clap) and a Go-style long flag (`-dangerously-skip-permissions`).
 const flagNames = (/** @type {string} */ a) => {
   if (!a.startsWith('-') || a === '-') return [];
-  const name = a.split('=')[0];
+  const [name = ''] = a.split('=');
   return a.startsWith('--') ? [name] : [name, a.slice(0, 2), `-${name}`];
 };
 
@@ -2463,7 +2474,7 @@ const flagNames = (/** @type {string} */ a) => {
  * undo it). Values (tokens without a leading dash) are not inspected.
  */
 /**
- * @param {string} target
+ * @param {CliId} target
  * @param {readonly string[]} adapterArgs
  * @param {unknown} extra
  * @returns {string | null}
@@ -2492,7 +2503,7 @@ export function withExtraArgs(args, extra) {
 }
 
 /**
- * @param {string} target
+ * @param {CliId} target
  * @param {readonly string[]} args
  */
 export function assertNoForbiddenFlags(target, args) {

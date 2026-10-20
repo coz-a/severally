@@ -32,7 +32,7 @@ function looksLikeCode(name, value) {
     /^(?:process\.env\.|os\.environ\b)/.test(value)
   )
     return true;
-  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(/** @type {string} */ (name.split('_').at(-1)))) return false;
+  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split('_').at(-1) ?? '')) return false;
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith('&');
 }
 
@@ -82,23 +82,29 @@ const PATTERNS = [
 /**
  * Any JSON-like value in, the same shape out with its strings scrubbed.
  * @template T
+ * @overload
  * @param {T} value
  * @returns {T}
+ */
+/**
+ * @param {unknown} value
+ * @returns {unknown}
  */
 export function redact(value) {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') {
-    let out = /** @type {string} */ (value);
+    /** @type {string} */
+    let out = value;
     // The same call either way: replace() has one overload for a string and one for a function.
     for (const [re, rep] of PATTERNS) out = typeof rep === 'string' ? out.replace(re, rep) : out.replace(re, rep);
-    return /** @type {T} */ (/** @type {unknown} */ (out));
+    return out;
   }
-  if (Array.isArray(value)) return /** @type {T} */ (/** @type {unknown} */ (value.map(redact)));
+  if (Array.isArray(value)) return value.map(redact);
   if (typeof value === 'object') {
     /** @type {Record<string, unknown>} */
     const out = {};
     for (const [k, v] of Object.entries(value)) out[k] = redact(v);
-    return /** @type {T} */ (/** @type {unknown} */ (out));
+    return out;
   }
   return value;
 }

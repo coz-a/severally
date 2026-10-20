@@ -107,7 +107,7 @@ REQUESTS.sandbox = {
   },
 };
 
-const request = { target, ...REQUESTS[mode] };
+const request = { target, ...(mode === undefined ? {} : REQUESTS[mode]) };
 
 console.log('limits:', JSON.stringify(limitsSummary(), null, 2));
 const mgr = new JobManager();
@@ -138,6 +138,7 @@ try {
 await mgr.jobs.get(started.job_id)?.promise;
 clearInterval(watch);
 watcher?.close();
+// The job was started above in this process, so it exists.
 const view = /** @type {JobView} */ (mgr.view(started.job_id));
 console.log(`\n=== finished in ${((Date.now() - t0) / 1000).toFixed(1)}s: ${view.status} ===`);
 console.log(JSON.stringify(view, null, 2));

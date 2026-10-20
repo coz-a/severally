@@ -313,21 +313,20 @@ function roundSection(round, previousBrief) {
 }
 
 /**
- * @param {{chain_id?: string, group_id?: string}} target
+ * @param {{chain_id?: string | undefined, group_id?: string | undefined}} target
  * @returns {{markdown: string, rounds: number, chain_ids: string[]}}
  */
 export function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
   if (Boolean(chainId) === Boolean(groupId)) {
     throw new ExportError('pass exactly one of chain_id or group_id', 'export_target_required');
   }
-  const chainIds = groupId ? chainsOfGroup(groupId) : [/** @type {string} */ (chainId)];
+  const chainIds = groupId ? chainsOfGroup(groupId) : chainId ? [chainId] : [];
   const perChain = chainIds.map((id) => ({ chain_id: id, rounds: roundsOf(id) }));
-  const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
-  if (total === 0) {
+  const first = perChain.find((c) => c.rounds.length)?.rounds[0];
+  if (!first) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, 'unknown_chain');
   }
-
-  const first = /** @type {Round} */ (perChain.find((c) => c.rounds.length)?.rounds[0]);
+  const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
   const lines = [
     `# Consultation record: ${first.question}`,
     '',

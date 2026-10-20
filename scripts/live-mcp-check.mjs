@@ -11,11 +11,15 @@ import { execFileSync } from 'node:child_process';
 
 // The globally installed server, unless another path is given.
 const BIN = process.argv[2] ?? 'severally-mcp';
+// process.env holds only strings at runtime; its type also admits undefined.
 const env = /** @type {Record<string, string>} */ ({ ...process.env });
 const client = new Client({ name: 'live-mcp', version: '1' });
 await client.connect(new StdioClientTransport({ command: BIN, args: [], env }));
-/** @param {any} r A tool result whose first content item is JSON text. */
-const P = (r) => JSON.parse(r.content[0].text);
+/** @typedef {import('@modelcontextprotocol/client').CallToolResult} CallToolResult */
+/** @typedef {import('@modelcontextprotocol/client').TextContent} TextContent */
+// The server answers every tool call with one text item, so content[0] is TextContent.
+/** @param {CallToolResult} r A tool result whose first content item is JSON text. */
+const P = (r) => JSON.parse(/** @type {TextContent} */ (r.content[0]).text);
 
 const request = {
   target: 'claude-code',
@@ -116,6 +120,7 @@ function countClaudeChildren() {
         : execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' });
     return out.split('\n').filter((l) => l.includes('--no-session-persistence') && l.includes('--restricted')).length;
   } catch (error) {
+    // execFileSync throws an Error.
     console.warn(`Could not inspect consultant processes: ${/** @type {Error} */ (error).message}`);
     return null;
   }

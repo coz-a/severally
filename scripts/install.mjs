@@ -109,6 +109,7 @@ function tryRun(cmd, args, opts) {
   try {
     return { ok: true, out: run(cmd, args, opts) };
   } catch (e) {
+    // execFileSync failures carry the child's stdout and stderr.
     const err = /** @type {{ stdout?: unknown, stderr?: unknown, message?: unknown }} */ (e);
     return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? ''}`.trim() || String(err.message) };
   }
@@ -233,6 +234,7 @@ if (mode === 'plugin' && !skipGlobal) {
 }
 
 step(`Installing the standalone MCP server (mode: ${mode})`);
+/** @type {[string, string]} */
 const serverCommand = [process.execPath, installRuntime()];
 const runtimeDir = path.dirname(serverCommand[1]);
 const marketplaceRoot = path.join(home, '.severally', 'marketplace');
@@ -381,8 +383,8 @@ function codexPlan() {
 // not, or null.
 /** @param {number} sec */
 function writeCodexTimeout(sec) {
-  const t = /** @type {{ reason?: string, lines: string[], start: number, timeout?: number }} */ (codexTable());
-  if (t.reason) return t.reason;
+  const t = codexTable();
+  if (t.reason !== undefined) return t.reason;
   if (t.timeout !== undefined) return null; // never overwrite the user's value
   t.lines.splice(t.start + 1, 0, `tool_timeout_sec = ${sec}`);
   try {
@@ -548,9 +550,15 @@ const CLIENTS = [
     skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
 ];
-const codexClient = /** @type {Client} */ (CLIENTS.find((c) => c.bin === 'codex'));
-const antigravityClient = /** @type {Client} */ (CLIENTS.find((c) => c.bin === 'agy'));
-const opencodeClient = /** @type {Client} */ (CLIENTS.find((c) => c.bin === 'opencode'));
+/** @param {string} bin */
+function clientFor(bin) {
+  const client = CLIENTS.find((c) => c.bin === bin);
+  if (!client) throw new Error(`no client row for ${bin}`);
+  return client;
+}
+const codexClient = clientFor('codex');
+const antigravityClient = clientFor('agy');
+const opencodeClient = clientFor('opencode');
 
 // opencode re-adds in place and has no `mcp remove`, so --force over an
 // existing registration can silently keep the OLD command while the
@@ -809,6 +817,7 @@ async function allowLocalTools() {
   try {
     settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   } catch (e) {
+    // readFileSync and JSON.parse throw Errors; only fs ones carry a code.
     const err = /** @type {NodeJS.ErrnoException} */ (e);
     if (err.code !== 'ENOENT') {
       log(`   could not read ${settingsFile} (${err.message}); left as it is`);

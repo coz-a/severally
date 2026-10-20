@@ -16,12 +16,13 @@ export function copyTree(source, destination) {
   fs.cpSync(source, destination, { recursive: true, filter: () => true });
 }
 
-/** @typedef {import('node:child_process').SpawnOptions & { cwd?: string, env?: NodeJS.ProcessEnv }} SpawnOpts */
+/** @typedef {import('node:child_process').SpawnOptions & { cwd?: string | undefined, env?: NodeJS.ProcessEnv | undefined }} SpawnOpts */
 
 /**
+ * @template {SpawnOpts} O
  * @param {string} command
  * @param {readonly string[]} args
- * @param {SpawnOpts} options
+ * @param {O} options
  */
 function batchInvocation(command, args, options) {
   if (process.platform !== 'win32') return null;
@@ -39,6 +40,20 @@ function batchInvocation(command, args, options) {
 }
 
 /**
+ * @overload
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {SpawnOpts & { stdio: ['pipe', 'pipe', 'pipe'] }} options
+ * @returns {import('node:child_process').ChildProcessWithoutNullStreams}
+ */
+/**
+ * @overload
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {SpawnOpts} [options]
+ * @returns {import('node:child_process').ChildProcess}
+ */
+/**
  * @param {string} command
  * @param {readonly string[]} args
  * @param {SpawnOpts} [options]
@@ -51,15 +66,17 @@ export function spawnCommand(command, args, options = {}) {
 // Explicit script paths are supported by cross-spawn's shebang handling too.
 /**
  * @param {string} command
- * @param {{ cwd?: string, env?: NodeJS.ProcessEnv }} [options]
+ * @param {{ cwd?: string | undefined, env?: NodeJS.ProcessEnv | undefined }} [options]
  * @returns {string | null}
  */
 export function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   if (typeof command !== 'string' || !command) return null;
   cwd = path.resolve(cwd);
   const windows = process.platform === 'win32';
-  const value = (/** @type {string} */ name) =>
-    env[/** @type {string} */ (windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name)];
+  const value = (/** @type {string} */ name) => {
+    const key = windows ? Object.keys(env).find((k) => k.toUpperCase() === name) : name;
+    return key === undefined ? undefined : env[key];
+  };
   const explicit = command.includes('/') || (windows && command.includes('\\'));
   const dirs = explicit ? [cwd] : [...(windows ? [cwd] : []), ...(value('PATH') ?? '').split(path.delimiter).filter(Boolean)];
   for (const dir of dirs) {
@@ -91,12 +108,14 @@ export function findCommand(command, { cwd = process.cwd(), env = process.env } 
  * @returns {string}
  */
 export function execCommandSync(command, args, options = {}) {
-  const opts = { windowsHide: true, encoding: /** @type {BufferEncoding} */ ('utf8'), ...options };
+  /** @type {BufferEncoding} */
+  const encoding = 'utf8';
+  const opts = { windowsHide: true, encoding, ...options };
   const batch = batchInvocation(command, args, opts);
   const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : spawn.sync(command, args, opts);
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
   }
-  return /** @type {string} */ (result.stdout);
+  return result.stdout;
 }

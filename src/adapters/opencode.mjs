@@ -132,6 +132,7 @@ export async function prepare() {
         );
         const child = spawnCommand(POLICY.clis.opencode.cli, ['run', '--help'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
         let out = '';
+        // stdio above is 'pipe' for both, so the streams exist.
         /** @type {NonNullable<typeof child.stdout>} */ (child.stdout).on('data', (c) => {
           out += c;
         });
@@ -228,12 +229,42 @@ export function buildInvocation({ consultant }) {
 }
 
 /**
+ * One NDJSON event from `opencode run --format json`; the CLI controls it, so
+ * every field is optional. `error` is {type, message} on 2.x and
+ * {name, data:{message}} on 1.x.
+ * @typedef {object} OpencodeEvent
+ * @property {string} [type]
+ * @property {{
+ *   type?: string,
+ *   text?: unknown,
+ *   time?: { end?: unknown },
+ *   tokens?: OpencodeTokens,
+ *   cost?: unknown,
+ *   tool?: string,
+ *   callID?: string,
+ *   id?: string,
+ *   state?: { status?: string },
+ * }} [part]
+ * @property {{ message?: unknown, name?: unknown, data?: { message?: unknown } }} [error]
+ */
+
+/**
+ * The token figures of a step-finish part.
+ * @typedef {{ input?: unknown, output?: unknown, total?: unknown, reasoning?: unknown, cache_read?: unknown, cache?: { read?: unknown } }} OpencodeTokens
+ */
+
+/**
+ * The usage figures interpret collects from the event stream.
+ * @typedef {{ tokens?: OpencodeTokens | null, cost?: unknown, steps?: unknown }} OpencodeUsage
+ */
+
+/**
  * Every complete NDJSON object opencode wrote to stdout, oldest first.
  * @param {string | undefined} stdout
- * @returns {any[]}
+ * @returns {OpencodeEvent[]}
  */
 export function events(stdout) {
-  /** @type {any[]} */
+  /** @type {OpencodeEvent[]} */
   const out = [];
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -274,7 +305,7 @@ export function compactLine(line) {
 
 /**
  * One line naming the error opencode reported, in classifyMessage's terms.
- * @param {any} error
+ * @param {NonNullable<OpencodeEvent['error']>} error
  * @returns {string}
  */
 function errorMessage(error) {
@@ -294,7 +325,7 @@ function errorMessage(error) {
  * log line lands). Raw stdout is never the message: it is the event stream
  * of a run that was working fine, its head says nothing about the failure, and
  * numbers inside it ("reasoning":403) would be classified as HTTP statuses.
- * @param {{ errors: string[], stderr?: string, stdout?: string, code?: number | null, signal?: NodeJS.Signals | null, what: string }} run
+ * @param {{ errors: string[], stderr?: string | undefined, stdout?: string | undefined, code?: number | null | undefined, signal?: NodeJS.Signals | null | undefined, what: string }} run
  * @returns {{ msg: string, kind: string }}
  */
 function failureMessage({ errors, stderr, stdout, code, signal, what }) {
@@ -321,6 +352,7 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
   let text = null;
   let textIndex = -1;
   let lastErrorIndex = -1;
+  let lastError = '';
   let finishedAfterText = false;
   let tokens = null;
   let cost = null;
@@ -329,8 +361,7 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
   const errors = [];
   /** @type {string[]} */
   const earlierTextParts = [];
-  for (let i = 0; i < all.length; i++) {
-    const e = all[i];
+  for (const [i, e] of all.entries()) {
     const part = e.part;
     if (e.type === 'text' && part?.type === 'text' && part.time?.end && typeof part.text === 'string' && part.text.trim()) {
       // The last completed part wins as the answer, but every part that had
@@ -350,7 +381,8 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
       if (part.tokens && typeof part.tokens === 'object') tokens = part.tokens;
       if (typeof part.cost === 'number') cost = part.cost;
     } else if (e.type === 'error' && e.error) {
-      errors.push(errorMessage(e.error));
+      lastError = errorMessage(e.error);
+      errors.push(lastError);
       lastErrorIndex = i;
     }
   }
@@ -370,7 +402,7 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
     // failure. What text exists is interim prose, and 2.x exits 0 even on
     // provider errors, so order -- not the exit code -- is what tells this
     // apart from the recovered-retry case below.
-    const msg = errors[errors.length - 1];
+    const msg = lastError;
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
   }
   if (code !== 0) {
@@ -380,7 +412,7 @@ export function interpret({ stdout, stderr, code, signal = null, truncated = fal
     const { msg, kind } = failureMessage({ errors, stderr, stdout, code, signal, what: 'after producing an answer' });
     return { ok: false, failureKind: kind, message: msg, usageRaw };
   }
-  if (truncated && !(finishedAfterText && all.length > 0 && all[all.length - 1].type === 'step_finish')) {
+  if (truncated && !(finishedAfterText && all.at(-1)?.type === 'step_finish')) {
     // stdout hit the rawCaptureMax before the consultation finished, so the
     // final answer event may never have been read. Under truncation only a
     // stream that ENDS on a step-finish -- the terminal event of a completed
@@ -425,23 +457,26 @@ export function toolCalls({ stdout }) {
 }
 
 /**
- * @param {{ stdout?: string }} run
+ * @param {{ stdout?: string | undefined }} run
  * @returns {string | null}
  */
 export function progress({ stdout }) {
-  const seen = events(stdout).filter((e) => ['step_start', 'step_finish', 'text', 'tool_use'].includes(e.type));
-  if (!seen.length) return null;
-  const last = seen[seen.length - 1];
+  const seen = events(stdout).filter(
+    (e) => e.type !== undefined && ['step_start', 'step_finish', 'text', 'tool_use'].includes(e.type),
+  );
+  const last = seen.at(-1);
+  if (!last) return null;
   const what = last.type === 'tool_use' && last.part?.tool ? `tool ${last.part.tool}` : last.type;
   return `${seen.length} event(s), last was ${what}`;
 }
 
 /**
- * @param {any} raw the usage figures interpret collected from the event stream
+ * @param {unknown} raw the usage figures interpret collected from the event stream
  * @returns {UsageRecord}
  */
 export function usageRecord(raw) {
-  const r = raw ?? {};
+  // interpret's usageRaw is the OpencodeUsage it built (or null).
+  const r = /** @type {OpencodeUsage | null} */ (raw) ?? {};
   const t = r.tokens && typeof r.tokens === 'object' ? r.tokens : {};
   const num = (/** @type {unknown} */ v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const cache = t.cache && typeof t.cache === 'object' ? t.cache : {};
@@ -465,6 +500,7 @@ export function usageRecord(raw) {
  * @returns {Boundary}
  */
 export function boundary({ sandbox }) {
+  // buildInvocation always runs with the sandbox prepareSandbox made.
   const { tools } = /** @type {Sandbox} */ (sandbox);
   return {
     reads: 'whole disk',

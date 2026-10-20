@@ -11,8 +11,8 @@ import { humanSize } from './expose-paths.mjs';
  * @typedef {object} BriefArtifact
  * @property {string} name
  * @property {string} kind
- * @property {string} [language]
- * @property {string} [source]
+ * @property {string | undefined} [language]
+ * @property {string | undefined} [source]
  * @property {string} excerpt
  */
 
@@ -20,7 +20,7 @@ import { humanSize } from './expose-paths.mjs';
  * The validated request, as far as the brief reads it.
  * @typedef {object} BriefRequest
  * @property {string} question
- * @property {string} [objective]
+ * @property {string | null | undefined} [objective]
  * @property {string[]} [success_criteria]
  * @property {string[]} [constraints]
  * @property {'explore' | 'review' | 'debate'} mode
@@ -368,8 +368,9 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
     let kept = 0;
     let used = 0;
     // Newest first: the round being followed up always goes in.
-    for (let i = blocks.length - 1; i >= 0 && (kept === 0 || used + blocks[i].length <= HISTORY_CHARS); i--) {
-      used += blocks[i].length;
+    for (const block of [...blocks].reverse()) {
+      if (kept > 0 && used + block.length > HISTORY_CHARS) break;
+      used += block.length;
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);

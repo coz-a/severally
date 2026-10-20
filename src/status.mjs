@@ -37,6 +37,14 @@ const CLIENTS = [
   { label: 'OpenCode', cmd: 'opencode', checks: [['mcp', 'list']] },
 ];
 
+/**
+ * A field of whatever was thrown, or undefined when it carries none.
+ * @param {unknown} e
+ * @param {string} key
+ * @returns {unknown}
+ */
+const thrown = (e, key) => (typeof e === 'object' && e !== null ? Reflect.get(e, key) : undefined);
+
 // "registered": the client's own listing names severally (it may still be
 // turned off there). "not registered": the client answered, without it.
 // No answer at all (a timeout, a failure to start): unknown.
@@ -52,7 +60,7 @@ function registration({ cmd, checks }) {
     } catch (err) {
       // It ran and said no (`mcp get` of a missing server exits non-zero); a
       // timeout or a failure to start says nothing either way.
-      if (typeof (/** @type {{ status?: unknown }} */ (err).status) === 'number') ran = true;
+      if (typeof thrown(err, 'status') === 'number') ran = true;
     }
   }
   return ran ? 'not registered' : `could not tell (${cmd} ${checks.map((a) => a.join(' ')).join(' / ')} failed)`;
@@ -89,9 +97,8 @@ function login(cli) {
   try {
     out = execCommandSync(check.cmd, check.args, { encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
-    const err = /** @type {{ status?: unknown, stdout?: unknown }} */ (e);
-    if (typeof err.status !== 'number') return `could not tell (${check.cmd} ${check.args.join(' ')} failed)`;
-    out = `${err.stdout ?? ''}`;
+    if (typeof thrown(e, 'status') !== 'number') return `could not tell (${check.cmd} ${check.args.join(' ')} failed)`;
+    out = `${thrown(e, 'stdout') ?? ''}`;
     ok = false;
   }
   try {

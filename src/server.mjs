@@ -9,6 +9,8 @@ import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
 
+/** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
+
 export const SEVERALLY_VERSION = '2.4.1';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
@@ -29,7 +31,11 @@ const semver = (v) => String(v).split('.').map(Number);
  */
 const older = (a, b) => {
   const [x, y] = [semver(a), semver(b)];
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+  for (let i = 0; i < 3; i++) {
+    const [p, q] = [x[i], y[i]];
+    if (p === undefined || q === undefined) return false;
+    if (p !== q) return p < q;
+  }
   return false;
 };
 
@@ -58,8 +64,9 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
     // This release names it SEVERALLY_VERSION; older ones only had it in the server info.
     runtime: bundle?.match(/(?:SEVERALLY_VERSION = |name: ["']severally["'], version: )["'](\d+\.\d+\.\d+)["']/)?.[1],
     claude_skills_dir: (() => {
+      if (plugin === null) return undefined;
       try {
-        return JSON.parse(/** @type {string} */ (plugin)).version;
+        return JSON.parse(plugin).version;
       } catch {
         return undefined;
       }
@@ -68,13 +75,15 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
   /** @type {Record<string, string>} */
   const copies = { this_server: SEVERALLY_VERSION };
   // Only plain x.y.z is compared; anything else is left out rather than guessed at.
-  for (const [name, v] of Object.entries(found)) if (/^\d+\.\d+\.\d+$/.test(v ?? '')) copies[name] = /** @type {string} */ (v);
+  for (const [name, v] of Object.entries(found)) if (v !== undefined && /^\d+\.\d+\.\d+$/.test(v)) copies[name] = v;
   const versions = Object.values(copies);
   if (versions.every((v) => v === SEVERALLY_VERSION)) return null;
   const newest = versions.reduce((a, b) => (older(a, b) ? b : a));
   return {
     copies,
-    behind: Object.keys(copies).filter((k) => older(copies[k], newest)),
+    behind: Object.entries(copies)
+      .filter(([, v]) => older(v, newest))
+      .map(([k]) => k),
     fix:
       `bring every copy to ${newest}: run \`npx -y severally-mcp@${newest} install\` (or \`node scripts/install.mjs\` from a checkout of that version) ` +
       '(it updates the runtime and the ~/.claude/skills copy), run `/plugin marketplace update severally` for a ' +
@@ -159,7 +168,8 @@ const recordShape = {
 };
 
 /** @param {unknown} err */
-const errorMessage = (err) => String(/** @type {Error | undefined} */ (err)?.message ?? err);
+const errorMessage = (err) =>
+  String((typeof err === 'object' && err !== null && 'message' in err ? err.message : undefined) ?? err);
 
 export function createServer(manager = new JobManager()) {
   // Read once: the copies on disk change only when someone reinstalls, and then
@@ -167,11 +177,17 @@ export function createServer(manager = new JobManager()) {
   const stale = staleInstall();
   const server = new McpServer({ name: 'severally', version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
 
-  /** @param {unknown} payload */
-  const ok = (payload) => ({ content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }] });
-  /** @param {unknown} payload */
+  /**
+   * @param {unknown} payload
+   * @returns {CallToolResult}
+   */
+  const ok = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] });
+  /**
+   * @param {unknown} payload
+   * @returns {CallToolResult}
+   */
   const fail = (payload) => ({
-    content: [{ type: /** @type {const} */ ('text'), text: JSON.stringify(payload, null, 2) }],
+    content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
     isError: true,
   });
 
@@ -255,7 +271,8 @@ export function createServer(manager = new JobManager()) {
             }, PROGRESS_EVERY_MS);
       let view;
       try {
-        // A request the client cancels stops the wait with it.
+        // A request the client cancels stops the wait with it. Without group_id,
+        // job_id is set: exactly one of the two was checked above.
         view = group_id
           ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal)
           : await manager.wait(/** @type {string} */ (job_id), wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
@@ -298,6 +315,7 @@ export function createServer(manager = new JobManager()) {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
       }
+      // Without group_id, job_id is set: exactly one of the two was checked above.
       const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(/** @type {string} */ (job_id));
       if (!view) {
         return fail({

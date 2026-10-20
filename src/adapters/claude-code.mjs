@@ -157,13 +157,26 @@ export function buildInvocation({ workdir, guardrails, consultant, hasExposedPat
 }
 
 /**
+ * The result JSON the CLI prints; the CLI controls it, so every field is optional.
+ * @typedef {object} ClaudeResult
+ * @property {unknown} [is_error]
+ * @property {unknown} [result]
+ * @property {string | Record<string, unknown>} [structured_output]
+ * @property {string | Record<string, unknown>} [structuredOutput]
+ * @property {unknown[]} [permission_denials]
+ * @property {{ input_tokens?: unknown, cache_read_input_tokens?: unknown, output_tokens?: unknown, server_tool_use?: { web_search_requests?: unknown } }} [usage]
+ * @property {unknown} [total_cost_usd]
+ * @property {unknown} [num_turns]
+ */
+
+/**
  * @param {string} [stdout]
- * @returns {any}
+ * @returns {ClaudeResult | null}
  */
 function lastJsonObject(stdout) {
-  const lines = (stdout || '').split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].trim();
+  const lines = (stdout || '').split('\n').reverse();
+  for (const line of lines) {
+    const t = line.trim();
     if (!t.startsWith('{')) continue;
     try {
       const parsed = JSON.parse(t);
@@ -213,10 +226,12 @@ export function interpret({ stdout, stderr, code }) {
 }
 
 /**
- * @param {any} payload the CLI's result JSON
+ * @param {unknown} raw the CLI's result JSON, as interpret kept it
  * @returns {UsageRecord | null}
  */
-export function usageRecord(payload) {
+export function usageRecord(raw) {
+  // interpret's usageRaw is the ClaudeResult it parsed (or null).
+  const payload = /** @type {ClaudeResult | null} */ (raw);
   if (!payload) return null;
   const u = payload.usage ?? {};
   const num = (/** @type {unknown} */ v) => (typeof v === 'number' ? v : null);
@@ -239,7 +254,8 @@ export function usageRecord(payload) {
  * @returns {Boundary}
  */
 export function boundary({ args, hasExposedPaths }) {
-  const tools = args[args.indexOf('--tools') + 1];
+  // buildInvocation always passes --tools with a value.
+  const tools = /** @type {string} */ (args[args.indexOf('--tools') + 1]);
   return {
     reads: hasExposedPaths ? 'the exposed copy only' : 'whole disk',
     shell: 'none',

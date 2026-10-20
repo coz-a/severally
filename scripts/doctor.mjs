@@ -139,6 +139,7 @@ for (const { name: target, cli } of consultants) {
   }
   process.stderr.write(`${target}: running ${started.job_id}\n`);
   await mgr.jobs.get(started.job_id)?.promise;
+  // The job was started above in this process, so it exists.
   const view = /** @type {JobView} */ (mgr.view(started.job_id));
 
   if (view.status !== 'completed') {

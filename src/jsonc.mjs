@@ -32,7 +32,7 @@ export function stripJsonc(text) {
   };
 
   while (i < text.length) {
-    const c = text[i];
+    const c = text.charAt(i);
     const next = text[i + 1];
 
     if (inString) {

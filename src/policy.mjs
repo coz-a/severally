@@ -35,8 +35,8 @@ const CONFIG = (() => {
     // A missing file is the normal case. A malformed one is not: silently
     // ignoring it would run the machine on defaults the operator thinks they
     // overrode, so it is surfaced on stderr when the server starts.
-    const e = /** @type {NodeJS.ErrnoException} */ (err);
-    if (e.code !== 'ENOENT') configError = `${CONFIG_PATH}: ${e.message}`;
+    const code = err instanceof Error && 'code' in err ? err.code : undefined;
+    if (code !== 'ENOENT') configError = `${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}`;
     return {};
   }
 })();
@@ -83,22 +83,37 @@ export function brokenConsultant(name) {
   return p ? `the config file has a mistake in it: ${p.join('; ')}` : null;
 }
 
+/**
+ * One CLI's section of the config file. `args`, `env` and `provider` are read
+ * only after buildConsultants has checked them (a section with a mistake is
+ * replaced by a disabled one in cfgCli), so they have the types given here.
+ * @typedef {object} CliSection
+ * @property {unknown} [enabled]
+ * @property {unknown} [note]
+ * @property {unknown} [bin]
+ * @property {string[]} [args]
+ * @property {Record<string, string>} [env]
+ * @property {Record<string, Record<string, unknown>>} [provider]
+ */
+
 /** @type {Record<string, unknown>} */
 const usable = configError || !isObject(CONFIG) ? {} : CONFIG;
 // A CLI whose own section has a mistake is off, whatever else the section says.
 /**
  * @param {string} id
- * @returns {Record<string, unknown>}
+ * @returns {CliSection}
  */
 const cfgCli = (id) => {
-  if (Object.hasOwn(BUILT.brokenClis, id) && !configError) {
+  const broken = Object.hasOwn(BUILT.brokenClis, id) ? BUILT.brokenClis[id] : undefined;
+  if (broken && !configError) {
     return {
       enabled: false,
-      note: `turned off: the config file has a mistake in clis.${id}: ${BUILT.brokenClis[id].join('; ')}`,
+      note: `turned off: the config file has a mistake in clis.${id}: ${broken.join('; ')}`,
     };
   }
   const def = isObject(usable.clis) ? usable.clis[id] : undefined;
-  return isObject(def) ? def : {};
+  // A section reaches here only when buildConsultants found no mistake in it.
+  return isObject(def) ? /** @type {CliSection} */ (def) : {};
 };
 const cfgServer = isObject(usable.server) ? usable.server : {};
 
@@ -187,7 +202,7 @@ export const CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
  */
 export function resolveCaller(raw) {
   const key = normalizeName(raw);
-  return typeof key === 'string' && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
+  return typeof key === 'string' ? (CALLER_ALIASES[key] ?? null) : null;
 }
 
 // Which CLI is hosting this server. Used only to annotate a consultation that
@@ -277,8 +292,8 @@ const OPENCODE_BIN = binFor('opencode', 'SEVERALLY_OPENCODE_BIN', 'opencode');
  * @returns {{ extraArgs: string[], extraEnv: Record<string, string> }}
  */
 const extras = (id) => ({
-  extraArgs: /** @type {string[]} */ (cfgCli(id).args ?? []),
-  extraEnv: /** @type {Record<string, string>} */ (cfgCli(id).env ?? {}),
+  extraArgs: cfgCli(id).args ?? [],
+  extraEnv: cfgCli(id).env ?? {},
 });
 
 export const POLICY = Object.freeze({
@@ -319,7 +334,7 @@ export const POLICY = Object.freeze({
       // opencode.json `provider` definitions copied into the sandbox config:
       // the only way to reach a provider the sandbox's empty HOME would not
       // know, such as a local OpenAI-compatible server.
-      provider: /** @type {Record<string, Record<string, unknown>>} */ (cfgCli('opencode').provider ?? {}),
+      provider: cfgCli('opencode').provider ?? {},
     }),
   }),
   // Who can be asked, in config order, and how a name that fits several is
@@ -548,6 +563,19 @@ export const artifactKinds = ['code', 'log', 'doc', 'data', 'diff', 'spec', 'tes
  */
 export function consultantByName(name) {
   return POLICY.consultants.find((c) => c.name === name);
+}
+
+/**
+ * The consultant with this exact name, for a caller that holds a name it got
+ * from a consultant already (a started job's target). Throws when there is
+ * none; use consultantByName when the name may be unknown.
+ * @param {string} name
+ * @returns {Consultant}
+ */
+export function consultantNamed(name) {
+  const c = consultantByName(name);
+  if (!c) throw new Error(`no consultant named "${name}"`);
+  return c;
 }
 
 /**

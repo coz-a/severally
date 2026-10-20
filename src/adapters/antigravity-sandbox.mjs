@@ -190,7 +190,7 @@ const TOKEN_REL = path.join('.gemini', 'antigravity-cli', 'antigravity-oauth-tok
 
 /**
  * Build the synthesised HOME for one consultation.
- * @param {{workdir: string, network?: 'on' | 'off'}} opts workdir is <jobdir>/work; the home is store.sandboxHome(<job id>).
+ * @param {{workdir: string, network?: 'on' | 'off' | undefined}} opts workdir is <jobdir>/work; the home is store.sandboxHome(<job id>).
  */
 export function prepareSandbox({ workdir, network = 'on' }) {
   const root = sandboxHome(path.basename(path.dirname(workdir)));

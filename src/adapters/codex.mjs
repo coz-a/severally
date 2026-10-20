@@ -176,7 +176,18 @@ export function buildInvocation({ workdir, schemaPath, consultant, network = 'on
 }
 
 /**
- * @param {any} node
+ * One JSONL event from `codex exec --json`, or the item inside it; the CLI
+ * controls both, so every field is optional.
+ * @typedef {object} CodexItem
+ * @property {unknown} [type]
+ * @property {unknown} [text]
+ * @property {unknown} [message]
+ * @property {unknown} [usage]
+ * @typedef {CodexItem & { error?: { message?: unknown }, item?: CodexItem }} CodexEvent
+ */
+
+/**
+ * @param {CodexItem | null | undefined} node
  * @param {Record<string, number>} acc
  * @returns {void}
  */
@@ -197,7 +208,7 @@ function walkUsage(node, acc) {
  * @returns {Interpreted}
  */
 export function interpret({ stdout, stderr, code, lastMessageText }) {
-  /** @type {any[]} */
+  /** @type {CodexEvent[]} */
   const events = [];
   for (const line of (stdout || '').split('\n')) {
     const t = line.trim();
@@ -217,8 +228,8 @@ export function interpret({ stdout, stderr, code, lastMessageText }) {
   let text = (lastMessageText || '').trim();
   if (!text) {
     // Fall back to the last assistant message carried in the event stream.
-    for (let i = events.length - 1; i >= 0 && !text; i--) {
-      const e = events[i];
+    for (const e of events.toReversed()) {
+      if (text) break;
       const item = e.item ?? e;
       const candidate =
         (item && item.type && String(item.type).includes('agent_message') && (item.text ?? item.message)) ||
@@ -315,10 +326,14 @@ export function toolCalls({ stdout }) {
  * @returns {UsageRecord}
  */
 export function usageRecord(raw) {
+  // interpret's usageRaw is the Record<string, number> walkUsage filled (or null).
   const u = /** @type {Record<string, number>} */ (raw ?? {});
   /** @param {...string} names */
   const pick = (...names) => {
-    for (const n of names) if (typeof u[n] === 'number') return u[n];
+    for (const n of names) {
+      const v = u[n];
+      if (typeof v === 'number') return v;
+    }
     return null;
   };
   return {
