@@ -4,7 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
-import { POLICY, VERDICTS, availableConsultants, configProblem, limitsSummary } from './policy.mjs';
+import { POLICY, VERDICTS, availableConsultants, configProblem, configWarnings, limitsSummary } from './policy.mjs';
 import { requestSchema, RequestError } from './schema.mjs';
 import { JobManager, pointsOf } from './jobs.mjs';
 import { exportChain, ExportError } from './export.mjs';
@@ -336,6 +336,7 @@ export async function main() {
   // consult_start: the operator may be the only one who reads stderr.
   const problem = configProblem();
   if (problem) process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}\n`);
+  for (const w of configWarnings()) process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}\n`);
   if (availableConsultants().length === 0) {
     process.stderr.write(
       'severally: no consultant CLI found on PATH (codex / claude / agy / opencode); every consultation will be refused\n',

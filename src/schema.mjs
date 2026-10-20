@@ -6,7 +6,7 @@ import { z } from 'zod';
 import path from 'node:path';
 import {
   POLICY, CALLER_INPUTS, MODES, STANCES, artifactKinds,
-  resolveCaller, availableConsultants, consultantAvailable, unavailableReason,
+  resolveCaller, availableConsultants, consultantAvailable, unavailableReason, brokenConsultant,
 } from './policy.mjs';
 import { normalizeName, resolveConsultant } from './consultants.mjs';
 
@@ -198,6 +198,9 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
     chosen = named.map((name) => {
       let r = resolveConsultant(name, reachable, POLICY.ranking);
       if (r.none) r = resolveConsultant(name, POLICY.consultants, POLICY.ranking);
+      if (r.none && brokenConsultant(name)) {
+        throw new RequestError(`consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`, 'target_unavailable');
+      }
       if (r.none) {
         throw new RequestError(`no consultant answers to ${JSON.stringify(name)}; available: ${listed()}`, 'unknown_target');
       }

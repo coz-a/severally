@@ -96,7 +96,8 @@ test('named consultants can share one CLI', async () => {
 test('a consultant name longer than 64 characters is a config problem', async () => {
   const config = writeConfig({ consultants: { ['a'.repeat(65)]: { cli: 'codex', model: 'gpt-6-astra' } } });
   const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'longname');
-  assert.match(policy.configProblem(), /at most 64 characters/);
+  assert.match(policy.configWarnings().join(), /at most 64 characters/);
+  assert.equal(policy.configProblem(), null, 'kept to that one consultant');
 });
 
 test('the old targets key is a config problem, not a silently ignored one', async () => {
@@ -248,6 +249,7 @@ test('OpenCode provider definitions reach the sandbox config and nowhere else', 
 
   for (const [bad, why] of [[{ codex: { provider } }, /only OpenCode/], [{ opencode: { provider: { local: 'x' } } }, /provider objects/]]) {
     const p = await loadPolicy({ SEVERALLY_CONFIG: writeConfig({ clis: bad }) }, `oc-provider-bad-${Math.random()}`);
-    assert.match(p.configProblem(), why);
+    assert.match(p.configWarnings().join(), why);
+    assert.equal(p.POLICY.clis[Object.keys(bad)[0]].available, false, 'a CLI with a mistake in its section is off');
   }
 });

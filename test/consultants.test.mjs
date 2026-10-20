@@ -160,3 +160,22 @@ test('doctor checks each CLI once, and a CLI name picks its first available cons
   assert.deepEqual(checkTargets('glm', [glm, ds], [glm, ds], []).map((x) => x.name), ['glm']);
   assert.equal(checkTargets('mistral', [glm], [glm], []), null);
 });
+
+test('a mistake inside one consultant or one CLI is kept to it; a mistake in the file as a whole is not', () => {
+  const r = buildConsultants({
+    clis: { codex: { enabled: 'false' } },
+    consultants: {
+      gemini: { cli: 'antigravity', model: 'gemini-4-argon-high', effort: 'high' },
+      glm: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
+      twin: { cli: 'opencode', model: 'zai-coding-plan/glm-5.3' },
+    },
+  });
+  assert.deepEqual(r.global, []);
+  assert.deepEqual(r.consultants.map((x) => x.name), ['glm']);
+  assert.deepEqual(Object.keys(r.broken).sort(), ['gemini', 'twin']);
+  assert.match(r.broken.gemini.join(), /effort/);
+  assert.deepEqual(Object.keys(r.brokenClis), ['codex']);
+  for (const whole of [{ targets: {} }, { ranking: 'x' }, { consultants: [] }, { clis: 'codex' }, []]) {
+    assert.ok(buildConsultants(whole).global.length, JSON.stringify(whole));
+  }
+});

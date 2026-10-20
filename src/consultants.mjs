@@ -212,25 +212,35 @@ const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
  * CLI's availability, decided by policy.mjs.
  */
 export function buildConsultants(config) {
+  // `problems` is every mistake, for the operator to read; `global` the ones
+  // that leave the whole file untrustworthy. A mistake inside one consultant
+  // or one CLI is kept to it: that consultant cannot be used (`broken`), that
+  // CLI is off (`brokenClis`) -- the closed side either way, so nothing the
+  // operator turned off comes back on.
   const problems = [];
+  const global = [];
+  const broken = {};
+  const brokenClis = {};
+  const fault = (msg) => { problems.push(msg); global.push(msg); };
   const cfg = isObject(config) ? config : {};
-  if (!isObject(config)) problems.push('the config file must hold a JSON object');
+  if (!isObject(config)) fault('the config file must hold a JSON object');
   for (const key of Object.keys(cfg)) {
-    if (!TOP_KEYS.includes(key)) problems.push(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(', ')})`);
+    if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(', ')})`);
   }
 
   let ranking = [];
   if (cfg.ranking !== undefined) {
     if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === 'string' && r.trim() !== '')) ranking = cfg.ranking.map((r) => r.trim());
-    else problems.push('ranking must be an array of non-empty strings');
+    else fault('ranking must be an array of non-empty strings');
   }
 
   if (cfg.clis !== undefined) {
-    if (!isObject(cfg.clis)) problems.push('clis must be an object keyed by CLI');
+    if (!isObject(cfg.clis)) fault('clis must be an object keyed by CLI');
     else {
       for (const [id, def] of Object.entries(cfg.clis)) {
         if (!CLI_IDS.includes(id)) { problems.push(`clis.${id}: unknown CLI (known: ${CLI_IDS.join(', ')})`); continue; }
-        if (!isObject(def)) { problems.push(`clis.${id} must be an object`); continue; }
+        const before = problems.length;
+        if (!isObject(def)) { problems.push(`clis.${id} must be an object`); brokenClis[id] = problems.slice(before); continue; }
         for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id}.${k}: unknown key (allowed: ${CLI_KEYS.join(', ')})`);
         // A wrong type must not fall back to a default: enabled: "false"
         // read as "unset" would turn on the CLI the operator meant to stop.
@@ -242,6 +252,7 @@ export function buildConsultants(config) {
           if (id !== 'opencode') problems.push(`clis.${id}.provider: only OpenCode takes provider definitions`);
           else if (!(isObject(def.provider) && Object.values(def.provider).every(isObject))) problems.push(`clis.${id}.provider: must be an object of provider objects, as in opencode.json`);
         }
+        if (problems.length > before) brokenClis[id] = problems.slice(before);
       }
     }
   }
@@ -250,15 +261,15 @@ export function buildConsultants(config) {
   if (cfg.consultants === undefined) {
     for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
   } else if (!isObject(cfg.consultants)) {
-    problems.push('consultants must be an object keyed by name');
+    fault('consultants must be an object keyed by name');
   } else {
     const seen = new Map();
     for (const [name, def] of Object.entries(cfg.consultants)) {
       const at = `consultants.${name}`;
       if (!/^[a-z0-9][a-z0-9.-]{0,63}$/.test(name)) { problems.push(`${at}: a name is lower-case letters, digits, "." and "-", at most 64 characters`); continue; }
       if (RESERVED_NAMES.includes(name)) { problems.push(`${at}: "${name}" is reserved`); continue; }
-      if (!isObject(def)) { problems.push(`${at} must be an object`); continue; }
       const before = problems.length;
+      if (!isObject(def)) { problems.push(`${at} must be an object`); broken[name] = problems.slice(before); continue; }
       for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(', ')})`);
       if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
       if (typeof def.model !== 'string' || def.model.trim() === '') problems.push(`${at}.model: required`);
@@ -272,14 +283,18 @@ export function buildConsultants(config) {
       if (def.max_budget_usd !== undefined && def.cli !== 'claude-code') problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
       // agy takes the effort from the model name and rejects --effort.
       if (def.effort !== undefined && def.cli === 'antigravity') problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
-      if (problems.length > before) continue;
+      if (problems.length > before) { broken[name] = problems.slice(before); continue; }
       const pair = `${def.cli}\n${def.model.trim()}`;
-      if (seen.has(pair)) { problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`); continue; }
+      if (seen.has(pair)) {
+        problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
+        broken[name] = problems.slice(before);
+        continue;
+      }
       seen.set(pair, name);
       consultants.push(make(name, def));
     }
   }
-  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems };
+  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global, broken, brokenClis };
 }
 
 function make(name, def) {

@@ -35234,26 +35234,35 @@ var isObject2 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 var clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 function buildConsultants(config2) {
   const problems = [];
+  const global2 = [];
+  const broken = {};
+  const brokenClis = {};
+  const fault = (msg) => {
+    problems.push(msg);
+    global2.push(msg);
+  };
   const cfg = isObject2(config2) ? config2 : {};
-  if (!isObject2(config2)) problems.push("the config file must hold a JSON object");
+  if (!isObject2(config2)) fault("the config file must hold a JSON object");
   for (const key of Object.keys(cfg)) {
-    if (!TOP_KEYS.includes(key)) problems.push(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
+    if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
   }
   let ranking = [];
   if (cfg.ranking !== void 0) {
     if (Array.isArray(cfg.ranking) && cfg.ranking.every((r) => typeof r === "string" && r.trim() !== "")) ranking = cfg.ranking.map((r) => r.trim());
-    else problems.push("ranking must be an array of non-empty strings");
+    else fault("ranking must be an array of non-empty strings");
   }
   if (cfg.clis !== void 0) {
-    if (!isObject2(cfg.clis)) problems.push("clis must be an object keyed by CLI");
+    if (!isObject2(cfg.clis)) fault("clis must be an object keyed by CLI");
     else {
       for (const [id2, def] of Object.entries(cfg.clis)) {
         if (!CLI_IDS.includes(id2)) {
           problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
           continue;
         }
+        const before = problems.length;
         if (!isObject2(def)) {
           problems.push(`clis.${id2} must be an object`);
+          brokenClis[id2] = problems.slice(before);
           continue;
         }
         for (const k of Object.keys(def)) if (!CLI_KEYS.includes(k)) problems.push(`clis.${id2}.${k}: unknown key (allowed: ${CLI_KEYS.join(", ")})`);
@@ -35265,6 +35274,7 @@ function buildConsultants(config2) {
           if (id2 !== "opencode") problems.push(`clis.${id2}.provider: only OpenCode takes provider definitions`);
           else if (!(isObject2(def.provider) && Object.values(def.provider).every(isObject2))) problems.push(`clis.${id2}.provider: must be an object of provider objects, as in opencode.json`);
         }
+        if (problems.length > before) brokenClis[id2] = problems.slice(before);
       }
     }
   }
@@ -35272,7 +35282,7 @@ function buildConsultants(config2) {
   if (cfg.consultants === void 0) {
     for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
   } else if (!isObject2(cfg.consultants)) {
-    problems.push("consultants must be an object keyed by name");
+    fault("consultants must be an object keyed by name");
   } else {
     const seen = /* @__PURE__ */ new Map();
     for (const [name, def] of Object.entries(cfg.consultants)) {
@@ -35285,11 +35295,12 @@ function buildConsultants(config2) {
         problems.push(`${at}: "${name}" is reserved`);
         continue;
       }
+      const before = problems.length;
       if (!isObject2(def)) {
         problems.push(`${at} must be an object`);
+        broken[name] = problems.slice(before);
         continue;
       }
-      const before = problems.length;
       for (const k of Object.keys(def)) if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
       if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
       if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
@@ -35302,18 +35313,22 @@ function buildConsultants(config2) {
       }
       if (def.max_budget_usd !== void 0 && def.cli !== "claude-code") problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
       if (def.effort !== void 0 && def.cli === "antigravity") problems.push(`${at}.effort: Antigravity takes the effort from the model name (e.g. gemini-3.8-flash-low)`);
-      if (problems.length > before) continue;
+      if (problems.length > before) {
+        broken[name] = problems.slice(before);
+        continue;
+      }
       const pair = `${def.cli}
 ${def.model.trim()}`;
       if (seen.has(pair)) {
         problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
+        broken[name] = problems.slice(before);
         continue;
       }
       seen.set(pair, name);
       consultants.push(make(name, def));
     }
   }
-  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems };
+  return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
 }
 function make(name, def) {
   const model = def.model.trim();
@@ -35343,13 +35358,26 @@ var CONFIG = (() => {
   }
 })();
 var BUILT = buildConsultants(CONFIG);
-if (!configError && BUILT.problems.length) configError = `${CONFIG_PATH}: ${BUILT.problems.join("; ")}`;
+if (!configError && BUILT.global.length) configError = `${CONFIG_PATH}: ${BUILT.global.join("; ")}`;
 var FROM = configError ? buildConsultants({}) : BUILT;
+var LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
 function configProblem() {
   return configError;
 }
+function configWarnings() {
+  return LOCAL.map((p) => `${CONFIG_PATH}: ${p}`);
+}
+function brokenConsultant(name) {
+  const p = !configError && Object.hasOwn(BUILT.broken, name) ? BUILT.broken[name] : null;
+  return p ? `the config file has a mistake in it: ${p.join("; ")}` : null;
+}
 var usable = configError ? {} : CONFIG;
-var cfgCli = (id2) => usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
+var cfgCli = (id2) => {
+  if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
+    return { enabled: false, note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}` };
+  }
+  return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
+};
 var cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
 function isInstalled(command) {
   return findCommand(command) !== null;
@@ -35634,6 +35662,8 @@ function limitsSummary() {
   const by = (f) => Object.fromEntries(list.map((c) => [c.name, f(c)]));
   return {
     available_targets: list.map((c) => c.name),
+    // A consultant or CLI out of use because of a mistake in its own section.
+    ...LOCAL.length ? { config_mistakes: configWarnings() } : {},
     clis: by((c) => c.cli),
     models: by((c) => c.model),
     // Per consultant, because they no longer share one budget.
@@ -35786,6 +35816,9 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     chosen = named.map((name) => {
       let r = resolveConsultant(name, reachable, POLICY.ranking);
       if (r.none) r = resolveConsultant(name, POLICY.consultants, POLICY.ranking);
+      if (r.none && brokenConsultant(name)) {
+        throw new RequestError(`consultant ${JSON.stringify(name)} is not available: ${brokenConsultant(name)}; available: ${listed()}`, "target_unavailable");
+      }
       if (r.none) {
         throw new RequestError(`no consultant answers to ${JSON.stringify(name)}; available: ${listed()}`, "unknown_target");
       }
@@ -40546,6 +40579,8 @@ function createServer(manager = new JobManager()) {
 async function main() {
   const problem = configProblem();
   if (problem) process.stderr.write(`severally: config needs fixing; every consultation will be refused until it is -- ${problem}
+`);
+  for (const w of configWarnings()) process.stderr.write(`severally: config mistake; the consultant or CLI it is in stays unused until it is fixed -- ${w}
 `);
   if (availableConsultants().length === 0) {
     process.stderr.write(
