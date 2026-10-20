@@ -164,9 +164,13 @@ export class ProcHandle {
     this.stdoutSoFar = readStdout;
   }
 
-  /** Kill the child and every descendant it spawned. */
+  /**
+   * Kill the child and every descendant it spawned -- also after the child
+   * itself has exited: a descendant still holding its pipes keeps the
+   * consultation from closing, and on POSIX it is still in the group.
+   */
   stop(signal = 'SIGTERM') {
-    if (this.killed || !this.child || this.child.exitCode !== null) return;
+    if (this.killed || !this.child) return;
     this.killed = true;
     const pid = this.child.pid;
     if (!pid) return;
@@ -200,6 +204,12 @@ export class ProcHandle {
 
 /**
  * @returns {{handle: ProcHandle, done: Promise<{code, signal, stdout, stderr, timedOut, cancelled, truncated}>}}
+ */
+/**
+ * `pipesForced` in the result: the child exited but something it started kept
+ * stdout or stderr open past the kill grace, so the group was stopped and the
+ * pipes closed from this side. A descendant outside the group (setsid, or on
+ * Windows once the parent is gone) may still be running.
  */
 export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSignal, compactLine = null,
   settleAfter = null, stopSignal = 'SIGTERM' }) {
@@ -288,16 +298,37 @@ export function runChild({ command, args, cwd, env, input, timeoutMs, onCancelSi
 
   const done = new Promise((resolve) => {
     let settled = false;
+    let pipesForced = false;
+    let orphanTimer = null;
     const finish = (payload) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
-      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, ...payload });
+      clearTimeout(orphanTimer);
+      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
     };
+    const flushPending = () => { if (byLine && pending) { append('out', compact(pending)); pending = ''; } };
     child.on('error', (err) => finish({ code: null, signal: null, spawnError: err.message }));
+    // 'close' waits for the pipes as well as the child. Once the child has
+    // exited, a grace later the rest of its group is stopped, and a grace
+    // after that the pipes are closed from here, whoever still holds them.
+    child.on('exit', (code, signal) => {
+      const grace = POLICY.killGraceMs;
+      orphanTimer = setTimeout(() => {
+        pipesForced = true;
+        handle.stop(stopSignal);
+        orphanTimer = setTimeout(() => {
+          handle.forceKill();
+          flushPending();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          finish({ code, signal });
+        }, grace);
+      }, grace);
+    });
     child.on('close', (code, signal) => {
-      if (byLine && pending) { append('out', compact(pending)); pending = ''; }
+      flushPending();
       finish({ code, signal });
     });
   });

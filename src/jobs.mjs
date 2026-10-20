@@ -897,8 +897,12 @@ export class JobManager {
         break;
       }
 
+      // Without an answer, a process left holding the pipes is the failure to report.
+      const leftover = run.pipesForced
+        && `${invocation.command} exited, but a process it started kept its output open and was stopped`;
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
+        if (leftover) return this.#fail(job, 'cli_error', leftover, interpreted.message);
         return this.#fail(job, interpreted.failureKind, interpreted.message);
       }
 
@@ -922,6 +926,7 @@ export class JobManager {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
+            if (leftover) return this.#fail(job, 'cli_error', leftover, err.message);
             return this.#fail(job, 'invalid_output', err.message, redact(String(err.detail ?? '')).slice(0, 1200));
           }
         } else {
@@ -934,6 +939,7 @@ export class JobManager {
         adviceCaveat(normalized),
         sameVendorCaveat(job.caller, job.caller_model, consultant),
         interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
+        leftover && 'the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)',
       ].filter(Boolean);
       // No `advice_usable` verdict here. It was always true, so it carried no
       // information -- and worse, it read as the server vouching for advice it

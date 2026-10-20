@@ -36938,9 +36938,13 @@ var ProcHandle = class {
     this.killed = false;
     this.stdoutSoFar = readStdout;
   }
-  /** Kill the child and every descendant it spawned. */
+  /**
+   * Kill the child and every descendant it spawned -- also after the child
+   * itself has exited: a descendant still holding its pipes keeps the
+   * consultation from closing, and on POSIX it is still in the group.
+   */
   stop(signal = "SIGTERM") {
-    if (this.killed || !this.child || this.child.exitCode !== null) return;
+    if (this.killed || !this.child) return;
     this.killed = true;
     const pid = this.child.pid;
     if (!pid) return;
@@ -37085,19 +37089,39 @@ function runChild({
   }
   const done = new Promise((resolve) => {
     let settled2 = false;
+    let pipesForced = false;
+    let orphanTimer = null;
     const finish = (payload) => {
       if (settled2) return;
       settled2 = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
-      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, ...payload });
+      clearTimeout(orphanTimer);
+      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
     };
-    child.on("error", (err) => finish({ code: null, signal: null, spawnError: err.message }));
-    child.on("close", (code, signal) => {
+    const flushPending = () => {
       if (byLine && pending) {
         append("out", compact(pending));
         pending = "";
       }
+    };
+    child.on("error", (err) => finish({ code: null, signal: null, spawnError: err.message }));
+    child.on("exit", (code, signal) => {
+      const grace = POLICY.killGraceMs;
+      orphanTimer = setTimeout(() => {
+        pipesForced = true;
+        handle.stop(stopSignal2);
+        orphanTimer = setTimeout(() => {
+          handle.forceKill();
+          flushPending();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          finish({ code, signal });
+        }, grace);
+      }, grace);
+    });
+    child.on("close", (code, signal) => {
+      flushPending();
       finish({ code, signal });
     });
   });
@@ -39225,8 +39249,10 @@ var JobManager = class {
         }
         break;
       }
+      const leftover = run.pipesForced && `${invocation.command} exited, but a process it started kept its output open and was stopped`;
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
+        if (leftover) return this.#fail(job, "cli_error", leftover, interpreted.message);
         return this.#fail(job, interpreted.failureKind, interpreted.message);
       }
       let normalized;
@@ -39245,6 +39271,7 @@ var JobManager = class {
           }
           if (!normalized) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
+            if (leftover) return this.#fail(job, "cli_error", leftover, err.message);
             return this.#fail(job, "invalid_output", err.message, redact(String(err.detail ?? "")).slice(0, 1200));
           }
         } else {
@@ -39255,7 +39282,8 @@ var JobManager = class {
       const notes = [
         adviceCaveat(normalized),
         sameVendorCaveat(job.caller, job.caller_model, consultant),
-        interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`
+        interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
+        leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)"
       ].filter(Boolean);
       job.quality = {
         ...normalized.quality,

@@ -1291,3 +1291,54 @@ test('a field the follow-up passes replaces the earlier one; an explicit empty l
   delete process.env.STUB_BRIEF_OUT;
   fs.rmSync(briefOut, { force: true });
 });
+
+// A consultant that finished but left a process holding its output pipes open.
+// POSIX only: the grandchild is killed through the process group.
+const orphanCase = async (behavior, env = {}) => {
+  const pidOut = path.join(os.tmpdir(), `pc-orphan-${process.pid}-${Date.now()}.txt`);
+  Object.assign(process.env, { STUB_BEHAVIOR: behavior, STUB_GRANDCHILD_PID_OUT: pidOut, ...env });
+  const { JobManager: M } = await import(`../src/jobs.mjs?orphan=${behavior}${Date.now()}`);
+  const mgr = new M();
+  const t0 = Date.now();
+  const started = mgr.start(reviewRequest());
+  return { mgr, started, t0, pidOut, gone: async () => {
+    const pid = Number(fs.readFileSync(pidOut, 'utf8'));
+    await waitFor(() => { try { process.kill(pid, 0); return false; } catch { return true; } }, { timeoutMs: 8000 });
+    delete process.env.STUB_GRANDCHILD_PID_OUT;
+    fs.rmSync(pidOut, { force: true });
+  } };
+};
+
+test('a consultant that exits leaving a process on its pipes still closes, its answer kept with a caveat', { skip: process.platform === 'win32' }, async () => {
+  for (const behavior of ['orphan_pipe', 'orphan_pipe_stubborn']) {
+    const c = await orphanCase(behavior);
+    const view = await finish(c.mgr, c.started.job_id);
+    assert.ok(Date.now() - c.t0 < 8000, `${behavior} closed in ${Date.now() - c.t0} ms`);
+    assert.equal(view.status, 'completed', behavior);
+    assert.match(view.quality.caveat, /kept its output open/);
+    await c.gone();
+  }
+});
+
+test('a leftover process with no answer behind it is a cli_error, not advice', { skip: process.platform === 'win32' }, async () => {
+  const c = await orphanCase('orphan_pipe_invalid');
+  const view = await finish(c.mgr, c.started.job_id);
+  assert.equal(view.status, 'failed');
+  assert.equal(view.failure.kind, 'cli_error');
+  await c.gone();
+});
+
+test('a deadline or a cancel ends a consultant whose pipes a leftover process holds', { skip: process.platform === 'win32' }, async () => {
+  const c = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '1500' });
+  const view = await finish(c.mgr, c.started.job_id);
+  assert.equal(view.failure.kind, 'timeout');
+  await c.gone();
+  const d = await orphanCase('orphan_pipe_stubborn_hang', { SEVERALLY_TIMEOUT_MS: '20000' });
+  await new Promise((r) => setTimeout(r, 400));
+  d.mgr.cancel(d.started.job_id);
+  const cancelled = await finish(d.mgr, d.started.job_id);
+  assert.equal(cancelled.status, 'cancelled');
+  assert.ok(Date.now() - d.t0 < 8000);
+  await d.gone();
+  process.env.SEVERALLY_TIMEOUT_MS = '20000';
+});
