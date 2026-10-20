@@ -102,7 +102,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   `config.toml` の `[mcp_servers.severally]` の表に `tool_timeout_sec = 660` の 1 行も書きます（Codex のプラグインと
   同じ長い待ちにするためで、`codex mcp add` では設定できません）。表にすでに `tool_timeout_sec` があれば、その値を
   残し、待ち時間もそれに合わせます。1 行を書けなければ、長い待ちなしで Codex を登録し、そう表示します。
-  何かをする前に、各クライアントの設定ファイル（`~/.claude.json`、`~/.codex/config.toml`、`~/.gemini/config/mcp_config.json` と
+- 何かをする前に、各クライアントの設定ファイル（`~/.claude.json`、`~/.codex/config.toml`、`~/.gemini/config/mcp_config.json` と
   `~/.gemini/antigravity-cli/settings.json`、`~/.config/opencode/opencode.json(c)`）と既存の Skill のディレクトリを、
   `~/.severally/backups/<timestamp>/` にバックアップします。バックアップの名前は元のパスから付けます。
 - 方式を切り替えると、もう一方の方式で残った重複の登録を、バックアップしてから取り除きます。

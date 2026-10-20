@@ -103,8 +103,8 @@ Windows. Pass `--manual` to use manual mode on macOS/Linux too.
   exception: for a manually registered Codex it also writes one line, `tool_timeout_sec = 660`, into
   `config.toml` under `[mcp_servers.severally]` (the same long wait the Codex plugin has; `codex mcp add` cannot
   set it). An existing `tool_timeout_sec` there is kept, and the wait follows it. If the line cannot be written,
-  Codex is registered without the long wait and the installer says so. Before it does anything, it backs up
-  each client's settings file (`~/.claude.json`, `~/.codex/config.toml`,
+  Codex is registered without the long wait and the installer says so.
+- Before it does anything, it backs up each client's settings file (`~/.claude.json`, `~/.codex/config.toml`,
   `~/.gemini/config/mcp_config.json` and `~/.gemini/antigravity-cli/settings.json`,
   `~/.config/opencode/opencode.json(c)`) and any existing Skill directory to `~/.severally/backups/<timestamp>/`,
   naming each backup after its original path.
