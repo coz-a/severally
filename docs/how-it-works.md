@@ -38,6 +38,8 @@ OpenCode    ──(skill)──> severally server ──> codex exec | claude -p
 - While a consultation runs, the lead does not go ahead with the plan in question.
 - A transient failure (`rate_limited`, `cli_error`) is run again up to twice, after a short wait and inside the
   same time budget, with the same consultant and model; the earlier failures are listed under `retries`.
+- A consultant whose model has used up its account quota (`usage_limit`) is run again once on its `fallback_model`,
+  if the config names one. The answer says that the fallback gave it, and `model` shows the one that answered.
 - A consultant that runs out of time leaves the end of what it had written beside the failure, marked partial:
   something to read, not an answer.
 - A consultation stays readable after the server restarts, and from any other severally process on the machine.

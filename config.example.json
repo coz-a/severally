@@ -17,7 +17,7 @@
     "opus": { "cli": "claude-code", "model": "claude-opus-5-5", "effort": "max", "max_budget_usd": 5, "timeout_ms": 900000 },
     "fable": { "cli": "claude-code", "model": "claude-fable-5-1" },
     "sol": { "cli": "codex", "model": "gpt-6.1-sol" },
-    "gemini": { "cli": "antigravity", "model": "gemini-4-argon-high" },
+    "gemini": { "cli": "antigravity", "model": "gemini-4-argon-high", "fallback_model": "gemini-3.8-flash-high" },
     "glm": { "cli": "opencode", "model": "zai-coding-plan/glm-5.3" },
     "deepseek": { "cli": "opencode", "model": "opencode/deepseek-v4.1-flash-free", "enabled": false, "note": "trial ended" },
     "nemotron": { "cli": "opencode", "model": "opencode/nemotron-3-ultra-free#", "vendor": "nvidia" }

@@ -1123,26 +1123,35 @@ export class JobManager {
       // its latency is part of this job's duration and budget, not free time
       // before the meter starts.
       if (adapter.prepare) await adapter.prepare();
-      const invocation = adapter.buildInvocation({
-        workdir,
-        schemaPath,
-        guardrails: renderGuardrails(Boolean(req._snapshot), req.network),
-        sandbox,
-        consultant,
-        hasExposedPaths: Boolean(req._snapshot),
-        network: req.network,
-      });
-
-      const argsProblem = extraArgsProblem(cli, invocation.args, t.extraArgs);
-      if (argsProblem) return this.#fail(job, 'spawn_error', `config clis.${cli}.args: ${argsProblem}`);
-      invocation.args = withExtraArgs(invocation.args, t.extraArgs);
-      assertNoForbiddenFlags(cli, invocation.args);
-      // What this consultant was actually launched with, read off the
-      // invocation and the sandbox rather than restated from intent, so the
-      // record says what held for this run.
-      job.boundary =
-        adapter.boundary?.({ args: invocation.args, sandbox, network: req.network, hasExposedPaths: Boolean(req._snapshot) }) ??
-        null;
+      // Built again for the fallback model, so the operator's extra args and
+      // the forbidden-flag check apply to that run exactly as to the first.
+      // Returns the invocation, or the problem with the operator's args.
+      /** @param {import('./consultants.mjs').Consultant} c @returns {import('./run.mjs').Invocation | string} */
+      const launch = (c) => {
+        const invocation = adapter.buildInvocation({
+          workdir,
+          schemaPath,
+          guardrails: renderGuardrails(Boolean(req._snapshot), req.network),
+          sandbox,
+          consultant: c,
+          hasExposedPaths: Boolean(req._snapshot),
+          network: req.network,
+        });
+        const problem = extraArgsProblem(cli, invocation.args, t.extraArgs);
+        if (problem) return problem;
+        invocation.args = withExtraArgs(invocation.args, t.extraArgs);
+        assertNoForbiddenFlags(cli, invocation.args);
+        // What this consultant was actually launched with, read off the
+        // invocation and the sandbox rather than restated from intent, so the
+        // record says what held for this run.
+        job.boundary =
+          adapter.boundary?.({ args: invocation.args, sandbox, network: req.network, hasExposedPaths: Boolean(req._snapshot) }) ??
+          null;
+        return invocation;
+      };
+      const first = launch(consultant);
+      if (typeof first === 'string') return this.#fail(job, 'spawn_error', `config clis.${cli}.args: ${first}`);
+      let invocation = first;
 
       const attempt = (/** @type {number} */ timeout) => {
         const { handle, done } = runChild({
@@ -1176,6 +1185,7 @@ export class JobManager {
       let interpreted;
       let authTried = false;
       let autoRetries = 0;
+      let fallenBack = false;
       for (;;) {
         // Read off the consultant's own event stream, last attempt only; null
         // where the CLI does not stream its tool calls (Claude Code).
@@ -1246,6 +1256,25 @@ export class JobManager {
             run = await attempt(remaining);
             continue;
           }
+        }
+        // The operator's fallback for a model whose account quota is used up
+        // (a re-run on the same model would fail the same way). It is a
+        // different mind from the one asked, so the answer says so below.
+        if (interpreted.failureKind === 'usage_limit' && consultant.fallbackModel && !fallenBack && remaining >= MIN_RETRY_MS) {
+          fallenBack = true;
+          const fallback = consultant.fallbackModel;
+          const next = launch({ ...consultant, model: fallback });
+          if (typeof next === 'string') return this.#fail(job, 'spawn_error', `config clis.${cli}.args: ${next}`);
+          invocation = next;
+          job.retries.push({
+            failure_kind: interpreted.failureKind,
+            reason: `${job.model} quota used up; re-run on ${fallback}`,
+            at: new Date().toISOString(),
+            usage: adapter.usageRecord(interpreted.usageRaw),
+          });
+          job.model = fallback;
+          run = await attempt(remaining);
+          continue;
         }
         const wait = POLICY.retryBackoffMs * 3 ** autoRetries;
         if (
@@ -1319,6 +1348,7 @@ export class JobManager {
           `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
         leftover &&
           'the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)',
+        fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
         req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
         refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS),
       ].filter(Boolean);

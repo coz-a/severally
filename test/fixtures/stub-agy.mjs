@@ -65,6 +65,15 @@ function run() {
     });
     process.exit(1);
   }
+  if (behavior === 'quota_by_model' && process.argv[process.argv.indexOf('--model') + 1] === process.env.STUB_QUOTA_MODEL) {
+    // agy 1.4.3 on a used-up model quota: exit 3 at once, the error in the stream's result event and on stderr.
+    const error = 'Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 79h29m32s.';
+    envelope({ event: 'result', result: { conversation_id: '', status: 'ERROR', response: '', error, usage } });
+    process.stderr.write(
+      `AGY_ERROR: ${JSON.stringify({ short_error: `RESOURCE_EXHAUSTED (code 429): ${error}`, retryable: true })}\n`,
+    );
+    process.exit(3);
+  }
   if (behavior === 'auth') {
     envelope({
       conversation_id: '',

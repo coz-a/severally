@@ -15,6 +15,7 @@
  * @property {string | null} effort
  * @property {number | null} timeoutMs
  * @property {number | null} maxBudgetUsd
+ * @property {string | null} fallbackModel
  * @property {string | null} vendor
  * @property {boolean} enabled
  * @property {string | null} note
@@ -333,7 +334,7 @@ export function sameModel(callerModel, consultantModel) {
 
 const TOP_KEYS = ['server', 'clis', 'consultants', 'ranking'];
 const CLI_KEYS = ['enabled', 'note', 'bin', 'args', 'env', 'provider'];
-const CONSULTANT_KEYS = ['cli', 'model', 'effort', 'timeout_ms', 'max_budget_usd', 'vendor', 'enabled', 'note'];
+const CONSULTANT_KEYS = ['cli', 'model', 'effort', 'timeout_ms', 'max_budget_usd', 'fallback_model', 'vendor', 'enabled', 'note'];
 /**
  * @param {unknown} v
  * @returns {v is Record<string, unknown>}
@@ -460,7 +461,7 @@ export function buildConsultants(config) {
         if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(', ')})`);
       if (!cliIds.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
       if (typeof def.model !== 'string' || def.model.trim() === '') problems.push(`${at}.model: required`);
-      for (const k of ['effort', 'vendor', 'note']) {
+      for (const k of ['effort', 'fallback_model', 'vendor', 'note']) {
         if (def[k] !== undefined && typeof def[k] !== 'string') problems.push(`${at}.${k}: must be a string`);
       }
       if (def.enabled !== undefined && typeof def.enabled !== 'boolean') problems.push(`${at}.enabled: must be true or false`);
@@ -468,6 +469,10 @@ export function buildConsultants(config) {
         if (def[k] !== undefined && !(typeof def[k] === 'number' && Number.isFinite(def[k])))
           problems.push(`${at}.${k}: must be a number`);
       }
+      if (typeof def.fallback_model === 'string' && def.fallback_model.trim() === '')
+        problems.push(`${at}.fallback_model: must not be empty`);
+      else if (typeof def.fallback_model === 'string' && def.fallback_model.trim() === String(def.model).trim())
+        problems.push(`${at}.fallback_model: must differ from model; the fallback is for when the model's quota is used up`);
       if (def.max_budget_usd !== undefined && def.cli !== 'claude-code')
         problems.push(`${at}.max_budget_usd: only a claude-code consultant has a budget`);
       // agy takes the effort from the model name and rejects --effort.
@@ -500,6 +505,7 @@ export function buildConsultants(config) {
  * @property {unknown} [effort]
  * @property {unknown} [timeout_ms]
  * @property {unknown} [max_budget_usd]
+ * @property {unknown} [fallback_model]
  * @property {unknown} [vendor]
  * @property {unknown} [enabled]
  * @property {unknown} [note]
@@ -519,6 +525,7 @@ function make(name, def) {
     effort: typeof def.effort === 'string' && def.effort.trim() !== '' ? def.effort.trim() : null,
     timeoutMs: typeof def.timeout_ms === 'number' ? clamp(def.timeout_ms, 1_000, 7_200_000) : null,
     maxBudgetUsd: typeof def.max_budget_usd === 'number' ? clamp(def.max_budget_usd, 0.05, 20) : null,
+    fallbackModel: typeof def.fallback_model === 'string' && def.fallback_model.trim() !== '' ? def.fallback_model.trim() : null,
     vendor: vendorOf(model, def.vendor),
     enabled: def.enabled !== false,
     note: typeof def.note === 'string' && def.note.trim() !== '' ? def.note.trim() : null,
