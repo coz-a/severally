@@ -61,7 +61,8 @@ actually reach. When the user names one, pass **the word the user used** as `tar
 
 **Do not pick a model yourself.** When the user named no one, ask everyone; overriding the operator's
 consultants on your own judgement — including after a `usage_limit` failure — substitutes a different mind
-for the one the user asked for.
+for the one the user asked for. The operator may have set a fallback model for that case; a caveat reading
+"answered by X: Y's quota was used up" means it answered, and your report names X as the one who answered.
 
 Consult your own CLI (`target: "opencode"`) freely, alone or alongside the peers, and the same goes
 for a **different model of your own lineage** when the user wants one (an Opus lead asking Fable). Either is a
