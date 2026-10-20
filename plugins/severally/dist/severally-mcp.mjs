@@ -62,7 +62,7 @@ function stripJsonc(text2) {
     }
   };
   while (i < text2.length) {
-    const c = text2[i];
+    const c = text2.charAt(i);
     const next = text2[i + 1];
     if (inString) {
       out.push(c);
@@ -110,6 +110,7 @@ function parseJsonc(text2) {
 }
 var init_jsonc = __esm({
   "src/jsonc.mjs"() {
+    "use strict";
   }
 });
 
@@ -634,7 +635,10 @@ function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   if (typeof command !== "string" || !command) return null;
   cwd = path.resolve(cwd);
   const windows = process.platform === "win32";
-  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
+  const value = (name) => {
+    const key = windows ? Object.keys(env).find((k) => k.toUpperCase() === name) : name;
+    return key === void 0 ? void 0 : env[key];
+  };
   const explicit = command.includes("/") || windows && command.includes("\\");
   const dirs = explicit ? [cwd] : [...windows ? [cwd] : [], ...(value("PATH") ?? "").split(path.delimiter).filter(Boolean)];
   for (const dir of dirs) {
@@ -654,7 +658,8 @@ function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   return null;
 }
 function execCommandSync(command, args, options = {}) {
-  const opts = { windowsHide: true, encoding: "utf8", ...options };
+  const encoding = "utf8";
+  const opts = { windowsHide: true, encoding, ...options };
   const batch = batchInvocation(command, args, opts);
   const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
   if (result.error) throw result.error;
@@ -666,6 +671,7 @@ function execCommandSync(command, args, options = {}) {
 var import_which, import_cross_spawn, import_escape;
 var init_platform = __esm({
   "src/platform.mjs"() {
+    "use strict";
     import_which = __toESM(require_which(), 1);
     import_cross_spawn = __toESM(require_cross_spawn(), 1);
     import_escape = __toESM(require_escape(), 1);
@@ -691,7 +697,10 @@ function modelVersion(model) {
   const at = words.findIndex(isDigitWord);
   if (at === -1) return null;
   const digits = [];
-  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, "")));
+  for (const w of words.slice(at)) {
+    if (!isDigitWord(w)) break;
+    digits.push(Number(w.replace(/^v/, "")));
+  }
   return digits;
 }
 function vendorOf(model, explicit = null) {
@@ -715,7 +724,9 @@ function byTier(cands, tier) {
   if (!tier.family(cands)) return cands;
   const rank = (c) => {
     const words = modelWords(c.model);
-    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
+    const last = words.at(-1);
+    if (tier.last) return last === void 0 ? -1 : tier.words.indexOf(last);
+    return tier.words.findIndex((w) => words.includes(w));
   };
   const ranks = cands.map(rank);
   if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
@@ -723,11 +734,18 @@ function byTier(cands, tier) {
   return cands.filter((_, i) => ranks[i] === best);
 }
 function byVersion(cands) {
-  const stem = modelStem(cands[0].model).join("-");
-  const versions = cands.map((c) => modelVersion(c.model));
-  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
-  const best = versions.reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
-  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
+  const [first] = cands;
+  if (!first) return cands;
+  const stem = modelStem(first.model).join("-");
+  if (cands.some((c) => modelStem(c.model).join("-") !== stem)) return cands;
+  const versioned = [];
+  for (const c of cands) {
+    const version2 = modelVersion(c.model);
+    if (version2 === null) return cands;
+    versioned.push({ c, version: version2 });
+  }
+  const best = versioned.map((x) => x.version).reduce((a, b) => compareVersions(a, b) >= 0 ? a : b);
+  return versioned.filter((x) => compareVersions(x.version, best) === 0).map((x) => x.c);
 }
 function rankCandidates(cands, ranking = []) {
   let left = byRanking(cands, ranking);
@@ -736,7 +754,7 @@ function rankCandidates(cands, ranking = []) {
     left = byTier(left, tier);
   }
   if (left.length > 1) left = byVersion(left);
-  return left.length === 1 ? left[0] : null;
+  return left.length === 1 ? left[0] ?? null : null;
 }
 function resolveConsultant(input2, consultants, ranking = []) {
   const key = normalizeName(input2);
@@ -747,8 +765,9 @@ function resolveConsultant(input2, consultants, ranking = []) {
   if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
   else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
   else cands = consultants.filter((c) => matchesWords(c.model, input2));
-  if (cands.length === 0) return { none: true };
-  if (cands.length === 1) return { consultant: cands[0] };
+  const [only] = cands;
+  if (!only) return { none: true };
+  if (cands.length === 1) return { consultant: only };
   const winner = rankCandidates(cands, ranking);
   return winner ? { consultant: winner } : { ambiguous: cands };
 }
@@ -773,7 +792,8 @@ function buildConsultants(config2) {
   for (const key of Object.keys(cfg)) {
     if (!TOP_KEYS.includes(key)) fault(`unknown top-level key "${key}" (allowed: ${TOP_KEYS.join(", ")})`);
   }
-  if (isObject(cfg.server) && cfg.server.network !== void 0 && !["on", "off"].includes(cfg.server.network)) {
+  const networkModes = ["on", "off"];
+  if (isObject(cfg.server) && cfg.server.network !== void 0 && !networkModes.includes(cfg.server.network)) {
     fault('server.network must be "on" or "off"');
   }
   let ranking = [];
@@ -782,11 +802,12 @@ function buildConsultants(config2) {
       ranking = cfg.ranking.map((r) => r.trim());
     else fault("ranking must be an array of non-empty strings");
   }
+  const cliIds = CLI_IDS;
   if (cfg.clis !== void 0) {
     if (!isObject(cfg.clis)) fault("clis must be an object keyed by CLI");
     else {
       for (const [id2, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(id2)) {
+        if (!cliIds.includes(id2)) {
           problems.push(`clis.${id2}: unknown CLI (known: ${CLI_IDS.join(", ")})`);
           continue;
         }
@@ -840,7 +861,7 @@ function buildConsultants(config2) {
       }
       for (const k of Object.keys(def))
         if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(", ")})`);
-      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
+      if (!cliIds.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(", ")}`);
       if (typeof def.model !== "string" || def.model.trim() === "") problems.push(`${at}.model: required`);
       for (const k of ["effort", "vendor", "note"]) {
         if (def[k] !== void 0 && typeof def[k] !== "string") problems.push(`${at}.${k}: must be a string`);
@@ -858,15 +879,19 @@ function buildConsultants(config2) {
         broken[name] = problems.slice(before);
         continue;
       }
-      const pair = `${def.cli}
-${def.model.trim()}`;
+      const valid = (
+        /** @type {ConsultantDef} */
+        def
+      );
+      const pair = `${valid.cli}
+${valid.model.trim()}`;
       if (seen.has(pair)) {
         problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
         broken[name] = problems.slice(before);
         continue;
       }
       seen.set(pair, name);
-      consultants.push(make(name, def));
+      consultants.push(make(name, valid));
     }
   }
   return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global: global2, broken, brokenClis };
@@ -880,7 +905,7 @@ function make(name, def) {
     effort: typeof def.effort === "string" && def.effort.trim() !== "" ? def.effort.trim() : null,
     timeoutMs: typeof def.timeout_ms === "number" ? clamp(def.timeout_ms, 1e3, 72e5) : null,
     maxBudgetUsd: typeof def.max_budget_usd === "number" ? clamp(def.max_budget_usd, 0.05, 20) : null,
-    vendor: vendorOf(model, def.vendor ?? null),
+    vendor: vendorOf(model, def.vendor),
     enabled: def.enabled !== false,
     note: typeof def.note === "string" && def.note.trim() !== "" ? def.note.trim() : null
   });
@@ -888,6 +913,7 @@ function make(name, def) {
 var CLI_IDS, DEFAULT_MODELS, CLI_VENDORS, table, CLI_ALIASES, VENDOR_WORDS, STEM_VENDORS, sameStem, TIERS, RESERVED_NAMES, isDigitWord, containsRun, compareVersions, TOP_KEYS, CLI_KEYS, CONSULTANT_KEYS, isObject, clamp;
 var init_consultants = __esm({
   "src/consultants.mjs"() {
+    "use strict";
     CLI_IDS = Object.freeze(["codex", "claude-code", "antigravity", "opencode"]);
     DEFAULT_MODELS = Object.freeze({
       codex: "gpt-6-astra",
@@ -960,7 +986,7 @@ function isInstalled(command) {
 }
 function resolveCaller(raw) {
   const key = normalizeName(raw);
-  return typeof key === "string" && Object.hasOwn(CALLER_ALIASES, key) ? CALLER_ALIASES[key] : null;
+  return typeof key === "string" ? CALLER_ALIASES[key] ?? null : null;
 }
 function detectCaller(env = process.env) {
   if (env.CLAUDECODE === "1" || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
@@ -1020,6 +1046,11 @@ function isProtectedPath(abs) {
 function consultantByName(name) {
   return POLICY.consultants.find((c) => c.name === name);
 }
+function consultantNamed(name) {
+  const c = consultantByName(name);
+  if (!c) throw new Error(`no consultant named "${name}"`);
+  return c;
+}
 function consultantAvailable(c) {
   return c.enabled && POLICY.clis[c.cli].available;
 }
@@ -1062,6 +1093,7 @@ function limitsSummary() {
 var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
 var init_policy = __esm({
   "src/policy.mjs"() {
+    "use strict";
     init_jsonc();
     init_platform();
     init_consultants();
@@ -1072,7 +1104,8 @@ var init_policy = __esm({
       try {
         return parseJsonc(fs2.readFileSync(CONFIG_PATH, "utf8"));
       } catch (err) {
-        if (err.code !== "ENOENT") configError = `${CONFIG_PATH}: ${err.message}`;
+        const code = err instanceof Error && "code" in err ? err.code : void 0;
+        if (code !== "ENOENT") configError = `${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}`;
         return {};
       }
     })();
@@ -1083,17 +1116,22 @@ var init_policy = __esm({
     }
     FROM = configError ? buildConsultants({}) : BUILT;
     LOCAL = configError ? [] : BUILT.problems.filter((p) => !BUILT.global.includes(p));
-    usable = configError ? {} : CONFIG;
+    usable = configError || !isObject(CONFIG) ? {} : CONFIG;
     cfgCli = (id2) => {
-      if (Object.hasOwn(BUILT.brokenClis, id2) && !configError) {
+      const broken = Object.hasOwn(BUILT.brokenClis, id2) ? BUILT.brokenClis[id2] : void 0;
+      if (broken && !configError) {
         return {
           enabled: false,
-          note: `turned off: the config file has a mistake in clis.${id2}: ${BUILT.brokenClis[id2].join("; ")}`
+          note: `turned off: the config file has a mistake in clis.${id2}: ${broken.join("; ")}`
         };
       }
-      return usable.clis && typeof usable.clis === "object" ? usable.clis[id2] ?? {} : {};
+      const def = isObject(usable.clis) ? usable.clis[id2] : void 0;
+      return isObject(def) ? (
+        /** @type {CliSection} */
+        def
+      ) : {};
     };
-    cfgServer = usable.server && typeof usable.server === "object" ? usable.server : {};
+    cfgServer = isObject(usable.server) ? usable.server : {};
     num = (name, dflt, min, max) => {
       const raw = process.env[name];
       if (raw === void 0 || raw === "") return dflt;
@@ -1131,7 +1169,8 @@ var init_policy = __esm({
     CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
     MODES = ["explore", "review", "debate"];
     VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
-    STANCES = ["proceed", "do_not_proceed", "alternative", "undetermined"];
+    STANCES = /** @type {const} */
+    ["proceed", "do_not_proceed", "alternative", "undetermined"];
     binFor = (id2, envName, dflt) => {
       const fromEnv = process.env[envName];
       if (fromEnv !== void 0 && fromEnv !== "") return expandHome(fromEnv);
@@ -1151,7 +1190,10 @@ var init_policy = __esm({
     CLAUDE_BIN = binFor("claude-code", "SEVERALLY_CLAUDE_BIN", "claude");
     AGY_BIN = binFor("antigravity", "SEVERALLY_AGY_BIN", "agy");
     OPENCODE_BIN = binFor("opencode", "SEVERALLY_OPENCODE_BIN", "opencode");
-    extras = (id2) => ({ extraArgs: cfgCli(id2).args ?? [], extraEnv: cfgCli(id2).env ?? {} });
+    extras = (id2) => ({
+      extraArgs: cfgCli(id2).args ?? [],
+      extraEnv: cfgCli(id2).env ?? {}
+    });
     POLICY = Object.freeze({
       home: str("SEVERALLY_HOME", path2.join(os.homedir(), ".severally")),
       // Per CLI: how to launch it and whether it can run here. What runs on it is
@@ -32610,12 +32652,12 @@ var init_ajvProvider_CEoC_sr = __esm({
         },
         code(cxt) {
           const { gen, data, schema, parentSchema, it } = cxt;
-          const { oneOf } = parentSchema;
+          const { oneOf: oneOf2 } = parentSchema;
           if (!it.opts.discriminator) throw new Error("discriminator: requires discriminator option");
           const tagName = schema.propertyName;
           if (typeof tagName != "string") throw new Error("discriminator: requires propertyName");
           if (schema.mapping) throw new Error("discriminator: mapping is not supported");
-          if (!oneOf) throw new Error("discriminator: requires oneOf keyword");
+          if (!oneOf2) throw new Error("discriminator: requires oneOf keyword");
           const valid = gen.let("valid", false);
           const tag = gen.const("tag", (0, codegen_1._)`${data}${(0, codegen_1.getProperty)(tagName)}`);
           gen.if((0, codegen_1._)`typeof ${tag} == "string"`, () => validateMapping(), () => cxt.error(false, {
@@ -32653,8 +32695,8 @@ var init_ajvProvider_CEoC_sr = __esm({
             const oneOfMapping = {};
             const topRequired = hasRequired(parentSchema);
             let tagRequired = true;
-            for (let i = 0; i < oneOf.length; i++) {
-              let sch = oneOf[i];
+            for (let i = 0; i < oneOf2.length; i++) {
+              let sch = oneOf2[i];
               if ((sch === null || sch === void 0 ? void 0 : sch.$ref) && !(0, util_1.schemaHasRulesButRef)(sch, it.self.RULES)) {
                 const ref = sch.$ref;
                 sch = compile_1.resolveRef.call(it.self, it.schemaEnv.root, it.baseId, ref);
@@ -35561,11 +35603,11 @@ var init_mcp_DIH4cS6P = __esm({
       * @param errorMessage - The error message.
       * @returns The tool error result.
       */
-      createToolError(errorMessage2) {
+      createToolError(errorMessage3) {
         return {
           content: [{
             type: "text",
-            text: errorMessage2
+            text: errorMessage3
           }],
           isError: true
         };
@@ -36508,8 +36550,8 @@ var init_stdio = __esm({
 import path3 from "node:path";
 function charCount(req) {
   let n = req.question.length + (req.objective?.length ?? 0);
-  for (const c of req.constraints) n += c.length;
-  for (const c of req.success_criteria) n += c.length;
+  for (const c of req.constraints ?? []) n += c.length;
+  for (const c of req.success_criteria ?? []) n += c.length;
   for (const f of req.context.facts) n += f.length;
   for (const c of req.context.counterpoints) n += c.length;
   if (req.context.proposal) n += req.context.proposal.length;
@@ -36522,19 +36564,27 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     const issues = parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
     throw new RequestError(`request failed validation: ${issues.join("; ")}`, "invalid_request", issues);
   }
-  const req = parsed.data;
-  for (const k of ["constraints", "success_criteria"]) {
-    if (req.context[k] === void 0) continue;
+  const req = (
+    /** @type {DraftRequest} */
+    parsed.data
+  );
+  const hoist = (k) => {
+    const inner = req.context[k];
+    if (inner === void 0) return;
     if (req[k] !== void 0) {
       throw new RequestError(`pass ${k} once: at the top of the request or inside context, not both`, "invalid_request");
     }
-    req[k] = req.context[k];
+    req[k] = inner;
     delete req.context[k];
-  }
+  };
+  hoist("constraints");
+  hoist("success_criteria");
   req.network ??= "on";
   req.success_criteria ??= [];
   req.constraints ??= [];
-  for (const k of ["facts", "counterpoints", "artifacts"]) req.context[k] ??= [];
+  req.context.facts ??= [];
+  req.context.counterpoints ??= [];
+  req.context.artifacts ??= [];
   const hasSingle = req.target !== void 0 && req.target !== null;
   const hasMany = Array.isArray(req.targets) && req.targets.length > 0;
   if (hasSingle && hasMany) {
@@ -36605,7 +36655,8 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     );
   }
   req.targets = unique;
-  req.target = unique[0];
+  req.target = /** @type {string} */
+  unique[0];
   req.fanout = unique.length > 1;
   req.caller = resolveCaller(req.caller ?? "") ?? null;
   req.caller_model = req.caller_model ?? null;
@@ -36656,6 +36707,7 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
 var L, trimmed, artifactSchema, exposedPathSchema, gitRevision, contextSchema, targetSpec, INITIATORS, NETWORK_MODES, requestSchema, RequestError;
 var init_schema = __esm({
   "src/schema.mjs"() {
+    "use strict";
     init_zod();
     init_policy();
     init_consultants();
@@ -36740,6 +36792,11 @@ var init_schema = __esm({
       followup_to: external_exports.string().trim().max(80).nullish()
     }).strict();
     RequestError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} [code]
+       * @param {unknown[]} [details]
+       */
       constructor(message, code = "invalid_request", details = void 0) {
         super(message);
         this.name = "RequestError";
@@ -36754,6 +36811,7 @@ var init_schema = __esm({
 var s, enumOf, obj, arr, CONSULT_RESULT_SCHEMA, RESULT_KEYS;
 var init_result_schema = __esm({
   "src/result-schema.mjs"() {
+    "use strict";
     s = (desc) => ({ type: "string", description: desc });
     enumOf = (values, desc) => ({ type: "string", enum: values, description: desc });
     obj = (properties, description) => ({
@@ -36844,14 +36902,14 @@ var init_result_schema = __esm({
 function looksLikeCode(name, value) {
   if (CODE_WORDS.has(value.toLowerCase()) || value.startsWith("${") || /^\$[A-Z_][A-Z0-9_]*$/.test(value) || /^(?:process\.env\.|os\.environ\b)/.test(value))
     return true;
-  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split("_").at(-1))) return false;
+  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split("_").at(-1) ?? "")) return false;
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith("&");
 }
 function redact(value) {
   if (value === null || value === void 0) return value;
   if (typeof value === "string") {
     let out = value;
-    for (const [re, rep] of PATTERNS) out = out.replace(re, rep);
+    for (const [re, rep] of PATTERNS) out = typeof rep === "string" ? out.replace(re, rep) : out.replace(re, rep);
     return out;
   }
   if (Array.isArray(value)) return value.map(redact);
@@ -36865,6 +36923,7 @@ function redact(value) {
 var CODE_WORDS, PATTERNS;
 var init_redact = __esm({
   "src/redact.mjs"() {
+    "use strict";
     CODE_WORDS = /* @__PURE__ */ new Set([
       "true",
       "false",
@@ -36960,7 +37019,7 @@ function statEntry(source) {
   try {
     stat = fs3.lstatSync(source);
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${err.message}`, "not_found");
+    throw new ExposeError(`expose_paths entry "${source}" cannot be read: ${messageOf(err)}`, "not_found");
   }
   if (stat.isSymbolicLink()) {
     throw new ExposeError(`expose_paths entry "${source}" is a symlink; name the path it points at instead`, "invalid_type");
@@ -36975,7 +37034,7 @@ function walkDir(root, dir, onFile, totals, skipped) {
   try {
     items = fs3.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   } catch (err) {
-    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${err.message}`, "not_found");
+    throw new ExposeError(`expose_paths entry "${dir}" cannot be read: ${messageOf(err)}`, "not_found");
   }
   for (const item of items) {
     const child = path4.join(dir, item.name);
@@ -37002,7 +37061,11 @@ function walkDir(root, dir, onFile, totals, skipped) {
 function byPathParts(a, b) {
   const x = a.split("/");
   const y = b.split("/");
-  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  for (const [i, part] of x.entries()) {
+    const other = y[i];
+    if (other === void 0) break;
+    if (part !== other) return part < other ? -1 : 1;
+  }
   return x.length - y.length;
 }
 function walkGit(dir, exposedAs, onFile, totals, skipped) {
@@ -37213,7 +37276,7 @@ function reexposeChange(workdir, entry, manifest) {
   const changes = [];
   for (const c of entry.changes ?? []) {
     const m = /^(.*) \(([^()]+)\)$/.exec(c);
-    const p = m ? m[1] : c;
+    const p = m?.[1] ?? c;
     if (p.includes("[REDACTED")) {
       manifest.skipped.push({ source: path4.join(entry.source, p), reason: "masked", exposed_as: `workspace/repo/${p}` });
       continue;
@@ -37268,10 +37331,7 @@ function git(cwd, args) {
     env: { ...env, GIT_OPTIONAL_LOCKS: "0" }
   });
   if (r.error || r.status !== 0) {
-    const why = (
-      /** @type {NodeJS.ErrnoException} */
-      r.error?.code === "ENOENT" ? "git is not on PATH" : String(r.stderr ?? r.error?.message ?? "").trim()
-    );
+    const why = r.error && "code" in r.error && r.error.code === "ENOENT" ? "git is not on PATH" : String(r.stderr ?? r.error?.message ?? "").trim();
     throw new ExposeError(`context.expose_diff: git ${args[0]} failed in "${cwd}": ${why}`, "not_found");
   }
   return r.stdout;
@@ -37283,7 +37343,11 @@ function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
     git(top, ["diff", "--name-status", "-z", "--no-renames", "--no-relative", "--no-ext-diff", "--no-textconv", base, "--"])
   );
   const changes = [];
-  for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
+  for (let i = 0; i + 1 < tokens.length; i += 2) {
+    const status2 = tokens[i];
+    const file2 = tokens[i + 1];
+    if (status2 !== void 0 && file2 !== void 0) changes.push({ status: status2, path: file2 });
+  }
   for (const p of nulSplit(git(top, ["ls-files", "--others", "--exclude-standard", "-z"])))
     changes.push({ status: "untracked", path: p });
   const before = { ...manifest.totals };
@@ -37336,18 +37400,24 @@ function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
   }
   return text2;
 }
-var ExposeError, nulSplit;
+var ExposeError, messageOf, nulSplit;
 var init_expose_paths = __esm({
   "src/expose-paths.mjs"() {
+    "use strict";
     init_policy();
     init_redact();
     ExposeError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} code
+       */
       constructor(message, code) {
         super(message);
         this.name = "ExposeError";
         this.code = code;
       }
     };
+    messageOf = (err) => err instanceof Error ? err.message : String(err);
     nulSplit = (buf) => buf.toString("utf8").split("\0").filter(Boolean);
   }
 });
@@ -37518,8 +37588,9 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
     const blocks = chain.priorRounds.map(renderRound);
     let kept = 0;
     let used = 0;
-    for (let i = blocks.length - 1; i >= 0 && (kept === 0 || used + blocks[i].length <= HISTORY_CHARS); i--) {
-      used += blocks[i].length;
+    for (const block of [...blocks].reverse()) {
+      if (kept > 0 && used + block.length > HISTORY_CHARS) break;
+      used += block.length;
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
@@ -37543,6 +37614,7 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
 var MODE_BRIEFS, GUARDRAILS_HEAD, GUARDRAILS_RULES, WEB_ON, WEB_OFF, WORKDIR_EMPTY, WORKDIR_EXPOSED, GUARDRAILS_TAIL, EXPOSE_LISTING_MAX, clip, HISTORY_CHARS;
 var init_brief = __esm({
   "src/brief.mjs"() {
+    "use strict";
     init_policy();
     init_result_schema();
     init_redact();
@@ -37611,15 +37683,15 @@ function clampText(v, max) {
 }
 function level(v, fallback = null) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
-  return LEVELS.includes(t) ? t : fallback;
+  return oneOf(LEVELS, t) ? t : fallback;
 }
 function basis(v) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
-  return BASIS.includes(t) ? t : null;
+  return oneOf(BASIS, t) ? t : null;
 }
 function stance(v) {
   const t = typeof v === "string" ? v.trim().toLowerCase() : "";
-  return STANCES.includes(t) ? t : null;
+  return oneOf(STANCES, t) ? t : null;
 }
 function extractJson(text2) {
   if (typeof text2 !== "string") return null;
@@ -37627,9 +37699,7 @@ function extractJson(text2) {
   if (!trimmed2) return null;
   const candidates = [];
   if (trimmed2.startsWith("{")) candidates.push(trimmed2);
-  const fence2 = /```(?:json)?\s*([\s\S]*?)```/gi;
-  let m;
-  while ((m = fence2.exec(trimmed2)) !== null) candidates.push(m[1].trim());
+  for (const [, body = ""] of trimmed2.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push(body.trim());
   const start = trimmed2.indexOf("{");
   if (start !== -1) {
     let depth = 0;
@@ -37679,7 +37749,10 @@ function mapList(raw, fields, { requiredField, idPrefix = null }) {
       item[key] = kind === "level" ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
     if (!item[requiredField]) continue;
-    out.push(item);
+    out.push(
+      /** @type {T} */
+      item
+    );
   }
   return out;
 }
@@ -37758,10 +37831,14 @@ function normalizeResult(raw) {
     ).filter((r) => r.title || r.url)
   };
   const listTruncated = Object.fromEntries(
-    ["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax).map((k) => [k, src[k].length])
+    ["findings", "alternatives", "unknowns", "decision_changers", "next_checks", "remaining_disagreements"].flatMap((k) => {
+      const v = src[k];
+      return Array.isArray(v) && v.length > O.listMax ? [[k, v.length]] : [];
+    })
   );
+  const fields = result;
   const missing = RESULT_KEYS.filter((k) => {
-    const v = result[k];
+    const v = fields[k];
     return v === null || v === void 0 || Array.isArray(v) && v.length === 0;
   });
   const groundless = result.findings.filter((f) => !f.grounds).length;
@@ -37775,13 +37852,18 @@ function normalizeResult(raw) {
     }
   };
 }
-var OutputError, O, LEVELS, BASIS;
+var OutputError, O, oneOf, LEVELS, BASIS;
 var init_parse_result = __esm({
   "src/parse-result.mjs"() {
+    "use strict";
     init_policy();
     init_result_schema();
     init_redact();
     OutputError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} [detail]
+       */
       constructor(message, detail) {
         super(message);
         this.name = "OutputError";
@@ -37789,6 +37871,7 @@ var init_parse_result = __esm({
       }
     };
     O = POLICY.output;
+    oneOf = (list, t) => list.some((x) => x === t);
     LEVELS = ["high", "medium", "low"];
     BASIS = ["sufficient", "thin", "insufficient"];
   }
@@ -37806,6 +37889,7 @@ function isRetriable(kind) {
 var RULES, AUTO_RETRY_KINDS;
 var init_failures = __esm({
   "src/failures.mjs"() {
+    "use strict";
     RULES = [
       [
         /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
@@ -37846,8 +37930,8 @@ function childEnv(target, extra = {}, operator = {}) {
   return { ...env, ...extra };
 }
 function providerEnvNames(target) {
-  const provider = JSON.stringify(POLICY.clis?.[target]?.provider ?? {});
-  return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
+  const provider = JSON.stringify(target === "opencode" ? POLICY.clis.opencode.provider : {});
+  return new Set([...provider.matchAll(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g)].flatMap(([, name]) => name ?? []));
 }
 function foreignSecret(target, key, keep) {
   if (keep.has(key) || (OWN_PREFIX[target] ?? []).some((p) => key.startsWith(p))) return false;
@@ -37905,10 +37989,10 @@ function runChild({
   let timedOut = false;
   let cancelled = false;
   let stalled = false;
-  let settleTimer = null;
+  let settleTimer;
   let settleAt = Infinity;
   const watch = (line) => {
-    const ms = settleAfter2(line);
+    const ms = settleAfter2?.(line);
     if (ms == null || Date.now() + ms >= settleAt) return;
     settleAt = Date.now() + ms;
     clearTimeout(settleTimer);
@@ -37940,7 +38024,7 @@ function runChild({
   const compact = compactLine2 ?? ((l) => l);
   const flushLines = () => {
     const lines = pending.split("\n");
-    pending = lines.pop();
+    pending = lines.pop() ?? "";
     for (const l of lines) {
       if (settleAfter2) watch(l);
       append("out", `${compact(l)}
@@ -37972,7 +38056,7 @@ function runChild({
   const done = new Promise((resolve) => {
     let settled2 = false;
     let pipesForced = false;
-    let orphanTimer = null;
+    let orphanTimer;
     const finish = (payload) => {
       if (settled2) return;
       settled2 = true;
@@ -38019,6 +38103,7 @@ function runChild({
 var DROP_EXACT, DROP_PREFIX, TARGET_DROP_PREFIX, TARGET_DROP_EXACT, SECRET_PREFIX, SECRET_SUFFIX, SECRET_EXACT, OWN_PREFIX, ProcHandle;
 var init_run = __esm({
   "src/run.mjs"() {
+    "use strict";
     init_platform();
     init_policy();
     DROP_EXACT = /* @__PURE__ */ new Set(["CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT", "ANTHROPIC_LOG", "NODE_OPTIONS"]);
@@ -38048,6 +38133,10 @@ var init_run = __esm({
       opencode: ["ZAI_"]
     };
     ProcHandle = class {
+      /**
+       * @param {import('node:child_process').ChildProcess} child
+       * @param {() => string} [readStdout]
+       */
       constructor(child, readStdout = () => "") {
         this.child = child;
         this.killed = false;
@@ -38057,6 +38146,7 @@ var init_run = __esm({
        * Kill the child and every descendant it spawned -- also after the child
        * itself has exited: a descendant still holding its pipes keeps the
        * consultation from closing, and on POSIX it is still in the group.
+       * @param {NodeJS.Signals} [signal]
        */
       stop(signal = "SIGTERM") {
         if (this.killed || !this.child) return;
@@ -38279,7 +38369,7 @@ function withSeatLock(fn) {
       fs4.mkdirSync(lock);
       break;
     } catch (err) {
-      if (err.code !== "EEXIST") throw err;
+      if (!(err instanceof Error && "code" in err && err.code === "EEXIST")) throw err;
       try {
         if (Date.now() - fs4.statSync(lock).mtimeMs > LOCK_STALE_MS) fs4.rmdirSync(lock);
       } catch {
@@ -38322,7 +38412,7 @@ function takeSeats(seats, cap, held) {
         } catch {
         }
     }
-    for (const mine of seats.filter((x) => x.chain_id)) {
+    for (const mine of seats.filter(continuesChain)) {
       let other = live.find((x) => x.chain_id === mine.chain_id);
       if (!other && fs4.existsSync(roundPath(mine.chain_id, mine.round))) {
         try {
@@ -38389,9 +38479,10 @@ function cleanupJobDir(jobId) {
     }
   }
 }
-var roundPath, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS, cancelFile, cancelRequested;
+var roundPath, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS, continuesChain, cancelFile, cancelRequested;
 var init_store = __esm({
   "src/store.mjs"() {
+    "use strict";
     init_policy();
     roundPath = (chainId, round) => path6.join(POLICY.home, "history", chainId, `round-${String(round).padStart(2, "0")}.json`);
     JOB_ID = /^job_[0-9a-f]{12}$/;
@@ -38402,6 +38493,7 @@ var init_store = __esm({
     seatFile = (jobId) => path6.join(seatsDir(), `${jobId}.json`);
     LOCK_WAIT_MS = 2e3;
     LOCK_STALE_MS = 1e4;
+    continuesChain = (seat) => Boolean(seat.chain_id);
     cancelFile = (jobId) => path6.join(seatsDir(), `${jobId}.cancel`);
     cancelRequested = (jobId) => JOB_ID.test(jobId) && fs4.existsSync(cancelFile(jobId));
   }
@@ -38503,8 +38595,8 @@ function interpret({ stdout, stderr, code, lastMessageText }) {
   for (const e of events3) walkUsage(e, usage);
   let text2 = (lastMessageText || "").trim();
   if (!text2) {
-    for (let i = events3.length - 1; i >= 0 && !text2; i--) {
-      const e = events3[i];
+    for (const e of events3.toReversed()) {
+      if (text2) break;
       const item = e.item ?? e;
       const candidate = item && item.type && String(item.type).includes("agent_message") && (item.text ?? item.message) || e.type === "item.completed" && item && (item.text ?? item.message) || null;
       if (typeof candidate === "string" && candidate.trim()) text2 = candidate.trim();
@@ -38570,9 +38662,15 @@ function toolCalls({ stdout }) {
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
 function usageRecord(raw) {
-  const u = raw ?? {};
+  const u = (
+    /** @type {Record<string, number>} */
+    raw ?? {}
+  );
   const pick2 = (...names) => {
-    for (const n of names) if (typeof u[n] === "number") return u[n];
+    for (const n of names) {
+      const v = u[n];
+      if (typeof v === "number") return v;
+    }
     return null;
   };
   return {
@@ -38599,6 +38697,7 @@ function boundary({ args }) {
 var FORBIDDEN_FLAGS, RESERVED_FLAGS, PROFILE, listDir;
 var init_codex = __esm({
   "src/adapters/codex.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     FORBIDDEN_FLAGS = [
@@ -38697,9 +38796,9 @@ function buildInvocation2({ workdir, guardrails, consultant, hasExposedPaths = f
   return { command: t.cli, args, model: chosen, workdir };
 }
 function lastJsonObject(stdout) {
-  const lines = (stdout || "").split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].trim();
+  const lines = (stdout || "").split("\n").reverse();
+  for (const line of lines) {
+    const t = line.trim();
     if (!t.startsWith("{")) continue;
     try {
       const parsed = JSON.parse(t);
@@ -38738,7 +38837,11 @@ function interpret2({ stdout, stderr, code }) {
   }
   return { ok: true, text: text2, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
-function usageRecord2(payload) {
+function usageRecord2(raw) {
+  const payload = (
+    /** @type {ClaudeResult | null} */
+    raw
+  );
   if (!payload) return null;
   const u = payload.usage ?? {};
   const num2 = (v) => typeof v === "number" ? v : null;
@@ -38753,7 +38856,10 @@ function usageRecord2(payload) {
   };
 }
 function boundary2({ args, hasExposedPaths }) {
-  const tools = args[args.indexOf("--tools") + 1];
+  const tools = (
+    /** @type {string} */
+    args[args.indexOf("--tools") + 1]
+  );
   return {
     reads: hasExposedPaths ? "the exposed copy only" : "whole disk",
     shell: "none",
@@ -38767,6 +38873,7 @@ function boundary2({ args, hasExposedPaths }) {
 var FORBIDDEN_FLAGS2, RESERVED_FLAGS2, posixAbsolute;
 var init_claude_code = __esm({
   "src/adapters/claude-code.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     init_result_schema();
@@ -38987,6 +39094,7 @@ function prepareSandbox({ workdir, network = "on" }) {
 var SANDBOX_ALLOW, SANDBOX_DENY, ALLOWED_TOOLS, WEB_TOOLS, PATH_TOOLS, TOKEN_REL;
 var init_antigravity_sandbox = __esm({
   "src/adapters/antigravity-sandbox.mjs"() {
+    "use strict";
     init_policy();
     init_store();
     SANDBOX_ALLOW = Object.freeze(["read_url(*)", "read_file(*)"]);
@@ -39047,19 +39155,17 @@ function events(stdout) {
   return out;
 }
 function finalEnvelope(stdout) {
-  const all = events(stdout);
-  for (let i = all.length - 1; i >= 0; i--) {
-    const e = all[i];
+  for (const e of events(stdout).reverse()) {
     if (e.event === "result" && e.result && typeof e.result === "object") return e.result;
     if (e.event === void 0 && (e.status || e.response || e.structured_output)) return e;
   }
   return null;
 }
 function progress2({ stdout }) {
-  const steps = events(stdout).filter((e) => e.event === "step_update" && e.step_update);
-  if (!steps.length) return null;
-  const last = steps[steps.length - 1].step_update;
-  const seen = new Set(steps.map((s2) => s2.step_update.step_index)).size;
+  const steps = events(stdout).flatMap((e) => e.event === "step_update" && e.step_update ? [e.step_update] : []);
+  const last = steps.at(-1);
+  if (!last) return null;
+  const seen = new Set(steps.map((s2) => s2.step_index)).size;
   const what = last.tool_name ? `tool ${last.tool_name}` : last.step_type ?? "a step";
   return `${seen} step(s), last was ${what} (${last.state ?? "state unknown"})`;
 }
@@ -39123,7 +39229,11 @@ function interpret3({ stdout, stderr, code }) {
   }
   return { ok: true, text: text2, usageRaw: payload, denials: payload.denied_actions ?? [] };
 }
-function usageRecord3(payload) {
+function usageRecord3(raw) {
+  const payload = (
+    /** @type {AgyEnvelope | null} */
+    raw
+  );
   if (!payload) return null;
   const u = payload.usage ?? {};
   const num2 = (v) => typeof v === "number" ? v : null;
@@ -39139,23 +39249,28 @@ function usageRecord3(payload) {
     turns: num2(payload.num_turns),
     // Which permissions the sandbox refused. A denied read_url usually explains
     // a thin evidence basis, so it is worth keeping in the record.
-    denied_actions: Array.isArray(payload.denied_actions) ? payload.denied_actions.map((d) => d?.action).filter(Boolean) : null
+    denied_actions: Array.isArray(payload.denied_actions) ? payload.denied_actions.flatMap((d) => d?.action ? [d.action] : []) : null
   };
 }
 function boundary3({ sandbox }) {
+  const { tools } = (
+    /** @type {Sandbox} */
+    sandbox
+  );
   return {
     reads: "whole disk",
     shell: "none",
-    web: sandbox.tools.includes("search_web"),
+    web: tools.includes("search_web"),
     writes: false,
     mcp: false,
     protected_paths: "denied (tool hook)",
-    tools: [...sandbox.tools]
+    tools: [...tools]
   };
 }
 var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, stopSignal;
 var init_antigravity = __esm({
   "src/adapters/antigravity.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     init_antigravity_sandbox();
@@ -39273,9 +39388,9 @@ function prepareSandbox2({ workdir, network = "on" }) {
         fs8.rmSync(root, { recursive: true, force: true });
       } catch {
       }
-    }
+    },
+    seed: (provider) => seedCredentialFromAuth(sandbox, provider)
   };
-  sandbox.seed = (provider) => seedCredentialFromAuth(sandbox, provider);
   return sandbox;
 }
 function seedCredentialFromAuth(sandbox, provider) {
@@ -39330,6 +39445,7 @@ function seedCredentialFromAuth(sandbox, provider) {
 var DatabaseSync, SANDBOX_DENY2, SANDBOX_ALLOW2, WEB_TOOLS2, SANDBOX_TOOLS_OFF, AUTH_REL;
 var init_opencode_sandbox = __esm({
   "src/adapters/opencode-sandbox.mjs"() {
+    "use strict";
     init_policy();
     init_store();
     DatabaseSync = null;
@@ -39512,14 +39628,14 @@ function interpret4({ stdout, stderr, code, signal = null, truncated = false }) 
   let text2 = null;
   let textIndex = -1;
   let lastErrorIndex = -1;
+  let lastError = "";
   let finishedAfterText = false;
   let tokens = null;
   let cost = null;
   let steps = 0;
   const errors = [];
   const earlierTextParts = [];
-  for (let i = 0; i < all.length; i++) {
-    const e = all[i];
+  for (const [i, e] of all.entries()) {
     const part = e.part;
     if (e.type === "text" && part?.type === "text" && part.time?.end && typeof part.text === "string" && part.text.trim()) {
       if (text2 !== null) earlierTextParts.push(text2);
@@ -39532,7 +39648,8 @@ function interpret4({ stdout, stderr, code, signal = null, truncated = false }) 
       if (part.tokens && typeof part.tokens === "object") tokens = part.tokens;
       if (typeof part.cost === "number") cost = part.cost;
     } else if (e.type === "error" && e.error) {
-      errors.push(errorMessage(e.error));
+      lastError = errorMessage(e.error);
+      errors.push(lastError);
       lastErrorIndex = i;
     }
   }
@@ -39547,14 +39664,14 @@ function interpret4({ stdout, stderr, code, signal = null, truncated = false }) 
     };
   }
   if (lastErrorIndex > textIndex) {
-    const msg = errors[errors.length - 1];
+    const msg = lastError;
     return { ok: false, failureKind: classifyMessage(msg), message: msg, usageRaw };
   }
   if (code !== 0) {
     const { msg, kind } = failureMessage({ errors, stderr, stdout, code, signal, what: "after producing an answer" });
     return { ok: false, failureKind: kind, message: msg, usageRaw };
   }
-  if (truncated && !(finishedAfterText && all.length > 0 && all[all.length - 1].type === "step_finish")) {
+  if (truncated && !(finishedAfterText && all.at(-1)?.type === "step_finish")) {
     return {
       ok: false,
       failureKind: "invalid_output",
@@ -39577,14 +39694,19 @@ function toolCalls3({ stdout }) {
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
 function progress3({ stdout }) {
-  const seen = events2(stdout).filter((e) => ["step_start", "step_finish", "text", "tool_use"].includes(e.type));
-  if (!seen.length) return null;
-  const last = seen[seen.length - 1];
+  const seen = events2(stdout).filter(
+    (e) => e.type !== void 0 && ["step_start", "step_finish", "text", "tool_use"].includes(e.type)
+  );
+  const last = seen.at(-1);
+  if (!last) return null;
   const what = last.type === "tool_use" && last.part?.tool ? `tool ${last.part.tool}` : last.type;
   return `${seen.length} event(s), last was ${what}`;
 }
 function usageRecord4(raw) {
-  const r = raw ?? {};
+  const r = (
+    /** @type {OpencodeUsage | null} */
+    raw ?? {}
+  );
   const t = r.tokens && typeof r.tokens === "object" ? r.tokens : {};
   const num2 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
   const cache = t.cache && typeof t.cache === "object" ? t.cache : {};
@@ -39601,19 +39723,24 @@ function usageRecord4(raw) {
   };
 }
 function boundary4({ sandbox }) {
+  const { tools } = (
+    /** @type {Sandbox} */
+    sandbox
+  );
   return {
     reads: "whole disk",
     shell: "none",
-    web: sandbox.tools.includes("webfetch"),
+    web: tools.includes("webfetch"),
     writes: false,
     mcp: false,
     protected_paths: "denied (permission rules)",
-    tools: [...sandbox.tools]
+    tools: [...tools]
   };
 }
 var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4;
 var init_opencode = __esm({
   "src/adapters/opencode.mjs"() {
+    "use strict";
     init_policy();
     init_failures();
     init_platform();
@@ -39662,7 +39789,7 @@ function ownerState(jobId, owner) {
       process.kill(owner.pid, 0);
       pidAlive = true;
     } catch (err) {
-      pidAlive = err.code === "EPERM";
+      pidAlive = err instanceof Error && "code" in err && err.code === "EPERM";
     }
   if (!pidAlive) return "dead";
   return Date.now() > Date.parse(owner.deadline_at) ? "overdue" : "alive";
@@ -39710,7 +39837,7 @@ async function settled(promise2, ms, signal) {
     await (promise2 ? Promise.race([promise2, until]) : until);
   } finally {
     clearTimeout(timer);
-    signal?.removeEventListener("abort", stop);
+    if (stop) signal?.removeEventListener("abort", stop);
   }
 }
 function parses(text2) {
@@ -39735,11 +39862,18 @@ function tally(values) {
   return out;
 }
 function recordSummary(job) {
-  const ids = recordableIds(job.result);
-  const written = new Set(job.record.entries.map((e) => e.id));
+  const record2 = (
+    /** @type {JobRecord} */
+    job.record
+  );
+  const ids = recordableIds(
+    /** @type {ConsultResult} */
+    job.result
+  );
+  const written = new Set(record2.entries.map((e) => e.id));
   return {
-    ...job.record,
-    verdicts: tally(job.record.entries.map((e) => e.verdict)),
+    ...record2,
+    verdicts: tally(record2.entries.map((e) => e.verdict)),
     coverage: { recordable: ids.length, recorded: written.size },
     unrecorded: ids.filter((id2) => !written.has(id2))
   };
@@ -39755,13 +39889,16 @@ function inherit(raw, round) {
   const { brief } = round;
   const out = raw.network === void 0 && round.network ? { ...raw, network: round.network } : { ...raw };
   if (!brief) return out;
-  for (const k of ["objective", "success_criteria", "constraints"]) {
-    if (out[k] === void 0 && raw.context?.[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length))
-      out[k] = brief[k];
+  const topKeys = ["objective", "success_criteria", "constraints"];
+  for (const k of topKeys) {
+    const v = brief[k];
+    if (out[k] === void 0 && raw.context?.[k] === void 0 && v != null && !(Array.isArray(v) && !v.length)) out[k] = v;
   }
   const ctx = { ...raw.context ?? {} };
-  for (const k of ["facts", "proposal", "counterpoints"]) {
-    if (ctx[k] === void 0 && brief[k] != null && !(Array.isArray(brief[k]) && !brief[k].length)) ctx[k] = brief[k];
+  const contextKeys = ["facts", "proposal", "counterpoints"];
+  for (const k of contextKeys) {
+    const v = brief[k];
+    if (ctx[k] === void 0 && v != null && !(Array.isArray(v) && !v.length)) ctx[k] = v;
   }
   const artifacts = [...brief.artifacts ?? []];
   const last = artifacts.at(-1);
@@ -39794,7 +39931,8 @@ function adviceCaveat(normalized) {
   return notes.length ? notes.join("; ") : null;
 }
 function sameVendorCaveat(caller, callerModel, consultant) {
-  const callerVendor = (callerModel ? vendorOf(callerModel) : null) ?? (caller ? CLI_VENDORS[caller] ?? null : null);
+  const callerCli = CLI_IDS.find((c) => c === caller);
+  const callerVendor = (callerModel ? vendorOf(callerModel) : null) ?? (callerCli ? CLI_VENDORS[callerCli] ?? null : null);
   const vendor = consultant.vendor;
   if (!callerVendor || !vendor || callerVendor !== vendor) return null;
   const consultantModel = consultant.model;
@@ -39804,11 +39942,12 @@ function sameVendorCaveat(caller, callerModel, consultant) {
 }
 function comparison(members2, budget) {
   const each = (budget - COMPARISON_NOTE_CHARS) / Math.max(1, members2.length) - COLUMN_FIXED_CHARS;
-  let columns = members2.map((m) => byTarget(m, each));
+  const firstPass = members2.map((m) => ({ m, column: byTarget(m, each) }));
+  let columns = firstPass.map((x) => x.column);
   const cutShort = columns.filter((c) => c.truncated).length;
   if (each !== Infinity && cutShort) {
     const spare = columns.reduce((n, c) => n + (c.truncated ? 0 : Math.max(0, each + COLUMN_FIXED_CHARS - printed(c))), 0);
-    columns = members2.map((m, i) => columns[i].truncated ? byTarget(m, each + spare / cutShort) : columns[i]);
+    columns = firstPass.map(({ m, column }) => column.truncated ? byTarget(m, each + spare / cutShort) : column);
   }
   return {
     by_target: columns,
@@ -39938,8 +40077,12 @@ function pointsOf(view, ids) {
   const verdicts = new Map((view.record?.entries ?? []).map((e) => [e.id, e]));
   const lists = { finding: r.findings, unknown: r.unknowns, next_check: r.next_checks };
   const points = [...new Set(ids)].map((id2) => {
-    const [kind, item] = Object.entries(lists).map(([k, l]) => [k, l.find((x) => x.id === id2)]).find(([, x]) => x);
-    return { kind, ...item, recorded: verdicts.get(id2) ?? null };
+    const [point] = Object.entries(lists).flatMap(([kind, l]) => {
+      const item = l.find((x) => x.id === id2);
+      return item ? [{ kind, ...item }] : [];
+    });
+    if (!point) throw new RequestError(`"${id2}" is not a point in this answer`, "unknown_entry_id");
+    return { ...point, recorded: verdicts.get(id2) ?? null };
   });
   return {
     job_id: view.job_id,
@@ -40043,6 +40186,7 @@ function assertNoForbiddenFlags(target, args) {
 var ADAPTERS, MIN_RETRY_MS, CANCEL_POLL_MS, API_KEY_VARS, CREDENTIAL_FILE_VARS, ALL_API_CREDENTIAL_VARS, USAGE_FIGURES, id, LIVE_HERE, JobManager, PARTIAL_TAIL_CHARS, GROUP_CHARS, COLUMN_FIXED_CHARS, COMPARISON_NOTE_CHARS, QUESTION_CHARS, FAILURE_MESSAGE_CHARS, SUMMARY_CHARS, CAVEAT_CHARS, ITEM_CHARS, MIN_TEXT_CHARS, flagNames;
 var init_jobs = __esm({
   "src/jobs.mjs"() {
+    "use strict";
     init_policy();
     init_consultants();
     init_schema();
@@ -40078,6 +40222,10 @@ var init_jobs = __esm({
       // A consultation this process does not hold: finished (its round file), or
       // still in progress (its marker). A marker whose owner is gone becomes a
       // failed round, `interrupted`, written once by whichever process claims it.
+      /**
+       * @param {string} jobId
+       * @returns {StoredRound | null}
+       */
       #fromDisk(jobId) {
         const done = loadRound(jobId);
         if (done) return done;
@@ -40090,6 +40238,12 @@ var init_jobs = __esm({
       // something the next reader finishes: the round is written (the index
       // takes it once), then the marker goes. A round already on disk wins -- its
       // owner finished and died before removing the marker.
+      /**
+       * @param {string} jobId
+       * @param {StoredRound} rec
+       * @param {'alive' | 'dead' | 'overdue'} state
+       * @returns {Round}
+       */
       #interrupt(jobId, rec, state) {
         const done = loadRound(jobId);
         if (done) {
@@ -40120,25 +40274,32 @@ var init_jobs = __esm({
         for (const jobId of listRunning()) {
           const rec = loadRunning(jobId);
           const state = rec && ownerState(jobId, rec.owner);
-          if (rec && state !== "alive") this.#interrupt(jobId, rec, state);
+          if (rec && state && state !== "alive") this.#interrupt(jobId, rec, state);
         }
       }
+      /**
+       * @param {StoredRound} rec
+       * @returns {FullView}
+       */
       #diskView(rec) {
-        const elsewhere = Boolean(rec.owner);
         const { owner, ...view } = rec;
         return {
           ...view,
           cancellable: false,
           progress: null,
           record: view.record ? recordSummary(view) : null,
-          brief: elsewhere ? null : view.brief,
-          limits: elsewhere ? null : limitsSummary(),
-          next_step: elsewhere ? `running in another severally process (pid ${owner.pid}); poll again later -- it can only be cancelled from that process` : nextStep(view)
+          brief: owner ? null : view.brief,
+          limits: owner ? null : limitsSummary(),
+          next_step: owner ? `running in another severally process (pid ${owner.pid}); poll again later -- it can only be cancelled from that process` : nextStep(view)
         };
       }
       get running() {
         return [...this.jobs.values()].filter((j) => j.status === "running");
       }
+      /**
+       * @param {Job} job
+       * @returns {Round}
+       */
       #record(job) {
         return {
           job_id: job.job_id,
@@ -40181,13 +40342,25 @@ var init_jobs = __esm({
       }
       // `detail: "full"` returns the brief as stored; by default a finished
       // consultation names it (size, sha256, round file) instead of repeating it.
-      /** @param {string} jobId @param {{detail?: string}} [opts] */
+      /**
+       * @param {string} jobId
+       * @param {{detail?: string | undefined}} [opts]
+       * @returns {JobView | null}
+       */
       view(jobId, { detail } = {}) {
         const job = this.jobs.get(jobId);
         if (!job) {
-          const rec2 = this.#fromDisk(jobId);
-          return rec2 ? compactBrief(this.#diskView(rec2), detail) : null;
+          const rec = this.#fromDisk(jobId);
+          return rec ? compactBrief(this.#diskView(rec), detail) : null;
         }
+        return this.#jobView(job, detail);
+      }
+      /**
+       * @param {Job} job
+       * @param {string | undefined} detail
+       * @returns {JobView}
+       */
+      #jobView(job, detail) {
         const rec = this.#record(job);
         rec.cancellable = job.status === "running" || job.status === "queued";
         rec.progress = job.status === "running" && job._handle ? ADAPTERS[job.cli]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null : null;
@@ -40207,30 +40380,35 @@ var init_jobs = __esm({
       // job_id and group_id can still be followed up and recorded against. The
       // index only picks and orders; each row shown is read from its round, which
       // holds the verdicts written since. Memory wins over disk for the same job.
+      /** @param {{limit?: number}} [opts] */
       list({ limit: limit2 = 20 } = {}) {
-        const here = this.order.map((jid) => this.jobs.get(jid));
-        const seen = new Set(here.map((j) => j.job_id));
-        const elsewhere = [];
+        const candidates = [];
+        const seen = /* @__PURE__ */ new Set();
+        for (const jid of this.order) {
+          const job = this.jobs.get(jid);
+          if (!job) continue;
+          seen.add(job.job_id);
+          candidates.push({ at: job.created_at ?? "", load: () => job });
+        }
         for (const jobId of listRunning()) {
           const live = seen.has(jobId) ? null : loadRunning(jobId);
           if (!live) continue;
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
           const saved = state === "alive" ? null : loadRoundAt(live);
-          elsewhere.push({
-            rec: state === "alive" ? live : saved ?? { ...live, status: "failed", failure: { kind: "interrupted" } }
-          });
+          const rec = state === "alive" ? live : saved ?? /** @type {Round} */
+          { ...live, status: "failed", failure: { kind: "interrupted" } };
+          candidates.push({ at: rec.created_at ?? "", load: () => rec });
         }
         for (const row of indexRows())
           if (!seen.has(row.job_id)) {
             seen.add(row.job_id);
-            elsewhere.push({ row });
+            candidates.push({ at: row.created_at ?? "", load: () => loadRoundAt(row) });
           }
-        const at = (x) => x.created_at ?? x.rec?.created_at ?? x.row?.created_at ?? "";
         const picked = [];
-        for (const x of [...here, ...elsewhere].sort((p, q) => at(q) < at(p) ? -1 : at(q) > at(p) ? 1 : 0)) {
+        for (const x of candidates.sort((p, q) => q.at < p.at ? -1 : q.at > p.at ? 1 : 0)) {
           if (picked.length >= limit2) break;
-          const j = x.row ? loadRoundAt(x.row) : x.rec ?? x;
+          const j = x.load();
           if (j) picked.push(j);
         }
         return picked.map((j) => {
@@ -40267,7 +40445,7 @@ var init_jobs = __esm({
         const by = {};
         const reported = {};
         for (const j of this.jobs.values()) {
-          const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter(Boolean);
+          const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter((u) => u != null);
           if (!attempts.length) continue;
           const t = by[j.target] ??= { consultations: 0, attempts: 0 };
           const seen = reported[j.target] ??= /* @__PURE__ */ new Set();
@@ -40281,11 +40459,13 @@ var init_jobs = __esm({
               }
           }
         }
+        const out = {};
         for (const [target, t] of Object.entries(by)) {
-          t.not_reported = USAGE_FIGURES.filter((k) => !reported[target].has(k));
+          out[target] = { ...t, not_reported: USAGE_FIGURES.filter((k) => !reported[target]?.has(k)) };
         }
-        return by;
+        return out;
       }
+      /** @param {RawRequest} rawRequest the tool arguments, not yet validated */
       start(rawRequest) {
         if (process.env.SEVERALLY_ACTIVE === "1") {
           throw new RequestError(
@@ -40308,29 +40488,30 @@ var init_jobs = __esm({
           fromGroup = this.#groupParents(followupTo);
           rawRequest = { ...rawRequest, targets: fromGroup.links.map((l) => l.parent.target) };
         } else if (followupTo) {
-          parent = this.jobs.get(followupTo) ?? loadRound(followupTo);
-          if (!parent) throw new RequestError(`followup_to references unknown job "${followupTo}"`, "unknown_job");
-          if (parent.status !== "completed") {
+          const found = this.jobs.get(followupTo) ?? loadRound(followupTo);
+          if (!found) throw new RequestError(`followup_to references unknown job "${followupTo}"`, "unknown_job");
+          if (found.status !== "completed") {
             throw new RequestError(
-              `followup_to job "${followupTo}" is ${parent.status}; only a completed consultation can be followed up`,
+              `followup_to job "${followupTo}" is ${found.status}; only a completed consultation can be followed up`,
               "followup_not_completed"
             );
           }
-          const rounds = this.#chainRounds(parent.chain_id);
-          const later = rounds.find((j) => j.round > parent.round && !["failed", "cancelled"].includes(j.status));
+          const rounds = this.#chainRounds(found.chain_id);
+          const later = rounds.find((j) => j.round > found.round && !["failed", "cancelled"].includes(j.status));
           if (later) {
             throw new RequestError(
-              `job "${followupTo}" is round ${parent.round}, and this consultation already has round ${later.round} (job "${later.job_id}", ${later.status}); follow up the latest round`,
+              `job "${followupTo}" is round ${found.round}, and this consultation already has round ${later.round} (job "${later.job_id}", ${later.status}); follow up the latest round`,
               "followup_not_latest"
             );
           }
-          parent = { ...parent, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
+          parent = { ...found, nextRound: Math.max(...rounds.map((j) => j.round)) + 1 };
         }
         if (parent && (rawRequest.target ?? null) === null && !rawRequest.targets?.length) {
           rawRequest = { ...rawRequest, target: parent.target };
         }
-        if (parent || fromGroup)
-          rawRequest = inherit(rawRequest, fromGroup ? fromGroup.links[0].groupMember ?? fromGroup.links[0].parent : parent);
+        const first = fromGroup?.links[0];
+        const inheritFrom = first ? first.groupMember ?? first.parent : parent;
+        if (inheritFrom) rawRequest = inherit(rawRequest, inheritFrom);
         const req = parseRequest(rawRequest, {
           isFollowup: Boolean(parent || fromGroup),
           parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
@@ -40357,18 +40538,21 @@ var init_jobs = __esm({
           );
         }
         const chainOf = (i) => fromGroup ? fromGroup.links[i] : parent ? { parent, round } : null;
-        const seats = req.targets.map((target, i) => ({
-          job_id: id("job"),
-          ...chainOf(i) ? { chain_id: chainOf(i).parent.chain_id, round: chainOf(i).round } : {},
-          // Twice the budget plus an hour: the deadline is wall-clock, the budget is
-          // not, so a suspended laptop must not make a live owner look overdue.
-          owner: {
-            pid: process.pid,
-            deadline_at: new Date(
-              Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 36e5
-            ).toISOString()
-          }
-        }));
+        const seats = req.targets.map((target, i) => {
+          const link = chainOf(i);
+          return {
+            job_id: id("job"),
+            ...link ? { chain_id: link.parent.chain_id, round: link.round } : {},
+            // Twice the budget plus an hour: the deadline is wall-clock, the budget is
+            // not, so a suspended laptop must not make a live owner look overdue.
+            owner: {
+              pid: process.pid,
+              deadline_at: new Date(
+                Date.now() + 2 * timeoutMs(consultantByName(target)) + POLICY.killGraceMs + 36e5
+              ).toISOString()
+            }
+          };
+        });
         const taken = takeSeats(seats, POLICY.maxConcurrent, (seat) => ownerState(seat.job_id, seat.owner) === "alive");
         if (taken.chainBusy) {
           const { live, mine } = taken.chainBusy;
@@ -40395,6 +40579,10 @@ var init_jobs = __esm({
       // round of its own chain. A member that is still running, never answered or
       // has used its rounds is skipped and named; if that is every member, the
       // request is refused.
+      /**
+       * @param {string} groupId
+       * @returns {GroupParents}
+       */
       #groupParents(groupId) {
         const group = this.groups.get(groupId) ?? loadGroup(groupId);
         if (!group) throw new RequestError(`followup_to references unknown group "${groupId}"`, "unknown_group");
@@ -40412,10 +40600,18 @@ var init_jobs = __esm({
           }
           const rounds = this.#chainRounds(member.chain_id);
           const latest = rounds.filter((j) => !["failed", "cancelled"].includes(j.status)).sort((a, b) => b.round - a.round)[0];
+          if (!latest) {
+            skipped.push({
+              job_id: member.job_id,
+              target: member.target,
+              reason: `${member.status}, so there is no answer to follow up`
+            });
+            continue;
+          }
           const nextRound = Math.max(...rounds.map((j) => j.round)) + 1;
           const consultant = consultantByName(member.target);
-          const reason = !latest ? `${member.status}, so there is no answer to follow up` : latest.status !== "completed" ? `round ${latest.round} is still ${latest.status}` : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds` : !consultant || !consultantAvailable(consultant) ? "this consultant is no longer configured or available here" : null;
-          if (reason) skipped.push({ job_id: (latest ?? member).job_id, target: member.target, reason });
+          const reason = latest.status !== "completed" ? `round ${latest.round} is still ${latest.status}` : nextRound > POLICY.maxRounds ? `has used its ${POLICY.maxRounds} rounds` : !consultant || !consultantAvailable(consultant) ? "this consultant is no longer configured or available here" : null;
+          if (reason) skipped.push({ job_id: latest.job_id, target: member.target, reason });
           else links.push({ parent: { ...latest, nextRound }, round: nextRound, groupMember: member });
         }
         if (!links.length) {
@@ -40426,14 +40622,21 @@ var init_jobs = __esm({
         }
         return { group, links, skipped };
       }
+      /**
+       * @param {ParsedRequest} req
+       * @param {Array<{parent: Round | null, round: number, groupMember?: Round}>} links
+       * @param {Seat[]} seats
+       * @param {GroupParents | null} [fromGroup]
+       */
       #admitted(req, links, seats, fromGroup = null) {
-        const parent = links[0].groupMember ?? links[0].parent;
+        const first = links[0];
+        const parent = first?.groupMember ?? first?.parent;
         const groupId = id("group");
         let exposeManifest = null;
-        const parentEntries = req.context.expose_from_parent ? parent.brief?.expose_paths?.entries ?? [] : [];
+        const parentEntries = req.context.expose_from_parent ? parent?.brief?.expose_paths?.entries ?? [] : [];
         if (req.context.expose_from_parent && parentEntries.length === 0) {
           throw new RequestError(
-            `context.expose_from_parent: job "${parent.job_id}" exposed no files, so there is nothing to copy again; name them in context.expose_paths`,
+            `context.expose_from_parent: job "${parent?.job_id}" exposed no files, so there is nothing to copy again; name them in context.expose_paths`,
             "nothing_to_inherit"
           );
         }
@@ -40454,7 +40657,10 @@ var init_jobs = __esm({
               if (req.context.expose_diff) {
                 exposeManifest.skipped.push({ source: d.source, reason: "replaced", exposed_as: d.exposed_as });
               } else {
-                if (reexposeChange(snapshot, d, exposeManifest)) exposeManifest.entries.at(-1).inherited = true;
+                if (reexposeChange(snapshot, d, exposeManifest)) {
+                  const added = exposeManifest.entries.at(-1);
+                  if (added) added.inherited = true;
+                }
               }
             }
             if (req.context.expose_diff) {
@@ -40463,28 +40669,32 @@ var init_jobs = __esm({
               if (diff) {
                 req.context.artifacts = [
                   ...req.context.artifacts,
-                  { name: `git diff ${exposeManifest.entries.at(-1).base}`, kind: "diff", language: "diff", excerpt: diff }
+                  { name: `git diff ${exposeManifest.entries.at(-1)?.base}`, kind: "diff", language: "diff", excerpt: diff }
                 ];
               }
             }
             markSinceParent(exposeManifest, parentEntries);
             if (parentEntries.length && !exposeManifest.entries.length && !req.context.facts.length && !req.context.artifacts.length) {
               throw new RequestError(
-                `context.expose_from_parent: nothing job "${parent.job_id}" exposed is there any more, and this request has no facts or artifacts`,
+                `context.expose_from_parent: nothing job "${parent?.job_id}" exposed is there any more, and this request has no facts or artifacts`,
                 "nothing_to_inherit"
               );
             }
           } catch (err) {
             cleanupJobDir(groupId);
-            if (err instanceof RequestError || !err.code) throw err;
+            if (err instanceof RequestError || !(err instanceof Error) || !("code" in err) || !err.code) throw err;
             throw new RequestError(err.message, err.code === "too_large" ? "expose_paths_too_large" : "expose_path_invalid");
           }
           req._snapshot = path11.join(snapshot, "workspace");
         }
         const members2 = req.targets.map((target, i) => {
-          const { parent: from, round: round2 } = links[i];
+          const link = links[i];
+          const seat = seats[i];
+          if (!link || !seat) throw new Error(`no follow-up link or seat for target "${target}"`);
+          const { parent: from, round: round2 } = link;
           const chainId = from ? from.chain_id : id("chain");
-          const jobId = seats[i].job_id;
+          const jobId = seat.job_id;
+          const consultant = consultantNamed(target);
           const job = {
             job_id: jobId,
             chain_id: chainId,
@@ -40519,9 +40729,9 @@ var init_jobs = __esm({
             status: "queued",
             // What this consultant is: the CLI it runs on, the model and its
             // lineage, as the operator defined it.
-            cli: consultantByName(target).cli,
-            model: consultantByName(target).model,
-            vendor: consultantByName(target).vendor,
+            cli: consultant.cli,
+            model: consultant.model,
+            vendor: consultant.vendor,
             created_at: (/* @__PURE__ */ new Date()).toISOString(),
             started_at: null,
             finished_at: null,
@@ -40538,16 +40748,18 @@ var init_jobs = __esm({
           this.order.push(jobId);
           LIVE_HERE.add(jobId);
           this.#watchCancels();
-          job._owner = seats[i].owner;
+          job._owner = seat.owner;
           this.#mark(job);
           return job;
         });
         this.#evict();
+        const [firstMember] = members2;
+        if (!firstMember) throw new Error("a consultation needs a target");
         const group = {
           group_id: groupId,
           created_at: (/* @__PURE__ */ new Date()).toISOString(),
           mode: req.mode,
-          question: members2[0].question,
+          question: firstMember.question,
           // already redacted, and byte-identical across the group
           job_ids: members2.map((m) => m.job_id)
         };
@@ -40564,13 +40776,13 @@ var init_jobs = __esm({
           });
         }
         if (req._snapshot) cleanupJobDir(groupId);
-        const { round } = members2[0];
+        const { round } = firstMember;
         const sameRound = members2.every((m) => m.round === round);
         const common = {
           group_id: groupId,
           ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
           ...fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {},
-          ...parentEntries.length ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {},
+          ...parentEntries.length && exposeManifest ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {},
           mode: req.mode,
           // Counted, not refused: a brief of facts alone is a legitimate
           // consultation, but one about code that hands over no file is one the
@@ -40584,7 +40796,7 @@ var init_jobs = __esm({
           limits: limitsSummary()
         };
         if (!req.fanout) {
-          const job = members2[0];
+          const job = firstMember;
           return {
             ...common,
             job_id: job.job_id,
@@ -40615,13 +40827,24 @@ var init_jobs = __esm({
       // (memory wins: it can hold a verdict written since the round was saved).
       // Each point goes with the lead's verdict on it, so the consultant answers
       // knowing which of its points were checked and how they came out.
+      /**
+       * @param {string} chainId
+       * @returns {Round[]}
+       */
       #chainRounds(chainId) {
         const byRound = new Map(loadChain(chainId).map((j) => [j.round, j]));
         for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
         return [...byRound.values()];
       }
+      /**
+       * @param {string} chainId
+       * @returns {PriorRound[]}
+       */
       #chainHistory(chainId) {
-        return this.#chainRounds(chainId).filter((j) => j.status === "completed" && j.result).sort((a, b) => a.round - b.round).map((j) => {
+        return this.#chainRounds(chainId).filter(
+          /** @returns {j is Round & {result: ConsultResult}} */
+          (j) => j.status === "completed" && Boolean(j.result)
+        ).sort((a, b) => a.round - b.round).map((j) => {
           const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
           const ordered = (items, shape) => [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
             id: x.id,
@@ -40646,6 +40869,7 @@ var init_jobs = __esm({
       #evict() {
         while (this.order.length > POLICY.maxJobsRetained) {
           const oldest = this.order.shift();
+          if (oldest === void 0) break;
           const j = this.jobs.get(oldest);
           if (j && (j.status === "running" || j.status === "queued")) {
             this.order.push(oldest);
@@ -40659,14 +40883,22 @@ var init_jobs = __esm({
       // last member there is nothing left to compare, so drop the group rather than
       // keep answering as a complete fan-out with no answers in it (and keep the
       // Map, which holds the question text, from growing without bound).
+      /** @param {string} groupId */
       #dropGroupIfEmpty(groupId) {
         const group = this.groups.get(groupId);
         if (!group) return;
         if (group.job_ids.some((jid) => this.jobs.has(jid))) return;
         this.groups.delete(groupId);
       }
+      /**
+       * @param {Job} job
+       * @param {ParsedRequest} req
+       * @param {import('./brief.mjs').BriefChain} chain
+       * @param {string} [brief]
+       * @returns {Promise<Job>}
+       */
       async #execute(job, req, chain, brief) {
-        const consultant = consultantByName(job.target);
+        const consultant = consultantNamed(job.target);
         const cli = consultant.cli;
         const adapter = ADAPTERS[cli];
         const workdir = makeWorkdir(job.job_id);
@@ -40674,7 +40906,7 @@ var init_jobs = __esm({
           try {
             fs9.cpSync(req._snapshot, path11.join(workdir, "workspace"), { recursive: true });
           } catch (err) {
-            return this.#fail(job, "spawn_error", `could not copy the exposed files: ${err.message}`);
+            return this.#fail(job, "spawn_error", `could not copy the exposed files: ${err instanceof Error ? err.message : err}`);
           }
         }
         const text2 = brief ?? renderBrief(req, chain);
@@ -40720,7 +40952,9 @@ var init_jobs = __esm({
               env,
               input: text2,
               timeoutMs: timeout,
-              onCancelSignal: (fn) => job._cancelFns.push(fn),
+              onCancelSignal: (fn) => {
+                job._cancelFns.push(fn);
+              },
               compactLine: adapter.compactLine,
               settleAfter: adapter.settleAfter,
               stopSignal: adapter.stopSignal
@@ -40761,7 +40995,7 @@ var init_jobs = __esm({
             }
             const lastMessageText = invocation.lastMessagePath ? readIfExists(invocation.lastMessagePath) : "";
             interpreted = adapter.interpret({ ...run, lastMessageText });
-            const { recoveredError } = interpreted;
+            const recoveredError = interpreted.ok ? interpreted.recoveredError : null;
             if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
               interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
             }
@@ -40860,6 +41094,13 @@ var init_jobs = __esm({
           sandbox?.cleanup();
         }
       }
+      /**
+       * @param {Job} job
+       * @param {string} kind
+       * @param {unknown} message
+       * @param {string | null} [detail]
+       * @returns {Job}
+       */
       #fail(job, kind, message, detail) {
         if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") return job;
         job.status = kind === "cancelled" ? "cancelled" : "failed";
@@ -40875,12 +41116,14 @@ var init_jobs = __esm({
         return job;
       }
       // The in-progress marker other processes read (see store.writeRunning).
+      /** @param {Job} job */
       #mark(job) {
         try {
           writeRunning({ ...this.#record(job), owner: job._owner });
         } catch {
         }
       }
+      /** @param {Job} job */
       #finish(job) {
         try {
           persistRound(this.#record(job));
@@ -40898,7 +41141,7 @@ var init_jobs = __esm({
       // consultant did not produce and a word outside VERDICTS, then stores what
       // was written. It never decides that a finding was adopted, and it never
       // fills in a verdict the lead did not write.
-      /** @param {Record<string, any>} [input] */
+      /** @param {RawRecord} [input] */
       record(input2 = {}) {
         if (input2.records !== void 0) return this.#recordMany(input2);
         const allowed = ["job_id", "entries", "reflection"];
@@ -40918,6 +41161,7 @@ var init_jobs = __esm({
       // record is checked before anything is written, so a bad id leaves the
       // history as it was; then each job is written on its own, and a write that
       // fails is named in the answer rather than reported as saved.
+      /** @param {RawRecord} input */
       #recordMany(input2) {
         const extra = Object.keys(input2).filter((k) => k !== "records");
         if (extra.length) {
@@ -40960,7 +41204,10 @@ var init_jobs = __esm({
       }
       // Everything that can be wrong with a record, found before anything is
       // written: what the job's record and reflection become, or a RequestError.
-      /** @param {{job_id?: string, entries?: any[], reflection?: any}} rec */
+      /**
+       * @param {RawRecord} rec
+       * @returns {RecordChange}
+       */
       #checkRecord({ job_id: jobId, entries, reflection }) {
         if (entries === void 0 && reflection === void 0) {
           throw new RequestError(
@@ -41025,21 +41272,25 @@ var init_jobs = __esm({
           }
           newReflection = { delta, related_item_ids: related, recorded_at: now };
         }
-        const newRecord = entries === void 0 ? void 0 : { updated_at: now, entries: ids.filter((id2) => merged.has(id2)).map((id2) => merged.get(id2)) };
+        const newRecord = entries === void 0 ? void 0 : {
+          updated_at: now,
+          entries: ids.flatMap((id2) => merged.get(id2) ?? [])
+        };
         return { job, live, record: newRecord, reflection: newReflection };
       }
+      /** @param {RecordChange} change */
       #saveRecord({ job, live, record: record2, reflection }) {
         const was = { record: job.record, reflection: job.reflection };
         if (reflection !== void 0) job.reflection = reflection;
         if (record2 !== void 0) job.record = record2;
         try {
-          persistRound(live ? this.#record(job) : job, { appendIndex: false });
+          persistRound(live ? this.#record(live) : job, { appendIndex: false });
         } catch (e) {
           Object.assign(job, was);
           return {
             job_id: job.job_id,
             error: "record_not_saved",
-            message: `the verdict for "${job.job_id}" could not be written to the history (${e.message}); record it again`
+            message: `the verdict for "${job.job_id}" could not be written to the history (${e instanceof Error ? e.message : e}); record it again`
           };
         }
         const summary = job.record && recordSummary(job);
@@ -41051,6 +41302,12 @@ var init_jobs = __esm({
           reflection_saved: job.reflection != null
         };
       }
+      /**
+       * @param {string} jobId
+       * @param {number | undefined} waitMs
+       * @param {{detail?: string | undefined}} [opts]
+       * @param {AbortSignal} [signal]
+       */
       async wait(jobId, waitMs, opts, signal) {
         const job = this.jobs.get(jobId);
         if (!job) return this.#waitOnDisk(() => this.view(jobId, opts), waitMs, signal);
@@ -41063,6 +41320,13 @@ var init_jobs = __esm({
       }
       // A consultation another process runs has no promise here, so its history
       // is re-read once a second until it is no longer running or the wait is up.
+      /**
+       * @template {{status: string}} T
+       * @param {() => T | null} read
+       * @param {number | undefined} waitMs
+       * @param {AbortSignal} [signal]
+       * @returns {Promise<T | null>}
+       */
       async #waitOnDisk(read, waitMs, signal) {
         const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
         let view = read();
@@ -41085,6 +41349,7 @@ var init_jobs = __esm({
           }
         }, CANCEL_POLL_MS).unref();
       }
+      /** @param {string} jobId */
       cancel(jobId) {
         const job = this.jobs.get(jobId);
         if (!job) {
@@ -41098,17 +41363,21 @@ var init_jobs = __esm({
           };
         }
         if (job.status !== "running" && job.status !== "queued") {
-          return { ...this.view(jobId), cancel_effect: `job was already ${job.status}` };
+          return { ...this.#jobView(job, void 0), cancel_effect: `job was already ${job.status}` };
         }
         job.cancelRequested = true;
         for (const fn of job._cancelFns) fn();
         if (job._handle) job._handle.stop();
-        return { ...this.view(jobId), status: "cancelling", cancel_effect: "consultant process group signalled" };
+        return { ...this.#jobView(job, void 0), status: "cancelling", cancel_effect: "consultant process group signalled" };
       }
       // Every field here is derived from the one `members` array it is handed, so a
       // group view can never report one status in `members` and another in
       // `comparison` or `status` for the same job.
-      /** @param {any} group @param {any[]} members @param {{detail?: string}} [opts] */
+      /**
+       * @param {Group} group
+       * @param {JobView[]} members
+       * @param {{detail?: string | undefined}} [opts]
+       */
       #shapeGroup(group, members2, { detail } = {}) {
         const full = detail === "full";
         const cancelling = members2.some((m) => m.status === "cancelling");
@@ -41158,14 +41427,27 @@ var init_jobs = __esm({
           limits: live || !full ? null : limitsSummary()
         };
         const anyFinished = members2.some((m) => ["completed", "failed", "cancelled"].includes(m.status));
-        if (anyFinished) view.comparison = comparison(members2, full ? Infinity : GROUP_CHARS - printed(view));
-        return view;
+        return anyFinished ? { ...view, comparison: comparison(members2, full ? Infinity : GROUP_CHARS - printed(view)) } : view;
       }
+      /**
+       * @param {string} groupId
+       * @param {{detail?: string | undefined}} [opts]
+       */
       groupView(groupId, opts) {
         const group = this.groups.get(groupId) ?? loadGroup(groupId);
         if (!group) return null;
-        return this.#shapeGroup(group, group.job_ids.map((jid) => this.view(jid, opts)).filter(Boolean), opts);
+        return this.#shapeGroup(
+          group,
+          group.job_ids.map((jid) => this.view(jid, opts)).filter((v) => v != null),
+          opts
+        );
       }
+      /**
+       * @param {string} groupId
+       * @param {number | undefined} waitMs
+       * @param {{detail?: string | undefined}} [opts]
+       * @param {AbortSignal} [signal]
+       */
       async waitGroup(groupId, waitMs, opts, signal) {
         const group = this.groups.get(groupId);
         if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
@@ -41176,6 +41458,7 @@ var init_jobs = __esm({
         }
         return this.groupView(groupId, opts);
       }
+      /** @param {string} groupId */
       cancelGroup(groupId) {
         const group = this.groups.get(groupId);
         if (!group) {
@@ -41191,7 +41474,7 @@ var init_jobs = __esm({
           const j = this.jobs.get(jid);
           return j && (j.status === "running" || j.status === "queued");
         }).length;
-        const members2 = group.job_ids.map((jid) => this.cancel(jid)).filter(Boolean);
+        const members2 = group.job_ids.map((jid) => this.cancel(jid)).filter((v) => v != null);
         const total = group.job_ids.length;
         return {
           ...this.#shapeGroup(group, members2),
@@ -41242,7 +41525,7 @@ var init_jobs = __esm({
     MIN_TEXT_CHARS = 40;
     flagNames = (a) => {
       if (!a.startsWith("-") || a === "-") return [];
-      const name = a.split("=")[0];
+      const [name = ""] = a.split("=");
       return a.startsWith("--") ? [name] : [name, a.slice(0, 2), `-${name}`];
     };
   }
@@ -41465,13 +41748,13 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
   if (Boolean(chainId) === Boolean(groupId)) {
     throw new ExportError("pass exactly one of chain_id or group_id", "export_target_required");
   }
-  const chainIds = groupId ? chainsOfGroup(groupId) : [chainId];
+  const chainIds = groupId ? chainsOfGroup(groupId) : chainId ? [chainId] : [];
   const perChain = chainIds.map((id2) => ({ chain_id: id2, rounds: roundsOf(id2) }));
-  const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
-  if (total === 0) {
+  const first = perChain.find((c) => c.rounds.length)?.rounds[0];
+  if (!first) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, "unknown_chain");
   }
-  const first = perChain.find((c) => c.rounds.length)?.rounds[0];
+  const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
   const lines = [
     `# Consultation record: ${first.question}`,
     "",
@@ -41501,9 +41784,14 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
 var ExportError, historyDir, bullets2;
 var init_export = __esm({
   "src/export.mjs"() {
+    "use strict";
     init_policy();
     init_expose_paths();
     ExportError = class extends Error {
+      /**
+       * @param {string} message
+       * @param {string} code
+       */
       constructor(message, code) {
         super(message);
         this.name = "ExportError";
@@ -41540,6 +41828,7 @@ function staleInstall(home = os5.homedir(), severallyHome = POLICY.home) {
     // This release names it SEVERALLY_VERSION; older ones only had it in the server info.
     runtime: bundle?.match(/(?:SEVERALLY_VERSION = |name: ["']severally["'], version: )["'](\d+\.\d+\.\d+)["']/)?.[1],
     claude_skills_dir: (() => {
+      if (plugin === null) return void 0;
       try {
         return JSON.parse(plugin).version;
       } catch {
@@ -41548,28 +41837,22 @@ function staleInstall(home = os5.homedir(), severallyHome = POLICY.home) {
     })()
   };
   const copies = { this_server: SEVERALLY_VERSION };
-  for (const [name, v] of Object.entries(found)) if (/^\d+\.\d+\.\d+$/.test(v ?? "")) copies[name] = v;
+  for (const [name, v] of Object.entries(found)) if (v !== void 0 && /^\d+\.\d+\.\d+$/.test(v)) copies[name] = v;
   const versions = Object.values(copies);
   if (versions.every((v) => v === SEVERALLY_VERSION)) return null;
   const newest = versions.reduce((a, b) => older(a, b) ? b : a);
   return {
     copies,
-    behind: Object.keys(copies).filter((k) => older(copies[k], newest)),
+    behind: Object.entries(copies).filter(([, v]) => older(v, newest)).map(([k]) => k),
     fix: `bring every copy to ${newest}: run \`npx -y severally-mcp@${newest} install\` (or \`node scripts/install.mjs\` from a checkout of that version) (it updates the runtime and the ~/.claude/skills copy), run \`/plugin marketplace update severally\` for a marketplace install, then restart the clients`
   };
 }
 function createServer(manager = new JobManager()) {
   const stale = staleInstall();
   const server = new McpServer({ name: "severally", version: SEVERALLY_VERSION }, { instructions: SERVER_INSTRUCTIONS });
-  const ok = (payload) => ({ content: [{ type: (
-    /** @type {const} */
-    "text"
-  ), text: JSON.stringify(payload, null, 2) }] });
+  const ok = (payload) => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
   const fail = (payload) => ({
-    content: [{ type: (
-      /** @type {const} */
-      "text"
-    ), text: JSON.stringify(payload, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
     isError: true
   });
   server.registerTool(
@@ -41588,7 +41871,7 @@ function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null, limits: limitsSummary() });
         }
-        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
       }
     }
   );
@@ -41631,9 +41914,15 @@ function createServer(manager = new JobManager()) {
       }, PROGRESS_EVERY_MS);
       let view;
       try {
-        view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal) : await manager.wait(job_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal);
+        view = group_id ? await manager.waitGroup(group_id, wait_ms ?? DEFAULT_WAIT_MS, { detail }, req?.signal) : await manager.wait(
+          /** @type {string} */
+          job_id,
+          wait_ms ?? DEFAULT_WAIT_MS,
+          { detail },
+          req?.signal
+        );
       } finally {
-        clearInterval(timer);
+        clearInterval(timer ?? void 0);
       }
       if (!view) {
         return fail({
@@ -41643,7 +41932,11 @@ function createServer(manager = new JobManager()) {
       }
       if (!ids || ["running", "queued", "cancelling"].includes(view.status)) return ok(view);
       try {
-        return ok(pointsOf(view, ids));
+        return ok(pointsOf(
+          /** @type {import('./jobs.mjs').JobView} */
+          view,
+          ids
+        ));
       } catch (err) {
         if (err instanceof RequestError) return fail({ error: err.code, message: err.message });
         throw err;
@@ -41665,7 +41958,10 @@ function createServer(manager = new JobManager()) {
       if (Boolean(job_id) === Boolean(group_id)) {
         return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
       }
-      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(job_id);
+      const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(
+        /** @type {string} */
+        job_id
+      );
       if (!view) {
         return fail({
           error: "unknown_job",
@@ -41708,7 +42004,7 @@ function createServer(manager = new JobManager()) {
         if (err instanceof RequestError) {
           return fail({ error: err.code, message: err.message, details: err.details ?? null });
         }
-        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
       }
     }
   );
@@ -41728,7 +42024,7 @@ function createServer(manager = new JobManager()) {
         return ok(exportChain({ chain_id, group_id }));
       } catch (err) {
         if (err instanceof ExportError) return fail({ error: err.code, message: err.message });
-        return fail({ error: "internal_error", message: String(err?.message ?? err) });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
       }
     }
   );
@@ -41779,9 +42075,10 @@ async function main() {
   process.on("exit", () => manager.killNow());
   serveStdio(() => createServer(manager).server);
 }
-var SEVERALLY_VERSION, DEFAULT_WAIT_MS, PROGRESS_EVERY_MS, semver, older, SERVER_INSTRUCTIONS, startDescription, recordShape;
+var SEVERALLY_VERSION, DEFAULT_WAIT_MS, PROGRESS_EVERY_MS, semver, older, SERVER_INSTRUCTIONS, startDescription, recordShape, errorMessage2;
 var init_server = __esm({
   "src/server.mjs"() {
+    "use strict";
     init_zod();
     init_dist();
     init_stdio();
@@ -41789,13 +42086,17 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.4.0";
+    SEVERALLY_VERSION = "2.4.1";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
     older = (a, b) => {
       const [x, y] = [semver(a), semver(b)];
-      for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+      for (let i = 0; i < 3; i++) {
+        const [p, q] = [x[i], y[i]];
+        if (p === void 0 || q === void 0) return false;
+        if (p !== q) return p < q;
+      }
       return false;
     };
     SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
@@ -41858,6 +42159,7 @@ Model, permissions, rounds, timeout and size caps are fixed by this server.`;
         related_item_ids: external_exports.array(external_exports.string().min(1)).max(50).optional().describe("f1, u1, c1 ...")
       }).optional().describe("written after reading the answer")
     };
+    errorMessage2 = (err) => String((typeof err === "object" && err !== null && "message" in err ? err.message : void 0) ?? err);
   }
 });
 
@@ -41875,7 +42177,7 @@ function registration({ cmd, checks }) {
       ran = true;
       if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return "registered (listed by the client)";
     } catch (err) {
-      if (typeof err.status === "number") ran = true;
+      if (typeof thrown(err, "status") === "number") ran = true;
     }
   }
   return ran ? "not registered" : `could not tell (${cmd} ${checks.map((a) => a.join(" ")).join(" / ")} failed)`;
@@ -41888,9 +42190,9 @@ function login(cli) {
   let ok = true;
   try {
     out = execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
-  } catch (err) {
-    if (typeof err.status !== "number") return `could not tell (${check2.cmd} ${check2.args.join(" ")} failed)`;
-    out = `${err.stdout ?? ""}`;
+  } catch (e) {
+    if (typeof thrown(e, "status") !== "number") return `could not tell (${check2.cmd} ${check2.args.join(" ")} failed)`;
+    out = `${thrown(e, "stdout") ?? ""}`;
     ok = false;
   }
   try {
@@ -41928,9 +42230,10 @@ function status() {
 `);
   return problem ? 1 : 0;
 }
-var CLIENTS, LOGIN;
+var CLIENTS, thrown, LOGIN;
 var init_status = __esm({
   "src/status.mjs"() {
+    "use strict";
     init_policy();
     init_server();
     init_platform();
@@ -41954,6 +42257,7 @@ var init_status = __esm({
       { label: "Antigravity", cmd: "agy", checks: [["mcp", "list"]] },
       { label: "OpenCode", cmd: "opencode", checks: [["mcp", "list"]] }
     ];
+    thrown = (e, key) => typeof e === "object" && e !== null ? Reflect.get(e, key) : void 0;
     LOGIN = {
       "claude-code": { cmd: "claude", args: ["auth", "status", "--json"], read: (out) => JSON.parse(out).loggedIn === true },
       // Codex prints its answer on stderr; the exit status carries the verdict.

@@ -80,9 +80,16 @@ const backupDir = path.join(home, '.severally', 'backups', stamp);
 let keptRegistrations = false;
 let lastListOutput = '';
 
+/** @param {...unknown} a */
 const log = (...a) => console.log(...a);
+/** @param {string} s */
 const step = (s) => log(`\n== ${s}`);
 
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('../src/platform.mjs').ExecOptions & { real?: boolean }} [opts]
+ */
 function run(cmd, args, opts = {}) {
   const { real, ...spawnOpts } = opts;
   if (dryRun && !real) {
@@ -92,16 +99,25 @@ function run(cmd, args, opts = {}) {
   return execCommandSync(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...spawnOpts });
 }
 
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('../src/platform.mjs').ExecOptions & { real?: boolean }} [opts]
+ * @returns {RunResult}
+ */
 function tryRun(cmd, args, opts) {
   try {
     return { ok: true, out: run(cmd, args, opts) };
-  } catch (err) {
+  } catch (e) {
+    // execFileSync failures carry the child's stdout and stderr.
+    const err = /** @type {{ stdout?: unknown, stderr?: unknown, message?: unknown }} */ (e);
     return { ok: false, out: `${err.stdout ?? ''}${err.stderr ?? ''}`.trim() || String(err.message) };
   }
 }
 
 // Backup names are derived from the whole path: two different clients both
 // hold a "severally" directory, and one must not overwrite the other.
+/** @param {string} target */
 function backupName(target) {
   return path
     .relative(home, target)
@@ -110,6 +126,7 @@ function backupName(target) {
     .replace(/^\./, '');
 }
 
+/** @param {string} file */
 function backup(file) {
   if (!fs.existsSync(file)) return null;
   if (dryRun) {
@@ -125,6 +142,7 @@ function backup(file) {
   return dest;
 }
 
+/** @param {string} dir */
 function backupTree(dir) {
   if (!fs.existsSync(dir)) return null;
   if (dryRun) {
@@ -138,6 +156,7 @@ function backupTree(dir) {
 }
 
 // Read-only probes run even under --dry-run, so the plan it prints is accurate.
+/** @param {string} bin */
 function which(bin) {
   return findCommand(bin);
 }
@@ -198,6 +217,7 @@ let globalRoot = null;
 if (mode === 'plugin' && !skipGlobal) {
   const npmRoot = tryRun('npm', ['root', '-g'], { real: true });
   globalRoot = npmRoot.ok ? npmRoot.out.trim() || null : null;
+  /** @param {string} dir */
   const inside = (dir) => {
     try {
       return fs.realpathSync(root).startsWith(fs.realpathSync(dir) + path.sep);
@@ -214,6 +234,7 @@ if (mode === 'plugin' && !skipGlobal) {
 }
 
 step(`Installing the standalone MCP server (mode: ${mode})`);
+/** @type {[string, string]} */
 const serverCommand = [process.execPath, installRuntime()];
 const runtimeDir = path.dirname(serverCommand[1]);
 const marketplaceRoot = path.join(home, '.severally', 'marketplace');
@@ -322,17 +343,20 @@ const agyConfig = path.join(home, '.gemini', 'config', 'mcp_config.json');
 const CODEX_TIMEOUT_SEC = 660;
 const codexConfig = path.join(codexHome, 'config.toml');
 // The user's own tool_timeout_sec, read before --force removes the table that holds it.
+/** @type {number | undefined} */
 let priorCodexTimeout;
 
 // Where [mcp_servers.severally] sits in config.toml, and what it holds.
 // A minimal text read, not a TOML parser: the table runs to the next header
 // that is not one of its own sub-tables (codex may put env in one).
+/** @returns {{ reason: string, lines?: undefined, start?: undefined, timeout?: undefined, wait?: undefined } | { reason?: undefined, lines: string[], start: number, timeout: number | undefined, wait: boolean }} */
 function codexTable() {
+  /** @type {string[]} */
   let lines;
   try {
     lines = fs.readFileSync(codexConfig, 'utf8').split('\n');
   } catch (err) {
-    return { reason: `cannot read ${codexConfig}: ${err.message}` };
+    return { reason: `cannot read ${codexConfig}: ${/** @type {Error} */ (err).message}` };
   }
   const start = lines.findIndex((l) => /^\s*\[\s*mcp_servers\.severally\s*\]/.test(l));
   if (start < 0) return { reason: `${codexConfig} has no [mcp_servers.severally] table` };
@@ -357,15 +381,16 @@ function codexPlan() {
 
 // Inserts tool_timeout_sec right after the table header. Returns why it could
 // not, or null.
+/** @param {number} sec */
 function writeCodexTimeout(sec) {
   const t = codexTable();
-  if (t.reason) return t.reason;
+  if (t.reason !== undefined) return t.reason;
   if (t.timeout !== undefined) return null; // never overwrite the user's value
   t.lines.splice(t.start + 1, 0, `tool_timeout_sec = ${sec}`);
   try {
     fs.writeFileSync(codexConfig, t.lines.join('\n'));
   } catch (err) {
-    return `cannot write ${codexConfig}: ${err.message}`;
+    return `cannot write ${codexConfig}: ${/** @type {Error} */ (err).message}`;
   }
   return null;
 }
@@ -373,12 +398,28 @@ function writeCodexTimeout(sec) {
 const claudeSkillsDir = path.join(home, '.claude', 'skills');
 
 // ---------------------------------------------------------------- clients
+/**
+ * @typedef {{ ok: boolean, out: string }} RunResult
+ * @typedef {object} Client
+ * @property {string} bin
+ * @property {string} label
+ * @property {string[]} backup
+ * @property {() => boolean} isRegistered
+ * @property {() => RunResult} remove
+ * @property {(bin: string[]) => RunResult} add
+ * @property {() => void} [keptNote]
+ * @property {boolean} [verifyAdd]
+ * @property {string[]} [registrationConfig]
+ * @property {string} skillFrom
+ * @property {string} skillTo
+ */
 // Each row fully describes how to register a client's MCP server directly
 // (through the client's own `mcp add`) and place its skill. This is the one
 // place that knows how severally is installed outside of a bundled
 // plugin: --manual mode installs every row this way, and the default plugin
 // mode falls back to the Antigravity and OpenCode rows alone, since those
 // two have no verified plugin-install path.
+/** @type {Client[]} */
 const CLIENTS = [
   {
     bin: 'claude',
@@ -509,14 +550,24 @@ const CLIENTS = [
     skillTo: path.join(xdgConfig, 'opencode', 'skills', 'severally'),
   },
 ];
-const codexClient = CLIENTS.find((c) => c.bin === 'codex');
-const antigravityClient = CLIENTS.find((c) => c.bin === 'agy');
-const opencodeClient = CLIENTS.find((c) => c.bin === 'opencode');
+/** @param {string} bin */
+function clientFor(bin) {
+  const client = CLIENTS.find((c) => c.bin === bin);
+  if (!client) throw new Error(`no client row for ${bin}`);
+  return client;
+}
+const codexClient = clientFor('codex');
+const antigravityClient = clientFor('agy');
+const opencodeClient = clientFor('opencode');
 
 // opencode re-adds in place and has no `mcp remove`, so --force over an
 // existing registration can silently keep the OLD command while the
 // name-only list check passes. The global config is where the CLI records
 // the server command; confirm it matches what this install registers.
+/**
+ * @param {Client} client
+ * @param {string[]} bin
+ */
 function registrationCommandMatches(client, bin) {
   for (const file of client.registrationConfig ?? []) {
     let cfg;
@@ -534,6 +585,7 @@ function registrationCommandMatches(client, bin) {
 
 // The list right after an add can be briefly empty, so it is asked up to
 // three times, 1.5 s apart, before the add is judged.
+/** @param {Client} client */
 function listedAfterAdd(client) {
   for (let i = 0; i < 3; i++) {
     if (i) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
@@ -545,6 +597,10 @@ function listedAfterAdd(client) {
 // Registers one client's MCP server directly (through its own `mcp add`) and
 // copies its skill, backing up everything it touches first. Shared by plugin
 // mode (Antigravity only) and --manual mode (all three clients).
+/**
+ * @param {Client} client
+ * @param {string[]} bin
+ */
 function installClientDirectly(client, bin) {
   step(`Registering with ${client.label}`);
   if (!which(client.bin)) {
@@ -609,7 +665,12 @@ function claudeHasMarketplacePlugin() {
   if (!which('claude')) return false;
   const r = tryRun('claude', ['plugin', 'list', '--json'], { real: true });
   try {
-    return (r.ok && JSON.parse(r.out).find((p) => /^severally@/.test(p.id) && p.id !== 'severally@skills-dir')?.id) || false;
+    return (
+      (r.ok &&
+        JSON.parse(r.out).find((/** @type {{ id: string }} */ p) => /^severally@/.test(p.id) && p.id !== 'severally@skills-dir')
+          ?.id) ||
+      false
+    );
   } catch {
     return false;
   }
@@ -751,10 +812,13 @@ async function allowLocalTools() {
   if (!which('claude')) return;
   const prefix = mode === 'plugin' || claudeMarketplace ? 'mcp__plugin_severally_severally__' : 'mcp__severally__';
   const settingsFile = path.join(home, '.claude', 'settings.json');
+  /** @type {{ permissions?: { allow?: string[] } & Record<string, unknown> } & Record<string, unknown>} */
   let settings = {};
   try {
     settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-  } catch (err) {
+  } catch (e) {
+    // readFileSync and JSON.parse throw Errors; only fs ones carry a code.
+    const err = /** @type {NodeJS.ErrnoException} */ (e);
     if (err.code !== 'ENOENT') {
       log(`   could not read ${settingsFile} (${err.message}); left as it is`);
       return;

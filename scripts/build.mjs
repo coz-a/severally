@@ -13,6 +13,7 @@ const skillsDir = path.join(root, 'plugins', 'severally', 'skills');
 // `en`/`jp` are the everyday name a user would actually type when asking for
 // this peer by alias ("ask GPT", "gptと相談して") -- English keeps the
 // acronym capitalised, casual Japanese usually doesn't.
+/** @type {Record<string, { label: string, short: string, reach: string, en: string, jp: string, jpVerb: string }>} */
 const PEERS = {
   codex: {
     label: 'Codex CLI',
@@ -70,8 +71,8 @@ const EVERYONE_TRIGGERS = [
 
 // All four everyday-alias shapes for one peer: "ask X", "get X to review
 // this", the natural Japanese "XにVERBして" form, and "Xにレビューしてもらって".
-function triggersFor(peerId) {
-  const p = PEERS[peerId];
+/** @param {{ en: string, jp: string, jpVerb: string }} p */
+function triggersFor(p) {
   return [`"ask ${p.en}"`, `"get ${p.en} to review this"`, `"${p.jp}${p.jpVerb}"`, `"${p.jp}にレビューしてもらって"`];
 }
 
@@ -83,6 +84,7 @@ function triggersFor(peerId) {
 // one turn and the Skill itself then needs approving once (checked
 // 2026-10-18 with `claude -p --permission-mode default`).
 const QUIET_TOOLS = ['consult_get', 'consult_list', 'consult_record', 'consult_export', 'consult_cancel'];
+/** @param {string} text */
 function withAllowedTools(text) {
   const names = QUIET_TOOLS.flatMap((t) => [`mcp__plugin_severally_severally__${t}`, `mcp__severally__${t}`]);
   // A one-line description is assumed; a folded one would swallow the new key.
@@ -96,65 +98,63 @@ function withAllowedTools(text) {
 // then file name. Writes nothing, so it is safe to call from a test without
 // mutating the working tree.
 export function renderSkills() {
-  const rendered = {};
-  for (const host of HOSTS) rendered[host.dir] = {};
-  for (const name of SKILL_FILES) {
-    const texts = renderTemplate(`${name}.tmpl`);
-    for (const host of HOSTS) rendered[host.dir][name] = texts[host.dir];
-  }
-  return rendered;
+  return Object.fromEntries(
+    HOSTS.map((host) => [host.dir, Object.fromEntries(SKILL_FILES.map((name) => [name, renderTemplate(`${name}.tmpl`, host)]))]),
+  );
 }
 
 const SKILL_FILES = ['SKILL.md', 'reference.md'];
 
-function renderTemplate(file) {
+/**
+ * @param {string} file
+ * @param {{ dir: string, self: string }} host
+ */
+function renderTemplate(file, host) {
   const tmpl = fs.readFileSync(path.join(skillsDir, '_template', file), 'utf8');
-  const rendered = {};
-  for (const host of HOSTS) {
-    const peers = Object.keys(PEERS).filter((id) => id !== host.self);
-    const table = [
-      '| target | Consultant | Reach for it when |',
-      '|---|---|---|',
-      ...peers.map((id) => `| \`${id}\` | ${PEERS[id].label} | ${PEERS[id].reach} |`),
-    ].join('\n');
-    // Every consultant can read files; what keeps the answer brief-only is
-    // that the child starts in an empty working directory and is never told
-    // where the repository is. Codex additionally keeps a read-only shell, so
-    // "they cannot run commands" would be false about it.
-    const codexCaveat = peers.includes('codex')
-      ? ' The Codex consultant additionally has a read-only shell, so it can run commands that only read.'
-      : '';
-    const executionCaveat =
-      '\n\nOne caveat on that list: a consultant can read local files. Its writes are blocked,' +
-      '\nits network reaches only web search and browsing (none with `network: "off"`), credential and history' +
-      '\npaths are refused where its CLI allows, and by default it starts in an empty working directory without being' +
-      '\ntold where your repository is, so it answers from the brief and from the files you hand it:' +
-      '\n`context.expose_paths` (absolute paths) or `context.expose_diff` (a change in progress), which are' +
-      '\ncopied read-only into its working directory.' +
-      codexCaveat;
-    const text = tmpl
-      .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
-      .replaceAll('{{DESCRIPTION_PEERS}}', peers.map((id) => PEERS[id].short).join(' or '))
-      .replaceAll('{{TRIGGERS}}', [...peers.flatMap(triggersFor), ...EVERYONE_TRIGGERS].join(', '))
-      .replaceAll('{{PEER_TABLE}}', table)
-      .replaceAll('{{DEFAULT_TARGET}}', peers[0])
-      // The second peer, for the fan-out example of two named consultants.
-      .replaceAll('{{SECOND_TARGET}}', peers[1])
-      .replaceAll('{{SELF_TARGET}}', host.self);
-    rendered[host.dir] = host.self === 'claude-code' && file === 'SKILL.md.tmpl' ? withAllowedTools(text) : text;
-  }
-  return rendered;
+  const peers = Object.entries(PEERS).filter(([id]) => id !== host.self);
+  const [first, second] = peers;
+  // Every host has three peers, so both exist.
+  if (!first || !second) throw new Error(`${host.self}: expected at least two peers to consult`);
+  const table = [
+    '| target | Consultant | Reach for it when |',
+    '|---|---|---|',
+    ...peers.map(([id, p]) => `| \`${id}\` | ${p.label} | ${p.reach} |`),
+  ].join('\n');
+  // Every consultant can read files; what keeps the answer brief-only is
+  // that the child starts in an empty working directory and is never told
+  // where the repository is. Codex additionally keeps a read-only shell, so
+  // "they cannot run commands" would be false about it.
+  const codexCaveat = peers.some(([id]) => id === 'codex')
+    ? ' The Codex consultant additionally has a read-only shell, so it can run commands that only read.'
+    : '';
+  const executionCaveat =
+    '\n\nOne caveat on that list: a consultant can read local files. Its writes are blocked,' +
+    '\nits network reaches only web search and browsing (none with `network: "off"`), credential and history' +
+    '\npaths are refused where its CLI allows, and by default it starts in an empty working directory without being' +
+    '\ntold where your repository is, so it answers from the brief and from the files you hand it:' +
+    '\n`context.expose_paths` (absolute paths) or `context.expose_diff` (a change in progress), which are' +
+    '\ncopied read-only into its working directory.' +
+    codexCaveat;
+  const text = tmpl
+    .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)
+    .replaceAll('{{DESCRIPTION_PEERS}}', peers.map(([, p]) => p.short).join(' or '))
+    .replaceAll('{{TRIGGERS}}', [...peers.flatMap(([, p]) => triggersFor(p)), ...EVERYONE_TRIGGERS].join(', '))
+    .replaceAll('{{PEER_TABLE}}', table)
+    .replaceAll('{{DEFAULT_TARGET}}', first[0])
+    // The second peer, for the fan-out example of two named consultants.
+    .replaceAll('{{SECOND_TARGET}}', second[0])
+    .replaceAll('{{SELF_TARGET}}', host.self);
+  return host.self === 'claude-code' && file === 'SKILL.md.tmpl' ? withAllowedTools(text) : text;
 }
 
 // Thin writer: renders and writes each host's SKILL.md. Stays silent --
 // logging belongs to the CLI entry point below, not to code that may be
 // imported (e.g. by a test).
 export function generateSkills() {
-  const rendered = renderSkills();
-  for (const host of HOSTS) {
-    const out = path.join(skillsDir, host.dir, 'severally');
+  for (const [dir, files] of Object.entries(renderSkills())) {
+    const out = path.join(skillsDir, dir, 'severally');
     fs.mkdirSync(out, { recursive: true });
-    for (const name of SKILL_FILES) fs.writeFileSync(path.join(out, name), rendered[host.dir][name]);
+    for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(out, name), text);
   }
 }
 
@@ -184,15 +184,18 @@ export async function bundle() {
  * THIRD_PARTY_NOTICES beside the bundle: each package the bundle actually
  * contains, with its LICENSE file verbatim. esbuild's legalComments cannot do
  * this -- these packages state their licence only in the LICENSE file.
+ * @param {string[]} inputs
+ * @param {string} outDir
  */
 function writeNotices(inputs, outDir) {
   const pkgDirs = new Set();
   for (const input of inputs) {
-    const m = input
-      .split('/')
-      .join(path.sep)
-      .match(/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/);
-    if (m) pkgDirs.add(path.resolve(process.cwd(), m[1]));
+    const [, pkgPath] =
+      input
+        .split('/')
+        .join(path.sep)
+        .match(/^(.*node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)/) ?? [];
+    if (pkgPath) pkgDirs.add(path.resolve(process.cwd(), pkgPath));
   }
   const sections = [...pkgDirs]
     .map((dir) => {

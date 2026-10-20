@@ -33,6 +33,12 @@ import { POLICY, PROTECTED_FILE_NAMES, protectedRoots } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 import { CONSULT_RESULT_SCHEMA } from '../result-schema.mjs';
 
+/** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
+/** @typedef {import('../run.mjs').Invocation} Invocation */
+/** @typedef {import('../run.mjs').Interpreted} Interpreted */
+/** @typedef {import('../run.mjs').UsageRecord} UsageRecord */
+/** @typedef {import('../run.mjs').Boundary} Boundary */
+
 // --add-dir is not listed: the adapter passes `--add-dir /` itself, and
 // assertNoForbiddenFlags refuses any other value. --restricted confines the
 // file tools to the working directories, and without expose_paths that
@@ -89,11 +95,12 @@ export const RESERVED_FLAGS = [
 /** Read deny rules for the paths no consultant may read. */
 // Claude Code matches Windows paths in POSIX form (C:\\Users -> /c/Users), so
 // an absolute rule names the drive that way: //c/Users/..., not //C:/Users/....
-export const posixAbsolute = (p) => p.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`);
+export const posixAbsolute = (/** @type {string} */ p) =>
+  p.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, /** @type {string} */ d) => `/${d.toLowerCase()}`);
 
 export function protectedReadRules() {
   const home = os.homedir().replaceAll('\\', '/');
-  const spec = (root) =>
+  const spec = (/** @type {string} */ root) =>
     root.startsWith(`${home}/`) ? `~/${root.slice(home.length + 1)}` : `//${posixAbsolute(root).replace(/^\/+/, '')}`;
   return [
     ...protectedRoots().flatMap((r) => [`Read(${spec(r)})`, `Read(${spec(r)}/**)`]),
@@ -101,6 +108,10 @@ export function protectedReadRules() {
   ];
 }
 
+/**
+ * @param {BuildRequest} req
+ * @returns {Invocation}
+ */
 export function buildInvocation({ workdir, guardrails, consultant, hasExposedPaths = false, network = 'on' }) {
   const t = POLICY.clis['claude-code'];
   const chosen = consultant.model;
@@ -145,10 +156,27 @@ export function buildInvocation({ workdir, guardrails, consultant, hasExposedPat
   return { command: t.cli, args, model: chosen, workdir };
 }
 
+/**
+ * The result JSON the CLI prints; the CLI controls it, so every field is optional.
+ * @typedef {object} ClaudeResult
+ * @property {unknown} [is_error]
+ * @property {unknown} [result]
+ * @property {string | Record<string, unknown>} [structured_output]
+ * @property {string | Record<string, unknown>} [structuredOutput]
+ * @property {unknown[]} [permission_denials]
+ * @property {{ input_tokens?: unknown, cache_read_input_tokens?: unknown, output_tokens?: unknown, server_tool_use?: { web_search_requests?: unknown } }} [usage]
+ * @property {unknown} [total_cost_usd]
+ * @property {unknown} [num_turns]
+ */
+
+/**
+ * @param {string} [stdout]
+ * @returns {ClaudeResult | null}
+ */
 function lastJsonObject(stdout) {
-  const lines = (stdout || '').split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const t = lines[i].trim();
+  const lines = (stdout || '').split('\n').reverse();
+  for (const line of lines) {
+    const t = line.trim();
     if (!t.startsWith('{')) continue;
     try {
       const parsed = JSON.parse(t);
@@ -160,6 +188,10 @@ function lastJsonObject(stdout) {
   return null;
 }
 
+/**
+ * @param {{ stdout?: string, stderr?: string, code?: number | null }} run
+ * @returns {Interpreted}
+ */
 export function interpret({ stdout, stderr, code }) {
   const payload = lastJsonObject(stdout);
   if (!payload) {
@@ -193,10 +225,16 @@ export function interpret({ stdout, stderr, code }) {
   return { ok: true, text, payload, usageRaw: payload, denials: payload.permission_denials ?? [] };
 }
 
-export function usageRecord(payload) {
+/**
+ * @param {unknown} raw the CLI's result JSON, as interpret kept it
+ * @returns {UsageRecord | null}
+ */
+export function usageRecord(raw) {
+  // interpret's usageRaw is the ClaudeResult it parsed (or null).
+  const payload = /** @type {ClaudeResult | null} */ (raw);
   if (!payload) return null;
   const u = payload.usage ?? {};
-  const num = (v) => (typeof v === 'number' ? v : null);
+  const num = (/** @type {unknown} */ v) => (typeof v === 'number' ? v : null);
   return {
     input_tokens: num(u.input_tokens),
     cached_input_tokens: num(u.cache_read_input_tokens),
@@ -212,9 +250,12 @@ export function usageRecord(payload) {
  * What this consultant was launched with, read off the invocation: the
  * boundary record kept beside each answer. Facts about the launch, not a
  * claim about what the consultant did.
+ * @param {{ args: string[], hasExposedPaths?: boolean }} req
+ * @returns {Boundary}
  */
 export function boundary({ args, hasExposedPaths }) {
-  const tools = args[args.indexOf('--tools') + 1];
+  // buildInvocation always passes --tools with a value.
+  const tools = /** @type {string} */ (args[args.indexOf('--tools') + 1]);
   return {
     reads: hasExposedPaths ? 'the exposed copy only' : 'whole disk',
     shell: 'none',

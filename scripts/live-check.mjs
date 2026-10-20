@@ -18,10 +18,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { JobManager } from '../src/jobs.mjs';
+/** @typedef {import('../src/jobs.mjs').JobView} JobView */
 import { limitsSummary } from '../src/policy.mjs';
 import * as store from '../src/store.mjs';
 
 const argv = process.argv.slice(2);
+/**
+ * @param {string} name
+ * @param {string} dflt
+ */
 const arg = (name, dflt) => {
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? dflt : argv[i + 1];
@@ -30,6 +35,7 @@ const arg = (name, dflt) => {
 const target = arg('target', 'antigravity');
 const mode = arg('mode', 'review');
 
+/** @type {Record<string, Record<string, unknown>>} */
 const REQUESTS = {
   review: {
     mode: 'review',
@@ -101,13 +107,12 @@ REQUESTS.sandbox = {
   },
 };
 
-const request = { target, ...REQUESTS[mode] };
+const request = { target, ...(mode === undefined ? {} : REQUESTS[mode]) };
 
 console.log('limits:', JSON.stringify(limitsSummary(), null, 2));
 const mgr = new JobManager();
-/** @type {Record<string, any>} */
 const started = mgr.start(request);
-if (!started.job_id) {
+if (!('job_id' in started)) {
   console.error('live-check runs one consultant at a time: pass a single --target, not "all"');
   process.exit(2);
 }
@@ -130,10 +135,11 @@ try {
 } catch {
   /* no working directory: the job failed before it started */
 }
-await mgr.jobs.get(started.job_id).promise;
+await mgr.jobs.get(started.job_id)?.promise;
 clearInterval(watch);
 watcher?.close();
-const view = mgr.view(started.job_id);
+// The job was started above in this process, so it exists.
+const view = /** @type {JobView} */ (mgr.view(started.job_id));
 console.log(`\n=== finished in ${((Date.now() - t0) / 1000).toFixed(1)}s: ${view.status} ===`);
 console.log(JSON.stringify(view, null, 2));
 if (mode !== 'sandbox') process.exit(view.status === 'completed' ? 0 : 1);

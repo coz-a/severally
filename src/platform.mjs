@@ -1,3 +1,4 @@
+/// <reference path="./cross-spawn-escape.d.ts" />
 import fs from 'node:fs';
 import path from 'node:path';
 import which from 'which';
@@ -5,12 +6,24 @@ import spawn from 'cross-spawn';
 import escape from 'cross-spawn/lib/util/escape.js';
 import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from 'node:child_process';
 
+/**
+ * @param {string} source
+ * @param {string} destination
+ */
 export function copyTree(source, destination) {
   // Node 22.23.2's native cpSync fast path corrupts non-ASCII Windows paths.
   // A filter selects its JS traversal, preserving Japanese directory names.
   fs.cpSync(source, destination, { recursive: true, filter: () => true });
 }
 
+/** @typedef {import('node:child_process').SpawnOptions & { cwd?: string | undefined, env?: NodeJS.ProcessEnv | undefined }} SpawnOpts */
+
+/**
+ * @template {SpawnOpts} O
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {O} options
+ */
 function batchInvocation(command, args, options) {
   if (process.platform !== 'win32') return null;
   const resolved = findCommand(command, options);
@@ -26,17 +39,44 @@ function batchInvocation(command, args, options) {
   };
 }
 
+/**
+ * @overload
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {SpawnOpts & { stdio: ['pipe', 'pipe', 'pipe'] }} options
+ * @returns {import('node:child_process').ChildProcessWithoutNullStreams}
+ */
+/**
+ * @overload
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {SpawnOpts} [options]
+ * @returns {import('node:child_process').ChildProcess}
+ */
+/**
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {SpawnOpts} [options]
+ */
 export function spawnCommand(command, args, options = {}) {
   const batch = batchInvocation(command, args, options);
   return batch ? nativeSpawn(batch.command, batch.args, batch.options) : spawn(command, args, options);
 }
 
 // Explicit script paths are supported by cross-spawn's shebang handling too.
+/**
+ * @param {string} command
+ * @param {{ cwd?: string | undefined, env?: NodeJS.ProcessEnv | undefined }} [options]
+ * @returns {string | null}
+ */
 export function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   if (typeof command !== 'string' || !command) return null;
   cwd = path.resolve(cwd);
   const windows = process.platform === 'win32';
-  const value = (name) => env[windows ? Object.keys(env).find((key) => key.toUpperCase() === name) : name];
+  const value = (/** @type {string} */ name) => {
+    const key = windows ? Object.keys(env).find((k) => k.toUpperCase() === name) : name;
+    return key === undefined ? undefined : env[key];
+  };
   const explicit = command.includes('/') || (windows && command.includes('\\'));
   const dirs = explicit ? [cwd] : [...(windows ? [cwd] : []), ...(value('PATH') ?? '').split(path.delimiter).filter(Boolean)];
   for (const dir of dirs) {
@@ -59,8 +99,18 @@ export function findCommand(command, { cwd = process.cwd(), env = process.env } 
   return null;
 }
 
+/** @typedef {Omit<import('node:child_process').SpawnSyncOptionsWithStringEncoding, 'cwd' | 'encoding'> & { cwd?: string, encoding?: BufferEncoding }} ExecOptions */
+
+/**
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {ExecOptions} [options]
+ * @returns {string}
+ */
 export function execCommandSync(command, args, options = {}) {
-  const opts = { windowsHide: true, encoding: 'utf8', ...options };
+  /** @type {BufferEncoding} */
+  const encoding = 'utf8';
+  const opts = { windowsHide: true, encoding, ...options };
   const batch = batchInvocation(command, args, opts);
   const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : spawn.sync(command, args, opts);
   if (result.error) throw result.error;

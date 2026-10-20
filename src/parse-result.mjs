@@ -8,6 +8,10 @@ import { RESULT_KEYS } from './result-schema.mjs';
 import { redact } from './redact.mjs';
 
 export class OutputError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} [detail]
+   */
   constructor(message, detail) {
     super(message);
     this.name = 'OutputError';
@@ -17,6 +21,38 @@ export class OutputError extends Error {
 
 const O = POLICY.output;
 
+/** @typedef {'high' | 'medium' | 'low'} Level */
+/** @typedef {'sufficient' | 'thin' | 'insufficient'} EvidenceBasis */
+/** @typedef {(typeof STANCES)[number]} Stance */
+/** @typedef {{ id: string, point: string, grounds: string | null, impact: string | null, severity: Level | null, confidence: Level | null }} Finding */
+/** @typedef {{ option: string, tradeoffs: string | null, when_preferred: string | null }} Alternative */
+/** @typedef {{ id: string, item: string, why_it_matters: string | null, how_to_obtain: string | null }} Unknown */
+/** @typedef {{ condition: string, changes_to: string | null }} DecisionChanger */
+/** @typedef {{ id: string, check: string, method: string | null, expected_signal: string | null }} NextCheck */
+/** @typedef {{ topic: string, your_position: string | null, why_unresolved: string | null }} RemainingDisagreement */
+/** @typedef {{ title: string | null, url: string | null, relevance: string | null }} Reference */
+
+/**
+ * The validated consult result, in the shape of CONSULT_RESULT_SCHEMA.
+ * @typedef {object} ConsultResult
+ * @property {string} summary
+ * @property {Level | null} confidence
+ * @property {EvidenceBasis | null} evidence_basis
+ * @property {Stance | null} stance
+ * @property {Finding[]} findings
+ * @property {Alternative[]} alternatives
+ * @property {Unknown[]} unknowns
+ * @property {DecisionChanger[]} decision_changers
+ * @property {NextCheck[]} next_checks
+ * @property {RemainingDisagreement[]} remaining_disagreements
+ * @property {Reference[]} references
+ */
+
+/**
+ * @param {unknown} v
+ * @param {number} max
+ * @returns {string | null}
+ */
 function clampText(v, max) {
   if (typeof v !== 'string') return null;
   const t = v.trim();
@@ -24,34 +60,61 @@ function clampText(v, max) {
   return t.length > max ? `${t.slice(0, max)}\n…[truncated by severally]` : t;
 }
 
+/**
+ * Narrows a string to one of the listed values.
+ * @template {string} T
+ * @param {readonly T[]} list
+ * @param {string} t
+ * @returns {t is T}
+ */
+const oneOf = (list, t) => list.some((x) => x === t);
+
+/** @type {Level[]} */
 const LEVELS = ['high', 'medium', 'low'];
+/** @type {EvidenceBasis[]} */
 const BASIS = ['sufficient', 'thin', 'insufficient'];
 
+/**
+ * @param {unknown} v
+ * @param {Level | null} [fallback]
+ * @returns {Level | null}
+ */
 function level(v, fallback = null) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return LEVELS.includes(t) ? t : fallback;
+  return oneOf(LEVELS, t) ? t : fallback;
 }
 
+/**
+ * @param {unknown} v
+ * @returns {EvidenceBasis | null}
+ */
 function basis(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return BASIS.includes(t) ? t : null;
+  return oneOf(BASIS, t) ? t : null;
 }
 
+/**
+ * @param {unknown} v
+ * @returns {Stance | null}
+ */
 function stance(v) {
   const t = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return STANCES.includes(t) ? t : null;
+  return oneOf(STANCES, t) ? t : null;
 }
 
-/** Extract a JSON object from raw model text (fenced block, or first balanced object). */
+/**
+ * Extract a JSON object from raw model text (fenced block, or first balanced object).
+ * @param {unknown} text
+ * @returns {Record<string, unknown> | null}
+ */
 export function extractJson(text) {
   if (typeof text !== 'string') return null;
   const trimmed = text.trim();
   if (!trimmed) return null;
+  /** @type {string[]} */
   const candidates = [];
   if (trimmed.startsWith('{')) candidates.push(trimmed);
-  const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
-  let m;
-  while ((m = fence.exec(trimmed)) !== null) candidates.push(m[1].trim());
+  for (const [, body = ''] of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push(body.trim());
   // Longest balanced {...} run as a last resort.
   const start = trimmed.indexOf('{');
   if (start !== -1) {
@@ -98,24 +161,34 @@ export function extractJson(text) {
 // verdict against one point later. The id is ours, assigned at parse time and
 // never read from the answer: a consultant that numbered its own findings
 // cannot make one of them impersonate another.
+/**
+ * @template T
+ * @param {unknown} raw
+ * @param {Record<string, 'text' | 'level'>} fields
+ * @param {{ requiredField: string, idPrefix?: string | null }} options
+ * @returns {T[]}
+ */
 function mapList(raw, fields, { requiredField, idPrefix = null }) {
   if (!Array.isArray(raw)) return [];
+  /** @type {T[]} */
   const out = [];
   for (const entry of raw.slice(0, O.listMax)) {
     if (!entry || typeof entry !== 'object') continue;
+    /** @type {Record<string, unknown>} */
     const item = idPrefix ? { id: `${idPrefix}${out.length + 1}` } : {};
     for (const [key, kind] of Object.entries(fields)) {
       item[key] = kind === 'level' ? level(entry[key]) : clampText(entry[key], O.itemTextMax);
     }
     if (!item[requiredField]) continue;
-    out.push(item);
+    // Every key of `fields` is a key of T, and the required one is set.
+    out.push(/** @type {T} */ (item));
   }
   return out;
 }
 
 /**
- * @param {object|string} raw  parsed JSON object, or raw text to mine one out of
- * @returns {{result: object, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
+ * @param {Record<string, unknown> | string} raw  parsed JSON object, or raw text to mine one out of
+ * @returns {{result: ConsultResult, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
  */
 export function normalizeResult(raw) {
   const objIn = typeof raw === 'string' ? extractJson(raw) : raw;
@@ -129,6 +202,7 @@ export function normalizeResult(raw) {
     throw new OutputError('consultant response has no usable "summary" field', JSON.stringify(src).slice(0, 2000));
   }
 
+  /** @type {ConsultResult} */
   const result = {
     summary,
     confidence: level(src.confidence),
@@ -202,13 +276,16 @@ export function normalizeResult(raw) {
   // The lists are cut to O.listMax before anything else looks at them; say how
   // long the ones that were cut had been, so the cut is not silent.
   const listTruncated = Object.fromEntries(
-    ['findings', 'alternatives', 'unknowns', 'decision_changers', 'next_checks', 'remaining_disagreements']
-      .filter((k) => Array.isArray(src[k]) && src[k].length > O.listMax)
-      .map((k) => [k, src[k].length]),
+    ['findings', 'alternatives', 'unknowns', 'decision_changers', 'next_checks', 'remaining_disagreements'].flatMap((k) => {
+      const v = src[k];
+      return Array.isArray(v) && v.length > O.listMax ? [[k, v.length]] : [];
+    }),
   );
 
+  /** @type {Record<string, unknown>} */
+  const fields = result;
   const missing = RESULT_KEYS.filter((k) => {
-    const v = result[k];
+    const v = fields[k];
     return v === null || v === undefined || (Array.isArray(v) && v.length === 0);
   });
 

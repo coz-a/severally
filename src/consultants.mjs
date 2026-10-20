@@ -4,9 +4,39 @@
 // schema.mjs and jobs.mjs ask it questions -- so the rules can be tested
 // without a server.
 
+/** @typedef {'codex' | 'claude-code' | 'antigravity' | 'opencode'} CliId */
+
+/**
+ * One operator-named pairing of a CLI and a model, as built from the config.
+ * @typedef {object} Consultant
+ * @property {string} name
+ * @property {CliId} cli
+ * @property {string} model
+ * @property {string | null} effort
+ * @property {number | null} timeoutMs
+ * @property {number | null} maxBudgetUsd
+ * @property {string | null} vendor
+ * @property {boolean} enabled
+ * @property {string | null} note
+ */
+
+/**
+ * What buildConsultants makes of a config file: the consultants and ranking,
+ * and every mistake found (see buildConsultants for the problem groups).
+ * @typedef {object} BuiltConsultants
+ * @property {readonly Consultant[]} consultants
+ * @property {readonly string[]} ranking
+ * @property {string[]} problems
+ * @property {string[]} global
+ * @property {Record<string, string[]>} broken
+ * @property {Record<string, string[]>} brokenClis
+ */
+
+/** @type {readonly CliId[]} */
 export const CLI_IDS = Object.freeze(['codex', 'claude-code', 'antigravity', 'opencode']);
 
 // The model each CLI's consultant runs when the operator defines none.
+/** @type {Readonly<Record<CliId, string>>} */
 export const DEFAULT_MODELS = Object.freeze({
   codex: 'gpt-6-astra',
   'claude-code': 'claude-opus-5-5',
@@ -16,10 +46,15 @@ export const DEFAULT_MODELS = Object.freeze({
 
 // The lineage a CLI's own host model belongs to, for a caller that declared no
 // model. OpenCode runs anyone's models, so it has none.
+/** @type {Readonly<Record<CliId, string | null>>} */
 export const CLI_VENDORS = Object.freeze({ codex: 'openai', 'claude-code': 'anthropic', antigravity: 'google', opencode: null });
 
 // Null-prototype tables, so a request cannot reach Object.prototype through
 // them: 'constructor' must be no match, not a function.
+/**
+ * @param {Record<string, string>} entries
+ * @returns {Readonly<Record<string, string>>}
+ */
 const table = (entries) => Object.freeze(Object.assign(Object.create(null), entries));
 
 // Names that mean "the consultants on this CLI". gpt/claude/gemini/glm are
@@ -49,7 +84,10 @@ const STEM_VENDORS = table({
 // Built-in "higher first" orders, each used only inside one model family: an
 // "ultra" Nemotron is not above a "flash" DeepSeek. `family` says which
 // candidates a list may compare; a family not listed here is never guessed at.
+/** @param {readonly Consultant[]} cands */
 const sameStem = (cands) => new Set(cands.map((c) => modelStem(c.model).join('-'))).size === 1;
+/** @typedef {{ words: string[], family: (cands: readonly Consultant[]) => boolean, last?: boolean }} Tier */
+/** @type {readonly Tier[]} */
 const TIERS = Object.freeze([
   { words: ['opus', 'sonnet', 'haiku'], family: (cands) => cands.every((c) => modelStem(c.model)[0] === 'claude') },
   { words: ['ultra', 'pro', 'flash', 'lite'], family: (cands) => cands.every((c) => modelStem(c.model)[0] === 'gemini') },
@@ -59,7 +97,12 @@ const TIERS = Object.freeze([
 
 export const RESERVED_NAMES = Object.freeze(['all']);
 
-/** Case, runs of spaces and underscores folded away: "Claude Code" -> "claude-code". */
+/**
+ * Case, runs of spaces and underscores folded away: "Claude Code" -> "claude-code".
+ * @template T
+ * @param {T} raw
+ * @returns {T | string}
+ */
 export function normalizeName(raw) {
   if (typeof raw !== 'string') return raw;
   return raw
@@ -68,7 +111,11 @@ export function normalizeName(raw) {
     .replace(/[\s_]+/g, '-');
 }
 
-/** "zai-coding-plan/glm-5.3" -> ["glm", "5", "3"]: the provider prefix is not part of the model. */
+/**
+ * "zai-coding-plan/glm-5.3" -> ["glm", "5", "3"]: the provider prefix is not part of the model.
+ * @param {unknown} model
+ * @returns {string[]}
+ */
 export function modelWords(model) {
   const s = String(model ?? '').toLowerCase();
   return s
@@ -77,26 +124,42 @@ export function modelWords(model) {
     .filter(Boolean);
 }
 
+/** @param {string} w */
 const isDigitWord = (w) => /^v?\d+$/.test(w);
 
-/** The words before the version: "claude-opus-5-5" -> ["claude", "opus"]. */
+/**
+ * The words before the version: "claude-opus-5-5" -> ["claude", "opus"].
+ * @param {unknown} model
+ */
 export function modelStem(model) {
   const words = modelWords(model);
   const at = words.findIndex(isDigitWord);
   return at === -1 ? words : words.slice(0, at);
 }
 
-/** The version right after the stem, as numbers: "deepseek-v4.1-flash" -> [4, 1]; null when there is none. */
+/**
+ * The version right after the stem, as numbers: "deepseek-v4.1-flash" -> [4, 1]; null when there is none.
+ * @param {unknown} model
+ * @returns {number[] | null}
+ */
 export function modelVersion(model) {
   const words = modelWords(model);
   const at = words.findIndex(isDigitWord);
   if (at === -1) return null;
   const digits = [];
-  for (let i = at; i < words.length && isDigitWord(words[i]); i++) digits.push(Number(words[i].replace(/^v/, '')));
+  for (const w of words.slice(at)) {
+    if (!isDigitWord(w)) break;
+    digits.push(Number(w.replace(/^v/, '')));
+  }
   return digits;
 }
 
-/** The operator's word wins; otherwise the stem decides, and an unknown stem is null rather than a guess. */
+/**
+ * The operator's word wins; otherwise the stem decides, and an unknown stem is null rather than a guess.
+ * @param {unknown} model
+ * @param {unknown} [explicit]
+ * @returns {string | null}
+ */
 export function vendorOf(model, explicit = null) {
   if (typeof explicit === 'string' && explicit.trim() !== '') return explicit.trim().toLowerCase();
   const first = modelStem(model)[0] ?? '';
@@ -104,13 +167,25 @@ export function vendorOf(model, explicit = null) {
   return STEM_VENDORS[first] ?? null;
 }
 
+/**
+ * @param {string[]} hay
+ * @param {string[]} needle
+ */
 const containsRun = (hay, needle) => needle.length > 0 && hay.some((_, i) => needle.every((w, j) => hay[i + j] === w));
 
-/** Does the name appear in the model id as whole words? "claude opus" in "claude-opus-5-5": yes; "g" in "gpt-6": no. */
+/**
+ * Does the name appear in the model id as whole words? "claude opus" in "claude-opus-5-5": yes; "g" in "gpt-6": no.
+ * @param {unknown} model
+ * @param {unknown} wanted
+ */
 export function matchesWords(model, wanted) {
   return containsRun(modelWords(model), modelWords(wanted));
 }
 
+/**
+ * @param {number[]} a
+ * @param {number[]} b
+ */
 const compareVersions = (a, b) => {
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     const d = (a[i] ?? -1) - (b[i] ?? -1);
@@ -119,7 +194,12 @@ const compareVersions = (a, b) => {
   return 0;
 };
 
+/**
+ * @param {readonly Consultant[]} cands
+ * @param {readonly string[]} ranking
+ */
 function byRanking(cands, ranking) {
+  /** @param {Consultant} c */
   const index = (c) => {
     const i = ranking.findIndex((r) => normalizeName(r) === normalizeName(c.name) || matchesWords(c.model, r));
     return i === -1 ? Infinity : i;
@@ -128,11 +208,18 @@ function byRanking(cands, ranking) {
   return best === Infinity ? cands : cands.filter((c) => index(c) === best);
 }
 
+/**
+ * @param {readonly Consultant[]} cands
+ * @param {Tier} tier
+ */
 function byTier(cands, tier) {
   if (!tier.family(cands)) return cands;
+  /** @param {Consultant} c */
   const rank = (c) => {
     const words = modelWords(c.model);
-    return tier.last ? tier.words.indexOf(words.at(-1)) : tier.words.findIndex((w) => words.includes(w));
+    const last = words.at(-1);
+    if (tier.last) return last === undefined ? -1 : tier.words.indexOf(last);
+    return tier.words.findIndex((w) => words.includes(w));
   };
   const ranks = cands.map(rank);
   if (ranks.includes(-1) || new Set(ranks).size === 1) return cands;
@@ -140,18 +227,29 @@ function byTier(cands, tier) {
   return cands.filter((_, i) => ranks[i] === best);
 }
 
+/** @param {readonly Consultant[]} cands */
 function byVersion(cands) {
-  const stem = modelStem(cands[0].model).join('-');
-  const versions = cands.map((c) => modelVersion(c.model));
-  if (versions.includes(null) || cands.some((c) => modelStem(c.model).join('-') !== stem)) return cands;
-  const best = versions.reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
-  return cands.filter((_, i) => compareVersions(versions[i], best) === 0);
+  const [first] = cands;
+  if (!first) return cands;
+  const stem = modelStem(first.model).join('-');
+  if (cands.some((c) => modelStem(c.model).join('-') !== stem)) return cands;
+  const versioned = [];
+  for (const c of cands) {
+    const version = modelVersion(c.model);
+    if (version === null) return cands;
+    versioned.push({ c, version });
+  }
+  const best = versioned.map((x) => x.version).reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
+  return versioned.filter((x) => compareVersions(x.version, best) === 0).map((x) => x.c);
 }
 
 /**
  * One of several candidates, by the operator's ranking, then the built-in
  * tiers, then the version within one stem -- or null when none of those
  * separates them. Never a guess: two names nothing orders stay two.
+ * @param {readonly Consultant[]} cands
+ * @param {readonly string[]} [ranking]
+ * @returns {Consultant | null}
  */
 export function rankCandidates(cands, ranking = []) {
   let left = byRanking(cands, ranking);
@@ -160,13 +258,19 @@ export function rankCandidates(cands, ranking = []) {
     left = byTier(left, tier);
   }
   if (left.length > 1) left = byVersion(left);
-  return left.length === 1 ? left[0] : null;
+  return left.length === 1 ? (left[0] ?? null) : null;
 }
+
+/** @typedef {{ none: true, consultant?: undefined, ambiguous?: undefined } | { none?: undefined, consultant: Consultant, ambiguous?: undefined } | { none?: undefined, consultant?: undefined, ambiguous: readonly Consultant[] }} Resolution */
 
 /**
  * What a requested name means: a consultant's own name, then a CLI name, then
  * a vendor word, then the words of a model id. Several candidates are ranked;
  * ones that cannot be ranked come back as `ambiguous`, never as a pick.
+ * @param {unknown} input
+ * @param {readonly Consultant[]} consultants
+ * @param {readonly string[]} [ranking]
+ * @returns {Resolution}
  */
 export function resolveConsultant(input, consultants, ranking = []) {
   const key = normalizeName(input);
@@ -177,8 +281,9 @@ export function resolveConsultant(input, consultants, ranking = []) {
   if (CLI_ALIASES[key]) cands = consultants.filter((c) => c.cli === CLI_ALIASES[key]);
   else if (VENDOR_WORDS[key]) cands = consultants.filter((c) => c.vendor === VENDOR_WORDS[key]);
   else cands = consultants.filter((c) => matchesWords(c.model, input));
-  if (cands.length === 0) return { none: true };
-  if (cands.length === 1) return { consultant: cands[0] };
+  const [only] = cands;
+  if (!only) return { none: true };
+  if (cands.length === 1) return { consultant: only };
   const winner = rankCandidates(cands, ranking);
   return winner ? { consultant: winner } : { ambiguous: cands };
 }
@@ -188,13 +293,23 @@ export function resolveConsultant(input, consultants, ranking = []) {
  * CLI is checked once, through its first available consultant -- and a CLI
  * name asks for exactly that one, never an ambiguity between its consultants.
  * Any other name resolves like a request. null when nothing answers to it.
+ * @param {unknown} arg
+ * @param {readonly Consultant[]} available
+ * @param {readonly Consultant[]} all
+ * @param {readonly string[]} [ranking]
+ * @returns {Consultant[] | null}
  */
 export function checkTargets(arg, available, all, ranking = []) {
+  /** @type {Map<string, Consultant>} */
   const first = new Map();
   for (const c of available) if (!first.has(c.cli)) first.set(c.cli, c);
   if (arg === null || arg === undefined) return [...first.values()];
-  const cli = CLI_ALIASES[normalizeName(arg)];
-  if (cli) return first.has(cli) ? [first.get(cli)] : null;
+  const key = normalizeName(arg);
+  const cli = typeof key === 'string' ? CLI_ALIASES[key] : undefined;
+  if (cli) {
+    const hit = first.get(cli);
+    return hit ? [hit] : null;
+  }
   const r = resolveConsultant(arg, all, ranking);
   return r.consultant ? [r.consultant] : null;
 }
@@ -204,6 +319,9 @@ export function checkTargets(arg, available, all, ranking = []) {
  * the words agree exactly; one being a prefix-like part of the other
  * ("claude-opus-5" in "claude-opus-5-5") is "unknown", because saying either
  * "same" or "different" there would be a claim the server cannot back.
+ * @param {unknown} callerModel
+ * @param {unknown} consultantModel
+ * @returns {'same' | 'unknown' | 'different'}
  */
 export function sameModel(callerModel, consultantModel) {
   const a = modelWords(callerModel);
@@ -216,7 +334,16 @@ export function sameModel(callerModel, consultantModel) {
 const TOP_KEYS = ['server', 'clis', 'consultants', 'ranking'];
 const CLI_KEYS = ['enabled', 'note', 'bin', 'args', 'env', 'provider'];
 const CONSULTANT_KEYS = ['cli', 'model', 'effort', 'timeout_ms', 'max_budget_usd', 'vendor', 'enabled', 'note'];
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+/**
+ * @param {unknown} v
+ * @returns {v is Record<string, unknown>}
+ */
+export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+/**
+ * @param {number} v
+ * @param {number} min
+ * @param {number} max
+ */
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
 /**
@@ -224,6 +351,8 @@ const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
  * as a problem string. A config without `consultants` gets one consultant per
  * CLI, named after it, on that CLI's default model; whether it can run is the
  * CLI's availability, decided by policy.mjs.
+ * @param {unknown} config the parsed config file, before validation
+ * @returns {BuiltConsultants}
  */
 export function buildConsultants(config) {
   // `problems` is every mistake, for the operator to read; `global` the ones
@@ -231,10 +360,15 @@ export function buildConsultants(config) {
   // or one CLI is kept to it: that consultant cannot be used (`broken`), that
   // CLI is off (`brokenClis`) -- the closed side either way, so nothing the
   // operator turned off comes back on.
+  /** @type {string[]} */
   const problems = [];
+  /** @type {string[]} */
   const global = [];
+  /** @type {Record<string, string[]>} */
   const broken = {};
+  /** @type {Record<string, string[]>} */
   const brokenClis = {};
+  /** @param {string} msg */
   const fault = (msg) => {
     problems.push(msg);
     global.push(msg);
@@ -247,7 +381,9 @@ export function buildConsultants(config) {
 
   // The one server key that is not a number to clamp: a wrong value cannot
   // be read as either setting, and reading it as "on" would open the web.
-  if (isObject(cfg.server) && cfg.server.network !== undefined && !['on', 'off'].includes(cfg.server.network)) {
+  /** @type {readonly unknown[]} */
+  const networkModes = ['on', 'off'];
+  if (isObject(cfg.server) && cfg.server.network !== undefined && !networkModes.includes(cfg.server.network)) {
     fault('server.network must be "on" or "off"');
   }
 
@@ -258,11 +394,13 @@ export function buildConsultants(config) {
     else fault('ranking must be an array of non-empty strings');
   }
 
+  /** @type {readonly unknown[]} */
+  const cliIds = CLI_IDS;
   if (cfg.clis !== undefined) {
     if (!isObject(cfg.clis)) fault('clis must be an object keyed by CLI');
     else {
       for (const [id, def] of Object.entries(cfg.clis)) {
-        if (!CLI_IDS.includes(id)) {
+        if (!cliIds.includes(id)) {
           problems.push(`clis.${id}: unknown CLI (known: ${CLI_IDS.join(', ')})`);
           continue;
         }
@@ -294,6 +432,7 @@ export function buildConsultants(config) {
     }
   }
 
+  /** @type {Consultant[]} */
   const consultants = [];
   if (cfg.consultants === undefined) {
     for (const cli of CLI_IDS) consultants.push(make(cli, { cli, model: DEFAULT_MODELS[cli] }));
@@ -319,7 +458,7 @@ export function buildConsultants(config) {
       }
       for (const k of Object.keys(def))
         if (!CONSULTANT_KEYS.includes(k)) problems.push(`${at}.${k}: unknown key (allowed: ${CONSULTANT_KEYS.join(', ')})`);
-      if (!CLI_IDS.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
+      if (!cliIds.includes(def.cli)) problems.push(`${at}.cli: must be one of ${CLI_IDS.join(', ')}`);
       if (typeof def.model !== 'string' || def.model.trim() === '') problems.push(`${at}.model: required`);
       for (const k of ['effort', 'vendor', 'note']) {
         if (def[k] !== undefined && typeof def[k] !== 'string') problems.push(`${at}.${k}: must be a string`);
@@ -338,19 +477,39 @@ export function buildConsultants(config) {
         broken[name] = problems.slice(before);
         continue;
       }
-      const pair = `${def.cli}\n${def.model.trim()}`;
+      // The checks above have all passed: cli is a known id and model a non-empty string.
+      const valid = /** @type {ConsultantDef} */ (def);
+      const pair = `${valid.cli}\n${valid.model.trim()}`;
       if (seen.has(pair)) {
         problems.push(`${at}: same cli and model as consultants.${seen.get(pair)}; asking one model twice adds no independence`);
         broken[name] = problems.slice(before);
         continue;
       }
       seen.set(pair, name);
-      consultants.push(make(name, def));
+      consultants.push(make(name, valid));
     }
   }
   return { consultants: Object.freeze(consultants), ranking: Object.freeze(ranking), problems, global, broken, brokenClis };
 }
 
+/**
+ * A consultant's definition in the config file, once it has passed validation.
+ * @typedef {object} ConsultantDef
+ * @property {CliId} cli
+ * @property {string} model
+ * @property {unknown} [effort]
+ * @property {unknown} [timeout_ms]
+ * @property {unknown} [max_budget_usd]
+ * @property {unknown} [vendor]
+ * @property {unknown} [enabled]
+ * @property {unknown} [note]
+ */
+
+/**
+ * @param {string} name
+ * @param {ConsultantDef} def a definition that has passed validation
+ * @returns {Consultant}
+ */
 function make(name, def) {
   const model = def.model.trim();
   return Object.freeze({
@@ -360,7 +519,7 @@ function make(name, def) {
     effort: typeof def.effort === 'string' && def.effort.trim() !== '' ? def.effort.trim() : null,
     timeoutMs: typeof def.timeout_ms === 'number' ? clamp(def.timeout_ms, 1_000, 7_200_000) : null,
     maxBudgetUsd: typeof def.max_budget_usd === 'number' ? clamp(def.max_budget_usd, 0.05, 20) : null,
-    vendor: vendorOf(model, def.vendor ?? null),
+    vendor: vendorOf(model, def.vendor),
     enabled: def.enabled !== false,
     note: typeof def.note === 'string' && def.note.trim() !== '' ? def.note.trim() : null,
   });

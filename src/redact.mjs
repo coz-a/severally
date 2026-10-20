@@ -20,6 +20,10 @@ const CODE_WORDS = new Set([
 // variable reference (${X}, $X, process.env.X, os.environ[...]), and -- unless
 // it is a long value under a full PASSWORD/PASSWD name, which stays masked
 // whatever it looks like -- a dotted name, a call or a borrow (&str).
+/**
+ * @param {string} name
+ * @param {string} value
+ */
 function looksLikeCode(name, value) {
   if (
     CODE_WORDS.has(value.toLowerCase()) ||
@@ -28,12 +32,12 @@ function looksLikeCode(name, value) {
     /^(?:process\.env\.|os\.environ\b)/.test(value)
   )
     return true;
-  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split('_').at(-1))) return false;
+  if (value.length >= 8 && /^PASSW(?:OR)?D$/i.test(name.split('_').at(-1) ?? '')) return false;
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith('&');
 }
 
 // A replacement is a string or a function of the match.
-/** @type {Array<[RegExp, any]>} */
+/** @type {Array<[RegExp, string | ((...groups: string[]) => string)]>} */
 const PATTERNS = [
   // Provider API keys
   [/\bsk-ant-[A-Za-z0-9_-]{12,}/g, '[REDACTED:anthropic-key]'],
@@ -75,15 +79,29 @@ const PATTERNS = [
   [/\b([A-Z0-9_]+_KEY)(\s*=\s*["']?)([^\s"',;)]{8,})/g, (_m, k, sep, _v) => `${k}${sep}[REDACTED]`],
 ];
 
+/**
+ * Any JSON-like value in, the same shape out with its strings scrubbed.
+ * @template T
+ * @overload
+ * @param {T} value
+ * @returns {T}
+ */
+/**
+ * @param {unknown} value
+ * @returns {unknown}
+ */
 export function redact(value) {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string') {
+    /** @type {string} */
     let out = value;
-    for (const [re, rep] of PATTERNS) out = out.replace(re, rep);
+    // The same call either way: replace() has one overload for a string and one for a function.
+    for (const [re, rep] of PATTERNS) out = typeof rep === 'string' ? out.replace(re, rep) : out.replace(re, rep);
     return out;
   }
   if (Array.isArray(value)) return value.map(redact);
   if (typeof value === 'object') {
+    /** @type {Record<string, unknown>} */
     const out = {};
     for (const [k, v] of Object.entries(value)) out[k] = redact(v);
     return out;
@@ -91,6 +109,7 @@ export function redact(value) {
   return value;
 }
 
+/** @param {unknown} text */
 export function containsSecret(text) {
   if (typeof text !== 'string') return false;
   return redact(text) !== text;
