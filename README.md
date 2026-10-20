@@ -35,6 +35,7 @@ before deciding how to take the answers.
   - [When the answers come back](#when-the-answers-come-back)
   - [Modes](#modes)
   - [History and records](#history-and-records)
+- [Recommended setup](#recommended-setup)
 - [Configuration](#configuration)
 - [What a consultant can see and do](#what-a-consultant-can-see-and-do)
 - [API](#api)
@@ -218,6 +219,34 @@ repository.
 
 How to name consultants, how a consultation runs, and the records in detail are in
 [docs/how-it-works.md](docs/how-it-works.md).
+
+## Recommended setup
+
+Register the strongest model of each vendor as a consultant, and do the everyday work on a cheaper model, such as
+Sonnet in Claude Code. Most of the work, such as editing code, running tests and searching, goes fine on the
+cheaper model. For the decisions where a wrong call costs the most, such as a design choice or a change that is
+hard to reverse, the lead asks the strongest models, each on its own. They spend quota only in those
+consultations, so most of the usage stays on the cheaper model, and the decisions that matter still get the
+strongest models' opinions.
+
+A `~/.severally/config.json` for this:
+
+```json
+{
+  "consultants": {
+    "opus": { "cli": "claude-code", "model": "claude-opus-5-5" },
+    "gpt": { "cli": "codex", "model": "gpt-6.1-sol" },
+    "gemini": { "cli": "antigravity", "model": "gemini-4-argon-high" }
+  }
+}
+```
+
+Model ids change as new models come out; replace them with the ones your CLIs offer. Consultants run at effort
+`high` unless you set `effort`.
+
+Then start the lead on the cheaper model (`claude --model sonnet`, or `/model sonnet` in a running session). The
+lead consults on its own at the moments listed under [Asking](#asking), and you can ask it to ("ask everyone before
+we merge this"). Each consultant runs on its own CLI's login and quota.
 
 ## Configuration
 
