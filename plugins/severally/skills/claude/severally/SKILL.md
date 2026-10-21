@@ -7,8 +7,8 @@ allowed-tools: mcp__plugin_severally_severally__consult_get mcp__severally__cons
 # Consulting a peer agent
 
 You have three peers, each reached through the `severally` MCP server as a fresh child session that can read files
-and search the web, but not edit them, load MCP tools, see your session or consult anyone else. The server sends only
-the brief and the files you explicitly expose; the CLI may also read other files as described in `reference.md`.
+and search the web, but not edit them, load MCP tools, see your session or consult anyone else. The server sends the
+brief and exposed files; see `reference.md` for other file access.
 
 One caveat on that list: a consultant can read local files. Its writes are blocked,
 its network reaches only web search and browsing (none with `network: "off"`), credential and history
@@ -50,10 +50,10 @@ For a text-only continuation:
 consult_start({ request: { followup_to: "<job_id>", question: "What would change your view on f1?" } })
 ```
 
-To recheck the same code, add `context: { expose_from_parent: true }`. Files are not inherited automatically;
-this copies the exposed paths' **current contents**, with changed or deleted entries noted in the manifest.
-Supply the latest facts or diff when they changed. To ask one member of a group, use that member's `job_id`;
-use the `group_id` only to ask every member again. See `reference.md` for missing-file recovery.
+To recheck code, add `context: { expose_from_parent: true }`. Files are not inherited automatically;
+this copies their **current contents**, with changes and deletions noted in the manifest.
+Supply current facts or diff. For one group member use its `job_id`; `group_id` asks everyone again.
+See `reference.md` for missing-file recovery.
 
 ## Pick the consultant
 

@@ -145,6 +145,8 @@ test('SKILL.md is the three-call routine, small, and points at reference.md for 
   for (const host of Object.keys(HOSTS)) {
     const text = skill(host);
     assert.ok(Buffer.byteLength(text) < 12_000, `${host} SKILL.md is ${Buffer.byteLength(text)} bytes`);
+    const windowsBytes = Buffer.byteLength(text.replace(/\r?\n/g, '\r\n'));
+    assert.ok(windowsBytes < 12_000, `${host} SKILL.md is ${windowsBytes} bytes with CRLF`);
     assert.match(text, /## A normal consultation is three calls/);
     assert.match(text, /`reference\.md`, in the same\s+directory as this file/);
     assert.match(text, /## Before you hand the decision back/);
