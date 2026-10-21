@@ -394,20 +394,5 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
       'expose_from_parent_needs_followup',
     );
   }
-  if (
-    req.context.facts.length === 0 &&
-    req.context.artifacts.length === 0 &&
-    req.context.expose_paths.length === 0 &&
-    !req.context.expose_diff &&
-    !req.context.expose_from_parent
-  ) {
-    throw new RequestError(
-      'provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request' +
-        (isFollowup
-          ? '; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown'
-          : ''),
-      'context_required',
-    );
-  }
   return req;
 }

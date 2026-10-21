@@ -49,3 +49,38 @@ test('plain JSON is unaffected', () => {
 test('a genuinely broken file still throws', () => {
   assert.throws(() => parseJsonc('{ "targets": '), SyntaxError);
 });
+
+test('an unterminated block comment is rejected', () => {
+  assert.throws(() => parseJsonc('0/*'), SyntaxError);
+});
+
+test('an unterminated block comment does not grow the converted text', () => {
+  const src = '0/*';
+  assert.equal(stripJsonc(src).length, src.length);
+});
+
+test('comma-only containers are rejected while valid trailing commas remain allowed', () => {
+  assert.throws(() => parseJsonc('[,]'), SyntaxError);
+  assert.throws(() => parseJsonc('{,}'), SyntaxError);
+  assert.deepEqual(parseJsonc('[1,]'), [1]);
+  assert.deepEqual(parseJsonc('{"a": 1,}'), { a: 1 });
+});
+
+test('comments preserve CR, LF, CRLF and CR terminates a line comment', () => {
+  const lineBreaks = (text) => Array.from(text.matchAll(/\r\n?|\n/g), (match) => [match.index, match[0]]);
+  const cases = [
+    ['[1,//x\r2]', [1, 2]],
+    ['[1,//x\n2]', [1, 2]],
+    ['[1,//x\r\n2]', [1, 2]],
+    ['/*\r*/0', 0],
+    ['/*\n*/0', 0],
+    ['/*\r\n*/0', 0],
+  ];
+
+  for (const [src, expected] of cases) {
+    const stripped = stripJsonc(src);
+    assert.equal(stripped.length, src.length, JSON.stringify(src));
+    assert.deepEqual(lineBreaks(stripped), lineBreaks(src), JSON.stringify(src));
+    assert.deepEqual(parseJsonc(src), expected, JSON.stringify(src));
+  }
+});

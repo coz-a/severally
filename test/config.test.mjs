@@ -156,6 +156,30 @@ test('a malformed config file is reported, and nothing can be started on it', as
   assert.match(policy.configProblem(), /config\.json/);
 });
 
+test('an unterminated JSONC comment reaches the existing config error path', async () => {
+  const config = writeConfig('{}/*');
+  const policy = await loadPolicy({ SEVERALLY_CONFIG: config }, 'unterminated-comment');
+
+  assert.match(policy.configProblem(), /config\.json/);
+  const jobsUrl = new URL('../src/jobs.mjs', import.meta.url).href;
+  const out = execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+    const { JobManager } = await import(${JSON.stringify(jobsUrl)});
+    try {
+      new JobManager().start(${JSON.stringify(reviewRequest())});
+      console.log('unexpectedly started');
+    } catch (err) { console.log(err.code); }
+  `,
+    ],
+    { env: { ...process.env, SEVERALLY_CONFIG: config }, encoding: 'utf8' },
+  );
+  assert.equal(out.trim(), 'config_invalid', 'the malformed config cannot launch a consultation');
+});
+
 test('a missing config file is the normal case, not a problem', async () => {
   const policy = await loadPolicy({ SEVERALLY_CONFIG: path.join(tmp(), 'absent.json') }, 'absent');
   assert.equal(policy.configProblem(), null);

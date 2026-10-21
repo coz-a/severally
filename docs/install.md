@@ -19,6 +19,21 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 - Windows runs natively from PowerShell or Command Prompt; WSL is not required. CLIs are found through
   `PATH`/`PATHEXT` (`.exe`, `.cmd`, `.bat`, paths with spaces included).
 
+## Command line
+
+```bash
+npx -y severally-mcp@2.6.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+```
+
+| Option | What it does |
+|---|---|
+| `--dry-run` | prints what it would change, and changes nothing |
+| `--manual` | registers the MCP server and copies the Skill instead of installing the plugin (the default on Windows) |
+| `--force` | registers again where severally is already registered, instead of leaving it as it is |
+| `--skip-global` | skips the global npm install in plugin mode, when `severally-mcp` on `PATH` is already this install |
+| `--allow-local-tools` | adds severally's five local tools to Claude Code's allow list without asking; `consult_start` still asks |
+
+
 ## From a clone
 
 On macOS / Linux:
@@ -177,6 +192,11 @@ it exposes, and whatever the consultant reads while it runs (see
 agent can reach may go to those vendors.
 
 ## Updating
+
+When developing from a clone, run `npm run build` and then `node scripts/install.mjs` again to copy the generated
+server and Skills into the client installs. Add `--force` if an existing direct registration needs replacing.
+Restart the clients afterwards.
+
 
 Run `npx -y severally-mcp@latest install`, or pull the clone and run `npm install` and
 `node scripts/install.mjs` again. The installer checks the new server's syntax and backs up the previous runtime

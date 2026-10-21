@@ -774,3 +774,25 @@ test('POSIX an opencode without --global is registered by a second add without i
       ),
   );
 });
+
+// The next step must refer to clients this run actually registered.
+test('POSIX install summary guides the installed client to a first consultation', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  for (const cli of ['claude', 'agy', 'opencode']) fs.rmSync(path.join(f.dir, 'bin', cli));
+  const out = f.install('--manual', '--force');
+  const summary = out.slice(out.lastIndexOf('Done'));
+  assert.match(summary, /Ready clients: Codex/);
+  assert.match(summary, /Restart.*Codex/);
+  const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  assert.ok(summary.includes(`severally-mcp@${version} status`));
+  assert.match(summary, /ask Codex.*100.*requests.*minute/i);
+  assert.doesNotMatch(summary, /claude|agy|opencode|npm run build/);
+});
+
+test('POSIX dry-run summary describes planned clients without claiming an install', { skip: !posix }, (t) => {
+  const f = fixture(t);
+  const out = f.install('--manual', '--dry-run', '--force');
+  const summary = out.slice(out.lastIndexOf('Done'));
+  assert.match(summary, /Planned clients:/);
+  assert.doesNotMatch(summary, /Ready clients:/);
+});

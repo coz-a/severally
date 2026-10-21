@@ -5,6 +5,7 @@ import { sandboxEnv, reviewRequest } from './helpers.mjs';
 sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
 const { POLICY } = await import('../src/policy.mjs');
+const store = await import('../src/store.mjs');
 
 // What one finished fan-out may take by default, as the server prints it
 // (JSON, two-space indent): under the MCP output cap a client applies, so the
@@ -47,7 +48,10 @@ async function fanout(mgr, targets, answers) {
   const started = mgr.start(reviewRequest({ target: undefined, targets }));
   const jobs = started.jobs.map((j) => mgr.jobs.get(j.job_id));
   await Promise.all(jobs.map((j) => j.promise));
-  jobs.forEach((j, i) => Object.assign(j, answers[i]));
+  jobs.forEach((j, i) => {
+    Object.assign(j, answers[i]);
+    store.persistRound({ ...store.loadRoundAt(j), ...answers[i] }, { appendIndex: false });
+  });
   return started;
 }
 

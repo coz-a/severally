@@ -35,6 +35,10 @@ OpenCode    ──(skill)──> severally server ──> codex exec | claude -p
 
 ## How a consultation runs
 
+A self-contained `question` can start an `explore` consultation. Separate `context.facts` is optional;
+there is no need to repeat the question's premises there. Code questions still need files or a diff.
+`review` still needs a proposal, and `debate` needs both a proposal and counterpoints.
+
 - While a consultation runs, the lead does not go ahead with the plan in question.
 - A transient failure (`rate_limited`, `cli_error`) is run again up to twice, after a short wait and inside the
   same time budget, with the same consultant and model; the earlier failures are listed under `retries`.
@@ -160,3 +164,95 @@ rather than a new diff. Nothing is copied again unless the lead asks for it in t
 A follow-up to a fan-out (`followup_to` its `group_id`) asks every member the same new question, each continuing
 its own chain from its latest answered round, so each brief carries that consultant's own earlier rounds. A member
 that is still running, never answered or has used its rounds is not asked, and the `consult_start` response lists it under `skipped` with the reason.
+
+## Example
+
+Here is how severally changes the way the agent works, shown in one situation: the agent comes up with a change,
+and before asking you to approve it, it asks the consultants for their opinions.
+
+The example is a small online shop's API. `GET /products/:id`, which serves the product page, is slow: about
+800 ms. The API loads each product joined with its inventory and its reviews. Prices depend on the member's tier,
+and gold members get a 10% discount.
+
+The agent, running in Claude Code, comes up with a common fix: "keep each response in an in-memory Map for 5
+minutes". Before asking you "can I go ahead?", it shows the plan to three consultants: Codex, Antigravity, and a
+fresh Claude Code session (a new session of the agent's own CLI, with none of its conversation). Along with the
+plan, it hands them read-only copies of the code involved. The answers come back one per consultant, side by side
+(excerpt from a real run against a sample API):
+
+```
+codex        do_not_proceed  the price depends on the member's tier, so keyed by product id alone, the first
+                             visitor's price is served to everyone; the join inflates stock; 4 workers keep
+                             separate copies, so an order that changes stock does not clear the old value
+claude-code  do_not_proceed  whoever fills the cache first sets the price everyone else sees for 5 minutes;
+                             4 workers each keep their own copy, so stock stays stale after orders; fix the
+                             join bug first too
+antigravity  alternative     member discounts leak to other users; the 800 ms comes from joining inventory
+                             and reviews, which also skews stock; rewrite the query and it is likely fast
+                             enough without a cache
+```
+
+Each answer opens with a bottom line: `proceed`, `do_not_proceed`, `alternative` (do something else instead) or
+`undetermined`. The three found the same problems, each on its own: the price leak, the inflated stock and the
+per-worker caches. Where they differ is what comes next. Codex and Claude Code recommend fixing the query and
+then caching only the part that does not depend on the user. Antigravity says that with the query fixed, a cache
+may not be needed at all. Merge the answers into one and that difference gets buried.
+
+The agent that asked (the *lead*) reads the findings and then checks them in its own repository. Of the two
+findings, one reproduced exactly; the other turned out not to be happening yet, and that changed the response.
+
+```
+finding   the query joins inventory and reviews together, so stock is multiplied by the number of reviews
+  checked   ran the query on a test database: 5 units in stock, 4 reviews -> stock comes out as 20
+  so        fix the query before any cache
+
+finding   a gold member's 10% discount would be served to guests
+  checked   login is not wired in yet, so today everyone gets the base price.
+            the leak starts the day login is added
+  so        cache only the product data that does not depend on the user, and compute the price on each request
+```
+
+What comes back to you is not a vote of "2 against, 1 alternative". It is what was checked, what the lead
+recommends, and what has not been checked yet. Here that is whether the fixed query is fast enough without a
+cache (it needs production-like data), and how stale the stock shown after an order may be (that one is yours to
+decide). You make the call. The checked results stay next to the findings and can be exported as Markdown into
+your repository (see [History and records](../README.md#history-and-records)).
+
+## Recommended setup
+
+Register the strongest model of each vendor as a consultant, and do the everyday work on a cheaper model, such as
+Sonnet in Claude Code. Most of the work, such as editing code, running tests and searching, goes fine on the
+cheaper model. For the decisions where a wrong call costs the most, such as a design choice or a change that is
+hard to reverse, the lead asks the strongest models, each on its own. They spend quota only in those
+consultations, so most of the usage stays on the cheaper model, and the decisions that matter still get the
+strongest models' opinions.
+
+A `~/.severally/config.json` for this:
+
+```json
+{
+  "consultants": {
+    "opus": { "cli": "claude-code", "model": "claude-opus-5-5" },
+    "gpt": { "cli": "codex", "model": "gpt-6.1-sol" },
+    "gemini": { "cli": "antigravity", "model": "gemini-4-argon-high" }
+  }
+}
+```
+
+Model ids change as new models come out; replace them with the ones your CLIs offer. Consultants run at effort
+`high` unless you set `effort`, except on Antigravity, where the model name sets it (`gemini-4-argon-high`) and an
+`effort` key is a config mistake.
+
+Then start the lead on the cheaper model (`claude --model sonnet`, or `/model sonnet` in a running session). The
+lead consults on its own at the moments listed under [Asking](../README.md#asking), and you can ask it to ("ask everyone before
+we merge this"). Each consultant runs on its own CLI's login and quota.
+
+## API arguments
+
+The arguments of `consult_start` that matter most:
+
+- `context.expose_paths`: files and directories, by absolute path, copied read-only for the consultant; a
+  directory in a git repository copies only the files git lists (nothing `.gitignore` excludes)
+- `context.expose_diff`: `{ repo, base? }`, a change in progress: the diff goes in the brief and the files it touches are copied
+- `network`: `"off"` takes web search and browsing away from every consultant in the round
+- `followup_to`: the `job_id` of the answer a follow-up continues, or a fan-out's `group_id` to ask every consultant in it again. A follow-up needs only this and `question`; the consultant, the mode and the earlier round's context carry over unless you pass them again

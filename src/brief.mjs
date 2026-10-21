@@ -46,6 +46,7 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string} mode
  * @property {string} question
  * @property {string} summary
+ * @property {{delta: string, related_item_ids: string[]} | null} [reflection]
  * @property {PriorPoint[]} [findings]
  * @property {PriorPoint[]} [unknowns]
  * @property {PriorPoint[]} [next_checks]
@@ -313,6 +314,12 @@ function renderRound(p) {
     `### Round ${p.round} (${p.mode})`,
     `Question asked: ${p.question}`,
     `Your answer, summarised: ${p.summary}`,
+    p.reflection
+      ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` +
+        (p.reflection.related_item_ids.length
+          ? ` (related: ${p.reflection.related_item_ids.slice(0, 5).map(tag).join(', ')}${p.reflection.related_item_ids.length > 5 ? `; ${p.reflection.related_item_ids.length - 5} more` : ''})`
+          : '')
+      : null,
     list(
       'Points you raised:',
       p.findings,
