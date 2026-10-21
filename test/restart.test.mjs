@@ -153,6 +153,8 @@ test('an overdue owner is reported as interrupted, keeps its directory, and may 
   const v = new JobManager().view(s.job_id);
   assert.equal(v.failure.kind, 'interrupted');
   assert.ok(fs.existsSync(store.jobDir(s.job_id)), 'a pid that is still alive keeps its working directory');
+  assert.equal(a.view(s.job_id).status, 'running', 'the owner keeps managing its active process');
+  assert.equal(a.list({ limit: 100 }).find((j) => j.job_id === s.job_id).status, 'running');
   a.cancel(s.job_id);
   await a.jobs.get(s.job_id).promise;
   assert.equal(store.loadRound(s.job_id).status, 'cancelled', "the owner's own close-out replaces it");

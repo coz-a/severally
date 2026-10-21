@@ -13,6 +13,13 @@ import { sandboxEnv, reviewRequest, debateRequest } from './helpers.mjs';
 const RETAINED = 20;
 const home = sandboxEnv({ SEVERALLY_MAX_JOBS_RETAINED: String(RETAINED) });
 const { JobManager } = await import('../src/jobs.mjs');
+const store = await import('../src/store.mjs');
+
+// Completed rounds are read from history, including staged test outcomes.
+const stageRound = (job, changes) => {
+  Object.assign(job, changes);
+  store.persistRound({ ...store.loadRoundAt(job), ...changes }, { appendIndex: false });
+};
 
 const finishGroup = async (mgr, groupId) => {
   const g = mgr.groups.get(groupId);
@@ -225,9 +232,7 @@ test('a follow-up to a group skips members that cannot take one, and names why',
   const solo = mgr.start(reviewRequest({ target: 'codex', followup_to: first.jobs[0].job_id }));
   await mgr.jobs.get(solo.job_id).promise;
   // STUB_BEHAVIOR is process-wide, so a failed member is staged on the finished group.
-  const failed = mgr.jobs.get(first.jobs[1].job_id);
-  failed.status = 'failed';
-  failed.result = null;
+  stageRound(mgr.jobs.get(first.jobs[1].job_id), { status: 'failed', result: null });
 
   const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
   await finishGroup(mgr, next.group_id);
@@ -250,7 +255,7 @@ test('a follow-up to a group is refused when no member can take one, or when it 
     (e) => e.code === 'followup_group_targets',
   );
   // A member whose consultant is no longer configured is skipped, not re-resolved.
-  mgr.jobs.get(first.jobs[1].job_id).target = 'renamed-away';
+  stageRound(mgr.jobs.get(first.jobs[1].job_id), { target: 'renamed-away' });
   const next = mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id }));
   assert.deepEqual(
     next.skipped.map((x) => x.target),
@@ -258,7 +263,7 @@ test('a follow-up to a group is refused when no member can take one, or when it 
   );
   assert.match(next.skipped[0].reason, /no longer configured/);
   await mgr.jobs.get(next.job_id).promise;
-  for (const jid of [...first.jobs.map((j) => j.job_id), next.job_id]) mgr.jobs.get(jid).status = 'cancelled';
+  for (const jid of [...first.jobs.map((j) => j.job_id), next.job_id]) stageRound(mgr.jobs.get(jid), { status: 'cancelled' });
   assert.throws(
     () => mgr.start(reviewRequest({ target: undefined, followup_to: first.group_id })),
     (e) => e.code === 'followup_nothing_to_continue' && /codex/.test(e.message) && /renamed-away/.test(e.message),
@@ -344,17 +349,18 @@ test('a fan-out where only one member answered is still told to compare', async 
   await finishGroup(mgr, started.group_id);
   // STUB_BEHAVIOR is process-wide, so the mixed outcome -- one consultant
   // answered, the other failed -- has to be staged on the finished group.
-  const failed = mgr.jobs.get(started.jobs[1].job_id);
-  failed.status = 'failed';
-  failed.result = null;
-  failed.quality = null;
-  failed.failure = {
-    kind: 'usage_limit',
-    message: 'quota',
-    detail: null,
-    retriable: false,
-    delivered_advice: false,
-  };
+  stageRound(mgr.jobs.get(started.jobs[1].job_id), {
+    status: 'failed',
+    result: null,
+    quality: null,
+    failure: {
+      kind: 'usage_limit',
+      message: 'quota',
+      detail: null,
+      retriable: false,
+      delivered_advice: false,
+    },
+  });
 
   const view = mgr.groupView(started.group_id);
   assert.equal(view.status, 'done');

@@ -6,8 +6,8 @@ description: Use when a decision deserves a second, independent mind - an archit
 # Consulting a peer agent
 
 You have three peers, each reached through the `severally` MCP server as a fresh child session that can read files
-and search the web, but not edit them, load MCP tools, see your session or consult anyone else. Each knows only
-what you put in the brief and the files you expose to it.
+and search the web, but not edit them, load MCP tools, see your session or consult anyone else. The server sends only
+the brief and the files you explicitly expose; the CLI may also read other files as described in `reference.md`.
 
 One caveat on that list: a consultant can read local files. Its writes are blocked,
 its network reaches only web search and browsing (none with `network: "off"`), credential and history
@@ -18,16 +18,18 @@ copied read-only into its working directory.
 
 ## A normal consultation is three calls
 
-1. **`consult_start`**, with the files the question is about in `expose_paths`:
+1. **`consult_start`**. A self-contained question is enough for a general consultation:
 
    ```
    consult_start({ request: {
      targets: ["all"],
-     question: "the decision you are stuck on, in one sentence",
-     context: { facts: ["..."], proposal: "our plan, and why", expose_paths: ["/abs/path/to/the/file.js"] },
+     question: "Our read-only public API gets 100 requests per minute; updates may appear 60 seconds late. Is a 30-second cache reasonable?",
      caller: "codex"
    }})
    ```
+
+   For a code question, also attach its files in `context.expose_paths` or its diff in `context.expose_diff`
+   (see **Write the first request**).
 
 2. **`consult_get({ group_id })`** (`consult_get({ job_id })` for one consultant). It waits for the answer by itself,
    up to a limit the server sets (45 seconds, or ten minutes where the client allows it); call it again while
@@ -36,7 +38,21 @@ copied read-only into its working directory.
 
 That is the whole routine. The rest — follow-ups, a prediction and reflection, the export, reading a fan-out
 in detail — is in `reference.md`, in the same directory as this file. Read it for a decision you will have to
-justify later, or when you follow up.
+justify later. Short follow-ups are below; the reference has the limits and recovery steps.
+
+## Follow-ups
+
+For "recheck just this finding", use the previous answer's `job_id` without asking the user to copy it.
+For a text-only continuation:
+
+```
+consult_start({ request: { followup_to: "<job_id>", question: "What would change your view on f1?" } })
+```
+
+To recheck the same code, add `context: { expose_from_parent: true }`. Files are not inherited automatically;
+this copies the exposed paths' **current contents**, with changed or deleted entries noted in the manifest.
+Supply the latest facts or diff when they changed. To ask one member of a group, use that member's `job_id`;
+use the `group_id` only to ask every member again. See `reference.md` for missing-file recovery.
 
 ## Pick the consultant
 
@@ -94,7 +110,9 @@ Pass `initiator: "user"` when the user asked for the consultation; leave it out 
   in `context.expose_paths` (a repository root works; never your home directory or one holding keys), or pass
   `context.expose_diff: { repo: "<absolute path>" }` for a change you are making. When `consult_start` answers
   `files_exposed: 0` and the question is about code, `consult_cancel` and start again with `expose_paths`.
-- **Put the load-bearing facts in `context.facts`**, and test output or a log in `context.artifacts`.
+- **Keep the premises in the question**, or use `context.facts` when separate facts help. A question containing
+  its own premises needs no separate context; do not ask the user to repeat them as `context.facts`. Put test
+  output or a log in `context.artifacts`.
 - **Leave `mode` out**; it follows from the context. To gather opinions without showing your own, leave
   `context.proposal` empty: a reviewed plan is answered around the plan.
 - A constraint is read as fixed and will not be challenged; if it is your own call, put it under `facts` with

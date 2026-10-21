@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.5.0';
+export const SEVERALLY_VERSION = '2.6.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -95,7 +95,8 @@ const SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opin
 Codex, Claude Code, Antigravity or OpenCode, each on the models the operator set up as consultants.
 Each consultation runs in a fresh child session of that CLI: it can read files and search and browse the web;
 it cannot edit files, change anything on the system (Codex may run read-only commands), load MCP tools, start
-other agents or consult anyone else, and it never sees your session -- only the brief you send.
+other agents or consult anyone else. The server sends the brief and explicitly exposed files without your
+conversation history; the CLI may also read other files within its permission boundary.
 
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
@@ -129,8 +130,9 @@ followup_to: the job_id of the answer to continue, or a group_id to ask every me
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
         counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
         also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
-context: the consultant starts in an empty working directory and is not told where your repository is, so
-        give it at least one of: facts, artifacts (material that is not a file here: test output, a log),
+context: optional when the question supplies the needed information. For code questions, attach files or a diff.
+        The consultant starts in an empty working directory and is not told where your repository is. Supply
+        additional material as facts, artifacts (material that is not a file here: test output, a log),
         expose_paths (absolute paths copied read-only under ./workspace; a directory in a git work tree copies
         the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files are skipped,
         text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the brief, the

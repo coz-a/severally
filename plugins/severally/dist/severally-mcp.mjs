@@ -53,11 +53,17 @@ function stripJsonc(text2) {
   const out = [];
   let inString = false;
   let i = 0;
-  const blankBack = () => {
+  const blankBack = (closing) => {
     for (let j = out.length - 1; j >= 0; j--) {
       const c = out[j];
       if (c === " " || c === "\n" || c === "\r" || c === "	") continue;
-      if (c === ",") out[j] = " ";
+      if (c === ",") {
+        const opening = closing === "}" ? "{" : "[";
+        let previous = j - 1;
+        while (previous >= 0 && [" ", "\n", "\r", "	"].includes(out[previous] ?? "")) previous--;
+        const previousChar = previous >= 0 ? out[previous] : void 0;
+        if (previousChar !== void 0 && previousChar !== opening) out[j] = " ";
+      }
       return;
     }
   };
@@ -82,24 +88,35 @@ function stripJsonc(text2) {
       continue;
     }
     if (c === "/" && next === "/") {
-      while (i < text2.length && text2[i] !== "\n") {
+      while (i < text2.length && text2[i] !== "\n" && text2[i] !== "\r") {
         out.push(" ");
         i++;
       }
       continue;
     }
     if (c === "/" && next === "*") {
+      const commentStart = out.length;
       out.push(" ", " ");
       i += 2;
-      while (i < text2.length && !(text2[i] === "*" && text2[i + 1] === "/")) {
-        out.push(text2[i] === "\n" ? "\n" : " ");
+      let closed = false;
+      while (i < text2.length) {
+        if (text2[i] === "*" && text2[i + 1] === "/") {
+          out.push(" ", " ");
+          i += 2;
+          closed = true;
+          break;
+        }
+        const commentChar = text2.charAt(i);
+        out.push(commentChar === "\n" || commentChar === "\r" ? commentChar : " ");
         i++;
       }
-      out.push(" ", " ");
-      i += 2;
+      if (!closed) {
+        out[commentStart] = "/";
+        out[commentStart + 1] = "*";
+      }
       continue;
     }
-    if (c === "}" || c === "]") blankBack();
+    if (c === "}" || c === "]") blankBack(c);
     out.push(c);
     i++;
   }
@@ -36703,12 +36720,6 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
       "expose_from_parent_needs_followup"
     );
   }
-  if (req.context.facts.length === 0 && req.context.artifacts.length === 0 && req.context.expose_paths.length === 0 && !req.context.expose_diff && !req.context.expose_from_parent) {
-    throw new RequestError(
-      "provide at least one entry in context.facts, context.artifacts or context.expose_paths: the consultant starts in an empty working directory and is not told where your repository is, so every fact it needs must be in the request" + (isFollowup ? "; on a follow-up, context.expose_from_parent: true copies again the files the earlier round was shown" : ""),
-      "context_required"
-    );
-  }
   return req;
 }
 var L, trimmed, artifactSchema, exposedPathSchema, gitRevision, contextSchema, targetSpec, INITIATORS, NETWORK_MODES, requestSchema, RequestError;
@@ -37551,6 +37562,7 @@ function renderRound(p) {
     `### Round ${p.round} (${p.mode})`,
     `Question asked: ${p.question}`,
     `Your answer, summarised: ${p.summary}`,
+    p.reflection ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` + (p.reflection.related_item_ids.length ? ` (related: ${p.reflection.related_item_ids.slice(0, 5).map(tag).join(", ")}${p.reflection.related_item_ids.length > 5 ? `; ${p.reflection.related_item_ids.length - 5} more` : ""})` : "") : null,
     list(
       "Points you raised:",
       p.findings,
@@ -38338,6 +38350,20 @@ function persistRound(record2, { appendIndex = true } = {}) {
     { mode: 384 }
   );
 }
+function updateRound(fallback, update) {
+  const file2 = roundPath(fallback.chain_id, fallback.round);
+  return withDirectoryLock(`${file2}.lock`, "record", () => {
+    let base = fallback;
+    try {
+      base = JSON.parse(fs4.readFileSync(file2, "utf8"));
+    } catch (err) {
+      if (!(err instanceof Error && "code" in err && err.code === "ENOENT")) throw err;
+    }
+    const saved = update(base);
+    persistRound(saved, { appendIndex: false });
+    return saved;
+  });
+}
 function writeRunning(record2) {
   if (!JOB_ID.test(record2.job_id)) return;
   fs4.mkdirSync(runningDir(), { recursive: true, mode: 448 });
@@ -38368,8 +38394,11 @@ function removeRunning(jobId) {
   }
 }
 function withSeatLock(fn) {
-  const lock = path6.join(seatsDir(), ".lock");
-  fs4.mkdirSync(seatsDir(), { recursive: true, mode: 448 });
+  return withDirectoryLock(path6.join(seatsDir(), ".lock"), "seat", fn);
+}
+function withDirectoryLock(lock, label, fn) {
+  fs4.mkdirSync(path6.dirname(lock), { recursive: true, mode: 448 });
+  const owner = path6.join(lock, `owner-${process.pid}`);
   const until = Date.now() + LOCK_WAIT_MS;
   for (; ; ) {
     try {
@@ -38378,17 +38407,46 @@ function withSeatLock(fn) {
     } catch (err) {
       if (!(err instanceof Error && "code" in err && err.code === "EEXIST")) throw err;
       try {
-        if (Date.now() - fs4.statSync(lock).mtimeMs > LOCK_STALE_MS) fs4.rmdirSync(lock);
+        const owners = fs4.readdirSync(lock);
+        const name = owners.length === 1 ? owners[0] : void 0;
+        const pid = name?.match(/^owner-(\d+)$/)?.[1];
+        if (name && pid) {
+          let dead = false;
+          try {
+            process.kill(Number(pid), 0);
+          } catch (err2) {
+            dead = err2 instanceof Error && "code" in err2 && err2.code === "ESRCH";
+          }
+          if (dead) {
+            fs4.rmdirSync(path6.join(lock, name));
+            fs4.rmdirSync(lock);
+          }
+        } else if (owners.length === 0 && Date.now() - fs4.statSync(lock).mtimeMs > LOCK_STALE_MS) {
+          fs4.rmdirSync(lock);
+        }
       } catch {
       }
-      if (Date.now() > until) throw new Error("the seat lock stayed taken; try again");
+      if (Date.now() > until) throw new Error(`the ${label} lock stayed taken; try again`);
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
+  }
+  try {
+    fs4.mkdirSync(owner);
+    const owners = fs4.readdirSync(lock);
+    if (owners.length !== 1 || owners[0] !== path6.basename(owner)) throw new Error(`the ${label} lock changed owner`);
+  } catch (err) {
+    try {
+      fs4.rmdirSync(owner);
+      fs4.rmdirSync(lock);
+    } catch {
+    }
+    throw err;
   }
   try {
     return fn();
   } finally {
     try {
+      fs4.rmdirSync(owner);
       fs4.rmdirSync(lock);
     } catch {
     }
@@ -40387,6 +40445,7 @@ var init_jobs = __esm({
        * @returns {JobView}
        */
       #jobView(job, detail) {
+        this.#refreshRound(job);
         const rec = this.#record(job);
         rec.cancellable = job.status === "running" || job.status === "queued";
         rec.progress = job.status === "running" && job._handle ? ADAPTERS[job.cli]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null : null;
@@ -40402,10 +40461,20 @@ var init_jobs = __esm({
         rec.next_step = nextStep(job);
         return compactBrief(rec, detail);
       }
+      // Runtime handles stay on the owning job. Once it finishes, the round file
+      // is authoritative: another session may have checked the answer since.
+      /** @param {Job} job */
+      #refreshRound(job) {
+        if (!["running", "queued", "cancelling"].includes(job.status)) {
+          const saved = loadRoundAt(job);
+          if (saved) Object.assign(job, saved);
+        }
+        return job;
+      }
       // This session's consultations and the history's, so an earlier session's
       // job_id and group_id can still be followed up and recorded against. The
       // index only picks and orders; each row shown is read from its round, which
-      // holds the verdicts written since. Memory wins over disk for the same job.
+      // holds the verdicts written since. Running jobs keep their runtime state.
       /** @param {{limit?: number}} [opts] */
       list({ limit: limit2 = 20 } = {}) {
         const candidates = [];
@@ -40414,7 +40483,7 @@ var init_jobs = __esm({
           const job = this.jobs.get(jid);
           if (!job) continue;
           seen.add(job.job_id);
-          candidates.push({ at: job.created_at ?? "", load: () => job });
+          candidates.push({ at: job.created_at ?? "", load: () => this.#refreshRound(job) });
         }
         for (const jobId of listRunning()) {
           const live = seen.has(jobId) ? null : loadRunning(jobId);
@@ -40850,7 +40919,7 @@ var init_jobs = __esm({
         };
       }
       // The rounds before a follow-up, from the history on disk and from memory
-      // (memory wins: it can hold a verdict written since the round was saved).
+      // (only a round still running here takes precedence over its saved file).
       // Each point goes with the lead's verdict on it, so the consultant answers
       // knowing which of its points were checked and how they came out.
       /**
@@ -40859,7 +40928,9 @@ var init_jobs = __esm({
        */
       #chainRounds(chainId) {
         const byRound = new Map(loadChain(chainId).map((j) => [j.round, j]));
-        for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
+        for (const j of this.jobs.values())
+          if (j.chain_id === chainId && (!byRound.has(j.round) || ["running", "queued", "cancelling"].includes(j.status)))
+            byRound.set(j.round, j);
         return [...byRound.values()];
       }
       /**
@@ -40885,6 +40956,7 @@ var init_jobs = __esm({
             mode: j.mode,
             question: j.question,
             summary: j.result.summary,
+            reflection: j.reflection ?? null,
             // Every checked finding; of the rest, the first five.
             findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
             unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
@@ -41328,20 +41400,20 @@ var init_jobs = __esm({
       }
       /** @param {RecordChange} change */
       #saveRecord({ job, live, entries, reflection }) {
-        const was = { record: job.record, reflection: job.reflection };
-        const disk = loadRoundAt(job);
-        const base = disk?.result ? disk : job;
-        job.reflection = reflection ?? base.reflection;
-        if (entries !== void 0) {
-          const merged = new Map((base.record?.entries ?? []).map((e) => [e.id, e]));
-          for (const e of entries) merged.set(e.id, e);
-          const ids = job.result ? recordableIds(job.result) : [];
-          job.record = { updated_at: (/* @__PURE__ */ new Date()).toISOString(), entries: ids.flatMap((id2) => merged.get(id2) ?? []) };
-        } else if (base.record) job.record = base.record;
         try {
-          persistRound(live ? this.#record(live) : job, { appendIndex: false });
+          const saved = updateRound(live ? this.#record(live) : job, (base) => {
+            const next = { ...base, reflection: reflection ?? base.reflection };
+            if (entries !== void 0) {
+              const merged = new Map((base.record?.entries ?? []).map((e) => [e.id, e]));
+              for (const e of entries) merged.set(e.id, e);
+              const ids = base.result ? recordableIds(base.result) : [];
+              next.record = { updated_at: (/* @__PURE__ */ new Date()).toISOString(), entries: ids.flatMap((id2) => merged.get(id2) ?? []) };
+            }
+            return next;
+          });
+          job.record = saved.record;
+          job.reflection = saved.reflection;
         } catch (e) {
-          Object.assign(job, was);
           return {
             job_id: job.job_id,
             error: "record_not_saved",
@@ -42141,7 +42213,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.5.0";
+    SEVERALLY_VERSION = "2.6.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42158,7 +42230,8 @@ var init_server = __esm({
 Codex, Claude Code, Antigravity or OpenCode, each on the models the operator set up as consultants.
 Each consultation runs in a fresh child session of that CLI: it can read files and search and browse the web;
 it cannot edit files, change anything on the system (Codex may run read-only commands), load MCP tools, start
-other agents or consult anyone else, and it never sees your session -- only the brief you send.
+other agents or consult anyone else. The server sends the brief and explicitly exposed files without your
+conversation history; the CLI may also read other files within its permission boundary.
 
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
@@ -42187,8 +42260,9 @@ followup_to: the job_id of the answer to continue, or a group_id to ask every me
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
         counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
         also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
-context: the consultant starts in an empty working directory and is not told where your repository is, so
-        give it at least one of: facts, artifacts (material that is not a file here: test output, a log),
+context: optional when the question supplies the needed information. For code questions, attach files or a diff.
+        The consultant starts in an empty working directory and is not told where your repository is. Supply
+        additional material as facts, artifacts (material that is not a file here: test output, a log),
         expose_paths (absolute paths copied read-only under ./workspace; a directory in a git work tree copies
         the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files are skipped,
         text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the brief, the

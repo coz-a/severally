@@ -79,6 +79,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const backupDir = path.join(home, '.severally', 'backups', stamp);
 let keptRegistrations = false;
 let lastListOutput = '';
+/** @type {Set<string>} */
+const readyClients = new Set();
 
 /** @param {...unknown} a */
 const log = (...a) => console.log(...a);
@@ -607,6 +609,7 @@ function installClientDirectly(client, bin) {
     log(`   ${client.bin} CLI not found on PATH — skipped`);
     return;
   }
+  let ready = true;
   for (const f of client.backup) backup(f);
   if (client.isRegistered() && !force) {
     keptRegistrations = true;
@@ -616,6 +619,7 @@ function installClientDirectly(client, bin) {
     if (client.isRegistered()) client.remove();
     const r = client.add(bin);
     if (!r.ok) {
+      ready = false;
       log(`   failed: ${r.out}`);
       process.exitCode = 1;
     } else if (!dryRun && client.verifyAdd && !listedAfterAdd(client)) {
@@ -631,11 +635,13 @@ function installClientDirectly(client, bin) {
         log(said);
         log(`   check with \`${client.bin} mcp list\` after restarting it`);
       } else {
+        ready = false;
         log('   add exited 0 but the server is not listed; registration failed');
         log(said);
         process.exitCode = 1;
       }
     } else if (!dryRun && client.verifyAdd && !registrationCommandMatches(client, bin)) {
+      ready = false;
       log('   registration not verified: the listed server command does not match this install');
       process.exitCode = 1;
     } else {
@@ -643,6 +649,7 @@ function installClientDirectly(client, bin) {
     }
   }
 
+  if (ready) readyClients.add(client.label);
   const parent = path.dirname(client.skillTo);
   if (!fs.existsSync(parent) && !dryRun) fs.mkdirSync(parent, { recursive: true });
   const saved = backupTree(client.skillTo);
@@ -678,6 +685,7 @@ function claudeHasMarketplacePlugin() {
 const claudeMarketplace = claudeHasMarketplacePlugin();
 
 function leaveClaudeToMarketplace() {
+  readyClients.add('Claude Code');
   step('Claude Code has severally from the marketplace; leaving Claude Code to it');
   const skill = path.join(claudeSkillsDir, 'severally');
   if (fs.existsSync(skill)) {
@@ -729,6 +737,7 @@ if (mode === 'plugin') {
       copyTree(PLUGIN, target);
       log(`   installed: ${target} (loads as severally@skills-dir)`);
     }
+    if (which('claude')) readyClients.add('Claude Code');
     // A user-scope MCP registration would duplicate the one the plugin provides.
     if (which('claude')) {
       const dup = tryRun('claude', ['mcp', 'get', 'severally'], { real: true });
@@ -767,6 +776,7 @@ if (mode === 'plugin') {
       const r = tryRun('codex', ['plugin', 'add', `severally@${marketplace}`]);
       log(r.ok ? '   plugin installed' : `   plugin install failed: ${r.out}`);
       if (!r.ok) process.exitCode = 1;
+      else readyClients.add('Codex');
       // Same duplication concern on the Codex side.
       const dup = tryRun('codex', ['mcp', 'get', 'severally'], { real: true });
       if (dup.ok) {
@@ -862,27 +872,16 @@ if (keptRegistrations) {
 } else if (!dryRun && !process.exitCode) {
   log('   The registered server and skills no longer depend on the source checkout.');
 }
-log(
-  mode === 'plugin'
-    ? `
-Verify with:
-  claude plugin details severally
-  ${codexDirect ? 'codex  mcp get severally' : 'codex  plugin list'}
-  agy    mcp list
-  opencode mcp list
-
-Restart any running client session to pick the plugin up. In Claude Code the tools then appear as
-mcp__plugin_severally_severally__consult_start / _get / _cancel / _list.
-
-Re-run this after "npm run build" to push an updated plugin to ${claudeMarketplace ? 'Codex' : 'both clients'} (Antigravity and
-OpenCode are registered directly each run, so a re-run always refreshes them too).`
-    : `
-Verify with:
-  claude mcp get severally
-  codex  mcp get severally
-  agy    mcp list
-  opencode mcp list
-
-In a new Claude Code session the tools appear as mcp__severally__consult_start / _get / _cancel / _list.
-Restart any running client session to pick the server up.`,
-);
+const clients = [...readyClients].join(', ');
+log(`   ${dryRun ? 'Planned clients' : 'Ready clients'}: ${clients || '(none)'}`);
+if (clients) {
+  log(`   ${dryRun ? 'After installing, restart' : 'Restart'} ${clients} to load severally.`);
+  const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  log(`   Check without using consultation quota: npx -y severally-mcp@${version} status`);
+  log('   Then ask your agent:');
+  log(
+    '   "ask Codex: Our read-only public API gets 100 requests per minute; updates may appear 60 seconds late. Is a 30-second cache reasonable?"',
+  );
+  log('   Use an available consultant name from status in place of Codex.');
+}
+log('   Install and registration details: https://github.com/coz-a/severally/blob/main/docs/install.md');

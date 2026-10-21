@@ -7,7 +7,7 @@ decision you will have to justify later, for a follow-up, or for the details of 
 
 | Mode | Give it | Get back |
 |---|---|---|
-| `explore` | objective, constraints, facts — **and not your preferred solution** | independent options, alternative framings of the problem, blind spots |
+| `explore` | a self-contained question; optional objective, constraints and facts; **not your preferred solution** | independent options, alternative framings of the problem, blind spots |
 | `review` | your current proposal **and the reasoning behind it** | weaknesses, counterexamples, concrete improvements, the conditions under which it holds |
 | `debate` | the disputed point, your position, the other side's claims, the extra evidence | what would change the judgement, how to test it, what disagreement remains |
 
@@ -19,6 +19,10 @@ anchoring-sensitive — if you want your plan critiqued, that is `review`.
 **For a decision heavy enough to be worth two consultations**, ask `explore` first on the facts alone, then
 `review` with the proposal, and read what the first raised that the second never did. A consultant that sees
 your proposal tends to answer around it; one that does not is more likely to question the framing itself.
+
+A nonempty `question` alone can start `explore`. Separate `context.facts` is optional; do not copy the question
+into it or ask the user to repeat its premises. `review` still requires `context.proposal`, and `debate` still
+requires both a proposal and `context.counterpoints`. Code questions still need their files or diff.
 
 ## A brief for a decision you will live with
 
@@ -137,6 +141,25 @@ artifacts) carry over, and the brief restates them; a field you pass replaces th
 included. A follow-up starts in a fresh working directory with no files: pass
 `context.expose_from_parent: true` to copy again, as they are now, the paths the earlier round exposed (a changed
 or vanished entry is marked), and leave it off when the follow-up does not need them.
+
+To recheck just one finding with the same code:
+
+```
+consult_start({ request: {
+  followup_to: "<that consultant's job_id>",
+  question: "Recheck f1 against the current code and the verdict I recorded.",
+  context: { expose_from_parent: true }
+} })
+```
+
+Use a member's `job_id` for one consultant in a group. Use the group's `group_id` to ask them all again.
+The lead retrieves these IDs from the previous result; the user should not need to transcribe IDs or paths.
+The files are copied from their current paths, not restored from an old snapshot. Pass new facts or an
+`expose_diff` for changed material. `nothing_to_inherit` means that the parent exposed no files: retry with
+explicit `context.expose_paths` or `context.expose_diff`. The same error can mean all old paths have vanished
+and no facts or artifacts were supplied;
+identify their replacements and expose those, or supply the facts and artifacts needed to discuss their removal;
+do not report that missing code was checked.
 
 Spend follow-ups only where you and the consultant actually diverge: quote the specific point, give the evidence
 that answers it, and ask what would change their view. Write your verdicts with `consult_record` first: the

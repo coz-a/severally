@@ -72,10 +72,31 @@ test("debate requires the other side's claims", () => {
   rejects(debateRequest({ context: { facts: ['f'], proposal: 'p' } }), 'counterpoints_required');
 });
 
-test('some context is always required', () => {
-  rejects(reviewRequest({ context: { proposal: 'p' } }), 'context_required');
-  // Leaving context out altogether is the same refusal, not a crash.
-  rejects({ target: 'codex', mode: 'explore', question: 'q?' }, 'context_required');
+test('a nonempty question needs no separate context and is not duplicated as facts', async () => {
+  const { renderBrief } = await import('../src/brief.mjs');
+  for (const context of [undefined, {}, { facts: [], artifacts: [] }]) {
+    const req = parseRequest({ target: 'codex', question: 'Is retrying a charge safe?', context });
+    assert.equal(req.mode, 'explore');
+    assert.equal(req.question, 'Is retrying a charge safe?');
+    assert.deepEqual(req.context.facts, []);
+    const brief = renderBrief(req);
+    assert.equal(brief.split(req.question).length - 1, 1);
+  }
+  assert.equal(parseRequest(reviewRequest({ context: { proposal: 'p' } })).context.proposal, 'p');
+});
+
+test('question-only input retains question, mode, size, target and permission validation', () => {
+  const request = { target: 'codex', question: 'q?' };
+  for (const question of ['', '   ', 'x'.repeat(POLICY.input.questionMax + 1)]) {
+    rejects({ ...request, question }, 'invalid_request');
+  }
+  rejects({ ...request, mode: 'review' }, 'proposal_required');
+  rejects({ ...request, mode: 'debate' }, 'proposal_required');
+  rejects({ ...request, mode: 'debate', context: { proposal: 'p' } }, 'counterpoints_required');
+  rejects({ ...request, context: { unknown: true } }, 'invalid_request');
+  rejects({ ...request, target: 'unknown' }, 'unknown_target');
+  rejects({ ...request, network: 'unrestricted' }, 'invalid_request');
+  rejects({ ...request, sandbox: 'danger-full-access' }, 'invalid_request');
 });
 
 test('unknown fields are rejected rather than silently ignored', () => {
@@ -244,9 +265,7 @@ test('expose_paths defaults to an empty list and is capped', () => {
   rejects(reviewRequest({ context: { facts: ['f'], proposal: 'p', expose_paths: tooMany } }), 'invalid_request');
 });
 
-// Naming paths to explore is giving the consultant material, so it satisfies
-// the same rule that facts and artifacts do.
-test('expose_paths alone satisfies the context requirement', () => {
+test('expose_paths can supply material without pasted facts or artifacts', () => {
   const abs = process.platform === 'win32' ? 'C:\\repo\\src' : '/repo/src';
   const req = parseRequest(reviewRequest({ context: { proposal: 'p', expose_paths: [abs] } }));
   assert.equal(req.context.facts.length, 0);

@@ -419,6 +419,31 @@ export function persistRound(record, { appendIndex = true } = {}) {
   );
 }
 
+/**
+ * Merge a lead's edit against the latest round and save it under the same
+ * short directory lock used for seats. Only a successful save is returned.
+ * @param {Round} fallback
+ * @param {(base: Round) => Round} update
+ * @returns {Round}
+ */
+export function updateRound(fallback, update) {
+  const file = roundPath(fallback.chain_id, fallback.round);
+  return withDirectoryLock(`${file}.lock`, 'record', () => {
+    let base = fallback;
+    try {
+      base = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (err) {
+      // A round whose initial best-effort save failed may only exist in its
+      // owner's memory. An unreadable existing file must never be overwritten
+      // with that owner's older verdicts.
+      if (!(err instanceof Error && 'code' in err && err.code === 'ENOENT')) throw err;
+    }
+    const saved = update(base);
+    persistRound(saved, { appendIndex: false });
+    return saved;
+  });
+}
+
 // A consultation still in progress, so another severally process -- several
 // share one ~/.severally, one per client session -- or this one after a
 // restart can tell "running elsewhere" from "the process running it died".
@@ -494,8 +519,19 @@ const LOCK_STALE_MS = 10_000;
  * @returns {T}
  */
 function withSeatLock(fn) {
-  const lock = path.join(seatsDir(), '.lock');
-  fs.mkdirSync(seatsDir(), { recursive: true, mode: 0o700 });
+  return withDirectoryLock(path.join(seatsDir(), '.lock'), 'seat', fn);
+}
+
+/**
+ * @template T
+ * @param {string} lock
+ * @param {string} label
+ * @param {() => T} fn
+ * @returns {T}
+ */
+function withDirectoryLock(lock, label, fn) {
+  fs.mkdirSync(path.dirname(lock), { recursive: true, mode: 0o700 });
+  const owner = path.join(lock, `owner-${process.pid}`);
   const until = Date.now() + LOCK_WAIT_MS;
   for (;;) {
     try {
@@ -503,21 +539,55 @@ function withSeatLock(fn) {
       break;
     } catch (err) {
       if (!(err instanceof Error && 'code' in err && err.code === 'EEXIST')) throw err;
-      // Held for a few file operations at most: one this old was left by a
-      // process that died holding it.
       try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.rmdirSync(lock);
+        const owners = fs.readdirSync(lock);
+        const name = owners.length === 1 ? owners[0] : undefined;
+        const pid = name?.match(/^owner-(\d+)$/)?.[1];
+        if (name && pid) {
+          let dead = false;
+          try {
+            process.kill(Number(pid), 0);
+          } catch (err) {
+            dead = err instanceof Error && 'code' in err && err.code === 'ESRCH';
+          }
+          if (dead) {
+            // The owner-specific directory makes competing reclaimers safe:
+            // only the one that removes it may remove the outer lock.
+            fs.rmdirSync(path.join(lock, name));
+            fs.rmdirSync(lock);
+          }
+        } else if (owners.length === 0 && Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) {
+          // Also recover locks from older releases and a crash between mkdir
+          // and writing the owner. A live owner is never evicted by age.
+          fs.rmdirSync(lock);
+        }
       } catch {
         /* gone already */
       }
-      if (Date.now() > until) throw new Error('the seat lock stayed taken; try again');
+      if (Date.now() > until) throw new Error(`the ${label} lock stayed taken; try again`);
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
+  }
+  try {
+    fs.mkdirSync(owner);
+    // If an empty lock was reclaimed while this process was paused before
+    // registering, its replacement may already have a different owner.
+    const owners = fs.readdirSync(lock);
+    if (owners.length !== 1 || owners[0] !== path.basename(owner)) throw new Error(`the ${label} lock changed owner`);
+  } catch (err) {
+    try {
+      fs.rmdirSync(owner);
+      fs.rmdirSync(lock);
+    } catch {
+      /* best effort */
+    }
+    throw err;
   }
   try {
     return fn();
   } finally {
     try {
+      fs.rmdirSync(owner);
       fs.rmdirSync(lock);
     } catch {
       /* best effort */

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sandboxEnv, reviewRequest } from './helpers.mjs';
+import { spawn } from 'node:child_process';
+import { sandboxEnv, reviewRequest, waitFor } from './helpers.mjs';
 
 const home = sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
@@ -319,4 +320,386 @@ test('a verdict that could not reach the history is reported, not dropped', asyn
     () => mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }] }),
     (e) => e.code === 'record_not_saved',
   );
+});
+
+// A completed job kept by its owner must not hide later sessions' checks.
+test('the owning session reads later verdicts in views, list, comparison, export and the next brief without saving', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const group = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await Promise.all(group.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
+  const jobId = group.jobs[0].job_id;
+  const live = mgr.jobs.get(jobId);
+  const promise = live.promise;
+  const cancelFns = live._cancelFns;
+  new JobManager().record({
+    job_id: jobId,
+    entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Verified by the other session.' }],
+    reflection: { delta: 'The other session found the missing bound.', related_item_ids: ['f1'] },
+  });
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(live.chain_id, live.round);
+  const before = fs.statSync(file, { bigint: true }).mtimeNs;
+  const bytes = fs.readFileSync(file, 'utf8');
+  assert.equal(mgr.view(jobId).record?.entries[0].verdict, 'confirmed');
+  assert.equal(mgr.view(jobId).reflection.delta, 'The other session found the missing bound.');
+  assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+  assert.equal(fs.statSync(file, { bigint: true }).mtimeNs, before, 'view does not rewrite the round');
+  new JobManager().record({ job_id: jobId, entries: [{ id: 'u1', verdict: 'unverifiable' }] });
+  const listed = mgr.list({ limit: 100 }).find((j) => j.job_id === jobId);
+  assert.deepEqual(listed.verdicts, { confirmed: 1, unverifiable: 1 });
+  assert.equal(listed.reflected, true);
+  new JobManager().record({ job_id: jobId, entries: [{ id: 'c1', verdict: 'unverified' }] });
+  const finalBytes = fs.readFileSync(file, 'utf8');
+  const finalMtime = fs.statSync(file, { bigint: true }).mtimeNs;
+  assert.equal(mgr.groupView(group.group_id).comparison.by_target[0].points_without_verdict, 0);
+  const { exportChain } = await import('../src/export.mjs');
+  const { markdown } = exportChain({ chain_id: live.chain_id });
+  assert.match(markdown, /Verified by the other session\./);
+  assert.match(markdown, /The other session found the missing bound\./);
+  assert.equal(fs.readFileSync(file, 'utf8'), finalBytes);
+  assert.equal(fs.statSync(file, { bigint: true }).mtimeNs, finalMtime, 'reads do not rewrite the round');
+  assert.equal(live.promise, promise, 'process controls remain attached');
+  assert.equal(live._cancelFns, cancelFns);
+
+  // Update again after the owner's reads: the follow-up must refresh on its own.
+  new JobManager().record({
+    job_id: jobId,
+    entries: [{ id: 'f1', verdict: 'not_applicable', effect: 'Rechecked after the owner read.' }],
+  });
+  const briefDir = fs.mkdtempSync(path.join(home, 'briefs-later-record-'));
+  process.env.STUB_BRIEF_DIR = briefDir;
+  try {
+    const followup = mgr.start(reviewRequest({ followup_to: jobId }));
+    await mgr.jobs.get(followup.job_id).promise;
+    const brief = fs.readFileSync(path.join(briefDir, 'codex.txt'), 'utf8');
+    assert.match(brief, /not_applicable/);
+    assert.match(brief, /Rechecked after the owner read\./);
+    assert.match(brief, /The other session found the missing bound\./);
+    assert.match(brief, /r1\.f1/);
+  } finally {
+    delete process.env.STUB_BRIEF_DIR;
+  }
+});
+
+// Pause each writer after its actual disk read. On the fixed path writer B
+// instead reaches the lock; release A then, so the barrier never holds a lock
+// while waiting for a second reader that correctly cannot enter it.
+async function concurrentRecords(t, view, first, second) {
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(view.chain_id, view.round);
+  const gates = fs.mkdtempSync(path.join(home, 'record-race-'));
+  const children = [];
+  t.after(() => {
+    for (const child of children) if (child.exitCode === null) child.kill('SIGKILL');
+  });
+  const launch = (name, input) => {
+    const child = spawn(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `
+        import fs from 'node:fs';
+        const { JobManager } = await import(${JSON.stringify(new URL('../src/jobs.mjs', import.meta.url).href)});
+        const store = await import(${JSON.stringify(new URL('../src/store.mjs', import.meta.url).href)});
+        const file = ${JSON.stringify(file)}, gates = ${JSON.stringify(gates)}, name = ${JSON.stringify(name)};
+        const mgr = new JobManager();
+        mgr.jobs.set(${JSON.stringify(view.job_id)}, store.loadRound(${JSON.stringify(view.job_id)}));
+        const read = fs.readFileSync, mkdir = fs.mkdirSync;
+        let paused = false;
+        fs.readFileSync = function(p, ...args) {
+          const value = read.call(this, p, ...args);
+          if (String(p) === file && !paused) {
+            paused = true;
+            fs.writeFileSync(gates + '/read-' + name, '');
+            const until = Date.now() + 10000;
+            while (!fs.existsSync(gates + '/release-' + name)) {
+              if (Date.now() > until) throw new Error('reader barrier timed out');
+              Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+            }
+          }
+          return value;
+        };
+        fs.mkdirSync = function(p, ...args) {
+          try { return mkdir.call(this, p, ...args); }
+          catch (e) {
+            if (String(p) === file + '.lock' && e.code === 'EEXIST') fs.writeFileSync(gates + '/blocked-' + name, '');
+            throw e;
+          }
+        };
+        try {
+          const saved = mgr.record(${JSON.stringify({ job_id: view.job_id, ...input })});
+          console.log(JSON.stringify(saved));
+        } catch (e) { console.error(e.stack); process.exitCode = 1; }
+      `,
+      ],
+      { env: process.env },
+    );
+    children.push(child);
+    let stdout = '',
+      stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    const exited = new Promise((resolve, reject) => {
+      child.on('error', reject);
+      child.on('exit', (code) => resolve({ code, stdout, stderr }));
+    });
+    return { child, exited };
+  };
+  const a = launch('a', first);
+  await waitFor(() => fs.existsSync(path.join(gates, 'read-a')), { timeoutMs: 5000 });
+  const b = launch('b', second);
+  await waitFor(() => fs.existsSync(path.join(gates, 'read-b')) || fs.existsSync(path.join(gates, 'blocked-b')), {
+    timeoutMs: 5000,
+  });
+  fs.writeFileSync(path.join(gates, 'release-a'), '');
+  const savedA = await a.exited;
+  fs.writeFileSync(path.join(gates, 'release-b'), '');
+  const savedB = await b.exited;
+  for (const result of [savedA, savedB]) {
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).job_id, view.job_id);
+  }
+  return roundFile(view);
+}
+
+test('two processes updating different IDs preserve both successes, prior IDs and the concurrent reflection', async (t) => {
+  const { mgr, view } = await completed();
+  mgr.record({ job_id: view.job_id, entries: [{ id: 'c1', verdict: 'unverified' }] });
+  const saved = await concurrentRecords(
+    t,
+    view,
+    { entries: [{ id: 'f1', verdict: 'confirmed' }], reflection: { delta: 'Concurrent reflection.', related_item_ids: ['f1'] } },
+    { entries: [{ id: 'u1', verdict: 'unverifiable' }] },
+  );
+  assert.deepEqual(
+    saved.record.entries.map((e) => [e.id, e.verdict]),
+    [
+      ['f1', 'confirmed'],
+      ['u1', 'unverifiable'],
+      ['c1', 'unverified'],
+    ],
+  );
+  assert.equal(saved.reflection.delta, 'Concurrent reflection.');
+  assert.equal(saved.result.findings[0].point, 'Retry storm risk');
+  assert.match(saved.brief.proposal, /Keep 5 retries/);
+  const index = fs
+    .readFileSync(path.join(home, 'history', 'index.jsonl'), 'utf8')
+    .split('\n')
+    .filter((line) => line.includes(view.job_id));
+  assert.equal(index.length, 1);
+});
+
+test('two processes updating the same ID keep the value saved last under the lock', async (t) => {
+  const { view } = await completed();
+  const saved = await concurrentRecords(
+    t,
+    view,
+    { entries: [{ id: 'f1', verdict: 'confirmed' }] },
+    { entries: [{ id: 'f1', verdict: 'not_applicable' }] },
+  );
+  assert.deepEqual(
+    saved.record.entries.map((e) => [e.id, e.verdict]),
+    [['f1', 'not_applicable']],
+  );
+});
+
+test('a taken record lock fails within a bounded wait and retains only saved values', async () => {
+  const { mgr, view } = await completed();
+  new JobManager().record({ job_id: view.job_id, entries: [{ id: 'u1', verdict: 'unverifiable' }] });
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(view.chain_id, view.round);
+  const before = fs.readFileSync(file, 'utf8');
+  fs.mkdirSync(`${file}.lock`);
+  const started = Date.now();
+  try {
+    assert.throws(
+      () =>
+        mgr.record({
+          job_id: view.job_id,
+          entries: [{ id: 'f1', verdict: 'confirmed' }],
+          reflection: { delta: 'Must not survive a failure.' },
+        }),
+      (e) => e.code === 'record_not_saved',
+    );
+    assert.ok(Date.now() - started < 5000, 'lock contention cannot wait indefinitely');
+    assert.equal(fs.readFileSync(file, 'utf8'), before);
+    assert.equal(mgr.jobs.get(view.job_id).record?.entries.some((e) => e.id === 'f1') ?? false, false);
+    assert.equal(mgr.jobs.get(view.job_id).reflection, null);
+    assert.equal(mgr.view(view.job_id).record.entries[0].id, 'u1');
+  } finally {
+    fs.rmSync(`${file}.lock`, { recursive: true, force: true });
+  }
+});
+
+test('a failed atomic replacement keeps successful verdicts and removes unsaved memory and temporary files', async (t) => {
+  const { mgr, view } = await completed();
+  new JobManager().record({ job_id: view.job_id, entries: [{ id: 'u1', verdict: 'unverifiable' }] });
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(view.chain_id, view.round);
+  const before = fs.readFileSync(file, 'utf8');
+  const rename = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (to === file) throw new Error('forced rename failure');
+    return rename(from, to);
+  });
+  assert.throws(
+    () =>
+      mgr.record({
+        job_id: view.job_id,
+        entries: [{ id: 'f1', verdict: 'confirmed' }],
+        reflection: { delta: 'Must not survive a failure.' },
+      }),
+    (e) => e.code === 'record_not_saved',
+  );
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+  assert.equal(mgr.jobs.get(view.job_id).record?.entries.some((e) => e.id === 'f1') ?? false, false);
+  assert.equal(mgr.jobs.get(view.job_id).reflection, null);
+  assert.deepEqual(
+    mgr.view(view.job_id).record?.entries.map((e) => e.id),
+    ['u1'],
+  );
+  assert.deepEqual(fs.readdirSync(path.dirname(file)), [path.basename(file)]);
+});
+
+test('a writer killed while holding the record lock leaves saved checks intact and the next writer can recover', async (t) => {
+  const { mgr, view } = await completed();
+  mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }], reflection: { delta: 'Already saved.' } });
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(view.chain_id, view.round);
+  const held = path.join(home, `held-${view.job_id}`);
+  const child = spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+    import fs from 'node:fs';
+    const { JobManager } = await import(${JSON.stringify(new URL('../src/jobs.mjs', import.meta.url).href)});
+    const store = await import(${JSON.stringify(new URL('../src/store.mjs', import.meta.url).href)});
+    const mgr = new JobManager();
+    mgr.jobs.set(${JSON.stringify(view.job_id)}, store.loadRound(${JSON.stringify(view.job_id)}));
+    const read = fs.readFileSync;
+    fs.readFileSync = function(p, ...args) {
+      const value = read.call(this, p, ...args);
+      if (String(p) === ${JSON.stringify(file)}) {
+        fs.writeFileSync(${JSON.stringify(held)}, '');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+      }
+      return value;
+    };
+    mgr.record({ job_id: ${JSON.stringify(view.job_id)}, entries: [{ id: 'c1', verdict: 'confirmed' }] });
+  `,
+    ],
+    { env: process.env },
+  );
+  t.after(() => {
+    if (child.exitCode === null) child.kill('SIGKILL');
+  });
+  const exited = new Promise((resolve) => child.on('exit', resolve));
+  await waitFor(() => fs.existsSync(held), { timeoutMs: 5000 });
+  assert.ok(fs.existsSync(`${file}.lock`), 'the read and merge happen inside the record lock');
+  child.kill('SIGKILL');
+  await exited;
+  const started = Date.now();
+  mgr.record({ job_id: view.job_id, entries: [{ id: 'u1', verdict: 'unverifiable' }] });
+  assert.ok(Date.now() - started < 5000, 'dead owners do not prevent the next save');
+  const saved = roundFile(view);
+  assert.deepEqual(
+    saved.record.entries.map((e) => [e.id, e.verdict]),
+    [
+      ['f1', 'confirmed'],
+      ['u1', 'unverifiable'],
+    ],
+  );
+  assert.equal(saved.reflection.delta, 'Already saved.');
+  assert.equal(fs.existsSync(`${file}.lock`), false);
+});
+
+test("a disk read failure cannot overwrite another session's saved checks with cached values", async (t) => {
+  const { mgr, view } = await completed();
+  new JobManager().record({
+    job_id: view.job_id,
+    entries: [{ id: 'u1', verdict: 'unverifiable' }],
+    reflection: { delta: 'Saved elsewhere.' },
+  });
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(view.chain_id, view.round);
+  const bytes = fs.readFileSync(file, 'utf8');
+  const read = fs.readFileSync;
+  const mock = t.mock.method(fs, 'readFileSync', (p, ...args) => {
+    if (String(p) === file) throw Object.assign(new Error('forced read failure'), { code: 'EACCES' });
+    return read(p, ...args);
+  });
+  assert.throws(
+    () => mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }] }),
+    (e) => e.code === 'record_not_saved',
+  );
+  assert.equal(mgr.jobs.get(view.job_id).record, null);
+  mock.mock.restore();
+  assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+  assert.deepEqual(
+    mgr.view(view.job_id).record.entries.map((e) => e.id),
+    ['u1'],
+  );
+  assert.equal(mgr.view(view.job_id).reflection.delta, 'Saved elsewhere.');
+});
+
+test('a replaced lock during owner registration never admits two writers', async (t) => {
+  const { mgr, view } = await completed();
+  const store = await import('../src/store.mjs');
+  const file = store.roundPath(view.chain_id, view.round);
+  const lock = `${file}.lock`;
+  const mkdir = fs.mkdirSync;
+  const bytes = fs.readFileSync(file, 'utf8');
+  t.mock.method(fs, 'mkdirSync', (p, ...args) => {
+    const value = mkdir(p, ...args);
+    if (String(p) === lock) {
+      // A stale empty directory was reclaimed before the delayed owner got
+      // to register itself; the new owner already holds this replacement.
+      fs.rmdirSync(lock);
+      mkdir(lock);
+      mkdir(path.join(lock, `owner-${process.ppid}`));
+    }
+    return value;
+  });
+  try {
+    assert.throws(
+      () => mgr.record({ job_id: view.job_id, entries: [{ id: 'f1', verdict: 'confirmed' }] }),
+      (e) => e.code === 'record_not_saved',
+    );
+    assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+    assert.deepEqual(fs.readdirSync(lock), [`owner-${process.ppid}`], 'the replacement owner keeps its lock');
+  } finally {
+    fs.rmSync(lock, { recursive: true, force: true });
+  }
+});
+
+test('prior-round reflections carry bounded lead text and round-qualified related IDs', async () => {
+  const { renderBrief } = await import('../src/brief.mjs');
+  const brief = renderBrief(reviewRequest(), {
+    round: 2,
+    priorRounds: [
+      {
+        round: 1,
+        mode: 'review',
+        question: 'Earlier question.',
+        summary: 'Earlier answer.',
+        reflection: {
+          delta: 'x'.repeat(400) + 'OMITTED_REFLECTION_TAIL',
+          related_item_ids: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'],
+        },
+      },
+    ],
+  });
+  assert.ok(brief.includes('x'.repeat(400) + '...'));
+  assert.doesNotMatch(brief, /OMITTED_REFLECTION_TAIL/);
+  assert.match(brief, /r1\.f1, r1\.f2, r1\.f3, r1\.f4, r1\.f5/);
+  assert.doesNotMatch(brief, /r1\.f6/);
+  assert.match(brief, /1 more/);
 });

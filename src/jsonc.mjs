@@ -21,12 +21,20 @@ export function stripJsonc(text) {
   let inString = false;
   let i = 0;
 
-  const blankBack = () => {
+  /** @param {']' | '}'} closing */
+  const blankBack = (closing) => {
     // The character that closed a container: blank a comma that preceded it.
     for (let j = out.length - 1; j >= 0; j--) {
       const c = out[j];
       if (c === ' ' || c === '\n' || c === '\r' || c === '\t') continue;
-      if (c === ',') out[j] = ' ';
+      if (c === ',') {
+        // A comma directly after the opening delimiter has no value to trail.
+        const opening = closing === '}' ? '{' : '[';
+        let previous = j - 1;
+        while (previous >= 0 && [' ', '\n', '\r', '\t'].includes(out[previous] ?? '')) previous--;
+        const previousChar = previous >= 0 ? out[previous] : undefined;
+        if (previousChar !== undefined && previousChar !== opening) out[j] = ' ';
+      }
       return;
     }
   };
@@ -55,7 +63,7 @@ export function stripJsonc(text) {
     }
 
     if (c === '/' && next === '/') {
-      while (i < text.length && text[i] !== '\n') {
+      while (i < text.length && text[i] !== '\n' && text[i] !== '\r') {
         out.push(' ');
         i++;
       }
@@ -63,18 +71,30 @@ export function stripJsonc(text) {
     }
 
     if (c === '/' && next === '*') {
+      const commentStart = out.length;
       out.push(' ', ' ');
       i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
-        out.push(text[i] === '\n' ? '\n' : ' ');
+      let closed = false;
+      while (i < text.length) {
+        if (text[i] === '*' && text[i + 1] === '/') {
+          out.push(' ', ' ');
+          i += 2;
+          closed = true;
+          break;
+        }
+        const commentChar = text.charAt(i);
+        out.push(commentChar === '\n' || commentChar === '\r' ? commentChar : ' ');
         i++;
       }
-      out.push(' ', ' ');
-      i += 2;
+      if (!closed) {
+        // Leave the opener in place so JSON.parse rejects the unfinished comment.
+        out[commentStart] = '/';
+        out[commentStart + 1] = '*';
+      }
       continue;
     }
 
-    if (c === '}' || c === ']') blankBack();
+    if (c === '}' || c === ']') blankBack(c);
     out.push(c);
     i++;
   }

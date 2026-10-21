@@ -19,6 +19,21 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 - Windows では、PowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
   `PATHEXT` から探します（`.exe`、`.cmd`、`.bat`、空白を含むパスにも対応します）。
 
+## コマンドライン
+
+```bash
+npx -y severally-mcp@2.6.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+```
+
+| オプション | すること |
+|---|---|
+| `--dry-run` | 何を変えるかを表示するだけで、何も変えない |
+| `--manual` | プラグインを入れる代わりに、MCP サーバを登録して Skill を写す（Windows の既定） |
+| `--force` | すでに登録してあっても、そのままにせず登録し直す |
+| `--skip-global` | プラグイン方式で npm のグローバルなインストールを飛ばす。`PATH` 上の `severally-mcp` がすでにこのインストールを指しているときだけ使える |
+| `--allow-local-tools` | severally の手元で完結する 5 つのツールを、確認なしで Claude Code の許可リストに足す。`consult_start` は確認を残す |
+
+
 ## クローンから入れる
 
 macOS / Linux では、次のコマンドを実行します。
@@ -173,6 +188,10 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 エージェントが触れるものがすべてそのベンダーに渡ってよい環境でだけ、省いてください。
 
 ## 更新
+
+開発中のクローンでは、`npm run build` のあとに `node scripts/install.mjs` を再実行すると、
+生成したサーバとSkillを各クライアントのインストール先に反映できます。既存の直接登録を置き換える必要がある場合は `--force` を付けます。実行後はクライアントを再起動してください。
+
 
 `npx -y severally-mcp@latest install` を実行します。
 クローンから入れた場合は、pull してから `npm install` と `node scripts/install.mjs` をもう一度実行します。

@@ -380,6 +380,7 @@ export class JobManager {
    * @returns {JobView}
    */
   #jobView(job, detail) {
+    this.#refreshRound(job);
     /** @type {FullView} */
     const rec = this.#record(job);
     rec.cancellable = job.status === 'running' || job.status === 'queued';
@@ -411,10 +412,21 @@ export class JobManager {
     return compactBrief(rec, detail);
   }
 
+  // Runtime handles stay on the owning job. Once it finishes, the round file
+  // is authoritative: another session may have checked the answer since.
+  /** @param {Job} job */
+  #refreshRound(job) {
+    if (!['running', 'queued', 'cancelling'].includes(job.status)) {
+      const saved = store.loadRoundAt(job);
+      if (saved) Object.assign(job, saved);
+    }
+    return job;
+  }
+
   // This session's consultations and the history's, so an earlier session's
   // job_id and group_id can still be followed up and recorded against. The
   // index only picks and orders; each row shown is read from its round, which
-  // holds the verdicts written since. Memory wins over disk for the same job.
+  // holds the verdicts written since. Running jobs keep their runtime state.
   /** @param {{limit?: number}} [opts] */
   list({ limit = 20 } = {}) {
     // Sorted by when each was created; a round file is read only for the rows shown.
@@ -425,7 +437,7 @@ export class JobManager {
       const job = this.jobs.get(jid);
       if (!job) continue;
       seen.add(job.job_id);
-      candidates.push({ at: job.created_at ?? '', load: () => job });
+      candidates.push({ at: job.created_at ?? '', load: () => this.#refreshRound(job) });
     }
     // Read only: a marker whose owner is gone is shown as interrupted, and
     // left for consult_get or the startup sweep to close out.
@@ -782,8 +794,7 @@ export class JobManager {
           }
         }
         markSinceParent(exposeManifest, parentEntries);
-        // Every earlier path gone, and nothing else to go on: refused, as a
-        // first round with no context is.
+        // Explicitly requested file reuse found no paths and no replacement material.
         if (
           parentEntries.length &&
           !exposeManifest.entries.length &&
@@ -959,7 +970,7 @@ export class JobManager {
   }
 
   // The rounds before a follow-up, from the history on disk and from memory
-  // (memory wins: it can hold a verdict written since the round was saved).
+  // (only a round still running here takes precedence over its saved file).
   // Each point goes with the lead's verdict on it, so the consultant answers
   // knowing which of its points were checked and how they came out.
   /**
@@ -969,7 +980,9 @@ export class JobManager {
   #chainRounds(chainId) {
     /** @type {Map<number, Round>} */
     const byRound = new Map(store.loadChain(chainId).map((j) => [j.round, j]));
-    for (const j of this.jobs.values()) if (j.chain_id === chainId) byRound.set(j.round, j);
+    for (const j of this.jobs.values())
+      if (j.chain_id === chainId && (!byRound.has(j.round) || ['running', 'queued', 'cancelling'].includes(j.status)))
+        byRound.set(j.round, j);
     return [...byRound.values()];
   }
 
@@ -1004,6 +1017,7 @@ export class JobManager {
           mode: j.mode,
           question: j.question,
           summary: j.result.summary,
+          reflection: j.reflection ?? null,
           // Every checked finding; of the rest, the first five.
           findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
           unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
@@ -1583,31 +1597,26 @@ export class JobManager {
 
   /** @param {RecordChange} change */
   #saveRecord({ job, live, entries, reflection }) {
-    const was = { record: job.record, reflection: job.reflection };
-    // Another server may have written verdicts or a reflection to this round
-    // since this one loaded it. Start from the file, so this call replaces
-    // only the ids it names (and the reflection, if it passes one) and keeps
-    // the rest; the merge goes back into memory too, so consult_get and a
-    // follow-up's brief show the same record.
-    // ponytail: read-then-write, not locked; two writes in the same instant can still lose one.
-    const disk = store.loadRoundAt(job);
-    const base = disk?.result ? disk : job;
-    job.reflection = reflection ?? base.reflection;
-    if (entries !== undefined) {
-      const merged = new Map((base.record?.entries ?? []).map((e) => [e.id, e]));
-      for (const e of entries) merged.set(e.id, e);
-      const ids = job.result ? recordableIds(job.result) : [];
-      job.record = { updated_at: new Date().toISOString(), entries: ids.flatMap((id) => merged.get(id) ?? []) };
-    } else if (base.record) job.record = base.record;
     // An update to a round that already happened, so the index line stays as it
     // was: the history has one line per consultation, not one per edit.
     // Unlike the round itself, a verdict exists nowhere else once this server
     // exits, so a failed write is the lead's to know about, not best effort.
     try {
-      store.persistRound(live ? this.#record(live) : job, { appendIndex: false });
+      const saved = store.updateRound(live ? this.#record(live) : job, (base) => {
+        const next = { ...base, reflection: reflection ?? base.reflection };
+        if (entries !== undefined) {
+          const merged = new Map((base.record?.entries ?? []).map((e) => [e.id, e]));
+          for (const e of entries) merged.set(e.id, e);
+          const ids = base.result ? recordableIds(base.result) : [];
+          next.record = { updated_at: new Date().toISOString(), entries: ids.flatMap((id) => merged.get(id) ?? []) };
+        }
+        return next;
+      });
+      // No unsaved edit ever reaches the live object, including when acquiring
+      // the lock, reading the latest file, or its atomic replacement fails.
+      job.record = saved.record;
+      job.reflection = saved.reflection;
     } catch (e) {
-      // Not saved, so not shown as recorded either.
-      Object.assign(job, was);
       return {
         job_id: job.job_id,
         error: 'record_not_saved',

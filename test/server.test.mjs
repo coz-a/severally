@@ -89,6 +89,46 @@ test('start -> get -> structured result, over MCP', async () => {
   await close();
 });
 
+// A self-contained question needs no separate context to start a consultation.
+const questionOnlyRequest =
+  'Review this design in at most 200 words. A worker charges a credit card then ACKs a queue message. On a timeout the queue retries the message. Is retrying safe? Give one concrete failure sequence, a minimal mitigation, and a test. Do not edit files, consult agents, or use the network.';
+
+test('a question-only request launches, replies and accepts a follow-up', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { client, close } = await connect();
+  try {
+    const started = payload(
+      await client.callTool({
+        name: 'consult_start',
+        arguments: { request: { target: 'codex', question: questionOnlyRequest, network: 'off', caller: 'codex' } },
+      }),
+    );
+    assert.ok(started.job_id, JSON.stringify(started));
+    const view = payload(
+      await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000, detail: 'full' } }),
+    );
+    assert.equal(view.status, 'completed');
+    assert.ok(view.result.summary);
+    assert.equal(view.question, questionOnlyRequest);
+    assert.deepEqual(view.brief.facts, []);
+    const next = payload(
+      await client.callTool({
+        name: 'consult_start',
+        arguments: { request: { followup_to: started.job_id, question: 'Which test would reveal duplicate charges?' } },
+      }),
+    );
+    assert.ok(next.job_id, JSON.stringify(next));
+    const reply = payload(
+      await client.callTool({ name: 'consult_get', arguments: { job_id: next.job_id, wait_ms: 20000, detail: 'full' } }),
+    );
+    assert.equal(reply.status, 'completed');
+    assert.ok(reply.result.summary);
+    assert.deepEqual(reply.brief.facts, []);
+  } finally {
+    await close();
+  }
+});
+
 test('a request that tries to raise the model or permissions is rejected at the tool boundary', async () => {
   const { client, close } = await connect();
   const res = await client.callTool({
