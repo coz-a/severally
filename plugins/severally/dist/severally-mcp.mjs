@@ -40104,13 +40104,13 @@ function byTarget(m, budget) {
     if (full) return items.map((x) => build2(x, Infinity));
     let share = left * part;
     const flagged = truncated;
-    const bare = items.reduce((n, x) => Math.max(n, printed(build2(x, 0))), 0);
+    const bare = items.reduce((n, x) => Math.max(n, printed(build2(x, 0), 10) + 2), 0);
     truncated = flagged;
     const cap = Math.max(floor, Math.min(item, (share / Math.max(1, items.length) - bare) / fields));
     const out = [];
     for (const x of items) {
       const v = build2(x, cap);
-      const n = printed(v);
+      const n = printed(v, 10) + 2;
       if (n > share) break;
       share -= n;
       left -= n;
@@ -40124,14 +40124,15 @@ function byTarget(m, budget) {
   };
   const summary = clip2(m.result?.summary ?? null, Math.min(SUMMARY_CHARS, budget / 3));
   const caveat = clip2(m.quality?.caveat ?? null, Math.min(CAVEAT_CHARS, budget / 3));
-  if (!full) left -= printed(summary) + printed(caveat);
+  const model = clip2(m.model ?? null, Math.min(ITEM_CHARS, budget / 10)) ?? null;
+  if (!full) left -= printed(summary) + printed(caveat) + printed(model);
   const r = m.result ?? {};
   const findingPoints = list(
     "finding_points",
     r.findings,
-    1,
-    (f, n) => ({ id: f.id, severity: f.severity ?? null, point: clip2(f.point, n) }),
-    0.6,
+    2,
+    (f, n) => ({ id: f.id, severity: f.severity ?? null, point: clip2(f.point, n), grounds: clip2(f.grounds, n) }),
+    0.75,
     20
   );
   const decisionChangers = list(
@@ -40154,6 +40155,7 @@ function byTarget(m, budget) {
   const entry = {
     job_id: m.job_id,
     target: m.target,
+    model,
     cli: m.cli,
     status: m.status,
     failure_kind: m.failure?.kind ?? null,
@@ -40243,9 +40245,9 @@ function pointsOf(view, ids) {
     next_step: view.next_step
   };
 }
-function printed(v) {
+function printed(v, indent = 8) {
   const j = JSON.stringify(v, null, 2) ?? "";
-  return j.length + 8 * j.split("\n").length;
+  return j.length + indent * j.split("\n").length;
 }
 function cut(s2, max) {
   if (typeof s2 !== "string") return s2;
@@ -41615,7 +41617,7 @@ var init_jobs = __esm({
           members: trimmed2,
           comparison: null,
           cancellable: live,
-          next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? `list the points where the consultants diverge, check the grounds behind each one (consult_get({ job_id, ids: ["f2", ...] }) on a member returns those points whole, with their grounds: fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes; unknowns u1... and next_checks c1... are fetched the same way; consult_get({ job_id }) returns the whole answer, for its alternatives' tradeoffs and references), then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision. Write what checking showed for every member in one call: consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] })` : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
+          next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer' : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
           // The limits went out with consult_start, and consult_list has them;
           // by default they are not repeated here, where their size grows with
           // the number of consultants configured rather than asked.
@@ -41710,12 +41712,12 @@ var init_jobs = __esm({
     };
     PARTIAL_TAIL_CHARS = 8e3;
     GROUP_CHARS = 19500;
-    COLUMN_FIXED_CHARS = 700;
+    COLUMN_FIXED_CHARS = 800;
     COMPARISON_NOTE_CHARS = 500;
     QUESTION_CHARS = 1e3;
     FAILURE_MESSAGE_CHARS = 300;
-    SUMMARY_CHARS = 1200;
-    CAVEAT_CHARS = 1500;
+    SUMMARY_CHARS = 400;
+    CAVEAT_CHARS = 500;
     ITEM_CHARS = 300;
     MIN_TEXT_CHARS = 40;
     flagNames = (a) => {
@@ -42075,7 +42077,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with every stance, summary and finding id side by side, cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer. Before your final report, check one point that could change the decision, then save the outcome with consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. The single answer already includes its grounds: do not fetch it again. For a fan-out fetch the deciding points with ids, or detail: "full" when every full answer is needed, and record the checked points in one records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.`,
+      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with each actual model, stance, summary and finding (id and grounds), cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer. Before your final report, check one point that could change the decision, then save the outcome with consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding points with ids when their grounds or details are missing or shortened, or detail: "full" for every full answer. Record checked points in one records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -42281,7 +42283,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.6.1";
+    SEVERALLY_VERSION = "2.6.2";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

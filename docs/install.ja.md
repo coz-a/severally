@@ -10,6 +10,19 @@ npx はパッケージを自分のキャッシュに取ってきて、そこか�
 
 ## 必要なもの
 
+severally を入れる前に、相談したい CLI を少なくとも 1 つ入れてログインしてください。4 つすべてを入れる必要はありません。
+導入と認証の方法は、各 CLI の公式ガイドにあります。
+
+| CLI | 導入とログイン |
+|---|---|
+| Codex | [導入](https://developers.openai.com/codex/cli)・[ログイン](https://learn.chatgpt.com/docs/auth) |
+| Claude Code | [導入と認証](https://code.claude.com/docs/en/setup) |
+| Antigravity | [導入](https://antigravity.google/docs/getting-started?tab=cli)・[認証](https://antigravity.google/docs/install?tab=cli) |
+| OpenCode | [導入](https://dev.opencode.ai/v2/docs)・[プロバイダーへの接続](https://dev.opencode.ai/v2/docs/providers) |
+
+導入後は新しいターミナルを開き、CLI を `PATH` から使えるようにしてください。severally は CLI の既存のログインを使います。
+インストーラが準備するのはサーバとクライアントへの登録で、相談相手のアカウントは設定しません。
+
 README に書いた Node.js 22 以降とログイン済みの CLI のほかに、次の条件があります。
 
 - macOS / Linux では、npm のグローバルのフォルダについて必要なことはありません。既定のプラグイン方式（下記）は
@@ -22,7 +35,7 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.6.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.6.2 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |

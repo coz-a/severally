@@ -120,6 +120,7 @@ import * as opencode from './adapters/opencode.mjs';
  * @typedef {object} ComparisonColumn
  * @property {string} job_id
  * @property {string} target
+ * @property {string | null} model
  * @property {string} [cli]
  * @property {string} [status]
  * @property {string | null} [failure_kind]
@@ -1806,7 +1807,7 @@ export class JobManager {
         : live
           ? 'poll consult_get again with this group_id, or consult_cancel it'
           : anyResult
-            ? 'list the points where the consultants diverge, check the grounds behind each one (consult_get({ job_id, ids: ["f2", ...] }) on a member returns those points whole, with their grounds: fetch every point you mean to adopt, that decides your call, that rests on thin grounds, or that every consultant assumes; unknowns u1... and next_checks c1... are fetched the same way; consult_get({ job_id }) returns the whole answer, for its alternatives\' tradeoffs and references), then spend a follow-up (followup_to on that member job) only on a divergence that would change your decision. Write what checking showed for every member in one call: consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] })'
+            ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer'
             : 'no advice was obtained: no member of this fan-out produced a result (see each member\'s failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement',
       // The limits went out with consult_start, and consult_list has them;
       // by default they are not repeated here, where their size grows with
@@ -2299,13 +2300,15 @@ function byTarget(m, budget) {
     // share can be split among the texts.
     // A probe, not a cut: it must not mark the column truncated.
     const flagged = truncated;
-    const bare = items.reduce((n, x) => Math.max(n, printed(build(x, 0))), 0);
+    const bare = items.reduce((n, x) => Math.max(n, printed(build(x, 0), 10) + 2), 0);
     truncated = flagged;
     const cap = Math.max(floor, Math.min(item, (share / Math.max(1, items.length) - bare) / fields));
     const out = [];
     for (const x of items) {
       const v = build(x, cap);
-      const n = printed(v);
+      // List items sit two spaces deeper than column fields; include their
+      // separator too, or many short findings can exceed the response budget.
+      const n = printed(v, 10) + 2;
       if (n > share) break;
       share -= n;
       left -= n;
@@ -2319,18 +2322,19 @@ function byTarget(m, budget) {
   };
   const summary = clip(m.result?.summary ?? null, Math.min(SUMMARY_CHARS, budget / 3));
   const caveat = clip(m.quality?.caveat ?? null, Math.min(CAVEAT_CHARS, budget / 3));
-  if (!full) left -= printed(summary) + printed(caveat);
+  const model = clip(m.model ?? null, Math.min(ITEM_CHARS, budget / 10)) ?? null;
+  if (!full) left -= printed(summary) + printed(caveat) + printed(model);
   /** @type {Partial<ConsultResult>} */
   const r = m.result ?? {};
-  // The findings first, with up to 60% of what is left and their points cut
+  // The findings first, with up to 75% of what is left and their texts cut
   // as short as it takes: they are what gets recorded against, so their ids
   // matter most. The other lists then share the rest evenly.
   const findingPoints = list(
     'finding_points',
     r.findings,
-    1,
-    (f, n) => ({ id: f.id, severity: f.severity ?? null, point: clip(f.point, n) }),
-    0.6,
+    2,
+    (f, n) => ({ id: f.id, severity: f.severity ?? null, point: clip(f.point, n), grounds: clip(f.grounds, n) }),
+    0.75,
     20,
   );
   const decisionChangers = list(
@@ -2354,6 +2358,7 @@ function byTarget(m, budget) {
   const entry = {
     job_id: m.job_id,
     target: m.target,
+    model,
     cli: m.cli,
     status: m.status,
     failure_kind: m.failure?.kind ?? null,
@@ -2404,12 +2409,12 @@ function byTarget(m, budget) {
 // COLUMN_FIXED_CHARS is what one column's fixed fields take, the note's the
 // comparison note's.
 const GROUP_CHARS = 19_500;
-const COLUMN_FIXED_CHARS = 700;
+const COLUMN_FIXED_CHARS = 800;
 const COMPARISON_NOTE_CHARS = 500;
 const QUESTION_CHARS = 1_000;
 const FAILURE_MESSAGE_CHARS = 300;
-const SUMMARY_CHARS = 1_200;
-const CAVEAT_CHARS = 1_500;
+const SUMMARY_CHARS = 400;
+const CAVEAT_CHARS = 500;
 const ITEM_CHARS = 300;
 const MIN_TEXT_CHARS = 40;
 
@@ -2475,10 +2480,13 @@ export function pointsOf(view, ids) {
 
 // What a value takes as the server prints it, nested four levels into the
 // response: two-space JSON, every line indented eight more.
-/** @param {unknown} v */
-function printed(v) {
+/**
+ * @param {unknown} v
+ * @param {number} [indent]
+ */
+function printed(v, indent = 8) {
   const j = JSON.stringify(v, null, 2) ?? '';
-  return j.length + 8 * j.split('\n').length;
+  return j.length + indent * j.split('\n').length;
 }
 
 // A text cut to `max` characters as printed in JSON, so a run of characters

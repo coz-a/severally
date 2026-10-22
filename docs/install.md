@@ -10,6 +10,19 @@ into that cache, so it can be cleared afterwards.
 
 ## Requirements
 
+Install and sign in to at least one consultant CLI before installing severally. Choose the ones you want;
+you do not need all four. These official guides cover installation and authentication:
+
+| CLI | Installation and login |
+|---|---|
+| Codex | [Install](https://developers.openai.com/codex/cli) · [Sign in](https://learn.chatgpt.com/docs/auth) |
+| Claude Code | [Install and authenticate](https://code.claude.com/docs/en/setup) |
+| Antigravity | [Install](https://antigravity.google/docs/getting-started?tab=cli) · [Authenticate](https://antigravity.google/docs/install?tab=cli) |
+| OpenCode | [Install](https://dev.opencode.ai/v2/docs) · [Connect a provider](https://dev.opencode.ai/v2/docs/providers) |
+
+Open a new terminal after installation so the CLI is on `PATH`. severally uses the CLI's existing login;
+its installer prepares the server and client registration, not the consultant's account.
+
 Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 
 - macOS/Linux: nothing about npm's global folder is required. The default (plugin mode, below) runs
@@ -22,7 +35,7 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.6.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.6.2 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |
