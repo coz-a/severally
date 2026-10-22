@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.6.1';
+export const SEVERALLY_VERSION = '2.6.2';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -228,15 +228,15 @@ export function createServer(manager = new JobManager()) {
         'failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, ' +
         'spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence ' +
         "(quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and " +
-        'job_id, and `comparison.by_target` with every stance, summary and finding id side by side, cut where ' +
+        'job_id, and `comparison.by_target` with each actual model, stance, summary and finding (id and grounds), cut where ' +
         '`truncated` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds ' +
         'and your verdict (`recorded`). A finished consultation names its brief rather than repeating it; detail: ' +
         '"full" returns the brief, and for a fan-out every member\'s full answer. ' +
         'Before your final report, check one point that could change the decision, then save the outcome with ' +
         'consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as ' +
         'confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. ' +
-        'The single answer already includes its grounds: do not fetch it again. For a fan-out fetch the deciding ' +
-        'points with ids, or detail: "full" when every full answer is needed, and record the checked points in one ' +
+        'Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding ' +
+        'points with ids when their grounds or details are missing or shortened, or detail: "full" for every full answer. Record checked points in one ' +
         "records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.",
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),

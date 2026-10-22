@@ -29,6 +29,10 @@ claude-code  do_not_proceed  whoever fills the cache first sets the price everyo
 antigravity  alternative     member discounts leak to other users; fix the query and a cache may not be needed
 ```
 
+In that example, the lead reproduced inflated stock in a test database and chose to fix the query first.
+It also checked that login was not yet wired in: the price leak would begin when login was added, so it
+recommended caching only user-independent product data. Whether the fixed query was fast enough remained unverified.
+
 ## Contents
 
 - [Install](#install)
@@ -55,13 +59,16 @@ antigravity  alternative     member discounts leak to other users; fix the query
 - At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
   fresh Claude Code session.
 
+Prepare the CLI you want to consult using the [installation and login links](docs/install.md#requirements).
+The command below installs severally and registers it with existing CLIs; it does not install or log in to those CLIs.
+
 The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
 routes and the real CLIs have been tried on Linux only.
 
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.6.1 install
+npx -y severally-mcp@2.6.2 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -71,7 +78,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.6.1 status
+npx -y severally-mcp@2.6.2 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -113,7 +120,7 @@ I recommend checking that their combined delay stays within 60 seconds before ad
 ```
 
 Then ask: "Ask the same consultant what changes if updates must appear within five seconds."
-A question containing its own premises needs no separate `context.facts`. For code questions, supply the files or diff.
+Ask in your own words and include the premises in your question. For code questions, supply the files or diff.
 
 Name a consultant to ask that one. A second opinion with no name, or "ask everyone", goes to every configured
 consultant and uses one consultation's quota per consultant.
@@ -230,8 +237,10 @@ install OpenCode and add the model as a consultant: see
 
 ## What a consultant can see and do
 
-A consultation sends the brief to that CLI's model, the same way using the CLI yourself does. Your conversation
-history is never sent. No consultant can:
+A consultation sends the brief to that CLI's model, the same way using the CLI yourself does. It does not
+automatically inherit your parent session's history: anything the lead includes in the brief is sent, and files
+the consultant is allowed to read also go to its model. The read-only setting does not isolate what it can read.
+No consultant can:
 
 - write files
 - use MCP
@@ -250,6 +259,10 @@ the server does not tell it where your repository is. It can still read any file
 the credential paths the table marks blocked. The one exception is Claude Code in a consultation that exposes files:
 it can then read only those copies.
 Codex does not block by file name, so a `.env` in your repository is readable to it.
+Its protection also misses files created later under `~/.codex` and, on Linux, protected files replaced by rename
+during a run. Credentials stored outside the configured protected paths are not covered.
+On Windows, cancellation stops the tree while its parent is alive; descendants may survive if the parent has
+already exited. That case has not been verified on a real Windows machine.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
@@ -261,8 +274,10 @@ How each CLI is held to this is in [docs/how-it-works.md](docs/how-it-works.md#h
 
 ## API
 
-The server has six MCP tools. Only `consult_start` sends anything off your machine: the brief, and the files
-it exposes, go to each consultant's model. Every argument is described in the tool descriptions the agent reads.
+The server has six MCP tools. Of these, only `consult_start` starts an external consultation, sending the brief
+and exposed files to each consultant's model. Once started, a consultant can read files or browse within its
+permissions; those contents can also leave the machine. The other five tools operate on local consultation
+state and records. Every argument is described in the tool descriptions the agent reads.
 
 | Tool | What it does |
 |---|---|

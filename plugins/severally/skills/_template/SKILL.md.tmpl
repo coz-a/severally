@@ -119,14 +119,15 @@ Check `status` first. **`failed`** means no advice was obtained (`failure.kind` 
 weigh it accordingly.
 
 For several consultants, every one received the **identical brief**, and `comparison.by_target` lays their
-answers side by side: `stance`, summary, finding points, unknowns and next_checks, each point with its `id`.
+answers side by side: actual `model`, `stance`, summary, finding points with grounds, unknowns and next_checks,
+each point with its `id`.
 
 - **Read the `stance` column first.** Consultants that share a finding can land on opposite bottom lines, and
   that is the divergence that matters most.
 - **Matching summaries are not agreement.** The server does not judge agreement; "both agreed" is a claim you
   have to earn from the grounds.
-- **Read the grounds before you lean on a point.** A single answer already includes them; do not fetch it again.
-  In a fan-out, `consult_get({ job_id, ids: ["f2", "u1"] })` returns the deciding points whole. Use
+- **Read the grounds before you lean on a point.** Do not fetch grounds already shown whole. When grounds or
+  details are missing or shortened in a fan-out, `consult_get({ job_id, ids: ["f2", "u1"] })` returns those points whole. Use
   `consult_get({ group_id, detail: "full" })` when you need every full answer. Do not decide from clipped summaries.
 - A same-vendor answer's caveat lowers the weight of its *agreement* with you; it is not a reason to discard its
   findings.

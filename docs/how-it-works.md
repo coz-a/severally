@@ -26,7 +26,8 @@ consults with read-only copies of the code the question is about. When the answe
 findings itself and asks you only what is yours to decide. In a routine consultation the lead does three things:
 starts it, waits for the answers, and records the one finding it checked.
 
-Each consultant is a new session of its CLI, started just for this question. The server sends the brief and explicitly exposed files without inheriting your conversation.
+Each consultant is a new session of its CLI, started just for this question. It does not automatically inherit
+your conversation history. The server sends the brief, including anything the lead puts in it, and explicitly exposed files.
 Depending on the CLI, the consultant can also read other files on disk. The severally server sends every consultant the same brief and
 returns the answers consultant by consultant. It does not merge them or judge which is right.
 
@@ -92,6 +93,13 @@ there is no need to repeat the question's premises there. Code questions still n
 
 ## Records
 
+`limits.network` reports the server default. A job's `network` and `boundary.network` describe that round;
+for example, a request with `network: "off"` can run without browsing while `limits.network` still says `"on"`.
+The displayed setting alone does not prove an attempted operation was refused.
+On Windows, cancellation kills the process tree while the parent is alive. If the parent has already exited,
+its PID is not reused for cancellation, because that could kill an unrelated process; descendants can remain.
+The parent-exited case has not been verified on a real Windows machine.
+
 - Each round is one file, and each verdict keeps its effect on the decision. The verdicts mean: `confirmed`, it
   holds here; `not_applicable`, true in general, not in this codebase; `unverifiable`, cannot be settled with what
   the lead can reach; `unverified`, not checked, with the reason.
@@ -104,15 +112,16 @@ there is no need to repeat the question's premises there. Code questions still n
 
 ## How large a fan-out's answer is
 
-A finished fan-out comes back in one response that fits a client's MCP output limit: under 20,000 characters
-even with nine consultants at every length cap (`test/response-size.test.mjs`); on three real three-way
-fan-outs it went from 76,000–79,000 characters to 12,400–15,700. It holds each consultant's stance, summary and
-points with their ids side by side, cut to fixed lengths and marked where cut, with a count of the items a
-list had no room for. The lead then fetches the points it checks, with their grounds, by id
-(`consult_get({ job_id, ids: ["f2", "f5"] })`): on those three fan-outs, the group plus three points from every
-consultant came to 22,300–24,500 characters, against 62,000–75,000 for every full answer. A consultant's whole
-answer is `consult_get({ job_id })`, and `consult_get({ group_id, detail: "full" })` returns every member's
-whole answer at once.
+A finished fan-out uses a 19,500-character response budget, including JSON indentation. The response-size
+tests cover up to nine consultants at every answer length cap, escaped text and partial failures.
+It places each consultant's actual answering model, stance, summary and findings (id, severity, point and grounds)
+side by side. Findings get more space than the other lists. Text shortened to fit is marked `truncated`, and
+`omitted` counts items left out of a list; no finding is ranked or rewritten by the server.
+
+The lead reads grounds already shown whole and checks deciding claims itself. For missing or shortened details,
+`consult_get({ job_id, ids: ["f2", "f5"] })` returns those points whole, with their grounds. A consultant's whole
+answer is `consult_get({ job_id })`; `consult_get({ group_id, detail: "full" })` returns every member's whole
+answer at once. The saved answers keep their complete contents.
 
 ## How a consultant is kept to reading
 

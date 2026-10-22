@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
 sandboxEnv();
-const { JobManager } = await import('../src/jobs.mjs');
+const { JobManager, pointsOf } = await import('../src/jobs.mjs');
 const { POLICY } = await import('../src/policy.mjs');
 const store = await import('../src/store.mjs');
 
 // What one finished fan-out may take by default, as the server prints it
 // (JSON, two-space indent): under the MCP output cap a client applies, so the
 // lead reads the side-by-side instead of having it spilled to a file.
-const GROUP_MAX = 20_000;
+const GROUP_MAX = 19_500;
 const size = (v) => JSON.stringify(v, null, 2).length;
 
 const ALL = ['codex', 'claude-code', 'antigravity'];
@@ -60,6 +60,53 @@ const maxed = {
   result: result(POLICY.output.listMax, POLICY.output.itemTextMax, POLICY.output.summaryMax),
   quality: { caveat: 'v'.repeat(4_000) },
 };
+
+test('a short fan-out exposes each finding with its grounds and actual answering model', async () => {
+  const mgr = new JobManager();
+  const answers = ALL.map((_, i) => ({ model: `answering-model-${i}`, result: result(2, 50, 100) }));
+  const s = await fanout(mgr, ALL, answers);
+  const view = mgr.groupView(s.group_id);
+  for (const [i, column] of view.comparison.by_target.entries()) {
+    assert.equal(column.model, answers[i].model);
+    assert.deepEqual(
+      column.finding_points,
+      answers[i].result.findings.map(({ id, severity, point, grounds }) => ({ id, severity, point, grounds })),
+    );
+    assert.equal(column.truncated, undefined);
+    assert.deepEqual(mgr.view(column.job_id).result, answers[i].result, 'the stored answer stays whole');
+  }
+  assert.ok(size(view) <= 19_500);
+});
+
+test('clipped grounds are marked and can be fetched whole by finding id', async () => {
+  const mgr = new JobManager();
+  const answer = { result: result(1, 4_000, 100) };
+  const s = await fanout(mgr, ALL, [answer, answer, answer]);
+  const view = mgr.groupView(s.group_id);
+  for (const column of view.comparison.by_target) {
+    const finding = column.finding_points[0];
+    assert.equal(typeof finding.grounds, 'string');
+    assert.ok(finding.grounds.length < answer.result.findings[0].grounds.length);
+    assert.equal(column.truncated, true);
+    assert.match(view.next_step, /ids/);
+    const selected = pointsOf(mgr.view(column.job_id), [finding.id]);
+    assert.equal(selected.points[0].grounds, answer.result.findings[0].grounds);
+  }
+  assert.ok(size(view) <= 19_500);
+});
+
+test('long answering model identifiers fit and expose their complete value through the job view', async () => {
+  const mgr = new JobManager();
+  const answer = { model: 'custom-model-'.repeat(2_000), result: result(2, 50, 100) };
+  const s = await fanout(mgr, ALL, [answer, answer, answer]);
+  const view = mgr.groupView(s.group_id);
+  assert.ok(size(view) <= GROUP_MAX, `${size(view)} > ${GROUP_MAX}`);
+  for (const column of view.comparison.by_target) {
+    assert.equal(column.truncated, true);
+    assert.ok(column.model.endsWith('…'));
+    assert.equal(mgr.view(column.job_id).model, answer.model);
+  }
+});
 
 test('a three-way fan-out of 11,000-character answers fits one response', async () => {
   const mgr = new JobManager();

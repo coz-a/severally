@@ -82,11 +82,12 @@ with no `target` or `targets` (see Follow-ups).
 While you wait, `consult_get` blocks for up to its limit (ten minutes where the client allows it). To work on
 something independent in between, pass a shorter `wait_ms` and come back.
 
-`comparison.by_target` holds, per consultant: stance, summary, confidence, evidence basis, finding points (each
-with its `id` and severity), `severity_counts`, `decision_changers`, alternatives, unknowns (`u1` …),
+`comparison.by_target` holds, per consultant: actual model, stance, summary, confidence, evidence basis, finding points (each
+with its `id`, severity and grounds), `severity_counts`, `decision_changers`, alternatives, unknowns (`u1` …),
 next_checks (`c1` …), remaining disagreements, its `caveat`, and how many of its points carry no verdict yet.
 Long texts are cut and the column says so (`truncated`); a list that could not hold every item says how many it
-left out (`omitted`), so an empty list there is not "none given". `consult_get({ job_id })` returns one
+left out (`omitted`), so an empty list there is not "none given". Read grounds already shown whole; fetch missing
+or shortened deciding points with `consult_get({ job_id, ids: ["f2"] })`. `consult_get({ job_id })` returns one
 member's whole answer; `consult_get({ group_id, detail: "full" })` returns every member's, and can be too large
 to show inline.
 
