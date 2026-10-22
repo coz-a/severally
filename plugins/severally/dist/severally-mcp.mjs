@@ -37557,21 +37557,63 @@ function renderExposeManifest(manifest) {
 function renderRound(p) {
   const tag = (id2) => `r${p.round}.${id2}`;
   const verdict = (x) => x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ""}` : "";
-  const list = (title, items, line) => items?.length ? [title, ...items.map(line)].join("\n") : null;
-  return [
+  const header = [
     `### Round ${p.round} (${p.mode})`,
-    `Question asked: ${p.question}`,
-    `Your answer, summarised: ${p.summary}`,
-    p.reflection ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` + (p.reflection.related_item_ids.length ? ` (related: ${p.reflection.related_item_ids.slice(0, 5).map(tag).join(", ")}${p.reflection.related_item_ids.length > 5 ? `; ${p.reflection.related_item_ids.length - 5} more` : ""})` : "") : null,
-    list(
-      "Points you raised:",
-      p.findings,
-      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `
-  grounds: ${clip(f.grounds)}` : ""}`
-    ),
-    list("Unknowns you named:", p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`),
-    list("Checks you proposed:", p.next_checks, (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}`)
+    `Question asked: ${clip(p.question, 1200)}`,
+    `Your answer, summarised: ${clip(p.summary, 8e3)}`,
+    p.stance ? `Your stance: ${p.stance}` : null,
+    p.reflection ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` + (p.reflection.related_item_ids.length ? ` (related: ${p.reflection.related_item_ids.slice(0, 5).map(tag).join(", ")}${p.reflection.related_item_ids.length > 5 ? `; ${p.reflection.related_item_ids.length - 5} more` : ""})` : "") : null
   ].filter(Boolean).join("\n");
+  const entries = [];
+  const add = (title, items, line) => {
+    for (const item of items ?? [])
+      entries.push({ title, text: line(item), checked: Boolean(item.verdict && item.verdict !== "unverified") });
+  };
+  add(
+    "Points you raised:",
+    p.findings,
+    (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `
+  grounds: ${clip(f.grounds)}` : ""}`
+  );
+  add("Unknowns you named:", p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`);
+  add(
+    "Checks you proposed:",
+    p.next_checks,
+    (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}` + (c.method ? `
+  method: ${clip(c.method)}` : "") + (c.expected_signal ? `
+  expected signal: ${clip(c.expected_signal)}` : "")
+  );
+  for (const d of p.decision_changers ?? [])
+    entries.push({
+      title: "Conditions that would change your judgement:",
+      checked: false,
+      text: `- ${clip(d.condition)}${d.changes_to ? ` -> ${clip(d.changes_to)}` : ""}`
+    });
+  for (const d of p.remaining_disagreements ?? [])
+    entries.push({
+      title: "Disagreements still unresolved:",
+      checked: false,
+      text: `- ${clip(d.topic)}` + (d.your_position ? `; your position: ${clip(d.your_position)}` : "") + (d.why_unresolved ? `; unresolved because: ${clip(d.why_unresolved)}` : "")
+    });
+  let used = header.length + 100;
+  let omitted = p.omitted_count ?? 0;
+  const kept = /* @__PURE__ */ new Set();
+  for (const entry of [...entries].sort((a, b) => Number(b.checked) - Number(a.checked))) {
+    const chars = entry.title.length + entry.text.length + 2;
+    if (used + chars > HISTORY_CHARS - 2) {
+      omitted++;
+      continue;
+    }
+    used += chars;
+    kept.add(entry);
+  }
+  const parts = [header];
+  for (const title of new Set(entries.map((e) => e.title))) {
+    const lines = entries.filter((e) => e.title === title && kept.has(e)).map((e) => e.text);
+    if (lines.length) parts.push(title, ...lines);
+  }
+  if (omitted) parts.push(`(${omitted} history item(s) omitted to keep this brief within its size.)`);
+  return parts.join("\n");
 }
 function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
@@ -37606,10 +37648,10 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
     );
     const blocks = chain.priorRounds.map(renderRound);
     let kept = 0;
-    let used = 0;
+    let used = 1;
     for (const block of [...blocks].reverse()) {
-      if (kept > 0 && used + block.length > HISTORY_CHARS) break;
-      used += block.length;
+      if (kept > 0 && used + block.length + 1 > HISTORY_CHARS) break;
+      used += block.length + 1;
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);
@@ -37687,7 +37729,7 @@ var init_brief = __esm({
       "Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not."
     ];
     EXPOSE_LISTING_MAX = 200;
-    clip = (s2, max = 400) => s2.length > max ? `${s2.slice(0, max)}...` : s2;
+    clip = (s2, max = 400) => s2.length > max ? `${s2.slice(0, max)}...[truncated]` : s2;
     HISTORY_CHARS = 4e4;
   }
 });
@@ -37914,11 +37956,11 @@ var init_failures = __esm({
         /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
         "usage_limit"
       ],
+      [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
       [
         /\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i,
         "rate_limited"
       ],
-      [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
       [
         /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i,
         "model_unavailable"
@@ -39372,8 +39414,14 @@ import fs8 from "node:fs";
 import path10 from "node:path";
 import crypto3 from "node:crypto";
 import { createRequire as sqliteRequire } from "node:module";
-function readRules() {
-  const deny = [...protectedRoots().flatMap((r) => [r, `${r}/**`]), ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])];
+function readRules(workdir) {
+  const roots = protectedRoots();
+  const paths = new Set(roots);
+  for (let base = path10.resolve(workdir); ; base = path10.dirname(base)) {
+    for (const root of roots) paths.add(path10.relative(base, root).replaceAll("\\", "/"));
+    if (base === path10.dirname(base)) break;
+  }
+  const deny = [...paths].flatMap((r) => [r, `${r}/**`]).concat(PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`]));
   return { "*": "allow", ...Object.fromEntries(deny.map((p) => [p, "deny"])) };
 }
 function prepareSandbox2({ workdir, network = "on" }) {
@@ -39395,8 +39443,8 @@ function prepareSandbox2({ workdir, network = "on" }) {
           "*": "deny",
           ...Object.fromEntries(SANDBOX_DENY2.map((name) => [name, "deny"])),
           ...Object.fromEntries(SANDBOX_ALLOW2.map((name) => [name, network === "off" && WEB_TOOLS2.has(name) ? "deny" : "allow"])),
-          read: readRules(),
-          external_directory: readRules()
+          read: readRules(workdir),
+          external_directory: readRules(workdir)
         },
         tools: { ...SANDBOX_TOOLS_OFF, ...network === "off" ? { webfetch: false, websearch: false } : {} },
         // The recursion barrier proper is the empty HOME: no user config
@@ -39522,6 +39570,10 @@ var init_opencode_sandbox = __esm({
     } catch {
     }
     SANDBOX_DENY2 = Object.freeze([
+      // Their permission resources are search patterns, not each returned file.
+      // Searching a permitted ancestor would otherwise bypass protected read paths.
+      "glob",
+      "grep",
       "edit",
       "bash",
       "shell",
@@ -39540,7 +39592,7 @@ var init_opencode_sandbox = __esm({
       // with webfetch and websearch denied (2026-10-17, opencode 2.0.24).
       "execute"
     ]);
-    SANDBOX_ALLOW2 = Object.freeze(["read", "glob", "grep", "webfetch", "websearch"]);
+    SANDBOX_ALLOW2 = Object.freeze(["read", "webfetch", "websearch"]);
     WEB_TOOLS2 = /* @__PURE__ */ new Set(["webfetch", "websearch"]);
     SANDBOX_TOOLS_OFF = Object.freeze({ edit: false, write: false, patch: false, bash: false, execute: false });
     AUTH_REL = path10.join(".local", "share", "opencode", "auth.json");
@@ -39802,7 +39854,7 @@ function boundary4({ sandbox }) {
     web: tools.includes("webfetch"),
     writes: false,
     mcp: false,
-    protected_paths: "denied (permission rules)",
+    protected_paths: "denied by lexical path (permission rules); symlink aliases are not covered",
     tools: [...tools]
   };
 }
@@ -40227,7 +40279,7 @@ function nextStep(job) {
     const left = POLICY.maxRounds - job.round;
     const written = new Set((job.record?.entries ?? []).map((e) => e.id));
     const open2 = job.result ? recordableIds(job.result).filter((id2) => !written.has(id2)).length : 0;
-    const close = open2 > 0 ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict.` : "";
+    const close = open2 > 0 ? ` Before the final report, write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict; record the checked points, and leave the rest unverified without another consultation.` : "";
     return (left > 0 ? `check the grounds behind the points that matter, run the one check that would change the decision, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
   }
   if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error")
@@ -40949,18 +41001,34 @@ var init_jobs = __esm({
             verdict: verdicts.get(x.id)?.verdict ?? null,
             effect: verdicts.get(x.id)?.effect ?? null
           }));
-          const checked = (x) => x.verdict !== null;
-          const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
+          const checked = (x) => x.verdict != null && x.verdict !== "unverified";
+          let omitted = 0;
+          const select = (items) => {
+            const kept = [...items.filter(checked), ...items.filter((x) => !checked(x)).slice(0, 5)];
+            omitted += items.length - kept.length;
+            return kept;
+          };
+          const findings = select(ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null })));
+          const unknowns = select(ordered(j.result.unknowns, (u) => ({ point: u.item })));
+          const nextChecks = select(
+            ordered(j.result.next_checks, (c) => ({ point: c.check, method: c.method, expected_signal: c.expected_signal }))
+          );
+          const decisionChangers = j.result.decision_changers.slice(0, 5);
+          const disagreements = j.result.remaining_disagreements.slice(0, 5);
+          omitted += j.result.decision_changers.length - decisionChangers.length + j.result.remaining_disagreements.length - disagreements.length;
           return {
             round: j.round,
             mode: j.mode,
             question: j.question,
             summary: j.result.summary,
+            stance: j.result.stance,
             reflection: j.reflection ?? null,
-            // Every checked finding; of the rest, the first five.
-            findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
-            unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
-            next_checks: ordered(j.result.next_checks, (c) => ({ point: c.check })).slice(0, 5)
+            findings,
+            unknowns,
+            next_checks: nextChecks,
+            decision_changers: decisionChangers,
+            remaining_disagreements: disagreements,
+            omitted_count: omitted
           };
         });
       }
@@ -42007,7 +42075,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with every stance, summary and finding id side by side, cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer.`,
+      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with every stance, summary and finding id side by side, cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer. Before your final report, check one point that could change the decision, then save the outcome with consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. The single answer already includes its grounds: do not fetch it again. For a fan-out fetch the deciding points with ids, or detail: "full" when every full answer is needed, and record the checked points in one records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -42213,7 +42281,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.6.0";
+    SEVERALLY_VERSION = "2.6.1";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42236,7 +42304,8 @@ conversation history; the CLI may also read other files within its permission bo
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
 
-Flow: consult_start(request) -> job_id; consult_get(job_id) until it is done; consult_cancel(job_id) to stop it.
+Flow: consult_start -> consult_get until done -> check one decision-changing point locally -> consult_record
+with the check and its effect -> report to the user. Use consult_cancel to stop a consultation.
 Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per chain, and follow-ups should be
 spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
 check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;

@@ -38,6 +38,8 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string | null} [grounds]
  * @property {string | null} [verdict]
  * @property {string | null} [effect]
+ * @property {string | null} [method]
+ * @property {string | null} [expected_signal]
  */
 
 /**
@@ -46,10 +48,14 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string} mode
  * @property {string} question
  * @property {string} summary
+ * @property {string | null} [stance]
  * @property {{delta: string, related_item_ids: string[]} | null} [reflection]
  * @property {PriorPoint[]} [findings]
  * @property {PriorPoint[]} [unknowns]
  * @property {PriorPoint[]} [next_checks]
+ * @property {import('./parse-result.mjs').DecisionChanger[]} [decision_changers]
+ * @property {import('./parse-result.mjs').RemainingDisagreement[]} [remaining_disagreements]
+ * @property {number} [omitted_count]
  */
 
 /** @typedef {{ round: number, priorRounds: PriorRound[] }} BriefChain */
@@ -291,7 +297,7 @@ function renderExposeManifest(manifest) {
  * @param {string} s
  * @param {number} [max]
  */
-const clip = (s, max = 400) => (s.length > max ? `${s.slice(0, max)}...` : s);
+const clip = (s, max = 400) => (s.length > max ? `${s.slice(0, max)}...[truncated]` : s);
 
 // The earlier rounds have a budget of their own, beside the request's cap:
 // when they outgrow it, the oldest rounds are left out, and the brief says so.
@@ -304,32 +310,82 @@ function renderRound(p) {
   const tag = (id) => `r${p.round}.${id}`;
   /** @param {PriorPoint} x */
   const verdict = (x) => (x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}` : '');
-  /**
-   * @param {string} title
-   * @param {PriorPoint[] | undefined} items
-   * @param {(x: PriorPoint) => string} line
-   */
-  const list = (title, items, line) => (items?.length ? [title, ...items.map(line)].join('\n') : null);
-  return [
+  const header = [
     `### Round ${p.round} (${p.mode})`,
-    `Question asked: ${p.question}`,
-    `Your answer, summarised: ${p.summary}`,
+    `Question asked: ${clip(p.question, 1_200)}`,
+    `Your answer, summarised: ${clip(p.summary, 8_000)}`,
+    p.stance ? `Your stance: ${p.stance}` : null,
     p.reflection
       ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` +
         (p.reflection.related_item_ids.length
           ? ` (related: ${p.reflection.related_item_ids.slice(0, 5).map(tag).join(', ')}${p.reflection.related_item_ids.length > 5 ? `; ${p.reflection.related_item_ids.length - 5} more` : ''})`
           : '')
       : null,
-    list(
-      'Points you raised:',
-      p.findings,
-      (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `\n  grounds: ${clip(f.grounds)}` : ''}`,
-    ),
-    list('Unknowns you named:', p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`),
-    list('Checks you proposed:', p.next_checks, (c) => `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}`),
   ]
     .filter(Boolean)
     .join('\n');
+  /** @type {Array<{title: string, text: string, checked: boolean}>} */
+  const entries = [];
+  /**
+   * @param {string} title
+   * @param {PriorPoint[] | undefined} items
+   * @param {(x: PriorPoint) => string} line
+   */
+  const add = (title, items, line) => {
+    for (const item of items ?? [])
+      entries.push({ title, text: line(item), checked: Boolean(item.verdict && item.verdict !== 'unverified') });
+  };
+  add(
+    'Points you raised:',
+    p.findings,
+    (f) => `- ${tag(f.id)}: ${clip(f.point)}${verdict(f)}${f.grounds ? `\n  grounds: ${clip(f.grounds)}` : ''}`,
+  );
+  add('Unknowns you named:', p.unknowns, (u) => `- ${tag(u.id)}: ${clip(u.point)}${verdict(u)}`);
+  add(
+    'Checks you proposed:',
+    p.next_checks,
+    (c) =>
+      `- ${tag(c.id)}: ${clip(c.point)}${verdict(c)}` +
+      (c.method ? `\n  method: ${clip(c.method)}` : '') +
+      (c.expected_signal ? `\n  expected signal: ${clip(c.expected_signal)}` : ''),
+  );
+  for (const d of p.decision_changers ?? [])
+    entries.push({
+      title: 'Conditions that would change your judgement:',
+      checked: false,
+      text: `- ${clip(d.condition)}${d.changes_to ? ` -> ${clip(d.changes_to)}` : ''}`,
+    });
+  for (const d of p.remaining_disagreements ?? [])
+    entries.push({
+      title: 'Disagreements still unresolved:',
+      checked: false,
+      text:
+        `- ${clip(d.topic)}` +
+        (d.your_position ? `; your position: ${clip(d.your_position)}` : '') +
+        (d.why_unresolved ? `; unresolved because: ${clip(d.why_unresolved)}` : ''),
+    });
+
+  // Reserve room for an omission notice. Checked evidence has first claim on
+  // the same budget, even when unchecked findings occur earlier in the answer.
+  let used = header.length + 100;
+  let omitted = p.omitted_count ?? 0;
+  const kept = new Set();
+  for (const entry of [...entries].sort((a, b) => Number(b.checked) - Number(a.checked))) {
+    const chars = entry.title.length + entry.text.length + 2;
+    if (used + chars > HISTORY_CHARS - 2) {
+      omitted++;
+      continue;
+    }
+    used += chars;
+    kept.add(entry);
+  }
+  const parts = [header];
+  for (const title of new Set(entries.map((e) => e.title))) {
+    const lines = entries.filter((e) => e.title === title && kept.has(e)).map((e) => e.text);
+    if (lines.length) parts.push(title, ...lines);
+  }
+  if (omitted) parts.push(`(${omitted} history item(s) omitted to keep this brief within its size.)`);
+  return parts.join('\n');
 }
 
 /**
@@ -373,11 +429,11 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
     );
     const blocks = chain.priorRounds.map(renderRound);
     let kept = 0;
-    let used = 0;
+    let used = 1; // the final blank line before the follow-up instructions
     // Newest first: the round being followed up always goes in.
     for (const block of [...blocks].reverse()) {
-      if (kept > 0 && used + block.length > HISTORY_CHARS) break;
-      used += block.length;
+      if (kept > 0 && used + block.length + 1 > HISTORY_CHARS) break;
+      used += block.length + 1;
       kept += 1;
     }
     const left = chain.priorRounds.slice(0, blocks.length - kept).map((p) => p.round);

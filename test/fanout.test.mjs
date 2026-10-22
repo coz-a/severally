@@ -192,6 +192,18 @@ test('a follow-up to a group goes to every member, each on its own chain with it
   const first = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
   await finishGroup(mgr, first.group_id);
   mgr.record({ job_id: first.jobs[0].job_id, entries: [{ id: 'f1', verdict: 'confirmed', effect: 'Codex was right.' }] });
+  for (const member of first.jobs) {
+    const job = mgr.jobs.get(member.job_id);
+    stageRound(job, {
+      result: {
+        ...job.result,
+        decision_changers: [{ condition: `${member.target} condition`, changes_to: `${member.target} reversal` }],
+        remaining_disagreements: [
+          { topic: `${member.target} dispute`, your_position: 'Keep the cap', why_unresolved: 'Missing traffic' },
+        ],
+      },
+    });
+  }
 
   const briefDir = fs.mkdtempSync(path.join(home, 'briefs-'));
   process.env.STUB_BRIEF_DIR = briefDir;
@@ -219,6 +231,11 @@ test('a follow-up to a group goes to every member, each on its own chain with it
   const claudeBrief = fs.readFileSync(path.join(briefDir, 'claude-code.txt'), 'utf8');
   assert.match(codexBrief, /lead's verdict: confirmed \(Codex was right\.\)/);
   assert.doesNotMatch(claudeBrief, /Codex was right/);
+  assert.match(codexBrief, /codex condition.*codex reversal/);
+  assert.match(codexBrief, /codex dispute/);
+  assert.doesNotMatch(codexBrief, /claude-code condition|claude-code dispute/);
+  assert.match(claudeBrief, /claude-code condition.*claude-code reversal/);
+  assert.doesNotMatch(claudeBrief, /codex condition|codex dispute/);
   const shared = (b) => b.slice(0, b.indexOf('## Earlier rounds'));
   assert.equal(shared(codexBrief), shared(claudeBrief));
 });

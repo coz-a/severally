@@ -65,6 +65,10 @@ try {
 // task -> subagent (1.18.31 still accepts the old names, and `debug config`
 // normalises them), but nothing promises the aliases survive.
 export const SANDBOX_DENY = Object.freeze([
+  // Their permission resources are search patterns, not each returned file.
+  // Searching a permitted ancestor would otherwise bypass protected read paths.
+  'glob',
+  'grep',
   'edit',
   'bash',
   'shell',
@@ -83,7 +87,7 @@ export const SANDBOX_DENY = Object.freeze([
   // with webfetch and websearch denied (2026-10-17, opencode 2.0.24).
   'execute',
 ]);
-export const SANDBOX_ALLOW = Object.freeze(['read', 'glob', 'grep', 'webfetch', 'websearch']);
+export const SANDBOX_ALLOW = Object.freeze(['read', 'webfetch', 'websearch']);
 // Denied instead of allowed when the request turned the network off.
 const WEB_TOOLS = new Set(['webfetch', 'websearch']);
 
@@ -97,8 +101,18 @@ const SANDBOX_TOOLS_OFF = Object.freeze({ edit: false, write: false, patch: fals
 // external_directory rule opencode 2.x asks before reading outside the
 // workdir, and a run that cannot ask refuses -- so this consultant read less
 // than the others. The last matching rule wins, so "*" comes first.
-function readRules() {
-  const deny = [...protectedRoots().flatMap((r) => [r, `${r}/**`]), ...PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`])];
+/** @param {string} workdir */
+function readRules(workdir) {
+  const roots = protectedRoots();
+  const paths = new Set(roots);
+  // OpenCode 2.x uses relative resources inside its Location/worktree, even
+  // for absolute read arguments. The Location may be any ancestor of cwd.
+  // Keep absolute rules for external reads and relative ones for each base.
+  for (let base = path.resolve(workdir); ; base = path.dirname(base)) {
+    for (const root of roots) paths.add(path.relative(base, root).replaceAll('\\', '/'));
+    if (base === path.dirname(base)) break;
+  }
+  const deny = [...paths].flatMap((r) => [r, `${r}/**`]).concat(PROTECTED_FILE_NAMES.flatMap((n) => [n, `**/${n}`]));
   return { '*': 'allow', ...Object.fromEntries(deny.map((p) => [p, 'deny'])) };
 }
 
@@ -141,8 +155,8 @@ export function prepareSandbox({ workdir, network = 'on' }) {
           '*': 'deny',
           ...Object.fromEntries(SANDBOX_DENY.map((name) => [name, 'deny'])),
           ...Object.fromEntries(SANDBOX_ALLOW.map((name) => [name, network === 'off' && WEB_TOOLS.has(name) ? 'deny' : 'allow'])),
-          read: readRules(),
-          external_directory: readRules(),
+          read: readRules(workdir),
+          external_directory: readRules(workdir),
         },
         tools: { ...SANDBOX_TOOLS_OFF, ...(network === 'off' ? { webfetch: false, websearch: false } : {}) },
         // The recursion barrier proper is the empty HOME: no user config
