@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { sandboxEnv, exploreRequest, reviewRequest, asConsultant } from './helpers.mjs';
+import { sandboxEnv, exploreRequest, reviewRequest, asConsultant, waitFor } from './helpers.mjs';
 
 const home = sandboxEnv();
 const JobManagerModule = await import('../src/jobs.mjs');
@@ -167,7 +167,7 @@ test('with the network off, opencode denies webfetch and websearch', () => {
   assert.equal(cfg.permission.webfetch, 'deny');
   assert.equal(cfg.permission.websearch, 'deny');
   assert.equal(cfg.permission.read['*'], 'allow');
-  assert.deepEqual(sandbox.tools, ['read', 'glob', 'grep']);
+  assert.deepEqual(sandbox.tools, ['read']);
   sandbox.cleanup();
 });
 
@@ -208,7 +208,12 @@ test('codex turns web search off with the network', () => {
 });
 
 test('a transient refusal is rate_limited, a used-up quota stays usage_limit', () => {
+  assert.equal(classifyMessage('API Error: 429 invalid api key'), 'auth');
+  assert.equal(classifyMessage('429 insufficient_quota'), 'usage_limit');
+  assert.equal(classifyMessage('401 invalid api key'), 'auth');
   assert.equal(classifyMessage('API Error: 429 Too Many Requests'), 'rate_limited');
+  assert.equal(classifyMessage('RESOURCE_EXHAUSTED'), 'cli_error');
+  assert.equal(classifyMessage('429 insufficient_quota: invalid api key'), 'usage_limit');
   assert.equal(classifyMessage('Overloaded'), 'rate_limited');
   assert.equal(classifyMessage("You've hit your usage limit"), 'usage_limit');
   assert.equal(classifyMessage('quota exceeded (429)'), 'usage_limit');
@@ -360,6 +365,33 @@ test('opencode refuses unnamed tools and Code Mode, and reads everywhere but the
   sandbox.cleanup();
 });
 
+test('OpenCode denies protected reads when the CLI authorizes a location- or worktree-relative resource', () => {
+  const work = path.join(home, 'jobs', 'relative-probe', 'work');
+  fs.mkdirSync(work, { recursive: true });
+  const sandbox = opencodeSandbox({ workdir: work });
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(sandbox.root, '.config', 'opencode', 'opencode.json'), 'utf8'));
+    // Independent evaluation of the CLI's documented last-match wildcard rules.
+    const match = (pattern, resource) =>
+      new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')}$`).test(resource);
+    const decide = (resource) =>
+      Object.entries(cfg.permission.read)
+        .filter(([p]) => match(p, resource))
+        .at(-1)?.[1];
+    const protectedFile = path.join(home, 'homes', 'another-job', 'secret.txt');
+    const resources = [protectedFile, path.relative(home, protectedFile), path.relative(path.dirname(home), protectedFile)].map(
+      (p) => p.replaceAll('\\', '/'),
+    );
+    for (const resource of resources) assert.equal(decide(resource), 'deny', resource);
+    assert.equal(decide('workspace/ordinary.txt'), 'allow');
+    assert.equal(decide('workspace/.env'), 'deny');
+    assert.equal(cfg.permission.grep, 'deny', 'grep of an ancestor must not expose protected descendants');
+    assert.equal(cfg.permission.glob, 'deny', 'glob has no per-file read check');
+  } finally {
+    sandbox.cleanup();
+  }
+});
+
 test("every consultant gets its own working directory as PWD, not the server's", async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'env-pwd.json');
@@ -482,5 +514,90 @@ test('codex expands legacy job homes, since its profile has no wildcard', () => 
     assert.ok(!rules.includes('*'), 'no literal wildcard reaches codex');
   } finally {
     fs.rmSync(path.join(home, 'jobs', 'job_legacy'), { recursive: true, force: true });
+  }
+});
+
+test('synthetic credentials are masked in the sent brief and exposed file copies', async () => {
+  const store = await import('../src/store.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-mask-probe-'));
+  const secret = 'ghp_abcdefghijklmnopqrstuvwxyz0123';
+  const canary = 'ordinary-boundary-canary';
+  const source = path.join(dir, 'sample.txt');
+  const briefOut = path.join(dir, 'brief.txt');
+  fs.writeFileSync(source, `${canary}\n${secret}\n`);
+  process.env.STUB_BEHAVIOR = 'hang';
+  process.env.STUB_BRIEF_OUT = briefOut;
+  const mgr = new JobManager();
+  const started = mgr.start(
+    reviewRequest({
+      question: `Review ${canary} ${secret}`,
+      context: { facts: [`${canary} ${secret}`], proposal: 'Review the supplied example.', expose_paths: [source] },
+    }),
+  );
+  try {
+    await waitFor(() => fs.existsSync(briefOut));
+    const brief = fs.readFileSync(briefOut, 'utf8');
+    const copy = fs.readFileSync(path.join(store.jobDir(started.job_id), 'work', 'workspace', '0-sample.txt'), 'utf8');
+    for (const text of [brief, copy]) {
+      assert.ok(!text.includes(secret));
+      assert.match(text, /REDACTED/);
+      assert.ok(text.includes(canary), 'ordinary content must still reach the consultant');
+    }
+    assert.ok(fs.readFileSync(source, 'utf8').includes(secret), 'mask only the published copy');
+  } finally {
+    mgr.cancel(started.job_id);
+    await mgr.jobs.get(started.job_id).promise;
+    delete process.env.STUB_BRIEF_OUT;
+    process.env.STUB_BEHAVIOR = 'ok';
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('synthetic credentials in answers and lead records never enter history or exports', async () => {
+  const { exportChain } = await import('../src/export.mjs');
+  const secret = 'sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFF';
+  process.env.STUB_BEHAVIOR = 'leak_secret';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest());
+  try {
+    await mgr.jobs.get(started.job_id).promise;
+    assert.equal(mgr.view(started.job_id).status, 'completed');
+    mgr.record({
+      job_id: started.job_id,
+      entries: [{ id: 'f1', verdict: 'unverified', note: secret, effect: `ordinary-record-canary ${secret}` }],
+    });
+    const exported = exportChain({ chain_id: started.chain_id }).markdown;
+    const history = fs
+      .readdirSync(path.join(home, 'history', started.chain_id))
+      .map((f) => fs.readFileSync(path.join(home, 'history', started.chain_id, f), 'utf8'))
+      .join('\n');
+    for (const text of [JSON.stringify(mgr.view(started.job_id)), history, exported]) {
+      assert.ok(!text.includes(secret));
+      assert.match(text, /REDACTED/);
+      assert.match(text, /ordinary-record-canary/);
+    }
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
+});
+
+test('synthetic credentials in CLI failure details never enter history or exports', async () => {
+  const { exportChain } = await import('../src/export.mjs');
+  const secret = 'ghp_abcdefghijklmnopqrstuvwxyz0123';
+  process.env.STUB_BEHAVIOR = 'leak_failure';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest());
+  try {
+    await mgr.jobs.get(started.job_id).promise;
+    const view = mgr.view(started.job_id);
+    assert.equal(view.failure.kind, 'auth');
+    const history = fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8');
+    for (const text of [JSON.stringify(view), history, exportChain({ chain_id: started.chain_id }).markdown]) {
+      assert.ok(!text.includes(secret));
+      assert.match(text, /REDACTED/);
+      assert.match(text, /ordinary-failure-canary/);
+    }
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
   }
 });

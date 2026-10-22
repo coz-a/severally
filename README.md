@@ -13,14 +13,12 @@
 
 A plugin that lets your AI agent ask other coding agents for independent opinions, returned separately.
 
-The consultants are Codex, Claude Code, Antigravity and OpenCode. When the agent gets stuck in an investigation, or faces two options that look equally good, it asks the
-consultants for their opinions. It checks the findings that come back itself, and carries on from what it found.
-For an important decision, such as a change that is hard to reverse, it consults before asking you to approve it,
-and asks you only about what is yours to decide. You can also ask for one yourself: "ask Codex".
+The consultants are Codex, Claude Code, Antigravity and OpenCode. Your agent (the lead) consults when an
+investigation stalls or two options look equally good. You can also ask for a consultation yourself: "ask Codex".
 
-The plugin puts the question to several independent consultants, and returns each one's answer on its own
-instead of merging them into one, because a disagreement means something too. The agent checks why they disagree
-before deciding how to take the answers.
+Each consultant's answer stays separate. The lead checks the findings and the reasons behind disagreements
+itself, then carries on from what it found. For an important decision, such as a change that is hard to reverse,
+it consults before asking you to approve it, and asks you only about what is yours to decide.
 
 Asked whether to cache a slow product page for five minutes, three consultants answered on their own
 (see the [example](docs/how-it-works.md#example) for the whole run):
@@ -33,7 +31,6 @@ antigravity  alternative     member discounts leak to other users; fix the query
 
 ## Contents
 
-- [Background](#background)
 - [Install](#install)
   - [Requirements](#requirements)
   - [Command line](#command-line)
@@ -44,39 +41,11 @@ antigravity  alternative     member discounts leak to other users; fix the query
   - [When the answers come back](#when-the-answers-come-back)
   - [Modes](#modes)
   - [History and records](#history-and-records)
-- [Example](#example)
-- [Recommended setup](#recommended-setup)
 - [Configuration](#configuration)
 - [What a consultant can see and do](#what-a-consultant-can-see-and-do)
 - [API](#api)
 - [Contributing](#contributing)
 - [License](#license)
-
-## Background
-
-```mermaid
-flowchart TB
-  you(["You"]) <-->|"↓ the work you ask for<br>↑ what was checked, and what is yours to decide"| lead["The lead<br>the agent you work with"]
-  lead <-->|"↓ brief, copies of the code<br>↑ each consultant's answer"| srv["severally server"]
-  srv <--> c1 & c2 & c3 & c4
-  subgraph cs["Consultants (fresh, read-only sessions)"]
-    c1["Codex"]
-    c2["Claude Code"]
-    c3["Antigravity"]
-    c4["OpenCode"]
-  end
-```
-
-The lead is the agent you are working with. It writes the *brief*, the question and the facts it rests on, and
-consults with read-only copies of the code the question is about. When the answers come back, it checks the
-findings itself and asks you only what is yours to decide. In a routine consultation the lead does three things:
-starts it, waits for the answers, and records the one finding it checked.
-
-Each consultant is a new session of its CLI, started just for this question. The server sends the brief and explicitly exposed files without inheriting your conversation.
-Depending on the CLI, the consultant can also read other files on disk. The severally server sends every consultant the same brief and
-returns the answers consultant by consultant. It does not merge them or judge which is right.
-
-What a consultant can read and do is under [What a consultant can see and do](#what-a-consultant-can-see-and-do).
 
 ## Install
 
@@ -92,7 +61,7 @@ routes and the real CLIs have been tried on Linux only.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.6.0 install
+npx -y severally-mcp@2.6.1 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -102,7 +71,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.6.0 status
+npx -y severally-mcp@2.6.1 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -196,7 +165,7 @@ Ask in your own words, in the chat with your agent:
   good, and before asking you to approve a hard-to-reverse change.
 
 What comes back to you is the lead's report, not the consultants' answers as they arrived: what it checked and
-what that showed, what it recommends, and what is still unverified. The [example](#example) shows one.
+what that showed, what it recommends, and what is still unverified. The [example](docs/how-it-works.md#example) shows one.
 
 It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
 same bug. One consultation takes minutes and real quota, so it is not for small fixes.
@@ -204,7 +173,7 @@ same bug. One consultation takes minutes and real quota, so it is not for small 
 ### When the answers come back
 
 Starting a consultation does not make the agent wait: it can work on something that does not depend on the
-answers, which usually arrive within one to ten minutes (Antigravity is the slowest).
+answers, which usually arrive within one to ten minutes. Timing depends on the CLI, model and load.
 
 Every answer is asked for in the same shape: a bottom line, findings with their grounds, what the consultant could
 not determine, conditions that would change its judgement, and how to check. When an answer leaves part of that
@@ -214,13 +183,22 @@ back as a failure with the reason (`usage_limit`, `timeout` …), never as "no p
 The agent checks the findings that would change the decision itself, then tells you what it checked, what it did
 not adopt, and what is still unverified.
 
+For example, in a review of the classifier before its authentication-priority fix, the result and the lead's
+verification were separate:
+
+```text
+Codex (gpt-6.1-sol): “429 invalid api key” is misclassified as a transient limit.
+Lead: ran the classifier, reproduced rate_limited, and saved the finding as confirmed.
+Recommendation: classify authentication before transient limits. Provider-specific quota behavior remains untested.
+```
+
 ### Modes
 
 There are three modes, chosen from what the agent hands over. You can also ask for one ("debate this with
 Codex").
 
 - `explore`: asks without showing the plan, so the consultant answers with its own approach first
-- `review`: shows the plan and asks what is wrong with it (the [example](#example))
+- `review`: shows the plan and asks what is wrong with it (the [example](docs/how-it-works.md#example))
 - `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
 
 After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
@@ -233,26 +211,18 @@ answer, and the agent's verdict on each finding (`confirmed`, `not_applicable`, 
 Verdicts can be added later, from another session. A consultation can be exported as Markdown into your
 repository.
 
-How to name consultants, how a consultation runs, and the records in detail are in
-[docs/how-it-works.md](docs/how-it-works.md).
-
-## Example
-
-The [product-cache example](docs/how-it-works.md#example) follows three consultants' different recommendations
-through the lead's checks and decision. Verification results stay next to the findings and can be exported as Markdown.
-
-## Recommended setup
-
-The default needs no configuration. If you want different models for everyday work and consultations, see the
-[multi-model example](docs/how-it-works.md#recommended-setup). It is optional.
+The [product-cache example](docs/how-it-works.md#example) follows each consultant's recommendation through the
+lead's checks and decision. Naming consultants, the consultation flow and record details are also in
+[how it works](docs/how-it-works.md).
 
 ## Configuration
 
 **No configuration needed by default.** At startup the server looks for the CLIs on `PATH`, and each one it finds
 becomes a consultant on its default model. To turn a CLI off or add consultants on other models, put a
 `~/.severally/config.json` in place. From a clone, `npm run init-config` writes a template. Every key is in
-[CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is an example to adapt: its paths, models and notes are made up. Restart
-the client after changing it.
+[CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is an example to adapt: its paths, models and notes are made up.
+For separate models for everyday work and consultations, see the optional
+[multi-model example](docs/how-it-works.md#recommended-setup). Restart the client after changing the config.
 
 To consult a model you reach with an API key (OpenRouter, or another OpenAI-compatible API) or a local model,
 install OpenCode and add the model as a consultant: see
@@ -273,7 +243,7 @@ history is never sent. No consultant can:
 | Codex | yes | blocked by path (permission profile), not by file name such as `.env` | yes, in its sandbox (commands run, but cannot write or reach the network) | no | yes, unless `network: "off"` |
 | Claude Code | yes (`Read` / `Glob` / `Grep`) | blocked (permission rules) | none | no | yes, unless `network: "off"` |
 | Antigravity | yes (`view_file`, `read_file`) | blocked (tool hook) | none | no | yes, unless `network: "off"` |
-| OpenCode | yes (`read` / `glob` / `grep`) | blocked (permission rules) | none (its Code Mode `execute` is refused) | no | yes, unless `network: "off"` |
+| OpenCode | yes (`read`) | blocked by lexical path; symlink aliases are not covered | none (its Code Mode `execute` is refused) | no | yes, unless `network: "off"` |
 
 Every consultant starts in a working directory of its own that holds only copies of the files you handed it, and
 the server does not tell it where your repository is. It can still read any file your user account can read, except

@@ -8,6 +8,31 @@ reading. Every configuration key is in [CONFIG.md](../CONFIG.md).
 
 ## Who consults whom
 
+```mermaid
+flowchart TB
+  you(["You"]) <-->|"↓ the work you ask for<br>↑ what was checked, and what is yours to decide"| lead["The lead<br>the agent you work with"]
+  lead <-->|"↓ brief, copies of the code<br>↑ each consultant's answer"| srv["severally server"]
+  srv <--> c1 & c2 & c3 & c4
+  subgraph cs["Consultants (fresh, read-only sessions)"]
+    c1["Codex"]
+    c2["Claude Code"]
+    c3["Antigravity"]
+    c4["OpenCode"]
+  end
+```
+
+The lead is the agent you are working with. It writes the *brief*, the question and the facts it rests on, and
+consults with read-only copies of the code the question is about. When the answers come back, it checks the
+findings itself and asks you only what is yours to decide. In a routine consultation the lead does three things:
+starts it, waits for the answers, and records the one finding it checked.
+
+Each consultant is a new session of its CLI, started just for this question. The server sends the brief and explicitly exposed files without inheriting your conversation.
+Depending on the CLI, the consultant can also read other files on disk. The severally server sends every consultant the same brief and
+returns the answers consultant by consultant. It does not merge them or judge which is right.
+
+What a consultant can read and do is under [What a consultant can see and do](../README.md#what-a-consultant-can-see-and-do).
+
+
 From any of the clients, you can consult the other three CLIs and a fresh session of your own. These are the
 commands the server starts. By default up to nine consultants run at once, across all your sessions.
 
@@ -104,6 +129,12 @@ starts, rather than the whole directory, because the directory also holds the Co
 file created there later is not blocked. On Linux, a protected file that is replaced (written to a new file and
 renamed over the old one) while a Codex consultation runs becomes readable to it for the rest of that run. That
 includes `~/.claude.json`, which Claude Code rewrites often, and `~/.codex/auth.json` if it is refreshed then.
+
+OpenCode checks protected paths in both absolute and Location/worktree-relative form. Its `grep` and `glob`
+tools are disabled: they authorize a search pattern, without checking each returned file against the read rules.
+On OpenCode 2.0.24, read authorization uses lexical paths; a symlink alias of a protected file is not covered.
+The protected roots use the default home locations and severally's configured home. Moving CLI credentials to
+another location does not automatically add that location to the protected roots.
 
 `expose_paths` never copies protected files. Credentials are masked in the brief that is sent and in the answers
 that come back; a file a consultant opens on its own is read as it is. Other services' credentials in the

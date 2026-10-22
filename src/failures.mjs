@@ -15,21 +15,21 @@ export const FAILURE_KINDS = [
   'interrupted', // the severally process running it exited before it finished
 ];
 
-// Order matters: a message naming a used-up quota is usage_limit even when it
-// also says 429, and only what is left is treated as transient. A message
-// that fits neither -- Gemini's bare RESOURCE_EXHAUSTED is one -- falls
-// through to cli_error.
+// Order matters: a used-up quota stays usage_limit even when the message also
+// says 429 or names an auth problem; auth errors then beat transient limits.
+// A message that fits neither -- Gemini's bare RESOURCE_EXHAUSTED is one --
+// falls through to cli_error.
 /** @type {Array<[RegExp, string]>} */
 const RULES = [
   [
     /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
     'usage_limit',
   ],
+  [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, 'auth'],
   [
     /\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i,
     'rate_limited',
   ],
-  [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, 'auth'],
   [
     /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i,
     'model_unavailable',

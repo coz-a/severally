@@ -77,9 +77,10 @@ test('the synthesised home denies every write path and allows reading and the we
     assert.equal(cfg.permission[name], 'deny', `${name} must be denied`);
   }
   // read tools and web stay allowed so all consultants are equal readers.
-  for (const name of ['glob', 'grep', 'webfetch', 'websearch']) {
+  for (const name of ['webfetch', 'websearch']) {
     assert.equal(cfg.permission[name], 'allow', `${name} must be allowed`);
   }
+  for (const name of ['glob', 'grep']) assert.equal(cfg.permission[name], 'deny');
   // read carries path rules: allowed everywhere but the protected paths.
   assert.equal(cfg.permission.read['*'], 'allow', 'read must be allowed');
   assert.deepEqual(cfg.mcp, {}, 'no MCP server may be reachable: this is the recursion barrier');

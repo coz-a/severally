@@ -22,7 +22,7 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.6.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.6.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |

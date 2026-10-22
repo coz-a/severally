@@ -289,6 +289,28 @@ test('usage limits and auth failures are classified, not reported as advice', as
   assert.equal(view.failure.retriable, true);
 });
 
+test('an auth error mixed with a 429 is not retried and keeps other fan-out answers', async () => {
+  process.env.STUB_BEHAVIOR = 'auth_mixed';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await Promise.all(started.jobs.map((job) => mgr.jobs.get(job.job_id).promise));
+
+  const codex = mgr.view(started.jobs[0].job_id);
+  const claude = mgr.view(started.jobs[1].job_id);
+  assert.equal(codex.failure.kind, 'auth');
+  assert.deepEqual(codex.retries, []);
+  assert.equal(claude.status, 'completed');
+  assert.equal(claude.result.summary, 'Stub Claude Code consultant view.');
+
+  const group = mgr.groupView(started.group_id);
+  assert.equal(group.status, 'done');
+  assert.equal(group.comparison.by_target.find((member) => member.target === 'codex').summary, null);
+  assert.equal(
+    group.comparison.by_target.find((member) => member.target === 'claude-code').summary,
+    'Stub Claude Code consultant view.',
+  );
+});
+
 test('a hung consultant hits the timeout and is stopped', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
   process.env.SEVERALLY_TIMEOUT_MS = '1500';
@@ -386,8 +408,87 @@ test('a follow-up brief carries grounds, unknowns and checks with their verdicts
   assert.match(brief, /- r1\.f1: Retry storm risk\n {2}grounds: The excerpt retries without a cap\./);
   assert.match(brief, /- r1\.u1: Current QPS/);
   assert.match(brief, /- r1\.c1: Load test -- lead's verdict: confirmed \(Replayed; p99 held\.\)/);
+  assert.match(brief, /method: Replay peak traffic/);
+  assert.match(brief, /expected signal: p99 under 300ms/);
+  assert.match(brief, /QPS below 5.*No cap needed/);
+  assert.match(brief, /stance: proceed/);
   delete process.env.STUB_BRIEF_OUT;
   fs.rmSync(briefOut, { force: true });
+});
+
+test('follow-ups retain disagreements by round and name omitted unchecked items', async () => {
+  const dir = fs.mkdtempSync(path.join(home, 'history-brief-'));
+  const briefOut = path.join(dir, 'brief.txt');
+  process.env.STUB_BEHAVIOR = 'ok';
+  process.env.STUB_ANSWER_PATCH = JSON.stringify({
+    remaining_disagreements: [{ topic: 'Cap size', your_position: 'Use 3', why_unresolved: 'Peak load unknown' }],
+    next_checks: Array.from({ length: 8 }, (_, i) => ({
+      check: `Check ${i + 1}`,
+      method: `Replay ${i + 1}`,
+      expected_signal: `Signal ${i + 1}`,
+    })),
+  });
+  try {
+    const mgr = new JobManager();
+    const r1 = mgr.start(reviewRequest());
+    await finish(mgr, r1.job_id);
+    mgr.record({
+      job_id: r1.job_id,
+      entries: [
+        ...Array.from({ length: 7 }, (_, i) => ({ id: `c${i + 1}`, verdict: 'unverified', note: 'Not checked' })),
+        { id: 'c8', verdict: 'confirmed', effect: 'Eighth check holds' },
+      ],
+    });
+    delete process.env.STUB_ANSWER_PATCH;
+    process.env.STUB_BRIEF_OUT = briefOut;
+    const r2 = mgr.start({ followup_to: r1.job_id, question: 'Recheck the cap with this evidence.' });
+    await finish(mgr, r2.job_id);
+    const r3 = mgr.start({ followup_to: r2.job_id, question: 'What remains unresolved?' });
+    await finish(mgr, r3.job_id);
+    const brief = fs.readFileSync(briefOut, 'utf8');
+    assert.match(brief, /### Round 1[\s\S]*Cap size[\s\S]*Use 3[\s\S]*Peak load unknown/);
+    assert.match(brief, /r1\.c8: Check 8 -- lead's verdict: confirmed \(Eighth check holds\)[\s\S]*Replay 8[\s\S]*Signal 8/);
+    assert.match(brief, /2 .*omitted/i);
+    assert.match(brief, /### Round 2/);
+  } finally {
+    delete process.env.STUB_ANSWER_PATCH;
+    delete process.env.STUB_BRIEF_OUT;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an oversized latest history round stays within budget and keeps checked evidence first', async () => {
+  const { renderBrief } = await import('../src/brief.mjs');
+  const { parseRequest } = await import('../src/schema.mjs');
+  const prior = {
+    round: 1,
+    mode: 'review',
+    question: 'Q',
+    summary: 'S',
+    findings: Array.from({ length: 60 }, (_, i) => ({
+      id: `f${i + 1}`,
+      point: 'p'.repeat(400),
+      grounds: 'g'.repeat(400),
+      verdict: 'unverified',
+      effect: 'e'.repeat(400),
+    })),
+    next_checks: [
+      {
+        id: 'c1',
+        point: 'Critical check' + 'p'.repeat(380),
+        method: 'Replay peak' + 'm'.repeat(380),
+        expected_signal: 'No overload' + 's'.repeat(380),
+        verdict: 'confirmed',
+        effect: 'Verified locally' + 'e'.repeat(380),
+      },
+    ],
+  };
+  const brief = renderBrief(parseRequest(reviewRequest()), { round: 2, priorRounds: [prior] });
+  const history = brief.slice(brief.indexOf('### Round 1'), brief.indexOf('This round is a follow-up'));
+  assert.ok(history.length <= 40_000, `${history.length} exceeds history budget`);
+  assert.match(history, /r1\.c1: Critical check.*confirmed/);
+  assert.match(history, /Replay peak/);
+  assert.match(history, /omitted/i);
 });
 
 test('earlier rounds past their budget are left out oldest first, and the brief says so', async () => {
@@ -412,6 +513,21 @@ test('earlier rounds past their budget are left out oldest first, and the brief 
   assert.match(brief, /Rounds 1, 2, 3 left out/);
   assert.match(brief, /### Round 4 /);
   assert.doesNotMatch(brief, /### Round 1 /);
+});
+
+test('history at the multi-round budget boundary includes its trailing separators', async () => {
+  const { renderBrief } = await import('../src/brief.mjs');
+  const { parseRequest } = await import('../src/schema.mjs');
+  const rounds = [7_580, 8_000, 8_000, 8_000].map((size, i) => ({
+    round: i + 1,
+    mode: 'review',
+    question: 'q'.repeat(1_200),
+    summary: 's'.repeat(size),
+    findings: [{ id: 'f1', point: 'p'.repeat(400), grounds: 'g'.repeat(400) }],
+  }));
+  const brief = renderBrief(parseRequest(reviewRequest()), { round: 5, priorRounds: rounds });
+  const history = brief.slice(brief.indexOf('### Round'), brief.indexOf('This round is a follow-up'));
+  assert.ok(history.length <= 40_000, `${history.length} exceeds history budget`);
 });
 
 test("a follow-up that leaves out the mode keeps its chain's", async () => {

@@ -79,6 +79,10 @@ function run() {
     out({ type: 'error', message: 'Not logged in: run `codex login` first (401)' });
     process.exit(0);
   }
+  if (behavior === 'auth_mixed') {
+    out({ type: 'error', message: 'API Error: 429 invalid api key' });
+    process.exit(0);
+  }
   if (behavior === 'invalid') {
     out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
     if (lastMessagePath) fs.writeFileSync(lastMessagePath, 'I cannot comply, here is some prose instead.');
@@ -147,6 +151,12 @@ function run() {
       );
     }
     process.exit(0);
+  }
+  if (behavior === 'leak_failure') {
+    const message = '401 invalid api key ghp_abcdefghijklmnopqrstuvwxyz0123 ordinary-failure-canary';
+    out({ type: 'error', message });
+    process.stderr.write(message);
+    process.exit(1);
   }
 
   out({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 300, output_tokens: 450 } });

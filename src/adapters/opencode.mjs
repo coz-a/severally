@@ -511,7 +511,7 @@ export function boundary({ sandbox }) {
     web: tools.includes('webfetch'),
     writes: false,
     mcp: false,
-    protected_paths: 'denied (permission rules)',
+    protected_paths: 'denied by lexical path (permission rules); symlink aliases are not covered',
     tools: [...tools],
   };
 }

@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.6.0';
+export const SEVERALLY_VERSION = '2.6.1';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -101,7 +101,8 @@ conversation history; the CLI may also read other files within its permission bo
 Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
 look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
 
-Flow: consult_start(request) -> job_id; consult_get(job_id) until it is done; consult_cancel(job_id) to stop it.
+Flow: consult_start -> consult_get until done -> check one decision-changing point locally -> consult_record
+with the check and its effect -> report to the user. Use consult_cancel to stop a consultation.
 Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per chain, and follow-ups should be
 spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
 check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
@@ -230,7 +231,13 @@ export function createServer(manager = new JobManager()) {
         'job_id, and `comparison.by_target` with every stance, summary and finding id side by side, cut where ' +
         '`truncated` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds ' +
         'and your verdict (`recorded`). A finished consultation names its brief rather than repeating it; detail: ' +
-        '"full" returns the brief, and for a fan-out every member\'s full answer.',
+        '"full" returns the brief, and for a fan-out every member\'s full answer. ' +
+        'Before your final report, check one point that could change the decision, then save the outcome with ' +
+        'consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as ' +
+        'confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. ' +
+        'The single answer already includes its grounds: do not fetch it again. For a fan-out fetch the deciding ' +
+        'points with ids, or detail: "full" when every full answer is needed, and record the checked points in one ' +
+        "records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.",
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),

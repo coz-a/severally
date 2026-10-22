@@ -34,11 +34,10 @@ copied read-only into its working directory.
 2. **`consult_get({ group_id })`** (`consult_get({ job_id })` for one consultant). It waits for the answer by itself,
    up to a limit the server sets (45 seconds, or ten minutes where the client allows it); call it again while
    `status` is `running`. To work on something independent meanwhile, ask for a shorter wait (`reference.md`).
-3. **Check one point, report, and record it once** (see **Before you hand the decision back**).
+3. **Check one point, record it once, then report** (see **Before you hand the decision back**).
 
-That is the whole routine. The rest — follow-ups, a prediction and reflection, the export, reading a fan-out
-in detail — is in `reference.md`, in the same directory as this file. Read it for a decision you will have to
-justify later. Short follow-ups are below; the reference has the limits and recovery steps.
+Prediction, reflection, export, limits and recovery are in `reference.md`, in the same directory as this file.
+Read it for a decision you will have to justify later.
 
 ## Follow-ups
 
@@ -137,13 +136,11 @@ answers side by side: `stance`, summary, finding points, unknowns and next_check
   that is the divergence that matters most.
 - **Matching summaries are not agreement.** The server does not judge agreement; "both agreed" is a claim you
   have to earn from the grounds.
-- **Fetch the grounds before you lean on a point:** `consult_get({ job_id, ids: ["f2", "u1"] })` on that member
-  returns just those points, whole. Do that for every point you adopt, that decides your call, or that every
-  consultant assumes.
+- **Read the grounds before you lean on a point.** A single answer already includes them; do not fetch it again.
+  In a fan-out, `consult_get({ job_id, ids: ["f2", "u1"] })` returns the deciding points whole. Use
+  `consult_get({ group_id, detail: "full" })` when you need every full answer. Do not decide from clipped summaries.
 - A same-vendor answer's caveat lowers the weight of its *agreement* with you; it is not a reason to discard its
   findings.
-
-A confident claim about your codebase is a hypothesis until you check it against the code.
 
 ## Before you hand the decision back
 
@@ -151,10 +148,7 @@ A confident claim about your codebase is a hypothesis until you check it against
    why that one.
 2. **Run it here, read-only**: a test, a grep, a read of the docs. If it needs another person or a production
    system, do not run it; say so.
-3. **Come back with three things**: what you checked and what it showed, the decision you now recommend, and
-   what is still unverified, point by point.
-
-Then write the check's verdict back, in one call:
+3. **Save the check before your final report**, in one `consult_record` call:
 
 ```
 consult_record({ job_id: "...", entries: [
@@ -163,6 +157,10 @@ consult_record({ job_id: "...", entries: [
 ```
 
 The verdict is what checking showed: `confirmed`, `not_applicable`, `unverifiable`, or `unverified` (not yet
-checked). A point you only read is unverified, however plausible it looks.
+checked). A point you only read is unverified, however plausible it looks. You need not fill every verdict or
+start another consultation to do so. For a fan-out, batch the checked points with `records` (see `reference.md`).
+
+Then report each consultant's stance and actual model, the deciding grounds, your check and recommendation,
+and what remains unverified. Keep differing conclusions separate.
 
 The decision, the verification and the change stay yours.

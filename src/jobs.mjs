@@ -1001,7 +1001,7 @@ export class JobManager {
         /**
          * @template {ResultItem} T
          * @param {T[]} items
-         * @param {(x: T) => {point: string, grounds?: string | null}} shape
+         * @param {(x: T) => {point: string, grounds?: string | null, method?: string | null, expected_signal?: string | null}} shape
          */
         const ordered = (items, shape) =>
           [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
@@ -1010,18 +1010,39 @@ export class JobManager {
             verdict: verdicts.get(x.id)?.verdict ?? null,
             effect: verdicts.get(x.id)?.effect ?? null,
           }));
-        const checked = (/** @type {{verdict: unknown}} */ x) => x.verdict !== null;
-        const findings = ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null }));
+        const checked = (/** @type {{verdict?: unknown}} */ x) => x.verdict != null && x.verdict !== 'unverified';
+        let omitted = 0;
+        /** @param {import('./brief.mjs').PriorPoint[]} items */
+        const select = (items) => {
+          const kept = [...items.filter(checked), ...items.filter((x) => !checked(x)).slice(0, 5)];
+          omitted += items.length - kept.length;
+          return kept;
+        };
+        const findings = select(ordered(j.result.findings, (f) => ({ point: f.point, grounds: f.grounds ?? null })));
+        const unknowns = select(ordered(j.result.unknowns, (u) => ({ point: u.item })));
+        const nextChecks = select(
+          ordered(j.result.next_checks, (c) => ({ point: c.check, method: c.method, expected_signal: c.expected_signal })),
+        );
+        const decisionChangers = j.result.decision_changers.slice(0, 5);
+        const disagreements = j.result.remaining_disagreements.slice(0, 5);
+        omitted +=
+          j.result.decision_changers.length -
+          decisionChangers.length +
+          j.result.remaining_disagreements.length -
+          disagreements.length;
         return {
           round: j.round,
           mode: j.mode,
           question: j.question,
           summary: j.result.summary,
+          stance: j.result.stance,
           reflection: j.reflection ?? null,
-          // Every checked finding; of the rest, the first five.
-          findings: [...findings.filter(checked), ...findings.filter((f) => !checked(f)).slice(0, 5)],
-          unknowns: ordered(j.result.unknowns, (u) => ({ point: u.item })).slice(0, 5),
-          next_checks: ordered(j.result.next_checks, (c) => ({ point: c.check })).slice(0, 5),
+          findings,
+          unknowns,
+          next_checks: nextChecks,
+          decision_changers: decisionChangers,
+          remaining_disagreements: disagreements,
+          omitted_count: omitted,
         };
       });
   }
@@ -2516,13 +2537,13 @@ function nextStep(job) {
   if (job.status === 'running' || job.status === 'queued') return 'poll consult_get again, or consult_cancel to stop it';
   if (job.status === 'completed') {
     const left = POLICY.maxRounds - job.round;
-    // A consultation is finished when the lead has said what checking each
-    // point showed, not when the answer arrives. Name the open ones until then.
+    // Name unrecorded points without asking the lead to fill every verdict:
+    // only the checks that matter to the decision need recording now.
     const written = new Set((job.record?.entries ?? []).map((e) => e.id));
     const open = job.result ? recordableIds(job.result).filter((id) => !written.has(id)).length : 0;
     const close =
       open > 0
-        ? ` Then write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open} point(s) still carry no verdict.`
+        ? ` Before the final report, write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open} point(s) still carry no verdict; record the checked points, and leave the rest unverified without another consultation.`
         : '';
     return (
       (left > 0
