@@ -8,8 +8,14 @@ const lines = (...o) => o.map((x) => JSON.stringify(x)).join('\n');
 
 test('Codex commands: one per item id, shell wrapper removed, output never read', () => {
   const stdout = lines(
-    { type: 'item.started', item: { id: 'a', type: 'command_execution', command: "/bin/bash -lc 'rg -n retry src'", aggregated_output: '' } },
-    { type: 'item.completed', item: { id: 'a', type: 'command_execution', command: "/bin/bash -lc 'rg -n retry src'", aggregated_output: 'TOP SECRET' } },
+    {
+      type: 'item.started',
+      item: { id: 'a', type: 'command_execution', command: "/bin/bash -lc 'rg -n retry src'", aggregated_output: '' },
+    },
+    {
+      type: 'item.completed',
+      item: { id: 'a', type: 'command_execution', command: "/bin/bash -lc 'rg -n retry src'", aggregated_output: 'TOP SECRET' },
+    },
     { type: 'item.completed', item: { id: 'b', type: 'command_execution', command: 'ls' } },
     { type: 'item.completed', item: { id: 'c', type: 'agent_message', text: 'done' } },
     { type: 'item.completed', item: { id: 'd', type: 'command_execution' } },
@@ -20,9 +26,17 @@ test('Codex commands: one per item id, shell wrapper removed, output never read'
 test('Antigravity: the path parameters of its tool calls, once per step', () => {
   const step = (state) => ({
     event: 'step_update',
-    step_update: { step_index: 2, state, tool_name: 'read_file', tool_info: { name: 'read_file', parameters: { Path: '/w/workspace/0-a.mjs', Other: 'x' } } },
+    step_update: {
+      step_index: 2,
+      state,
+      tool_name: 'read_file',
+      tool_info: { name: 'read_file', parameters: { Path: '/w/workspace/0-a.mjs', Other: 'x' } },
+    },
   });
-  const stdout = lines(step('ACTIVE'), step('DONE'), { event: 'step_update', step_update: { step_index: 3, step_type: 'agent_response' } });
+  const stdout = lines(step('ACTIVE'), step('DONE'), {
+    event: 'step_update',
+    step_update: { step_index: 3, step_type: 'agent_response' },
+  });
   assert.deepEqual(agy.toolInputs({ stdout }), ['/w/workspace/0-a.mjs']);
 });
 

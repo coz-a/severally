@@ -788,9 +788,17 @@ test('a Codex consultation keeps the commands it ran, and how many of the handed
   process.env.STUB_BEHAVIOR = 'failed_command';
   const one = await finish(
     mgr,
-    mgr.start(reviewRequest({ context: { ...reviewRequest().context, expose_paths: [path.join(dir, 'a.mjs'), path.join(dir, 'b.mjs')] } })).job_id,
+    mgr.start(
+      reviewRequest({
+        context: { ...reviewRequest().context, expose_paths: [path.join(dir, 'a.mjs'), path.join(dir, 'b.mjs')] },
+      }),
+    ).job_id,
   );
-  assert.deepEqual(one.tool_inputs.entries, ['cat workspace/0-a.mjs'], 'one entry for the two events of one command, without the shell wrapper');
+  assert.deepEqual(
+    one.tool_inputs.entries,
+    ['cat workspace/0-a.mjs'],
+    'one entry for the two events of one command, without the shell wrapper',
+  );
   assert.equal(one.tool_inputs.exposed_files, 2);
   assert.equal(one.tool_inputs.exposed_mentioned, 1);
   assert.doesNotMatch(JSON.stringify(one), /SECRET FILE BODY/, 'the command output is never kept');

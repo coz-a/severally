@@ -176,7 +176,10 @@ function run() {
     const status = behavior === 'failed_command' ? 'failed' : 'completed';
     const command = "/bin/bash -lc 'cat workspace/0-a.mjs'";
     out({ type: 'item.started', item: { id: 'c1', type: 'command_execution', command, status: 'in_progress' } });
-    out({ type: 'item.completed', item: { id: 'c1', type: 'command_execution', command, aggregated_output: 'SECRET FILE BODY', status } });
+    out({
+      type: 'item.completed',
+      item: { id: 'c1', type: 'command_execution', command, aggregated_output: 'SECRET FILE BODY', status },
+    });
   }
   out({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 300, output_tokens: 450 } });
   if (lastMessagePath) fs.writeFileSync(lastMessagePath, answer());

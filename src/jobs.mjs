@@ -954,7 +954,9 @@ export class JobManager {
         : {
             files_note: first?.parent
               ? `no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths${
-                  (parent?.brief?.expose_paths?.entries?.length ?? 0) > 0 ? ", or context.expose_from_parent: true for the earlier round's files" : ''
+                  (parent?.brief?.expose_paths?.entries?.length ?? 0) > 0
+                    ? ", or context.expose_from_parent: true for the earlier round's files"
+                    : ''
                 }`
               : 'no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths',
           }),
@@ -2428,7 +2430,9 @@ function byTarget(m, budget) {
     caveat,
     // Counted, not judged: how many of the handed-over files a tool call
     // names. Not a claim that they were read; the call list is in the job.
-    ...(m.tool_inputs?.exposed_files ? { exposed_files_in_tool_inputs: `${m.tool_inputs.exposed_mentioned} of ${m.tool_inputs.exposed_files}` } : {}),
+    ...(m.tool_inputs?.exposed_files
+      ? { exposed_files_in_tool_inputs: `${m.tool_inputs.exposed_mentioned} of ${m.tool_inputs.exposed_files}` }
+      : {}),
     // Counted, not judged: how many of this answer's points carry no verdict yet.
     points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null,
   };
