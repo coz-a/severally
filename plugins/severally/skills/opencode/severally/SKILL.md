@@ -9,27 +9,26 @@ You have three peers, each reached through the `severally` MCP server as a fresh
 and search the web, but not edit them, load MCP tools, see your session or consult anyone else. The server sends the
 brief and exposed files; see `reference.md` for other file access.
 
-One caveat on that list: a consultant can read local files. Its writes are blocked,
-its network reaches only web search and browsing (none with `network: "off"`), credential and history
-paths are refused where its CLI allows, and by default it starts in an empty working directory without being
-told where your repository is, so it answers from the brief and from the files you hand it:
-`context.expose_paths` (absolute paths) or `context.expose_diff` (a change in progress), which are
-copied read-only into its working directory. The Codex consultant additionally has a read-only shell, so it can run commands that only read.
+A consultant can read local files. Its writes are blocked, its network reaches only web search and
+browsing (none with `network: "off"`), and credential and history paths are refused where its CLI allows.
+It starts in an empty working directory and is not told where your repository is, so it answers from the
+brief and the files you hand it. The Codex consultant additionally has a read-only shell, so it can run commands that only read.
 
 ## A normal consultation is three calls
 
-1. **`consult_start`**. A self-contained question is enough for a general consultation:
+1. **`consult_start`**. For a question about code, hand over the code with the question:
 
    ```
    consult_start({ request: {
      targets: ["all"],
-     question: "Our read-only public API gets 100 requests per minute; updates may appear 60 seconds late. Is a 30-second cache reasonable?",
+     question: "Is the retry cap in src/client.mjs safe if the server restarts mid-request?",
+     context: { expose_paths: ["/abs/path/to/repo/src"] },
      caller: "opencode"
    }})
    ```
 
-   For a code question, also attach its files in `context.expose_paths` or its diff in `context.expose_diff`
-   (see **Write the first request**).
+   A directory or a repository root works (never your home directory or one holding keys); `expose_diff` hands
+   over a change in progress. A question that carries its own premises needs no files.
 
 2. **`consult_get({ group_id })`** (`consult_get({ job_id })` for one consultant). It waits for the answer by itself,
    up to a limit the server sets (45 seconds, or ten minutes where the client allows it); call it again while
@@ -105,9 +104,9 @@ Pass `initiator: "user"` when the user asked for the consultation; leave it out 
   the session is killed and you get nothing. Split "research everything about X" or three questions at once,
   and ask the one whose answer changes what you do next.
 - **Hand over the code.** The consultant is not told where your repository is. Name the files by absolute path
-  in `context.expose_paths` (a repository root works; never your home directory or one holding keys), or pass
-  `context.expose_diff: { repo: "<absolute path>" }` for a change you are making. When `consult_start` answers
-  `files_exposed: 0` and the question is about code, `consult_cancel` and start again with `expose_paths`.
+  in `context.expose_paths`, or pass `context.expose_diff: { repo: "<absolute path>" }` for a change you are
+  making. When `consult_start` answers `files_exposed: 0` and the question is about code, `consult_cancel` and
+  start again with `expose_paths`.
 - **Keep the premises in the question**, or use `context.facts` when separate facts help. A question containing
   its own premises needs no separate context; do not ask the user to repeat them as `context.facts`. Put test
   output or a log in `context.artifacts`.

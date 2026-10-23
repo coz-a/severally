@@ -1,6 +1,6 @@
 {
   "name": "severally-mcp",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "A plugin that lets your AI agent ask other coding agents for independent opinions, returned separately.",
   "type": "module",
   "license": "Apache-2.0",

@@ -35,7 +35,7 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.7.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.7.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |
@@ -98,7 +98,7 @@ opencode mcp list                    # severally  connected
 
 For Claude Code alone, no clone and no installer are needed. In Claude Code:
 
-```
+```text
 /plugin marketplace add coz-a/severally
 /plugin install severally@severally
 ```
@@ -233,7 +233,7 @@ the installer keeps them on the same version, which matters when a release chang
 
 Installed from the marketplace (Claude Code), in Claude Code:
 
-```
+```text
 /plugin marketplace remove severally    # also uninstalls the plugin
 ```
 

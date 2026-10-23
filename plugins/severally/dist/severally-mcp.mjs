@@ -40607,15 +40607,21 @@ var init_jobs = __esm({
        * Usage summed per consultant over this session's consultations, every
        * attempt included (a re-run spends quota too): only the figures each CLI
        * reported are added, so a figure a CLI leaves null is not counted as zero
-       * but named under `not_reported`. Nothing is estimated.
+       * but named under `not_reported`. Nothing is estimated. A consultation
+       * with no figure at all (cancelled, timed out) is counted under
+       * `unreported`, so the totals do not read as everything that ran.
        */
       usageTotals() {
         const by = {};
         const reported = {};
         for (const j of this.jobs.values()) {
           const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter((u) => u != null);
-          if (!attempts.length) continue;
-          const t = by[j.target] ??= { consultations: 0, attempts: 0 };
+          if (!attempts.length && j.status === "running") continue;
+          const t = by[j.target] ??= { consultations: 0, attempts: 0, unreported: 0 };
+          if (!attempts.length) {
+            t.unreported += 1;
+            continue;
+          }
           const seen = reported[j.target] ??= /* @__PURE__ */ new Set();
           t.consultations += 1;
           t.attempts += attempts.length;
@@ -40958,8 +40964,10 @@ var init_jobs = __esm({
           // consultation, but one about code that hands over no file is one the
           // consultant answers without having seen the repository.
           files_exposed: exposeManifest?.totals.files ?? 0,
-          ...exposeManifest?.totals.files ? {} : {
-            files_note: first?.parent ? "no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths, or context.expose_from_parent: true for the earlier round's files" : "no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths"
+          // A follow-up that asked for text only (expose_from_parent: false) was
+          // told so; the earlier round's files are offered back only if it had any.
+          ...exposeManifest?.totals.files || first?.parent && req.context.expose_from_parent === false ? {} : {
+            files_note: first?.parent ? `no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths${(parent?.brief?.expose_paths?.entries?.length ?? 0) > 0 ? ", or context.expose_from_parent: true for the earlier round's files" : ""}` : "no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths"
           },
           status: "running",
           accepted_at: group.created_at,
@@ -42306,7 +42314,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.7.0";
+    SEVERALLY_VERSION = "2.7.1";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

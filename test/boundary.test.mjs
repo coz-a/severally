@@ -487,6 +487,23 @@ test('usage totals add only what each CLI reported', async () => {
   assert.ok(!totals[target].not_reported.includes('input_tokens'));
 });
 
+test('usage totals count a cancelled consultation as unreported instead of leaving it out', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const { job_id: done } = mgr.start(reviewRequest());
+  await mgr.jobs.get(done).promise;
+  const target = mgr.view(done).target;
+  assert.equal(mgr.usageTotals()[target].unreported, 0);
+  process.env.STUB_BEHAVIOR = 'hang';
+  const { job_id: hung } = mgr.start(reviewRequest());
+  mgr.cancel(hung);
+  await mgr.jobs.get(hung).promise;
+  assert.equal(mgr.view(hung).status, 'cancelled');
+  const totals = mgr.usageTotals()[target];
+  assert.equal(totals.unreported, 1);
+  assert.equal(totals.consultations, 1, 'only the consultation that reported is summed');
+});
+
 test('a running poll leaves out the limits; a fan-out carries one copy, on the group', async () => {
   process.env.STUB_BEHAVIOR = 'hang';
   const mgr = new JobManager();

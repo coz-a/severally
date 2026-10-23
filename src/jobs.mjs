@@ -498,17 +498,23 @@ export class JobManager {
    * Usage summed per consultant over this session's consultations, every
    * attempt included (a re-run spends quota too): only the figures each CLI
    * reported are added, so a figure a CLI leaves null is not counted as zero
-   * but named under `not_reported`. Nothing is estimated.
+   * but named under `not_reported`. Nothing is estimated. A consultation
+   * with no figure at all (cancelled, timed out) is counted under
+   * `unreported`, so the totals do not read as everything that ran.
    */
   usageTotals() {
-    /** @type {Record<string, Record<string, number> & {consultations: number, attempts: number}>} */
+    /** @type {Record<string, Record<string, number> & {consultations: number, attempts: number, unreported: number}>} */
     const by = {};
     /** @type {Record<string, Set<string>>} */
     const reported = {};
     for (const j of this.jobs.values()) {
       const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter((u) => u != null);
-      if (!attempts.length) continue;
-      const t = (by[j.target] ??= { consultations: 0, attempts: 0 });
+      if (!attempts.length && j.status === 'running') continue;
+      const t = (by[j.target] ??= { consultations: 0, attempts: 0, unreported: 0 });
+      if (!attempts.length) {
+        t.unreported += 1;
+        continue;
+      }
       const seen = (reported[j.target] ??= new Set());
       t.consultations += 1;
       t.attempts += attempts.length;
@@ -933,11 +939,15 @@ export class JobManager {
       // consultation, but one about code that hands over no file is one the
       // consultant answers without having seen the repository.
       files_exposed: exposeManifest?.totals.files ?? 0,
-      ...(exposeManifest?.totals.files
+      // A follow-up that asked for text only (expose_from_parent: false) was
+      // told so; the earlier round's files are offered back only if it had any.
+      ...(exposeManifest?.totals.files || (first?.parent && req.context.expose_from_parent === false)
         ? {}
         : {
             files_note: first?.parent
-              ? "no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths, or context.expose_from_parent: true for the earlier round's files"
+              ? `no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths${
+                  (parent?.brief?.expose_paths?.entries?.length ?? 0) > 0 ? ", or context.expose_from_parent: true for the earlier round's files" : ''
+                }`
               : 'no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths',
           }),
       status: 'running',
@@ -2094,8 +2104,9 @@ function text(value) {
 // A follow-up restates what the round before was given unless it says
 // otherwise: the lead sends the new question, not the whole brief again. Only
 // a key left out is inherited -- one passed, even as an empty list, replaces
-// it -- and the validation that follows sees the result. Files are not:
-// copying them again stays expose_from_parent, named in the call (schema.mjs).
+// it -- and the validation that follows sees the result. Files are handled
+// apart (#admitted): copied again while the seat is the same, unless the call
+// says expose_from_parent: false (schema.mjs).
 /**
  * @param {RawRequest} raw
  * @param {Round} round

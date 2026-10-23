@@ -23,7 +23,7 @@ it consults before asking you to approve it, and asks you only about what is you
 Asked whether to cache a slow product page for five minutes, three consultants answered on their own
 (see the [example](docs/how-it-works.md#example) for the whole run):
 
-```
+```text
 codex        do_not_proceed  the price depends on the member's tier, so the first visitor's price is served to everyone
 claude-code  do_not_proceed  whoever fills the cache first sets the price everyone else sees for 5 minutes
 antigravity  alternative     member discounts leak to other users; fix the query and a cache may not be needed
@@ -44,6 +44,7 @@ recommended caching only user-independent product data. Whether the fixed query 
   - [Asking](#asking)
   - [When the answers come back](#when-the-answers-come-back)
   - [Modes](#modes)
+  - [Follow-ups](#follow-ups)
   - [History and records](#history-and-records)
 - [Configuration](#configuration)
 - [What a consultant can see and do](#what-a-consultant-can-see-and-do)
@@ -70,7 +71,7 @@ That case has not been verified on a real Windows machine.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.7.0 install
+npx -y severally-mcp@2.7.1 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -80,7 +81,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.7.0 status
+npx -y severally-mcp@2.7.1 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -93,8 +94,8 @@ Part of the output on a machine with Codex and Claude Code:
 config: ok
 
 consultants:
-  codex: codex, <model>  available
-  claude-code: claude-code, <model>  available
+  codex: codex, gpt-6.1-sol  available
+  claude-code: claude-code, claude-opus-5-5  available
 
 clients:
   Claude Code  registered (listed by the client)
@@ -159,7 +160,7 @@ Then ask: "Ask the same consultant what changes if updates must appear within fi
 Ask in your own words, and include the premises in your question. For code questions, name the files or the
 change:
 
-```
+```text
 > ask Codex whether this migration plan is safe
 > get a second opinion on this cache design
 > ask everyone before we merge this
@@ -209,9 +210,18 @@ Codex").
 - `review`: shows the plan and asks what is wrong with it (the [example](docs/how-it-works.md#example))
 - `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
 
+
+### Follow-ups
+
 After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
-in total. A follow-up hands over the files of the earlier round again, as they are now. A follow-up to a fan-out
-asks every consultant in it again, each continuing its own exchange.
+in total. A follow-up to a fan-out asks every consultant in it again, each continuing its own exchange; one that
+cannot continue is skipped, and the reason is listed.
+
+- The files of the earlier round are handed over again, as they are now: changes and deletions are noted, a
+  directory is listed afresh (files added since go too), and the agent can add more. It can also ask for a
+  text-only follow-up.
+- They go again only if the consultant still runs the CLI and model of the earlier round (a fallback model set for
+  it counts). Otherwise the agent names the files again.
 
 ### History and records
 
