@@ -61,7 +61,7 @@ async function round(client, request) {
 const followup = (parent, context) =>
   reviewRequest({ followup_to: parent.job_id, context: { proposal: 'p', facts: ['f'], ...context } });
 
-test("expose_from_parent copies the parent round's paths again; without it nothing is copied", async () => {
+test("a follow-up copies the parent round's paths again; expose_from_parent: false keeps them back", async () => {
   const client = await connect();
   const dir = tree();
   const first = await round(
@@ -71,26 +71,64 @@ test("expose_from_parent copies the parent round's paths again; without it nothi
   assert.ok(first.cwd.includes('workspace/0-one.mjs'));
 
   const other = await round(client, reviewRequest({ context: { proposal: 'p', expose_paths: [path.join(dir, 'one.mjs')] } }));
-  const bare = await round(client, followup(other.view));
+  const bare = await round(client, followup(other.view, { expose_from_parent: false }));
   assert.equal(
     bare.cwd.some((p) => p.startsWith('workspace/')),
     false,
-    'a follow-up without the flag gets no files',
+    'expose_from_parent: false sends no files',
   );
+  assert.match(bare.started.files_note, /send the follow-up again/);
 
-  const second = await round(client, followup(first.view, { expose_from_parent: true }));
+  fs.writeFileSync(path.join(dir, 'lib', 'three.mjs'), 'export const three = 3;\n');
+  const second = await round(client, followup(first.view));
   assert.deepEqual(second.cwd.filter((p) => p.startsWith('workspace/')).sort(), [
     'workspace/0-one.mjs',
+    'workspace/1-lib/three.mjs',
     'workspace/1-lib/two.mjs',
   ]);
   assert.deepEqual(
     second.started.exposed_from_parent.entries.map((e) => [e.exposed_as, e.changed]),
     [
       ['workspace/0-one.mjs', false],
-      ['workspace/1-lib', false],
+      ['workspace/1-lib', true],
     ],
   );
-  assert.equal(second.started.exposed_from_parent.files, 2);
+  assert.equal(second.started.exposed_from_parent.files, 3);
+  assert.equal(second.started.files_note, undefined);
+  await client.close();
+});
+
+test("a follow-up that adds expose_paths keeps the parent round's paths too", async () => {
+  const client = await connect();
+  const dir = tree();
+  const first = await round(client, reviewRequest({ context: { proposal: 'p', expose_paths: [path.join(dir, 'one.mjs')] } }));
+  const next = await round(client, followup(first.view, { expose_paths: [path.join(dir, 'lib')] }));
+  assert.deepEqual(next.cwd.filter((p) => p.startsWith('workspace/')).sort(), ['workspace/0-one.mjs', 'workspace/1-lib/two.mjs']);
+  await client.close();
+});
+
+test('a follow-up whose parent exposed nothing goes ahead without files unless the flag asks for them', async () => {
+  const client = await connect();
+  const first = await round(client, reviewRequest());
+  const next = await round(client, followup(first.view));
+  assert.equal(next.error, undefined);
+  assert.equal(next.started.files_exposed, 0);
+  await client.close();
+});
+
+test('a parent round that ran on another model than the consultant now has is not copied again by default', async () => {
+  const dir = tree();
+  let client = await connect();
+  const first = await round(client, reviewRequest({ context: { proposal: 'p', expose_paths: [path.join(dir, 'one.mjs')] } }));
+  await client.close();
+  // The operator has since pointed the name at another model: the history
+  // says the parent ran on one this consultant no longer is.
+  const file = path.join(home, 'history', first.view.chain_id, 'round-01.json');
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...stored, model: 'an-earlier-model' }));
+  client = await connect();
+  const next = await round(client, followup(first.view));
+  assert.equal(next.started.files_exposed, 0);
   await client.close();
 });
 
@@ -266,5 +304,33 @@ test('an earlier change whose files are all gone leaves nothing, and with nothin
     reviewRequest({ followup_to: first.view.job_id, context: { proposal: 'p', expose_from_parent: true } }),
   );
   assert.equal(res.started.error, 'nothing_to_inherit');
+  await client.close();
+});
+
+test('a group follow-up copies again what the fan-out exposed, not what one member was shown later', async () => {
+  const client = await connect();
+  const dir = tree();
+  process.env.STUB_BEHAVIOR = 'ok';
+  const start = async (request) => payload(await client.callTool({ name: 'consult_start', arguments: { request } }));
+  const group = await start({
+    targets: ['codex', 'claude-code'],
+    question: 'q',
+    context: { expose_paths: [path.join(dir, 'one.mjs')] },
+  });
+  await client.callTool({ name: 'consult_get', arguments: { group_id: group.group_id, wait_ms: 20000 } });
+  const member = await start({
+    followup_to: group.jobs[0].job_id,
+    question: 'q2',
+    context: { expose_paths: [path.join(dir, 'lib')] },
+  });
+  assert.equal(member.files_exposed, 2);
+  await client.callTool({ name: 'consult_get', arguments: { job_id: member.job_id, wait_ms: 20000 } });
+  const again = await start({ followup_to: group.group_id, question: 'q3' });
+  assert.equal(again.files_exposed, 1);
+  assert.deepEqual(
+    again.exposed_from_parent.entries.map((e) => e.exposed_as),
+    ['workspace/0-one.mjs'],
+  );
+  await client.callTool({ name: 'consult_get', arguments: { group_id: again.group_id, wait_ms: 20000 } });
   await client.close();
 });

@@ -524,6 +524,9 @@ export function runChild({
     });
     child.on('close', (code, signal) => {
       flushPending();
+      // A descendant that let go of the pipes is still in the group once the
+      // child is done; it is stopped too, rather than left running.
+      handle.stop(stopSignal);
       finish({ code, signal });
     });
   });

@@ -63,12 +63,14 @@ Prepare the CLI you want to consult using the [installation and login links](doc
 The command below installs severally and registers it with existing CLIs; it does not install or log in to those CLIs.
 
 The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
-routes and the real CLIs have been tried on Linux only.
+routes and the real CLIs have been tried on Linux only. On Windows, cancelling a consultation stops its process
+tree while the consultant's CLI is still running; processes it started may survive if the CLI has already exited.
+That case has not been verified on a real Windows machine.
 
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.6.2 install
+npx -y severally-mcp@2.7.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -78,7 +80,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.6.2 status
+npx -y severally-mcp@2.7.0 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -103,27 +105,7 @@ login (out of quota is not checked; the first consultation shows it):
   claude-code  logged in
 ```
 
-No configuration is normally needed. In your restarted agent's chat, ask:
-
-```text
-Ask Codex: Our read-only public API gets 100 requests per minute.
-Updates may appear 60 seconds late. Is a 30-second cache reasonable?
-```
-
-If Codex is not installed, use a consultant marked `available` by `status`. An example report follows;
-the actual answering model, checks and unverified points depend on the consultation:
-
-```text
-Codex (answering model: the model shown in the result) suggested a 30-second cache.
-30 seconds is within the 60-second allowance. Delays from other cache layers are unverified;
-I recommend checking that their combined delay stays within 60 seconds before adopting it.
-```
-
-Then ask: "Ask the same consultant what changes if updates must appear within five seconds."
-Ask in your own words and include the premises in your question. For code questions, supply the files or diff.
-
-Name a consultant to ask that one. A second opinion with no name, or "ask everyone", goes to every configured
-consultant and uses one consultation's quota per consultant.
+No configuration is normally needed. To ask the first question, see [Asking](#asking).
 
 Marketplace installs, installing from a clone, and the fallback when global npm installation is unavailable are
 in the [installation details](docs/install.md).
@@ -156,7 +138,26 @@ if you no longer need them.
 
 ### Asking
 
-Ask in your own words, in the chat with your agent:
+In your restarted agent's chat, ask:
+
+```text
+Ask Codex: Our read-only public API gets 100 requests per minute.
+Updates may appear 60 seconds late. Is a 30-second cache reasonable?
+```
+
+If Codex is not installed, use a consultant marked `available` by `status`. A report looks like this; the
+answering model, checks and unverified points depend on the consultation:
+
+```text
+Codex (gpt-6.1-sol) suggested a 30-second cache: it is within the 60-second allowance.
+Delays from other cache layers are unverified; check that their combined delay stays
+within 60 seconds before adopting it.
+```
+
+Then ask: "Ask the same consultant what changes if updates must appear within five seconds."
+
+Ask in your own words, and include the premises in your question. For code questions, name the files or the
+change:
 
 ```
 > ask Codex whether this migration plan is safe
@@ -209,7 +210,8 @@ Codex").
 - `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
 
 After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
-in total. A follow-up to a fan-out asks every consultant in it again, each continuing its own exchange.
+in total. A follow-up hands over the files of the earlier round again, as they are now. A follow-up to a fan-out
+asks every consultant in it again, each continuing its own exchange.
 
 ### History and records
 
@@ -261,8 +263,6 @@ it can then read only those copies.
 Codex does not block by file name, so a `.env` in your repository is readable to it.
 Its protection also misses files created later under `~/.codex` and, on Linux, protected files replaced by rename
 during a run. Credentials stored outside the configured protected paths are not covered.
-On Windows, cancellation stops the tree while its parent is alive; descendants may survive if the parent has
-already exited. That case has not been verified on a real Windows machine.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then

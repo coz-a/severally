@@ -223,6 +223,16 @@ test('a transient refusal is rate_limited, a used-up quota stays usage_limit', (
     'usage_limit',
   );
   assert.equal(classifyMessage('Variant unavailable for opencode/nemotron-3-ultra-free: high'), 'model_unavailable');
+  // A number counts as a status only where a status is written.
+  assert.equal(classifyMessage('Not logged in: run `codex login` first (401)'), 'auth');
+  assert.equal(classifyMessage('RESOURCE_EXHAUSTED (code 429): busy'), 'rate_limited');
+  assert.equal(classifyMessage('HTTP/1.1 503'), 'rate_limited');
+  assert.equal(classifyMessage('request failed with status code: 403'), 'auth');
+  assert.equal(classifyMessage('{"error":{"code": 404}}'), 'model_unavailable');
+  assert.equal(classifyMessage('upstream [502]'), 'rate_limited');
+  assert.equal(classifyMessage('read 403 tokens from file'), 'cli_error');
+  assert.equal(classifyMessage('Error at line 502 of foo.ts'), 'cli_error');
+  assert.equal(classifyMessage('API Error: 400 bad request; 401 bytes'), 'cli_error');
   assert.equal(isRetriable('rate_limited'), true);
   assert.equal(isRetriable('usage_limit'), false);
 });

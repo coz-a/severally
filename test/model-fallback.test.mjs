@@ -40,6 +40,18 @@ test('a used-up quota is re-run once on the fallback model, and the answer says 
   assert.match(view.quality.caveat, /answered by gemini-3\.8-flash-high: gemini-4-argon-high's quota was used up/);
 });
 
+test('a same-lineage note after a fallback names the model that answered, not the one asked', async () => {
+  process.env.STUB_BEHAVIOR = 'quota_by_model';
+  process.env.STUB_QUOTA_MODEL = 'gemini-4-argon-high';
+  const mgr = new JobManager();
+  const started = mgr.start(antigravityRequest({ target: 'gemini', caller: 'antigravity', caller_model: 'gemini-4-argon-high' }));
+  await mgr.jobs.get(started.job_id).promise;
+  const view = mgr.view(started.job_id);
+  assert.equal(view.model, 'gemini-3.8-flash-high');
+  assert.doesNotMatch(view.quality.caveat, /the same model/);
+  assert.match(view.quality.caveat, /gemini-3\.8-flash-high/);
+});
+
 test('the fallback failing too is reported, not looped', async () => {
   const view = await run('gemini', 'usage_limit');
   assert.equal(view.status, 'failed');

@@ -88,8 +88,7 @@ next_checks (`c1` …), remaining disagreements, its `caveat`, and how many of i
 Long texts are cut and the column says so (`truncated`); a list that could not hold every item says how many it
 left out (`omitted`), so an empty list there is not "none given". Read grounds already shown whole; fetch missing
 or shortened deciding points with `consult_get({ job_id, ids: ["f2"] })`. `consult_get({ job_id })` returns one
-member's whole answer; `consult_get({ group_id, detail: "full" })` returns every member's, and can be too large
-to show inline.
+member's whole answer; `consult_get({ group_id, detail: "full" })` adds only the brief and the question whole.
 
 Reading them against each other:
 
@@ -139,17 +138,17 @@ A follow-up needs only `followup_to` and the new `question`:
 `consult_start({ request: { followup_to: "<job_id>", question: "..." } })`. The consultant, the mode, `network` and what
 the earlier round was given (objective, constraints, success criteria, facts, proposal, counterpoints,
 artifacts) carry over, and the brief restates them; a field you pass replaces the earlier one, an empty list
-included. A follow-up starts in a fresh working directory with no files: pass
-`context.expose_from_parent: true` to copy again, as they are now, the paths the earlier round exposed (a changed
-or vanished entry is marked), and leave it off when the follow-up does not need them.
+included. A follow-up copies again, as they are now, the paths the earlier round exposed (a changed or vanished
+entry is marked; a directory is listed afresh, so files added since go too), together with any `expose_paths`
+you add. Pass `context.expose_from_parent: false` when the follow-up does not need them. When the consultant's
+name now points at another CLI or model, nothing is copied again unless you pass `true`.
 
 To recheck just one finding with the same code:
 
 ```
 consult_start({ request: {
   followup_to: "<that consultant's job_id>",
-  question: "Recheck f1 against the current code and the verdict I recorded.",
-  context: { expose_from_parent: true }
+  question: "Recheck f1 against the current code and the verdict I recorded."
 } })
 ```
 

@@ -114,7 +114,9 @@ test('a three-way fan-out of 11,000-character answers fits one response', async 
   const s = await fanout(mgr, ALL, [big, big, big]);
   const view = mgr.groupView(s.group_id);
   assert.ok(size(view) <= GROUP_MAX, `${size(view)} > ${GROUP_MAX}`);
-  assert.ok(size(mgr.groupView(s.group_id, { detail: 'full' })) > 3 * 11_000, 'detail: "full" still carries every answer');
+  const full = mgr.groupView(s.group_id, { detail: 'full' });
+  assert.ok(size(full) <= GROUP_MAX + size(full.brief), 'detail: "full" adds the brief, not every answer again');
+  for (const m of full.members) assert.equal(m.result, undefined);
 });
 
 test('answers at every length cap still fit, and say they were cut', async () => {
@@ -172,10 +174,9 @@ test("nothing the old view carried is lost: the group plus each member's own vie
   const full = mgr.groupView(s.group_id, { detail: 'full' });
   const compact = mgr.groupView(s.group_id);
   for (const m of full.members) {
-    // A member's own view is the old member entry, its brief named by sha256.
-    const own = mgr.view(m.job_id);
-    const { brief, limits, ...rest } = own;
-    assert.deepEqual(rest, m);
+    // A member's own view holds its whole answer, its brief named by sha256.
+    const { brief, ...own } = mgr.view(m.job_id);
+    assert.equal(own.status, m.status);
     assert.equal(brief.sha256, compact.brief.sha256, 'every member was sent the same brief');
     assert.deepEqual(mgr.view(m.job_id, { detail: 'full' }).brief, full.brief);
     // Every point in the side-by-side carries an id the lead can record
@@ -184,17 +185,12 @@ test("nothing the old view carried is lost: the group plus each member's own vie
     const ids = col.finding_points.map((f) => f.id);
     assert.deepEqual(
       ids,
-      m.result.findings.map((f) => f.id),
+      own.result.findings.map((f) => f.id),
       'every finding keeps its id',
     );
     assert.equal(col.truncated, true);
     assert.equal(col.points_without_verdict, 30);
   }
-  // Per-member transfer, for the record: the lead reads the group, then every
-  // member in full, against the old single payload.
-  const before = size(full);
-  const after = size(compact) + full.members.reduce((n, m) => n + size(mgr.view(m.job_id)), 0);
-  assert.ok(after < before, `old ${before}, new group + every member ${after}`);
 });
 
 test('a question and failure messages that JSON escapes still fit, and every cut says so', async () => {
