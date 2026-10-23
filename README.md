@@ -71,7 +71,7 @@ That case has not been verified on a real Windows machine.
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.7.1 install
+npx -y severally-mcp@2.8.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -81,7 +81,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.7.1 status
+npx -y severally-mcp@2.8.0 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -227,7 +227,8 @@ cannot continue is skipped, and the reason is listed.
 
 Every consultation is kept on your machine in `~/.severally/history/`: the brief that was sent, the consultant's
 answer, and the agent's verdict on each finding (`confirmed`, `not_applicable`, `unverifiable`, `unverified`).
-Verdicts can be added later, from another session. A consultation can be exported as Markdown into your
+For Codex and Antigravity it also keeps the commands run or the paths opened, with how many of the files handed
+over they name; secrets are masked and command output is not kept. Verdicts can be added later, from another session. A consultation can be exported as Markdown into your
 repository.
 
 The [product-cache example](docs/how-it-works.md#example) follows each consultant's recommendation through the

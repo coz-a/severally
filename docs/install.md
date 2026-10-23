@@ -35,7 +35,7 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.7.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.8.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |

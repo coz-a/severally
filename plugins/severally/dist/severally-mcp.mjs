@@ -38630,6 +38630,7 @@ __export(codex_exports, {
   interpret: () => interpret,
   progress: () => progress,
   toolCalls: () => toolCalls,
+  toolInputs: () => toolInputs,
   usageRecord: () => usageRecord
 });
 import fs5 from "node:fs";
@@ -38780,6 +38781,23 @@ function toolCalls({ stdout }) {
     seen.set(item.id ?? `${name}#${seen.size}`, name);
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+}
+function toolInputs({ stdout }) {
+  const seen = /* @__PURE__ */ new Map();
+  for (const line of (stdout || "").split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    let e;
+    try {
+      e = JSON.parse(t);
+    } catch {
+      continue;
+    }
+    const item = e?.item;
+    if (item?.type === "command_execution" && typeof item.command === "string")
+      seen.set(item.id ?? `#${seen.size}`, item.command.replace(/^\/\S*\/(?:ba|z)?sh -lc '([\s\S]*)'$/, "$1"));
+  }
+  return [...seen.values()];
 }
 function usageRecord(raw) {
   const u = (
@@ -39243,6 +39261,7 @@ __export(antigravity_exports, {
   settleAfter: () => settleAfter,
   stopSignal: () => stopSignal,
   toolCalls: () => toolCalls2,
+  toolInputs: () => toolInputs2,
   usageRecord: () => usageRecord3
 });
 import fs7 from "node:fs";
@@ -39300,6 +39319,19 @@ function toolCalls2({ stdout }) {
       seen.set(s2.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s2.state ?? "") ? `${s2.tool_name}:error` : s2.tool_name);
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+}
+function toolInputs2({ stdout }) {
+  const seen = /* @__PURE__ */ new Map();
+  for (const e of events(stdout)) {
+    const s2 = e.event === "step_update" ? e.step_update : null;
+    const params = s2?.tool_info?.parameters;
+    if (!s2?.tool_name || !params || typeof params !== "object") continue;
+    seen.set(
+      s2.step_index ?? seen.size,
+      Object.entries(params).flatMap(([k, v]) => /path/i.test(k) && typeof v === "string" ? [v] : [])
+    );
+  }
+  return [...seen.values()].flat();
 }
 function settleAfter(line) {
   if (!line.includes('"result"') && !line.includes('"finish"')) return null;
@@ -39908,6 +39940,26 @@ var init_opencode = __esm({
   }
 });
 
+// src/tool-inputs.mjs
+function summarizeToolInputs(inputs, exposedFiles = []) {
+  const distinct = [...new Set(inputs)];
+  const entries = distinct.slice(0, MAX_ENTRIES).map((i) => {
+    const t = redact(i);
+    return t.length > MAX_CHARS ? `${t.slice(0, MAX_CHARS)}\u2026` : t;
+  });
+  const exposed_mentioned = exposedFiles.filter((f) => distinct.some((i) => i.includes(f))).length;
+  return { entries, omitted: distinct.length - entries.length, exposed_files: exposedFiles.length, exposed_mentioned };
+}
+var MAX_ENTRIES, MAX_CHARS;
+var init_tool_inputs = __esm({
+  "src/tool-inputs.mjs"() {
+    "use strict";
+    init_redact();
+    MAX_ENTRIES = 30;
+    MAX_CHARS = 200;
+  }
+});
+
 // src/jobs.mjs
 import crypto4 from "node:crypto";
 import fs9 from "node:fs";
@@ -40202,6 +40254,9 @@ function byTarget(m, budget) {
     next_checks: nextChecks,
     remaining_disagreements: disagreements,
     caveat,
+    // Counted, not judged: how many of the handed-over files a tool call
+    // names. Not a claim that they were read; the call list is in the job.
+    ...m.tool_inputs?.exposed_files ? { exposed_files_in_tool_inputs: `${m.tool_inputs.exposed_mentioned} of ${m.tool_inputs.exposed_files}` } : {},
     // Counted, not judged: how many of this answer's points carry no verdict yet.
     points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null
   };
@@ -40358,6 +40413,7 @@ var init_jobs = __esm({
     init_claude_code();
     init_antigravity();
     init_opencode();
+    init_tool_inputs();
     ADAPTERS = { codex: codex_exports, "claude-code": claude_code_exports, antigravity: antigravity_exports, opencode: opencode_exports };
     MIN_RETRY_MS = 5e3;
     CANCEL_POLL_MS = 1e3;
@@ -40474,6 +40530,7 @@ var init_jobs = __esm({
           retries: job.retries ?? [],
           partial_output: job.partial_output ?? null,
           tool_calls: job.tool_calls ?? null,
+          tool_inputs: job.tool_inputs ?? null,
           diagnostics: job.diagnostics ?? null,
           mode: job.mode,
           status: job.status,
@@ -40862,6 +40919,9 @@ var init_jobs = __esm({
             throw new RequestError(err.message, err.code === "too_large" ? "expose_paths_too_large" : "expose_path_invalid");
           }
           req._snapshot = path11.join(snapshot, "workspace");
+          req._exposedFiles = exposeManifest.entries.flatMap(
+            (e) => e.paths?.length ? e.paths.map((p) => `${e.exposedAs}/${p}`) : e.kind === "file" ? [e.exposedAs] : []
+          );
         }
         const members2 = req.targets.map((target, i) => {
           const link = links[i];
@@ -40901,6 +40961,7 @@ var init_jobs = __esm({
             retries: [],
             partial_output: null,
             tool_calls: null,
+            tool_inputs: null,
             followup_to: from?.job_id ?? null,
             status: "queued",
             // What this consultant is: the CLI it runs on, the model and its
@@ -41173,6 +41234,7 @@ var init_jobs = __esm({
           let fallenBack = false;
           for (; ; ) {
             job.tool_calls = adapter.toolCalls?.(run) ?? null;
+            job.tool_inputs = adapter.toolInputs ? summarizeToolInputs(adapter.toolInputs(run), req._exposedFiles) : null;
             job.duration_ms = Date.now() - t0;
             job.finished_at = (/* @__PURE__ */ new Date()).toISOString();
             if ((run.stalled || run.timedOut || run.cancelled) && adapter.diagnostics && sandbox) {
@@ -42314,7 +42376,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.7.1";
+    SEVERALLY_VERSION = "2.8.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42351,25 +42413,24 @@ ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
         candidates (target_ambiguous); one not listed is refused (target_unavailable). Your own CLI on a fresh
         session is a valid consultant, marked same lineage.
 targets: several consultants, the same question (not with target, no duplicates); targets: ["all"] is every
-        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier rounds) and one group_id, for consult_get
-        and consult_cancel. A fan-out over the concurrency cap is refused before any member starts.
+        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier
+        rounds) and one group_id, for consult_get and consult_cancel. A fan-out over the concurrency cap is
+        refused before any member starts.
 followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
         (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
-        followup_to and question: the consultant, mode, network, objective, constraints, success_criteria,
-        facts, proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
-        even empty, replaces it. Files are copied again as they are now, what the earlier round exposed, with any
-        expose_paths you add; context.expose_from_parent: false keeps them back. A job's follow-up cannot change
-        the consultant.
+        followup_to and question: everything else is the earlier round's unless you pass it, and a value you pass,
+        even empty, replaces it. Its files are copied again as they are now, with any expose_paths you add;
+        context.expose_from_parent: false keeps them back. A follow-up cannot change the consultant.
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
         counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
         also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
 context: optional when the question supplies the needed information. For code questions, attach files or a diff.
         The consultant starts in an empty working directory and is not told where your repository is. Supply
-        additional material as facts, artifacts (material that is not a file here: test output, a log),
-        expose_paths (absolute paths copied read-only under ./workspace; a directory in a git work tree copies
-        the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files are skipped,
-        text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the brief, the
-        files it touches under ./workspace/repo/).
+        additional material as facts, artifacts (not a file here: test output, a log), expose_paths (absolute
+        paths, copied read-only under ./workspace; a git work tree's
+        directory copies the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files
+        are skipped; text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the
+        brief, its files under ./workspace/repo/).
 network: "on" (default) or "off" (no web search or browsing for any consultant this round). Credential and
         history paths are refused either way where the CLI can enforce it; each answer's \`boundary\` says what held.
 caller, caller_model: the CLI and model you run on (self-declared), for the same-vendor caveat and the record.

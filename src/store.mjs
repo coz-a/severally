@@ -136,6 +136,7 @@ import { POLICY } from './policy.mjs';
  * @property {RetryRecord[] | undefined} [retries]
  * @property {PartialOutput | null | undefined} [partial_output]
  * @property {Record<string, number> | null | undefined} [tool_calls]
+ * @property {import('./tool-inputs.mjs').ToolInputs | null | undefined} [tool_inputs]
  * @property {string | null | undefined} [diagnostics]
  * @property {Mode} mode
  * @property {string} status

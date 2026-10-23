@@ -165,7 +165,11 @@ unreadable.
 
 Each answer carries a `boundary` record of what that consultant was launched with (what it could read, its shell,
 whether it had the web, whether credential paths were blocked) and `tool_calls`, the tools it actually called,
-counted from the CLI's own event stream (Claude Code does not stream its tool calls, so it has none).
+counted from the CLI's own event stream (Claude Code does not stream its tool calls, so it has none). For Codex
+and Antigravity, `tool_inputs` adds what those calls were given: the shell commands Codex ran (at most 30, secrets
+masked and each cut to 200 characters; never their output) or the paths Antigravity's file tools opened, and how
+many of the files handed over a call names. A name in a call is not proof that the file was read, and a file that
+is not named was not necessarily skipped. The group view shows only the count (`exposed_files_in_tool_inputs`).
 
 `npm run doctor` checks the boundary against the CLIs installed on your machine. Each consultant is asked to:
 

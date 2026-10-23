@@ -70,7 +70,7 @@ antigravity  alternative     会員割引がほかの利用者に漏れる。ク
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.7.1 install
+npx -y severally-mcp@2.8.0 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -80,7 +80,7 @@ npx -y severally-mcp@2.7.1 install
 設定を確かめるには、次を実行します。
 
 ```bash
-npx -y severally-mcp@2.7.1 status
+npx -y severally-mcp@2.8.0 status
 ```
 
 設定ファイル・この機械から使える相談相手・入っている写しの版・どのクライアントに登録されているか・各 CLI に
@@ -222,7 +222,7 @@ Codex（gpt-6.1-sol）: 「429 invalid api key」は一時的な制限に誤分�
 ### 履歴と記録
 
 相談の記録は、あなたのマシンの `~/.severally/history/` に残ります。送ったブリーフ、相談相手の答え、指摘ごとの
-エージェントの判定（`confirmed`、`not_applicable`、`unverifiable`、`unverified`）が入っています。判定は、あとから
+エージェントの判定（`confirmed`、`not_applicable`、`unverifiable`、`unverified`）が入っています。Codex と Antigravity では、実行したコマンドや開いたパスと、渡したファイルのうち何件がそこに現れたかも残ります（秘密は伏せ字にし、コマンドの出力は残しません）。判定は、あとから
 別のセッションで足せます。相談は、Markdown としてリポジトリに書き出せます。
 
 [商品ページのキャッシュを相談した例](docs/how-it-works.ja.md#使い方の例)では、相手別の判断と、主担当が指摘を検証して採否を決める流れを追えます。

@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.7.1';
+export const SEVERALLY_VERSION = '2.8.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -120,25 +120,24 @@ ${
         candidates (target_ambiguous); one not listed is refused (target_unavailable). Your own CLI on a fresh
         session is a valid consultant, marked same lineage.
 targets: several consultants, the same question (not with target, no duplicates); targets: ["all"] is every
-        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier rounds) and one group_id, for consult_get
-        and consult_cancel. A fan-out over the concurrency cap is refused before any member starts.
+        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier
+        rounds) and one group_id, for consult_get and consult_cancel. A fan-out over the concurrency cap is
+        refused before any member starts.
 followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
         (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
-        followup_to and question: the consultant, mode, network, objective, constraints, success_criteria,
-        facts, proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
-        even empty, replaces it. Files are copied again as they are now, what the earlier round exposed, with any
-        expose_paths you add; context.expose_from_parent: false keeps them back. A job's follow-up cannot change
-        the consultant.
+        followup_to and question: everything else is the earlier round's unless you pass it, and a value you pass,
+        even empty, replaces it. Its files are copied again as they are now, with any expose_paths you add;
+        context.expose_from_parent: false keeps them back. A follow-up cannot change the consultant.
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
         counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
         also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
 context: optional when the question supplies the needed information. For code questions, attach files or a diff.
         The consultant starts in an empty working directory and is not told where your repository is. Supply
-        additional material as facts, artifacts (material that is not a file here: test output, a log),
-        expose_paths (absolute paths copied read-only under ./workspace; a directory in a git work tree copies
-        the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files are skipped,
-        text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the brief, the
-        files it touches under ./workspace/repo/).
+        additional material as facts, artifacts (not a file here: test output, a log), expose_paths (absolute
+        paths, copied read-only under ./workspace; a git work tree's
+        directory copies the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files
+        are skipped; text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the
+        brief, its files under ./workspace/repo/).
 network: "on" (default) or "off" (no web search or browsing for any consultant this round). Credential and
         history paths are refused either way where the CLI can enforce it; each answer's \`boundary\` says what held.
 caller, caller_model: the CLI and model you run on (self-declared), for the same-vendor caveat and the record.
