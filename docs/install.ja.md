@@ -35,7 +35,7 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.7.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.8.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |
@@ -98,7 +98,7 @@ opencode mcp list                    # severally  connected
 
 Claude Code だけで使うなら、クローンもインストーラも要りません。Claude Code で次を実行します。
 
-```
+```text
 /plugin marketplace add coz-a/severally
 /plugin install severally@severally
 ```
@@ -230,7 +230,7 @@ Claude Code の中で実行するコマンド `/plugin marketplace update severa
 
 マーケットプレイスから入れた場合（Claude Code）は、Claude Code で次を実行します。
 
-```
+```text
 /plugin marketplace remove severally    # プラグインもアンインストールされる
 ```
 

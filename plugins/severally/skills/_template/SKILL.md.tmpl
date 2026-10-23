@@ -11,18 +11,19 @@ brief and exposed files; see `reference.md` for other file access.{{EXECUTION_CA
 
 ## A normal consultation is three calls
 
-1. **`consult_start`**. A self-contained question is enough for a general consultation:
+1. **`consult_start`**. For a question about code, hand over the code with the question:
 
    ```
    consult_start({ request: {
      targets: ["all"],
-     question: "Our read-only public API gets 100 requests per minute; updates may appear 60 seconds late. Is a 30-second cache reasonable?",
+     question: "Is the retry cap in src/client.mjs safe if the server restarts mid-request?",
+     context: { expose_paths: ["/abs/path/to/repo/src"] },
      caller: "{{SELF_TARGET}}"
    }})
    ```
 
-   For a code question, also attach its files in `context.expose_paths` or its diff in `context.expose_diff`
-   (see **Write the first request**).
+   A directory or a repository root works (never your home directory or one holding keys); `expose_diff` hands
+   over a change in progress. A question that carries its own premises needs no files.
 
 2. **`consult_get({ group_id })`** (`consult_get({ job_id })` for one consultant). It waits for the answer by itself,
    up to a limit the server sets (45 seconds, or ten minutes where the client allows it); call it again while
@@ -94,9 +95,9 @@ Pass `initiator: "user"` when the user asked for the consultation; leave it out 
   the session is killed and you get nothing. Split "research everything about X" or three questions at once,
   and ask the one whose answer changes what you do next.
 - **Hand over the code.** The consultant is not told where your repository is. Name the files by absolute path
-  in `context.expose_paths` (a repository root works; never your home directory or one holding keys), or pass
-  `context.expose_diff: { repo: "<absolute path>" }` for a change you are making. When `consult_start` answers
-  `files_exposed: 0` and the question is about code, `consult_cancel` and start again with `expose_paths`.
+  in `context.expose_paths`, or pass `context.expose_diff: { repo: "<absolute path>" }` for a change you are
+  making. When `consult_start` answers `files_exposed: 0` and the question is about code, `consult_cancel` and
+  start again with `expose_paths`.
 - **Keep the premises in the question**, or use `context.facts` when separate facts help. A question containing
   its own premises needs no separate context; do not ask the user to repeat them as `context.facts`. Put test
   output or a log in `context.artifacts`.

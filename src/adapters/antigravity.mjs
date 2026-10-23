@@ -101,7 +101,7 @@ export function buildInvocation({ schemaPath, consultant }) {
 
 /**
  * One NDJSON event: a `result` or `step_update` wrapper, or a bare envelope.
- * @typedef {AgyEnvelope & { event?: string, result?: AgyEnvelope, step_update?: { step_index?: number, tool_name?: string, step_type?: string, state?: string } }} AgyEvent
+ * @typedef {AgyEnvelope & { event?: string, result?: AgyEnvelope, step_update?: { step_index?: number, tool_name?: string, step_type?: string, state?: string, tool_info?: { parameters?: Record<string, unknown> } } }} AgyEvent
  */
 
 /**
@@ -175,6 +175,26 @@ export function toolCalls({ stdout }) {
       seen.set(s.step_index ?? seen.size, /error|fail|cancel|denied/i.test(s.state ?? '') ? `${s.tool_name}:error` : s.tool_name);
   }
   return [...seen.values()].reduce((/** @type {Record<string, number>} */ o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+}
+
+/**
+ * The paths its file tools were given, one per step.
+ * @param {{ stdout: string }} run
+ * @returns {string[]}
+ */
+export function toolInputs({ stdout }) {
+  /** @type {Map<unknown, string[]>} */
+  const seen = new Map();
+  for (const e of events(stdout)) {
+    const s = e.event === 'step_update' ? e.step_update : null;
+    const params = s?.tool_info?.parameters;
+    if (!s?.tool_name || !params || typeof params !== 'object') continue;
+    seen.set(
+      s.step_index ?? seen.size,
+      Object.entries(params).flatMap(([k, v]) => (/path/i.test(k) && typeof v === 'string' ? [v] : [])),
+    );
+  }
+  return [...seen.values()].flat();
 }
 
 /**

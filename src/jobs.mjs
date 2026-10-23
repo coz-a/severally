@@ -29,6 +29,7 @@ import * as codex from './adapters/codex.mjs';
 import * as claudeCode from './adapters/claude-code.mjs';
 import * as antigravity from './adapters/antigravity.mjs';
 import * as opencode from './adapters/opencode.mjs';
+import { summarizeToolInputs } from './tool-inputs.mjs';
 
 /** @typedef {import('./run.mjs').Adapter} Adapter */
 /** @typedef {import('./run.mjs').ProcHandle} ProcHandle */
@@ -38,7 +39,7 @@ import * as opencode from './adapters/opencode.mjs';
 /** @typedef {import('./store.mjs').Seat} Seat */
 /** @typedef {NonNullable<Seat['owner']>} JobOwner Who runs a consultation: the severally process, and when it counts as overdue. */
 /** @typedef {import('./brief.mjs').PriorRound} PriorRound */
-/** @typedef {import('./schema.mjs').ParsedRequest & {_snapshot?: string}} ParsedRequest A validated request (see parseRequest), with the copy of the exposed files the job manager adds. */
+/** @typedef {import('./schema.mjs').ParsedRequest & {_snapshot?: string, _exposedFiles?: string[]}} ParsedRequest A validated request (see parseRequest), with the copy of the exposed files the job manager adds. */
 
 /**
  * The tool arguments, not yet validated; only the keys inherit() and start() look at are named.
@@ -129,6 +130,7 @@ import * as opencode from './adapters/opencode.mjs';
  * @property {string | null} evidence_basis
  * @property {string | null | undefined} summary
  * @property {unknown[]} finding_points
+ * @property {string} [exposed_files_in_tool_inputs] "M of N": handed-over files a tool call names
  * @property {Record<string, number>} severity_counts
  * @property {unknown[]} decision_changers
  * @property {unknown[]} alternative_options
@@ -335,6 +337,7 @@ export class JobManager {
       retries: job.retries ?? [],
       partial_output: job.partial_output ?? null,
       tool_calls: job.tool_calls ?? null,
+      tool_inputs: job.tool_inputs ?? null,
       diagnostics: job.diagnostics ?? null,
       mode: job.mode,
       status: job.status,
@@ -498,17 +501,23 @@ export class JobManager {
    * Usage summed per consultant over this session's consultations, every
    * attempt included (a re-run spends quota too): only the figures each CLI
    * reported are added, so a figure a CLI leaves null is not counted as zero
-   * but named under `not_reported`. Nothing is estimated.
+   * but named under `not_reported`. Nothing is estimated. A consultation
+   * with no figure at all (cancelled, timed out) is counted under
+   * `unreported`, so the totals do not read as everything that ran.
    */
   usageTotals() {
-    /** @type {Record<string, Record<string, number> & {consultations: number, attempts: number}>} */
+    /** @type {Record<string, Record<string, number> & {consultations: number, attempts: number, unreported: number}>} */
     const by = {};
     /** @type {Record<string, Set<string>>} */
     const reported = {};
     for (const j of this.jobs.values()) {
       const attempts = [...(j.retries ?? []).map((r) => r.usage), j.usage].filter((u) => u != null);
-      if (!attempts.length) continue;
-      const t = (by[j.target] ??= { consultations: 0, attempts: 0 });
+      if (!attempts.length && j.status === 'running') continue;
+      const t = (by[j.target] ??= { consultations: 0, attempts: 0, unreported: 0 });
+      if (!attempts.length) {
+        t.unreported += 1;
+        continue;
+      }
       const seen = (reported[j.target] ??= new Set());
       t.consultations += 1;
       t.attempts += attempts.length;
@@ -815,6 +824,10 @@ export class JobManager {
         throw new RequestError(err.message, err.code === 'too_large' ? 'expose_paths_too_large' : 'expose_path_invalid');
       }
       req._snapshot = path.join(snapshot, 'workspace');
+      // The names a tool input can be matched against (tool-inputs.mjs).
+      req._exposedFiles = exposeManifest.entries.flatMap((e) =>
+        e.paths?.length ? e.paths.map((p) => `${e.exposedAs}/${p}`) : e.kind === 'file' ? [e.exposedAs] : [],
+      );
     }
     const members = req.targets.map((/** @type {string} */ target, /** @type {number} */ i) => {
       // One link and one seat per target: start() builds them from req.targets.
@@ -858,6 +871,7 @@ export class JobManager {
         retries: [],
         partial_output: null,
         tool_calls: null,
+        tool_inputs: null,
         followup_to: from?.job_id ?? null,
         status: 'queued',
         // What this consultant is: the CLI it runs on, the model and its
@@ -933,11 +947,17 @@ export class JobManager {
       // consultation, but one about code that hands over no file is one the
       // consultant answers without having seen the repository.
       files_exposed: exposeManifest?.totals.files ?? 0,
-      ...(exposeManifest?.totals.files
+      // A follow-up that asked for text only (expose_from_parent: false) was
+      // told so; the earlier round's files are offered back only if it had any.
+      ...(exposeManifest?.totals.files || (first?.parent && req.context.expose_from_parent === false)
         ? {}
         : {
             files_note: first?.parent
-              ? "no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths, or context.expose_from_parent: true for the earlier round's files"
+              ? `no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths${
+                  (parent?.brief?.expose_paths?.entries?.length ?? 0) > 0
+                    ? ", or context.expose_from_parent: true for the earlier round's files"
+                    : ''
+                }`
               : 'no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths',
           }),
       status: 'running',
@@ -1229,6 +1249,7 @@ export class JobManager {
         // Read off the consultant's own event stream, last attempt only; null
         // where the CLI does not stream its tool calls (Claude Code).
         job.tool_calls = adapter.toolCalls?.(run) ?? null;
+        job.tool_inputs = adapter.toolInputs ? summarizeToolInputs(adapter.toolInputs(run), req._exposedFiles) : null;
         job.duration_ms = Date.now() - t0;
         job.finished_at = new Date().toISOString();
         // The sandbox HOME holding the consultant's own log is removed below,
@@ -2094,8 +2115,9 @@ function text(value) {
 // A follow-up restates what the round before was given unless it says
 // otherwise: the lead sends the new question, not the whole brief again. Only
 // a key left out is inherited -- one passed, even as an empty list, replaces
-// it -- and the validation that follows sees the result. Files are not:
-// copying them again stays expose_from_parent, named in the call (schema.mjs).
+// it -- and the validation that follows sees the result. Files are handled
+// apart (#admitted): copied again while the seat is the same, unless the call
+// says expose_from_parent: false (schema.mjs).
 /**
  * @param {RawRequest} raw
  * @param {Round} round
@@ -2406,6 +2428,11 @@ function byTarget(m, budget) {
     next_checks: nextChecks,
     remaining_disagreements: disagreements,
     caveat,
+    // Counted, not judged: how many of the handed-over files a tool call
+    // names. Not a claim that they were read; the call list is in the job.
+    ...(m.tool_inputs?.exposed_files
+      ? { exposed_files_in_tool_inputs: `${m.tool_inputs.exposed_mentioned} of ${m.tool_inputs.exposed_files}` }
+      : {}),
     // Counted, not judged: how many of this answer's points carry no verdict yet.
     points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null,
   };

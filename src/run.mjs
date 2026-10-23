@@ -347,6 +347,7 @@ export class ProcHandle {
  * @property {(args: { args: string[], sandbox: Sandbox | null, network?: 'on' | 'off' | undefined, hasExposedPaths?: boolean }) => Boundary} [boundary]
  * @property {(run: { stdout: string }) => string | null} [progress]
  * @property {(run: { stdout: string }) => Record<string, number> | null} [toolCalls]
+ * @property {(run: { stdout: string }) => string[]} [toolInputs] the commands or paths its tool calls were given
  * @property {readonly string[]} [FILE_READ_TOOLS] the names toolCalls reports for reading a file
  * @property {readonly string[]} [ALLOWED_TOOLS] the only tools the consultant may call; any other is refused
  * @property {() => Promise<void>} [prepare]

@@ -331,6 +331,33 @@ export function toolCalls({ stdout }) {
 }
 
 /**
+ * The shell commands the consultant ran, one per item id (a command is
+ * reported when it starts and again when it ends), without the `bash -lc`
+ * wrapper Codex puts around them. The item's output is never read: it holds
+ * the files' contents.
+ * @param {{ stdout?: string }} run
+ * @returns {string[]}
+ */
+export function toolInputs({ stdout }) {
+  /** @type {Map<unknown, string>} */
+  const seen = new Map();
+  for (const line of (stdout || '').split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    let e;
+    try {
+      e = JSON.parse(t);
+    } catch {
+      continue;
+    }
+    const item = e?.item;
+    if (item?.type === 'command_execution' && typeof item.command === 'string')
+      seen.set(item.id ?? `#${seen.size}`, item.command.replace(/^\/\S*\/(?:ba|z)?sh -lc '([\s\S]*)'$/, '$1'));
+  }
+  return [...seen.values()];
+}
+
+/**
  * @param {unknown} raw the usage figures interpret collected from the event stream
  * @returns {UsageRecord}
  */

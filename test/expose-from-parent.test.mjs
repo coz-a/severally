@@ -61,6 +61,15 @@ async function round(client, request) {
 const followup = (parent, context) =>
   reviewRequest({ followup_to: parent.job_id, context: { proposal: 'p', facts: ['f'], ...context } });
 
+test('a follow-up to a round that exposed no files is not offered expose_from_parent: true', async () => {
+  const client = await connect();
+  const none = await round(client, reviewRequest({ context: { proposal: 'p' } }));
+  const next = await round(client, followup(none.view, {}));
+  assert.match(next.started.files_note, /context\.expose_paths/);
+  assert.doesNotMatch(next.started.files_note, /expose_from_parent/);
+  await client.close();
+});
+
 test("a follow-up copies the parent round's paths again; expose_from_parent: false keeps them back", async () => {
   const client = await connect();
   const dir = tree();
@@ -77,7 +86,7 @@ test("a follow-up copies the parent round's paths again; expose_from_parent: fal
     false,
     'expose_from_parent: false sends no files',
   );
-  assert.match(bare.started.files_note, /send the follow-up again/);
+  assert.equal(bare.started.files_note, undefined, 'a text-only follow-up asked for no files and is not told to resend them');
 
   fs.writeFileSync(path.join(dir, 'lib', 'three.mjs'), 'export const three = 3;\n');
   const second = await round(client, followup(first.view));

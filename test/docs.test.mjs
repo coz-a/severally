@@ -84,3 +84,20 @@ test('every file README.md links to ships in the npm package', () => {
     .filter((f) => !shipped.some((s) => f === s || f.startsWith(`${s}/`)));
   assert.deepEqual(missing, []);
 });
+
+// A fence without a language renders unhighlighted and is read as a command to
+// run; say what it holds (`text` for output and prompts).
+test('every opening code fence in the public documents names a language', () => {
+  const bare = [];
+  for (const rel of DOCS) {
+    let inside = false;
+    read(rel)
+      .split('\n')
+      .forEach((line, i) => {
+        if (!/^\s*```/.test(line)) return;
+        if (!inside && line.trim() === '```') bare.push(`${rel}:${i + 1}`);
+        inside = !inside;
+      });
+  }
+  assert.deepEqual(bare, []);
+});

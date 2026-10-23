@@ -128,12 +128,10 @@ function renderTemplate(file, host) {
     ? ' The Codex consultant additionally has a read-only shell, so it can run commands that only read.'
     : '';
   const executionCaveat =
-    '\n\nOne caveat on that list: a consultant can read local files. Its writes are blocked,' +
-    '\nits network reaches only web search and browsing (none with `network: "off"`), credential and history' +
-    '\npaths are refused where its CLI allows, and by default it starts in an empty working directory without being' +
-    '\ntold where your repository is, so it answers from the brief and from the files you hand it:' +
-    '\n`context.expose_paths` (absolute paths) or `context.expose_diff` (a change in progress), which are' +
-    '\ncopied read-only into its working directory.' +
+    '\n\nA consultant can read local files. Its writes are blocked, its network reaches only web search and' +
+    '\nbrowsing (none with `network: "off"`), and credential and history paths are refused where its CLI allows.' +
+    '\nIt starts in an empty working directory and is not told where your repository is, so it answers from the' +
+    '\nbrief and the files you hand it.' +
     codexCaveat;
   const text = tmpl
     .replaceAll('{{EXECUTION_CAVEAT}}', executionCaveat)

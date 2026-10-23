@@ -37,7 +37,7 @@ What a consultant can read and do is under [What a consultant can see and do](..
 From any of the clients, you can consult the other three CLIs and a fresh session of your own. These are the
 commands the server starts. By default up to nine consultants run at once, across all your sessions.
 
-```
+```text
 Claude Code ──(skill)──> severally server ──> codex exec | agy | opencode run | claude -p  (fresh session)
 Codex       ──(skill)──> severally server ──> claude -p  | agy | opencode run | codex exec (fresh session)
 Antigravity ──(skill)──> severally server ──> codex exec | claude -p | opencode run | agy  (fresh session)
@@ -108,7 +108,8 @@ The parent-exited case has not been verified on a real Windows machine.
 - The record also keeps which model asked which, and whether you asked for the consultation.
 - The list of recent consultations (`consult_list`) adds up, per consultant, the token and cost figures each CLI
   reported in this session (`usage_totals`), automatic re-runs included. A figure a CLI does not report is not
-  counted as zero; it is named under `not_reported`.
+  counted as zero; it is named under `not_reported`. A consultation that was cancelled or timed out reports no
+  usage, and `unreported` counts them, so the totals are not read as everything that ran.
 
 ## How large a fan-out's answer is
 
@@ -164,7 +165,11 @@ unreadable.
 
 Each answer carries a `boundary` record of what that consultant was launched with (what it could read, its shell,
 whether it had the web, whether credential paths were blocked) and `tool_calls`, the tools it actually called,
-counted from the CLI's own event stream (Claude Code does not stream its tool calls, so it has none).
+counted from the CLI's own event stream (Claude Code does not stream its tool calls, so it has none). For Codex
+and Antigravity, `tool_inputs` adds what those calls were given: the shell commands Codex ran (at most 30, secrets
+masked and each cut to 200 characters; never their output) or the paths Antigravity's file tools opened, and how
+many of the files handed over a call names. A name in a call is not proof that the file was read, and a file that
+is not named was not necessarily skipped. The group view shows only the count (`exposed_files_in_tool_inputs`).
 
 `npm run doctor` checks the boundary against the CLIs installed on your machine. Each consultant is asked to:
 
@@ -221,7 +226,7 @@ fresh Claude Code session (a new session of the agent's own CLI, with none of it
 plan, it hands them read-only copies of the code involved. The answers come back one per consultant, side by side
 (excerpt from a real run against a sample API):
 
-```
+```text
 codex        do_not_proceed  the price depends on the member's tier, so keyed by product id alone, the first
                              visitor's price is served to everyone; the join inflates stock; 4 workers keep
                              separate copies, so an order that changes stock does not clear the old value
@@ -242,7 +247,7 @@ may not be needed at all. Merge the answers into one and that difference gets bu
 The agent that asked (the *lead*) reads the findings and then checks them in its own repository. Of the two
 findings, one reproduced exactly; the other turned out not to be happening yet, and that changed the response.
 
-```
+```text
 finding   the query joins inventory and reviews together, so stock is multiplied by the number of reviews
   checked   ran the query on a test database: 5 units in stock, 4 reviews -> stock comes out as 20
   so        fix the query before any cache
