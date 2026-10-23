@@ -750,9 +750,16 @@ export class JobManager {
     // than a job that fails having already spent a round of this chain.
     /** @type {ExposeManifest | null} */
     let exposeManifest = null;
+    // Left out, a follow-up copies them again too, but only while every member
+    // still runs the CLI and model that were shown them: the follow-up matches
+    // its consultant by name, and the operator may have repointed that name.
+    const explicit = req.context.expose_from_parent === true;
+    const implied =
+      req.context.expose_from_parent === undefined &&
+      links.every((l) => l.parent && sameSeat(l.parent, consultantByName(l.parent.target)));
     /** @type {BriefExposeEntry[]} */
-    const parentEntries = req.context.expose_from_parent ? (parent?.brief?.expose_paths?.entries ?? []) : [];
-    if (req.context.expose_from_parent && parentEntries.length === 0) {
+    const parentEntries = explicit || implied ? (parent?.brief?.expose_paths?.entries ?? []) : [];
+    if (explicit && parentEntries.length === 0) {
       throw new RequestError(
         `context.expose_from_parent: job "${parent?.job_id}" exposed no files, so there is nothing to copy again; name them in context.expose_paths`,
         'nothing_to_inherit',
@@ -796,12 +803,7 @@ export class JobManager {
         }
         markSinceParent(exposeManifest, parentEntries);
         // Explicitly requested file reuse found no paths and no replacement material.
-        if (
-          parentEntries.length &&
-          !exposeManifest.entries.length &&
-          !req.context.facts.length &&
-          !req.context.artifacts.length
-        ) {
+        if (explicit && !exposeManifest.entries.length && !req.context.facts.length && !req.context.artifacts.length) {
           throw new RequestError(
             `context.expose_from_parent: nothing job "${parent?.job_id}" exposed is there any more, and this request has no facts or artifacts`,
             'nothing_to_inherit',
@@ -934,8 +936,9 @@ export class JobManager {
       ...(exposeManifest?.totals.files
         ? {}
         : {
-            files_note:
-              'no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths',
+            files_note: first?.parent
+              ? "no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths, or context.expose_from_parent: true for the earlier round's files"
+              : 'no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths',
           }),
       status: 'running',
       accepted_at: group.created_at,
@@ -1379,7 +1382,8 @@ export class JobManager {
       job.result = normalized.result;
       const notes = [
         adviceCaveat(normalized),
-        sameVendorCaveat(job.caller, job.caller_model, consultant),
+        // The model that answered, which after a fallback is not the one asked.
+        sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
         interpreted.recoveredError &&
           `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
         leftover &&
@@ -1760,10 +1764,11 @@ export class JobManager {
         ? { ...firstBrief, full_with: `consult_get({ group_id: "${group.group_id}", detail: "full" }) or consult_export` }
         : firstBrief;
     // The limits are the server's, not a member's: one copy, on the group.
-    // By default a member is only its state: what there is to compare is in
-    // `comparison`, once, and the full answer is one consult_get({ job_id }) away.
+    // A member is only its state, with `detail: "full"` too: what there is to
+    // compare is in `comparison`, once, and the full answer is one
+    // consult_get({ job_id }) away. Every answer whole at once, beside the
+    // side-by-side, was 64 KB for three consultants -- past what a client shows.
     const trimmed = members.map(({ brief, limits, ...rest }) => {
-      if (full) return rest;
       const message = rest.failure && cut(rest.failure.message, FAILURE_MESSAGE_CHARS);
       const progress = cut(rest.progress, FAILURE_MESSAGE_CHARS);
       const cutShort =
@@ -1775,6 +1780,7 @@ export class JobManager {
         duration_ms: rest.duration_ms,
         progress,
         cancel_effect: rest.cancel_effect,
+        ...(full && rest.brief_note ? { brief_note: rest.brief_note } : {}),
         failure: rest.failure && { kind: rest.failure.kind, retriable: rest.failure.retriable, message },
         // The failure's detail, and a message or progress past its length, are in the member's own view.
         ...(cutShort ? { truncated: true, full_with: `consult_get({ job_id: "${rest.job_id}" })` } : {}),
@@ -1818,7 +1824,9 @@ export class JobManager {
     // While no one has finished there is nothing to set side by side, and an
     // empty column per consultant is only context spent on every poll.
     const anyFinished = members.some((m) => ['completed', 'failed', 'cancelled'].includes(m.status));
-    return anyFinished ? { ...view, comparison: comparison(members, full ? Infinity : GROUP_CHARS - printed(view)) } : view;
+    // With `detail: "full"` the brief is whole and can be long, so it does not eat into that.
+    const budget = GROUP_CHARS - printed(full ? { ...view, brief: null } : view);
+    return anyFinished ? { ...view, comparison: comparison(members, budget) } : view;
   }
 
   /**
@@ -2125,6 +2133,18 @@ function inherit(raw, round) {
   }
   out.context = ctx;
   return out;
+}
+
+// Whether a round ran on what this consultant is now: its CLI, and its model
+// or the fallback the operator set for it.
+/**
+ * @param {Round} round
+ * @param {Consultant | null | undefined} consultant
+ */
+function sameSeat(round, consultant) {
+  return Boolean(
+    consultant && round.cli === consultant.cli && [consultant.model, consultant.fallbackModel].includes(round.model),
+  );
 }
 
 /** @param {ReturnType<typeof normalizeResult>} normalized */

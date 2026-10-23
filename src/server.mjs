@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.6.2';
+export const SEVERALLY_VERSION = '2.7.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -126,8 +126,9 @@ followup_to: the job_id of the answer to continue, or a group_id to ask every me
         (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
         followup_to and question: the consultant, mode, network, objective, constraints, success_criteria,
         facts, proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
-        even empty, replaces it. Files are not carried over: context.expose_from_parent: true copies again,
-        as they are now, what the earlier round exposed. A job's follow-up cannot change the consultant.
+        even empty, replaces it. Files are copied again as they are now, what the earlier round exposed, with any
+        expose_paths you add; context.expose_from_parent: false keeps them back. A job's follow-up cannot change
+        the consultant.
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
         counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
         also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
@@ -231,12 +232,12 @@ export function createServer(manager = new JobManager()) {
         'job_id, and `comparison.by_target` with each actual model, stance, summary and finding (id and grounds), cut where ' +
         '`truncated` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds ' +
         'and your verdict (`recorded`). A finished consultation names its brief rather than repeating it; detail: ' +
-        '"full" returns the brief, and for a fan-out every member\'s full answer. ' +
+        '"full" returns the brief and the question whole; a fan-out member\'s whole answer is consult_get({ job_id }). ' +
         'Before your final report, check one point that could change the decision, then save the outcome with ' +
         'consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as ' +
         'confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. ' +
         'Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding ' +
-        'points with ids when their grounds or details are missing or shortened, or detail: "full" for every full answer. Record checked points in one ' +
+        "points with ids when their grounds or details are missing or shortened, or a member's job_id for its whole answer. Record checked points in one " +
         "records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.",
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),

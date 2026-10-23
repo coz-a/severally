@@ -42,16 +42,15 @@ Read it for a decision you will have to justify later.
 
 ## Follow-ups
 
-For "recheck just this finding", use the previous answer's `job_id` without asking the user to copy it.
-For a text-only continuation:
+For "recheck just this finding", use the previous answer's `job_id` without asking the user to copy it:
 
 ```
-consult_start({ request: { followup_to: "<job_id>", question: "What would change your view on f1?" } })
+consult_start({ request: { followup_to: "<job_id>", question: "Recheck f1 against the current code." } })
 ```
 
-To recheck code, add `context: { expose_from_parent: true }`. Files are not inherited automatically;
-this copies their **current contents**, with changes and deletions noted in the manifest.
-Supply current facts or diff. For one group member use its `job_id`; `group_id` asks everyone again.
+The earlier round's files go again with their **current contents**, changes and deletions noted in the
+manifest; add `expose_paths` for new ones, or pass `context: { expose_from_parent: false }` for a text-only
+question. Supply current facts or diff. For one group member use its `job_id`; `group_id` asks everyone again.
 See `reference.md` for missing-file recovery.
 
 ## Pick the consultant
@@ -139,8 +138,8 @@ each point with its `id`.
 - **Matching summaries are not agreement.** The server does not judge agreement; "both agreed" is a claim you
   have to earn from the grounds.
 - **Read the grounds before you lean on a point.** Do not fetch grounds already shown whole. When grounds or
-  details are missing or shortened in a fan-out, `consult_get({ job_id, ids: ["f2", "u1"] })` returns those points whole. Use
-  `consult_get({ group_id, detail: "full" })` when you need every full answer. Do not decide from clipped summaries.
+  details are missing or shortened in a fan-out, `consult_get({ job_id, ids: ["f2", "u1"] })` returns those points whole, and
+  `consult_get({ job_id })` one member's whole answer. Do not decide from clipped summaries.
 - A same-vendor answer's caveat lowers the weight of its *agreement* with you; it is not a reason to discard its
   findings.
 

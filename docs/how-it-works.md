@@ -120,8 +120,8 @@ side by side. Findings get more space than the other lists. Text shortened to fi
 
 The lead reads grounds already shown whole and checks deciding claims itself. For missing or shortened details,
 `consult_get({ job_id, ids: ["f2", "f5"] })` returns those points whole, with their grounds. A consultant's whole
-answer is `consult_get({ job_id })`; `consult_get({ group_id, detail: "full" })` returns every member's whole
-answer at once. The saved answers keep their complete contents.
+answer is `consult_get({ job_id })`; `consult_get({ group_id, detail: "full" })` adds the brief and the question
+whole, within the same budget for the answers. The saved answers keep their complete contents.
 
 ## How a consultant is kept to reading
 
@@ -196,10 +196,11 @@ once per request, so every consultant in a fan-out reads the same bytes; the his
 copy is deleted with the job, and the history keeps only which paths were shown, not the files' contents; the diff
 is part of the brief and is kept with it, masked like the rest. For that consultation the Claude Code consultant
 reads only the copy; the other three can still read the rest of the disk. A follow-up starts in a fresh working
-directory with no files. When it needs the earlier round's files, the lead passes `expose_from_parent: true`, and
-what that round exposed is copied again as it is now: each entry is marked changed or unchanged by its SHA-256, a
-path that no longer exists is left out and named, and an earlier `expose_diff` brings back the files it touched
-rather than a new diff. Nothing is copied again unless the lead asks for it in that call.
+directory, and what the earlier round exposed is copied into it again as it is now, with any paths the lead adds:
+each entry is marked changed or unchanged by its SHA-256, a directory is listed afresh (so files added since go
+too), a path that no longer exists is left out and named, and an earlier `expose_diff` brings back the files it
+touched rather than a new diff. The lead passes `expose_from_parent: false` to send none of them. When the
+consultant's name now points at another CLI or model, nothing is copied again unless the lead passes `true`.
 
 A follow-up to a fan-out (`followup_to` its `group_id`) asks every member the same new question, each continuing
 its own chain from its latest answered round, so each brief carries that consultant's own earlier rounds. A member

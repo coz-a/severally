@@ -236,7 +236,8 @@ test('a fan-out is started, fetched and compared through group_id over MCP', asy
   assert.match(view.comparison.note, /does not judge/);
   assert.equal(view.members[0].result, undefined, "a member's full answer is one consult_get({ job_id }) away");
   const full = payload(await client.callTool({ name: 'consult_get', arguments: { group_id: started.group_id, detail: 'full' } }));
-  assert.ok(full.members[0].result.summary);
+  assert.equal(full.members[0].result, undefined, 'detail: "full" adds the brief, not every answer again');
+  assert.ok(full.comparison.by_target[0].summary);
   assert.ok(full.brief.objective);
   await close();
 });

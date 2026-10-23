@@ -18,23 +18,37 @@ export const FAILURE_KINDS = [
 // Order matters: a used-up quota stays usage_limit even when the message also
 // says 429 or names an auth problem; auth errors then beat transient limits.
 // A message that fits neither -- Gemini's bare RESOURCE_EXHAUSTED is one --
-// falls through to cli_error.
-/** @type {Array<[RegExp, string]>} */
+// falls through to cli_error. Each rule also takes the HTTP statuses listed
+// with it.
+/** @type {Array<[RegExp, string, string[]]>} */
 const RULES = [
   [
     /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
     'usage_limit',
+    [],
   ],
-  [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, 'auth'],
   [
-    /\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i,
+    /\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token)\b/i,
+    'auth',
+    ['401', '403'],
+  ],
+  [
+    /\b(rate.?limit(ed)?|too many requests|overloaded|service unavailable|temporarily unavailable)\b/i,
     'rate_limited',
+    ['429', '502', '503', '529'],
   ],
   [
-    /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i,
+    /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable)\b/i,
     'model_unavailable',
+    ['404'],
   ],
 ];
+
+// A number is a status only where a status is written: leading the message,
+// in brackets, or straight after status / code / HTTP / error ("API Error:
+// 429", "HTTP/1.1 503", "\"code\": 429"). "read 403 tokens" and "Error at
+// line 502" are not.
+const STATUS = /(?:^\s*|[([]|\b(?:status(?:[ _]code)?|code|http(?:\/[\d.]+)?|error)"?\s*[:=]?\s*[([]?)(\d{3})\b/gi;
 
 /**
  * @param {string | null | undefined} text
@@ -42,7 +56,8 @@ const RULES = [
  */
 export function classifyMessage(text, fallback = 'cli_error') {
   if (!text) return fallback;
-  for (const [re, kind] of RULES) if (re.test(text)) return kind;
+  const statuses = [...text.matchAll(STATUS)].map((m) => m[1]);
+  for (const [re, kind, codes] of RULES) if (re.test(text) || codes.some((c) => statuses.includes(c))) return kind;
   return fallback;
 }
 

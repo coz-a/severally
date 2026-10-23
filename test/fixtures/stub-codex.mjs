@@ -142,6 +142,16 @@ function run() {
     setTimeout(() => process.exit(0), 200);
     return;
   }
+  // The answer is written and the stub exits 0, leaving a process in its group
+  // that let go of stdout and stderr: nothing holds the pipes open.
+  if (behavior === 'orphan_quiet') {
+    const gc = spawn(process.execPath, ['-e', 'setInterval(()=>{},1e9)'], { stdio: 'ignore' });
+    if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));
+    out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
+    if (lastMessagePath) fs.writeFileSync(lastMessagePath, answer());
+    setTimeout(() => process.exit(0), 200);
+    return;
+  }
   if (behavior === 'leak_secret') {
     out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
     if (lastMessagePath) {
@@ -159,6 +169,14 @@ function run() {
     process.exit(1);
   }
 
+  // A consultant handed files looks at them, through its shell; one that runs
+  // no command at all (no_commands) or only one that exits non-zero
+  // (failed_command) is what the unread caveat is about.
+  if (fs.existsSync('workspace') && behavior !== 'no_commands') {
+    const status = behavior === 'failed_command' ? 'failed' : 'completed';
+    out({ type: 'item.started', item: { id: 'c1', type: 'command_execution', status: 'in_progress' } });
+    out({ type: 'item.completed', item: { id: 'c1', type: 'command_execution', status } });
+  }
   out({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 300, output_tokens: 450 } });
   if (lastMessagePath) fs.writeFileSync(lastMessagePath, answer());
   process.exit(0);

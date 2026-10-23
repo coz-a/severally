@@ -94,7 +94,7 @@ test('a group prints the shared brief once, not once per consultant', async () =
   assert.equal(view.brief.sha256, crypto.createHash('sha256').update(JSON.stringify(roundFile.brief)).digest('hex'));
   assert.equal(view.brief.chars, JSON.stringify(roundFile.brief).length);
   assert.match(view.brief.full_with, /detail: "full"/);
-  // detail: "full" is the old shape: the brief once, at the group.
+  // detail: "full" adds the brief whole, once, at the group.
   const full = mgr.groupView(started.group_id, { detail: 'full' });
   assert.equal(full.brief.objective, reviewRequest().objective);
   for (const m of full.members) assert.equal(m.brief, undefined);

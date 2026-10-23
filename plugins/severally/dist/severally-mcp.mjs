@@ -36751,8 +36751,9 @@ var init_schema = __esm({
       // their paths in the repository. The repository's location is not sent.
       expose_diff: external_exports.object({ repo: exposedPathSchema, base: gitRevision.optional() }).strict().nullish(),
       // A follow-up only: copy again, as they are now, the paths the parent
-      // round exposed. Never implied -- what reaches another vendor's model is
-      // what the lead named in this call.
+      // round exposed (a directory is listed afresh, so files added since go
+      // too). Left out, it is implied while every member runs the CLI and model
+      // the parent round was shown them on; false keeps them back.
       expose_from_parent: external_exports.boolean().optional(),
       // Read as the request's own: a lead often nests them beside the facts.
       constraints: external_exports.array(trimmed(L.constraintMax, "context.constraints[]")).max(L.constraintsMax).optional(),
@@ -36763,7 +36764,8 @@ var init_schema = __esm({
     NETWORK_MODES = ["on", "off"];
     requestSchema = external_exports.object({
       // Exactly one of `target` (one consultant) or `targets` (ask several the
-      // same question) is required; parseRequest below enforces the exclusivity,
+      // same question) is required on a first round; a follow-up takes its
+      // parent's. parseRequest below enforces the exclusivity,
       // because zod cannot phrase that refusal usefully.
       target: targetSpec.optional(),
       targets: external_exports.array(targetSpec).min(1).max(POLICY.maxConcurrent).optional(),
@@ -37714,7 +37716,7 @@ var init_brief = __esm({
     WEB_ON = "- You may search and browse the web freely; cite what you actually opened in `references`.";
     WEB_OFF = "- Web search and browsing are switched off for this consultation. Answer from the brief, and record what you would have looked up under `unknowns`.";
     WORKDIR_EMPTY = "- You are running in an empty working directory and do not have the lead's repository; everything you are meant to have is in the brief below. If something is missing, record it under `unknowns` instead of guessing or substituting an assumption.";
-    WORKDIR_EXPOSED = '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository the lead gave you. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
+    WORKDIR_EXPOSED = '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository the lead gave you; read the ones the question turns on before you answer. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
     GUARDRAILS_TAIL = [
       "- Never include credentials, API keys, tokens, or environment variable values in your answer.",
       "- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.",
@@ -37941,31 +37943,40 @@ var init_parse_result = __esm({
 // src/failures.mjs
 function classifyMessage(text2, fallback = "cli_error") {
   if (!text2) return fallback;
-  for (const [re, kind] of RULES) if (re.test(text2)) return kind;
+  const statuses = [...text2.matchAll(STATUS)].map((m) => m[1]);
+  for (const [re, kind, codes] of RULES) if (re.test(text2) || codes.some((c) => statuses.includes(c))) return kind;
   return fallback;
 }
 function isRetriable(kind) {
   return kind === "timeout" || kind === "cli_error" || kind === "rate_limited" || kind === "interrupted";
 }
-var RULES, AUTO_RETRY_KINDS;
+var RULES, STATUS, AUTO_RETRY_KINDS;
 var init_failures = __esm({
   "src/failures.mjs"() {
     "use strict";
     RULES = [
       [
         /\b(usage limit|quota (exceeded|reached|exhausted)|out of credits|reached your .* limit|insufficient_quota|credit balance)\b/i,
-        "usage_limit"
-      ],
-      [/\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token|401|403)\b/i, "auth"],
-      [
-        /\b(rate.?limit(ed)?|too many requests|429|overloaded|529|502|503|service unavailable|temporarily unavailable)\b/i,
-        "rate_limited"
+        "usage_limit",
+        []
       ],
       [
-        /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable|404)\b/i,
-        "model_unavailable"
+        /\b(not logged in|please log in|login required|unauthorized|authentication|invalid api key|expired token)\b/i,
+        "auth",
+        ["401", "403"]
+      ],
+      [
+        /\b(rate.?limit(ed)?|too many requests|overloaded|service unavailable|temporarily unavailable)\b/i,
+        "rate_limited",
+        ["429", "502", "503", "529"]
+      ],
+      [
+        /\b(unrecognized_model|model unavailable|model .* (not found|does not exist|unavailable|not recognized)|no access to .*model|it may not exist|variant unavailable)\b/i,
+        "model_unavailable",
+        ["404"]
       ]
     ];
+    STATUS = /(?:^\s*|[([]|\b(?:status(?:[ _]code)?|code|http(?:\/[\d.]+)?|error)"?\s*[:=]?\s*[([]?)(\d{3})\b/gi;
     AUTO_RETRY_KINDS = Object.freeze(["rate_limited", "cli_error"]);
   }
 });
@@ -38149,6 +38160,7 @@ function runChild({
     });
     child.on("close", (code, signal) => {
       flushPending();
+      handle.stop(stopSignal2);
       finish({ code, signal });
     });
   });
@@ -38609,6 +38621,7 @@ var init_store = __esm({
 // src/adapters/codex.mjs
 var codex_exports = {};
 __export(codex_exports, {
+  FILE_READ_TOOLS: () => FILE_READ_TOOLS,
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS,
   RESERVED_FLAGS: () => RESERVED_FLAGS,
   boundary: () => boundary,
@@ -38801,7 +38814,7 @@ function boundary({ args }) {
     tools: null
   };
 }
-var FORBIDDEN_FLAGS, RESERVED_FLAGS, PROFILE, listDir;
+var FORBIDDEN_FLAGS, RESERVED_FLAGS, PROFILE, listDir, FILE_READ_TOOLS;
 var init_codex = __esm({
   "src/adapters/codex.mjs"() {
     "use strict";
@@ -38835,6 +38848,7 @@ var init_codex = __esm({
         return [];
       }
     };
+    FILE_READ_TOOLS = ["command_execution", "command_execution:error"];
   }
 });
 
@@ -39217,7 +39231,7 @@ var init_antigravity_sandbox = __esm({
 var antigravity_exports = {};
 __export(antigravity_exports, {
   ALLOWED_TOOLS: () => ALLOWED_TOOLS,
-  FILE_READ_TOOLS: () => FILE_READ_TOOLS,
+  FILE_READ_TOOLS: () => FILE_READ_TOOLS2,
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS3,
   RESERVED_FLAGS: () => RESERVED_FLAGS3,
   boundary: () => boundary3,
@@ -39376,7 +39390,7 @@ function boundary3({ sandbox }) {
     tools: [...tools]
   };
 }
-var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, FILE_READ_TOOLS, stopSignal;
+var FORBIDDEN_FLAGS3, RESERVED_FLAGS3, FILE_READ_TOOLS2, stopSignal;
 var init_antigravity = __esm({
   "src/adapters/antigravity.mjs"() {
     "use strict";
@@ -39404,7 +39418,7 @@ var init_antigravity = __esm({
       "-i"
     ];
     RESERVED_FLAGS3 = ["--print", "-p", "--prompt", "--project", "--remote-control", "--effort"];
-    FILE_READ_TOOLS = ["view_file", "read_file"];
+    FILE_READ_TOOLS2 = ["view_file", "read_file"];
     stopSignal = "SIGQUIT";
   }
 });
@@ -39602,7 +39616,7 @@ var init_opencode_sandbox = __esm({
 // src/adapters/opencode.mjs
 var opencode_exports = {};
 __export(opencode_exports, {
-  FILE_READ_TOOLS: () => FILE_READ_TOOLS2,
+  FILE_READ_TOOLS: () => FILE_READ_TOOLS3,
   FORBIDDEN_FLAGS: () => FORBIDDEN_FLAGS4,
   RESERVED_FLAGS: () => RESERVED_FLAGS4,
   boundary: () => boundary4,
@@ -39858,7 +39872,7 @@ function boundary4({ sandbox }) {
     tools: [...tools]
   };
 }
-var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4, FILE_READ_TOOLS2;
+var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4, FILE_READ_TOOLS3;
 var init_opencode = __esm({
   "src/adapters/opencode.mjs"() {
     "use strict";
@@ -39890,7 +39904,7 @@ var init_opencode = __esm({
     standaloneSupport = null;
     probePromise = null;
     RESERVED_FLAGS4 = ["--model", "--standalone", "--wizard"];
-    FILE_READ_TOOLS2 = ["read", "grep"];
+    FILE_READ_TOOLS3 = ["read", "grep"];
   }
 });
 
@@ -40031,6 +40045,11 @@ function inherit(raw, round) {
   }
   out.context = ctx;
   return out;
+}
+function sameSeat(round, consultant) {
+  return Boolean(
+    consultant && round.cli === consultant.cli && [consultant.model, consultant.fallbackModel].includes(round.model)
+  );
 }
 function adviceCaveat(normalized) {
   const { result, quality } = normalized;
@@ -40782,8 +40801,10 @@ var init_jobs = __esm({
         const parent = first?.groupMember ?? first?.parent;
         const groupId = id("group");
         let exposeManifest = null;
-        const parentEntries = req.context.expose_from_parent ? parent?.brief?.expose_paths?.entries ?? [] : [];
-        if (req.context.expose_from_parent && parentEntries.length === 0) {
+        const explicit = req.context.expose_from_parent === true;
+        const implied = req.context.expose_from_parent === void 0 && links.every((l) => l.parent && sameSeat(l.parent, consultantByName(l.parent.target)));
+        const parentEntries = explicit || implied ? parent?.brief?.expose_paths?.entries ?? [] : [];
+        if (explicit && parentEntries.length === 0) {
           throw new RequestError(
             `context.expose_from_parent: job "${parent?.job_id}" exposed no files, so there is nothing to copy again; name them in context.expose_paths`,
             "nothing_to_inherit"
@@ -40823,7 +40844,7 @@ var init_jobs = __esm({
               }
             }
             markSinceParent(exposeManifest, parentEntries);
-            if (parentEntries.length && !exposeManifest.entries.length && !req.context.facts.length && !req.context.artifacts.length) {
+            if (explicit && !exposeManifest.entries.length && !req.context.facts.length && !req.context.artifacts.length) {
               throw new RequestError(
                 `context.expose_from_parent: nothing job "${parent?.job_id}" exposed is there any more, and this request has no facts or artifacts`,
                 "nothing_to_inherit"
@@ -40938,7 +40959,7 @@ var init_jobs = __esm({
           // consultant answers without having seen the repository.
           files_exposed: exposeManifest?.totals.files ?? 0,
           ...exposeManifest?.totals.files ? {} : {
-            files_note: "no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths"
+            files_note: first?.parent ? "no file was handed over, so the consultant answers from the brief alone; if this is about code, consult_cancel and send the follow-up again with context.expose_paths, or context.expose_from_parent: true for the earlier round's files" : "no file was handed over, so the consultant answers from the brief alone; if this is about code in a repository, consult_cancel and start again with context.expose_paths"
           },
           status: "running",
           accepted_at: group.created_at,
@@ -41268,7 +41289,8 @@ var init_jobs = __esm({
           job.result = normalized.result;
           const notes = [
             adviceCaveat(normalized),
-            sameVendorCaveat(job.caller, job.caller_model, consultant),
+            // The model that answered, which after a fallback is not the one asked.
+            sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
             interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
             leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)",
             fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
@@ -41584,7 +41606,6 @@ var init_jobs = __esm({
         const firstBrief = members2.find((m) => m.brief)?.brief ?? null;
         const groupBrief = firstBrief && !full ? { ...firstBrief, full_with: `consult_get({ group_id: "${group.group_id}", detail: "full" }) or consult_export` } : firstBrief;
         const trimmed2 = members2.map(({ brief, limits, ...rest }) => {
-          if (full) return rest;
           const message = rest.failure && cut(rest.failure.message, FAILURE_MESSAGE_CHARS);
           const progress4 = cut(rest.progress, FAILURE_MESSAGE_CHARS);
           const cutShort = progress4 !== rest.progress || Boolean(rest.failure && (message !== rest.failure.message || rest.failure.detail));
@@ -41595,6 +41616,7 @@ var init_jobs = __esm({
             duration_ms: rest.duration_ms,
             progress: progress4,
             cancel_effect: rest.cancel_effect,
+            ...full && rest.brief_note ? { brief_note: rest.brief_note } : {},
             failure: rest.failure && { kind: rest.failure.kind, retriable: rest.failure.retriable, message },
             // The failure's detail, and a message or progress past its length, are in the member's own view.
             ...cutShort ? { truncated: true, full_with: `consult_get({ job_id: "${rest.job_id}" })` } : {}
@@ -41624,7 +41646,8 @@ var init_jobs = __esm({
           limits: live || !full ? null : limitsSummary()
         };
         const anyFinished = members2.some((m) => ["completed", "failed", "cancelled"].includes(m.status));
-        return anyFinished ? { ...view, comparison: comparison(members2, full ? Infinity : GROUP_CHARS - printed(view)) } : view;
+        const budget = GROUP_CHARS - printed(full ? { ...view, brief: null } : view);
+        return anyFinished ? { ...view, comparison: comparison(members2, budget) } : view;
       }
       /**
        * @param {string} groupId
@@ -42077,7 +42100,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with each actual model, stance, summary and finding (id and grounds), cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief, and for a fan-out every member's full answer. Before your final report, check one point that could change the decision, then save the outcome with consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding points with ids when their grounds or details are missing or shortened, or detail: "full" for every full answer. Record checked points in one records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.`,
+      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with each actual model, stance, summary and finding (id and grounds), cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief and the question whole; a fan-out member's whole answer is consult_get({ job_id }). Before your final report, check one point that could change the decision, then save the outcome with consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding points with ids when their grounds or details are missing or shortened, or a member's job_id for its whole answer. Record checked points in one records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -42283,7 +42306,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.6.2";
+    SEVERALLY_VERSION = "2.7.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42326,8 +42349,9 @@ followup_to: the job_id of the answer to continue, or a group_id to ask every me
         (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
         followup_to and question: the consultant, mode, network, objective, constraints, success_criteria,
         facts, proposal, counterpoints and artifacts are the earlier round's unless you pass them, and one you pass,
-        even empty, replaces it. Files are not carried over: context.expose_from_parent: true copies again,
-        as they are now, what the earlier round exposed. A job's follow-up cannot change the consultant.
+        even empty, replaces it. Files are copied again as they are now, what the earlier round exposed, with any
+        expose_paths you add; context.expose_from_parent: false keeps them back. A job's follow-up cannot change
+        the consultant.
 mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
         counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
         also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.

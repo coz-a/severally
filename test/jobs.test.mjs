@@ -764,6 +764,22 @@ test('an answer whose consultant read none of the exposed files says so', async 
   assert.doesNotMatch(bare.quality.caveat ?? '', /files were exposed|does not allow/);
 });
 
+test('a Codex answer given without running a single command on the exposed files says so', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-unread-codex-'));
+  fs.writeFileSync(path.join(dir, 'a.mjs'), 'x');
+  const req = reviewRequest({ context: { ...reviewRequest().context, expose_paths: [dir] } });
+  const mgr = new JobManager();
+  process.env.STUB_BEHAVIOR = 'no_commands';
+  const silent = await finish(mgr, mgr.start(req).job_id);
+  assert.match(silent.quality.caveat, /files were exposed, but no call to read one succeeded \(none was made\)/);
+  process.env.STUB_BEHAVIOR = 'failed_command';
+  const failed = await finish(mgr, mgr.start(req).job_id);
+  assert.doesNotMatch(failed.quality.caveat ?? '', /files were exposed/, 'a command that exits non-zero still looked');
+  process.env.STUB_BEHAVIOR = 'ok';
+  const looked = await finish(mgr, mgr.start(req).job_id);
+  assert.doesNotMatch(looked.quality.caveat ?? '', /files were exposed/);
+});
+
 test('antigravity: the synthesised home is handed over as HOME and removed afterwards', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const envOut = path.join(home, 'agy-env.json');
@@ -1389,6 +1405,7 @@ test('exposed paths reach the consultant working directory and are named in the 
   // in one breath that it has files and in the next that it has none.
   assert.doesNotMatch(brief, /You are running in an empty working directory/);
   assert.match(brief, /Your working directory is not empty/);
+  assert.match(brief, /read the ones the question turns on before you answer/);
 
   assert.ok(!fs.existsSync(path.join(home, 'jobs', started.job_id)), 'the copy goes with the job directory');
   delete process.env.STUB_BRIEF_OUT;
@@ -1598,6 +1615,17 @@ test(
       assert.match(view.quality.caveat, /kept its output open/);
       await c.gone();
     }
+  },
+);
+
+test(
+  'a consultant that exits cleanly does not leave a quiet process of its group running',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const c = await orphanCase('orphan_quiet');
+    const view = await finish(c.mgr, c.started.job_id);
+    assert.equal(view.status, 'completed');
+    await c.gone();
   },
 );
 

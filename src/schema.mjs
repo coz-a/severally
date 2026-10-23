@@ -71,8 +71,9 @@ export const contextSchema = z
     // their paths in the repository. The repository's location is not sent.
     expose_diff: z.object({ repo: exposedPathSchema, base: gitRevision.optional() }).strict().nullish(),
     // A follow-up only: copy again, as they are now, the paths the parent
-    // round exposed. Never implied -- what reaches another vendor's model is
-    // what the lead named in this call.
+    // round exposed (a directory is listed afresh, so files added since go
+    // too). Left out, it is implied while every member runs the CLI and model
+    // the parent round was shown them on; false keeps them back.
     expose_from_parent: z.boolean().optional(),
     // Read as the request's own: a lead often nests them beside the facts.
     constraints: z.array(trimmed(L.constraintMax, 'context.constraints[]')).max(L.constraintsMax).optional(),
@@ -98,7 +99,8 @@ export const NETWORK_MODES = ['on', 'off'];
 export const requestSchema = z
   .object({
     // Exactly one of `target` (one consultant) or `targets` (ask several the
-    // same question) is required; parseRequest below enforces the exclusivity,
+    // same question) is required on a first round; a follow-up takes its
+    // parent's. parseRequest below enforces the exclusivity,
     // because zod cannot phrase that refusal usefully.
     target: targetSpec.optional(),
     targets: z.array(targetSpec).min(1).max(POLICY.maxConcurrent).optional(),

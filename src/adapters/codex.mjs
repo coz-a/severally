@@ -293,6 +293,15 @@ export function progress({ stdout }) {
 }
 
 /**
+ * The calls that can read a file. Codex reads through its shell, and a command
+ * that exits non-zero (an rg with no match) still looked, so failed ones count.
+ * ponytail: any command counts, an ls as much as a cat, so this catches an
+ * answer given without looking at all, not one that skipped a file; telling
+ * them apart would mean parsing the command line.
+ */
+export const FILE_READ_TOOLS = ['command_execution', 'command_execution:error'];
+
+/**
  * Tool calls seen in the event stream, counted by item type (and by tool for
  * MCP and collaboration calls, which is where a sub-agent spawn shows up);
  * `:error` when the item ended failed or declined.
