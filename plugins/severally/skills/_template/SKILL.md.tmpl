@@ -1,156 +1,103 @@
 ---
 name: severally
-description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from {{DESCRIPTION_PEERS}} through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list, and a request to ask everyone at once counts however it is phrased ({{TRIGGERS}}, "second opinion", "セカンドオピニオン").
+description: Use when a decision deserves a second, independent mind - an architectural or hard-to-reverse choice, two options that look genuinely close, or an investigation that has stalled - to get an independent opinion, review or structured debate from {{DESCRIPTION_PEERS}} through the severally MCP server. Also use when the user asks for it directly, in any wording - the phrases here are examples, not an exact list ({{TRIGGERS}}, "second opinion", "セカンドオピニオン").
 ---
 
 # Consulting a peer agent
 
-You have three peers, each reached through the `severally` MCP server as a fresh child session that can read files
-and search the web, but not edit them, load MCP tools, see your session or consult anyone else. The server sends the
-brief and exposed files; see `reference.md` for other file access.{{EXECUTION_CAVEAT}}
+Each consultant gets a fresh CLI session, the brief and exposed files, without your conversation history.{{EXECUTION_CAVEAT}}
 
 ## A normal consultation is three calls
 
-1. **`consult_start`**. For a question about code, hand over the code with the question:
+1. **Start** with one decidable question. For a code change, read its imports and callers, then select the
+   diff, relevant caller, tests and configuration. Use `expose_diff` for the change and `expose_paths` for
+   needed files outside it; do not send a whole repository by default. Example:
 
    ```
    consult_start({ request: {
      targets: ["all"],
-     question: "Is the retry cap in src/client.mjs safe if the server restarts mid-request?",
-     context: { expose_paths: ["/abs/path/to/repo/src"] },
+     question: "Does the retry cap hold when the caller cancels during an outage? Identify missing premises as unknowns.",
+     context: {
+       expose_diff: { repo: "/abs/path/to/repo" },
+       expose_paths: ["/abs/path/to/repo/src/caller.mjs", "/abs/path/to/repo/test/client.test.mjs"]
+     },
      caller: "{{SELF_TARGET}}"
    }})
    ```
 
-   A directory or a repository root works (never your home directory or one holding keys); `expose_diff` hands
-   over a change in progress. A question that carries its own premises needs no files.
+   A self-contained question needs no files. Put extra premises in `context.facts`, test output or logs in
+   `context.artifacts`. Leave `mode` out: facts imply explore, a `proposal` implies review, opposing
+   `counterpoints` imply debate. Ask for one decision, not a broad investigation that may exhaust the timeout.
+   Inspect `files_exposed` and the manifest: zero files for a code question, skipped or deleted files, or a
+   size-limit error need attention. Select replacements or a smaller set; missing material stays unknown.
 
-2. **`consult_get({ group_id })`** (`consult_get({ job_id })` for one consultant). It waits for the answer by itself,
-   up to a limit the server sets (45 seconds, or ten minutes where the client allows it); call it again while
-   `status` is `running`. To work on something independent meanwhile, ask for a shorter wait (`reference.md`).
-3. **Check one point, record it once, then report** (see **Before you hand the decision back**).
+2. **Collect** with `consult_get({ group_id })` (one consultant: `{ job_id }`). It waits by default; repeat
+   while running. `progress` shows activity; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
+   `failed` means no advice, never "no concerns". Use successful answers even when another member fails.
 
-Prediction, reflection, export, limits and recovery are in `reference.md`, in the same directory as this file.
-Read it for a decision you will have to justify later.
+3. **Check, record once, report.** Follow **Before you hand the decision back** below. No reference fetch,
+   export, prediction or reflection is required for a routine consultation.
 
-## Follow-ups
-
-For "recheck just this finding", use the previous answer's `job_id` without asking the user to copy it:
-
-```
-consult_start({ request: { followup_to: "<job_id>", question: "Recheck f1 against the current code." } })
-```
-
-The earlier round's files go again with their **current contents**, changes and deletions noted in the
-manifest; add `expose_paths` for new ones, or pass `context: { expose_from_parent: false }` for a text-only
-question. Supply current facts or diff. For one group member use its `job_id`; `group_id` asks everyone again.
-See `reference.md` for missing-file recovery.
+Detailed recovery, limits, prediction and reflection are in `reference.md`, in the same directory as this file.
+Read only when needed.
 
 ## Pick the consultant
 
-{{PEER_TABLE}}
+For a second opinion with nobody named, use `targets: ["all"]`: every available consultant, your own CLI on a
+fresh session included. A fan-out costs one consultation per consultant and takes one seat each under the
+concurrency cap. Use `target` when the user names one or the decision warrants a narrower consultation.
+For two independent readings: `targets: ["{{DEFAULT_TARGET}}", "{{SECOND_TARGET}}"]`.
 
-**When they just ask for a second opinion, with no target named:** ask everyone — `targets: ["all"]` —
-not just one. That is every consultant the operator set up, your own CLI on a fresh session included when it
-is one of them, whatever model you are running as: a fresh session has none of this session's history, sunk
-cost or drift toward your framing. The server marks that answer as same lineage. A default request therefore
-costs one consultation's quota per consultant. Narrow to `target` (singular) only when the user names a
-specific peer, or when the decision clearly does not warrant that much. This is the one rule for how many to
-ask.
-
-The operator decides which consultants exist; `consult_start`'s description lists the ones this machine can
-actually reach. When the user names one, pass **the word the user used** as `target`
-(「Claude Opusと相談して」 is `target: "claude opus"`). `target_ambiguous`: ask the user which one they meant.
-`target_unavailable`: take the available list as final and tell the user.
-
-**Do not pick a model yourself.** When the user named no one, ask everyone; overriding the operator's
-consultants on your own judgement — including after a `usage_limit` failure — substitutes a different mind
-for the one the user asked for. The operator may have set a fallback model for that case; a caveat reading
-"answered by X: Y's quota was used up" means it answered, and your report names X as the one who answered.
-
-Consult your own CLI (`target: "{{SELF_TARGET}}"`) freely, alone or alongside the peers, and the same goes
-for a **different model of your own lineage** when the user wants one (an Opus lead asking Fable). Either is a
-fresh mind but not another lineage; when the risk is your model's blind spot, add the other peers. Pass
-`caller: "{{SELF_TARGET}}"` and, when you know it, `caller_model` (the model you run on), so a same-vendor
-answer can say which model answered.
-
-## When this is worth it
-
-When a wrong answer is expensive or hard to undo (an interface, a migration, a security or concurrency design),
-two options still look close, an investigation has stalled after two attempts, or the user asked. Not for
-anything you would be comfortable defending on your own.
-
-**Before you ask the user to approve a change that is hard to reverse** and nobody else has reviewed it,
-consult first — everyone, as above — and check the point that decides it. Do not ask whether to consult. Then go
-to the user only with what is theirs to decide: the change itself, and any finding your checks could not settle,
-each with what you checked, what you recommend and what is still unverified. The one exception is material that
-must not reach another vendor's model (customer data, code under an agreement, anything the user would not paste
-into a web form): ask before you send it, or leave it out of the brief.
-
-Pass `initiator: "user"` when the user asked for the consultation; leave it out when you started it yourself.
-
-## Write the first request
-
-- **Ask one decidable question.** What runs out the clock is scope, not brief length: when the budget runs out
-  the session is killed and you get nothing. Split "research everything about X" or three questions at once,
-  and ask the one whose answer changes what you do next.
-- **Hand over the code.** The consultant is not told where your repository is. Name the files by absolute path
-  in `context.expose_paths`, or pass `context.expose_diff: { repo: "<absolute path>" }` for a change you are
-  making. When `consult_start` answers `files_exposed: 0` and the question is about code, `consult_cancel` and
-  start again with `expose_paths`.
-- **Keep the premises in the question**, or use `context.facts` when separate facts help. A question containing
-  its own premises needs no separate context; do not ask the user to repeat them as `context.facts`. Put test
-  output or a log in `context.artifacts`.
-- **Leave `mode` out**; it follows from the context. To gather opinions without showing your own, leave
-  `context.proposal` empty: a reviewed plan is answered around the plan.
-- A constraint is read as fixed and will not be challenged; if it is your own call, put it under `facts` with
-  its reason. For material that must not leave the machine through a URL, pass `network: "off"`.
-
-## While it runs
-
-`consult_get` reports `progress`, the consultant's own step trail. If it grinds on without converging,
-`consult_cancel({ job_id })` (or `{ group_id }`) and ask something narrower rather than waiting out the budget.
+Pass the user's wording (`target: "claude opus"`). The tool lists who it can actually reach;
+`target_ambiguous` needs the user's choice, `target_unavailable` means use the available list and explain.
+**Do not pick a model yourself**, including after `usage_limit`. The operator owns model settings and fallback;
+report the actual answering model. `target: "{{SELF_TARGET}}"` is valid, as is a different model of your own lineage
+when requested. Pass `caller: "{{SELF_TARGET}}"` and `caller_model` when known. A fresh same-lineage answer is
+not another lineage; that caveat is not a reason to discard findings unread.
+Pass `initiator: "user"` when the user asked; leave it out when you started it yourself.
 
 ## Reading the answer
 
-Check `status` first. **`failed`** means no advice was obtained (`failure.kind` says why: `timeout`,
-`usage_limit`, …): say so plainly and decide on your own, never as "the consultant had no concerns".
-**`completed`** with `quality.evidence_basis` `thin` or a `quality.caveat` about missing grounds is weak advice;
-weigh it accordingly.
+Every group member received the identical brief. In `comparison.by_target`, read each actual model and
+`stance` first: consultants can share a finding and reach opposite conclusions. **Matching summaries are not agreement.** Keep different grounds and assumptions separate; do not count votes.
 
-For several consultants, every one received the **identical brief**, and `comparison.by_target` lays their
-answers side by side: actual `model`, `stance`, summary, finding points with grounds, unknowns and next_checks,
-each point with its `id`.
-
-- **Read the `stance` column first.** Consultants that share a finding can land on opposite bottom lines, and
-  that is the divergence that matters most.
-- **Matching summaries are not agreement.** The server does not judge agreement; "both agreed" is a claim you
-  have to earn from the grounds.
-- **Read the grounds before you lean on a point.** Do not fetch grounds already shown whole. When grounds or
-  details are missing or shortened in a fan-out, `consult_get({ job_id, ids: ["f2", "u1"] })` returns those points whole, and
-  `consult_get({ job_id })` one member's whole answer. Do not decide from clipped summaries.
-- A same-vendor answer's caveat lowers the weight of its *agreement* with you; it is not a reason to discard its
-  findings.
+Read the grounds already shown. A `quality.caveat` or thin evidence limits what the answer establishes.
+Only when a deciding point's grounds or details are missing or shortened, fetch
+`consult_get({ job_id, ids: ["f2", "u1"] })`; `{ job_id }` gets one member's full answer. Do not mark a point
+confirmed from a clipped summary or treat a filename in a tool input as proof of understanding.
 
 ## Before you hand the decision back
 
-1. **Pick the one check that would change the decision**, from `decision_changers` and `next_checks`, and say
-   why that one.
-2. **Run it here, read-only**: a test, a grep, a read of the docs. If it needs another person or a production
-   system, do not run it; say so.
-3. **Save the check before your final report**, in one `consult_record` call:
+Run the **one check that would change the decision**, using `decision_changers` and `next_checks`: a test,
+source read or documentation check. State why it matters. If it needs another person or production access,
+name what is still unverified. Save only what you checked in one call, before reporting:
 
 ```
 consult_record({ job_id: "...", entries: [
-  { id: "c1", verdict: "confirmed", effect: "the retry cap holds; recommending we proceed", note: "ran the 30 s outage test" }
+  { id: "c1", verdict: "confirmed", effect: "hold release until retries are capped", note: "outage test reproduced amplification" }
 ]})
 ```
 
-The verdict is what checking showed: `confirmed`, `not_applicable`, `unverifiable`, or `unverified` (not yet
-checked). A point you only read is unverified, however plausible it looks. You need not fill every verdict or
-start another consultation to do so. For a fan-out, batch the checked points with `records` (see `reference.md`).
+For a fan-out use one `consult_record({ records: [{ job_id: "...", entries: [...] }, ...] })` call.
+`verdict` is verification: `confirmed`, `not_applicable`, `unverifiable` or `unverified`. `effect` is the decision's
+change; `note` is the evidence. Confirmed does not mean adopted. Reading alone stays unverified; remaining
+points need no entry. Report the deciding point, consultant and actual model, job/point ID, grounds, your
+check, adoption or rejection and remaining unknowns. Preserve opposite stances even with a shared finding.
 
-Then report each consultant's stance and actual model, the deciding grounds, your check and recommendation,
-and what remains unverified. Keep differing conclusions separate.
+## Follow-ups and approval
 
-The decision, the verification and the change stay yours.
+For "recheck this", retrieve the earlier job ID yourself and use
+`consult_start({ request: { followup_to: "<job_id>", question: "Recheck f1 against the current code." } })`.
+For a failed member use `consult_start({ request: { retry_of: "<failed job_id>" } })` with no other fields,
+after fixing auth/quota causes; keep successful answers. The retry is a new chain linked to the failure.
+Find saved consultations with `consult_list({ question: "cache", target: "{{DEFAULT_TARGET}}" })`; use the
+matching chain's `latest_completed_job_id` and check `rounds_remaining`. Confirm ambiguous candidates.
+
+A group's `group_id` asks every eligible member again; use a member's `job_id` for one. Files are recopied in
+their current state, changes and deletions noted; add needed `expose_paths`. See the reference for recovery.
+
+Use this for expensive decisions, close options or a stalled investigation, not routine edits.
+**Before you ask the user to approve** a hard-to-reverse change nobody else reviewed, consult first and check
+the deciding claim. Do not ask whether to consult. Material that must not reach another vendor's model needs
+permission before sending; omit it if permission is absent. `network: "off"` disables web access, but the brief
+and files read still reach the consultant's model. The decision and verification remain yours.

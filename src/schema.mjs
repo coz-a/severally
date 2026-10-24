@@ -129,7 +129,7 @@ export const requestSchema = z
     // round, for a brief that must not leave the machine through a URL. The
     // consultant still reads the brief and the disk; it reaches nothing else.
     network: z.enum(NETWORK_MODES).optional(),
-    question: trimmed(L.questionMax, 'question'),
+    question: trimmed(L.questionMax, 'question').optional(),
     // Optional: most consultations state what they are after in the question
     // itself, and a second field that repeats it is friction, not information.
     objective: trimmed(L.objectiveMax, 'objective').nullish(),
@@ -150,6 +150,8 @@ export const requestSchema = z
       .strict()
       .nullish(),
     followup_to: z.string().trim().max(80).nullish(),
+    // A failed job only, replayed by JobManager from its saved inputs.
+    retry_of: trimmed(80, 'retry_of').optional(),
   })
   .strict();
 
@@ -173,9 +175,10 @@ export const requestSchema = z
  * consultant(s) resolved. `target` is the first of `targets`.
  * @typedef {Omit<
  *   ValidRequest,
- *   'target' | 'targets' | 'caller' | 'caller_model' | 'initiator' | 'followup_to' | 'mode' | 'network' | 'success_criteria' | 'constraints' | 'context'
+ *   'question' | 'target' | 'targets' | 'caller' | 'caller_model' | 'initiator' | 'followup_to' | 'mode' | 'network' | 'success_criteria' | 'constraints' | 'context'
  * > & {
  *   target: string,
+ *   question: string,
  *   targets: string[],
  *   fanout: boolean,
  *   caller: CliId | null,
@@ -245,6 +248,7 @@ export function parseRequest(raw, { isFollowup = false, parentMode = null, group
   // until it returns it is only partly a ParsedRequest: the validated data is
   // typed as the finished shape and every field the shape adds is set before the return.
   const req = /** @type {DraftRequest} */ (parsed.data);
+  if (!req.question) throw new RequestError('question is required unless retry_of replays a failed job', 'invalid_request');
   // Left without a default in the schema, so that a follow-up can tell a list
   // it left out (inherited from the round before, jobs.mjs) from one it
   // emptied on purpose: the tool layer applies the schema's defaults first.

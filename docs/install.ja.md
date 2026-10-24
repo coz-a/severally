@@ -23,6 +23,13 @@ severally を入れる前に、相談したい CLI を少なくとも 1 つ入�
 導入後は新しいターミナルを開き、CLI を `PATH` から使えるようにしてください。severally は CLI の既存のログインを使います。
 インストーラが準備するのはサーバとクライアントへの登録で、相談相手のアカウントは設定しません。
 
+OpenCode 2.x の認証回復には、Node の任意機能である `node:sqlite` も必要です。severally は実行時に利用できるかを
+確かめます。古い Node 22 の一部では、フラグなしで使えません。`severally-mcp status` はログイン状態とは別に、この
+機能の状態を表示します。利用できない場合は、Node.js を現在サポートされている版へ更新してください。通常の CLI
+ログインと、認証回復を必要としない相談は引き続き受け付けます。OpenCode のセッション DB がある状態でモデルのエラーが
+起きた場合にも、元のエラーに認証回復を使えない理由を添えます。これは元のエラーの原因を断定するものではありません。
+Node の最低要件は 22 のままです。
+
 README に書いた Node.js 22 以降とログイン済みの CLI のほかに、次の条件があります。
 
 - macOS / Linux では、npm のグローバルのフォルダについて必要なことはありません。既定のプラグイン方式（下記）は
@@ -32,10 +39,35 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 - Windows では、PowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
   `PATHEXT` から探します（`.exe`、`.cmd`、`.bat`、空白を含むパスにも対応します）。
 
+## CLI 更新後の互換性確認
+
+通常の `npm test` は、オフラインの fixture で確認します。次のコマンドは明示的に実際の相談を始め、選んだ CLI の
+使用枠を消費します。認証済みの CLI がある環境で、ソースのチェックアウトから実行してください。
+
+```bash
+node scripts/doctor.mjs --target codex
+node scripts/live-check.mjs --target codex --mode review
+node scripts/live-check.mjs --target codex --mode sandbox
+node scripts/live-check.mjs --target codex --mode followup
+node scripts/live-check.mjs --target codex --mode cancel
+```
+
+`codex` は、設定した相談相手の名前、CLI、モデルのいずれかに置き換えられます。`doctor` は合成した検査用ファイルで、
+通常ファイルの読取りと禁止操作を確かめます。`followup` は最初の相談が成功したあとに追加質問を始めます。`cancel` は
+500 ミリ秒後に取消しを求めます。すでに相談が終わっていれば、取消しの結果は判定不能です。ジョブを取り消せたことだけ
+では、子孫プロセスの終了は確認できません。Windows で親が先に終了した場合は、特に別の確認が必要です。
+
+doctor の各行には `evidence`、live-check の出力には `compatibility:` に続く JSON の記録が付きます。共通形式には、
+形式の版、日時、severally と CLI の版、OS と Node の版、設定したモデルと effort、起動時に指定したモデル、相談・
+読取り・禁止操作・追加質問・取消しの結果を残します。試していない検査は `not_run`、観測できない実モデルと実効 effort
+は `null` です。現在のジョブ記録だけではプロバイダーが実際に使ったモデルと effort を独立に確認できないため、これらの
+スクリプトでは観測値を null のまま残します。起動の成功や設定値を、実効値の証拠にはしません。ツール名やイベント形式の
+変更を調べる場合は、個別の検査結果と該当する CLI イベントも記録と一緒に保存してください。
+
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.8.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.9.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |

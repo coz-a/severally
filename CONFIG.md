@@ -85,6 +85,34 @@ A name is lower-case letters, digits, `.` and `-`, at most 64 characters; `all` 
 
 ### API keys and other model families, through OpenCode
 
+If your existing CLI consultants are enough, no changes are needed. To add an OpenCode model:
+
+1. Authenticate the provider with `opencode auth login`, then run `opencode models` and copy an exact
+   `provider/model` entry. Enter API keys in OpenCode's login flow, not severally's configuration. For a local
+   model, start its server instead; the provider configuration below points severally at that server.
+2. Add a consultant to `~/.severally/config.jsonc` (merge with your existing config). For a provider OpenCode
+   already knows, only the consultant is needed. For example, if `opencode models` lists this model:
+
+   ```jsonc
+   {
+     "consultants": {
+       "qwen": { "cli": "opencode", "model": "openrouter/qwen/qwen3.7-plus#", "vendor": "alibaba" }
+     }
+   }
+   ```
+
+   The trailing `#` selects no effort variant. For a custom compatible API or a local model, use the provider
+   example below as well; listing a model in your own OpenCode config does not copy its provider settings.
+3. Restart the client and run `npx -y severally-mcp@2.9.0 status`. Confirm the new consultant is available and
+   OpenCode is logged in. This does not send a prompt or prove the model exists or has quota.
+4. Ask “Ask qwen whether a 30-second cache meets a 60-second freshness limit.” An `auth` failure calls for
+   checking provider credentials; `model_unavailable` calls for checking the exact model and provider config.
+   A `usage_limit` is a quota failure, not advice. Fix that cause before retrying.
+
+The API and local routes have different validation limits: OpenRouter read an exposed file and returned the
+required answer shape in the dated checks below; the tested Ollama model answered from the brief but did not
+read the exposed file. These checks do not establish that every listed model can review code reliably.
+
 OpenCode is the way to consult other model families. Any `provider/model` that `opencode models` lists can be
 a consultant. Checked on 2026-10-17 with opencode 2.0.24: `opencode/deepseek-v4.1-flash-free` (DeepSeek) and
 `opencode/nemotron-3-ultra-free#` (NVIDIA Nemotron, which has no effort variant) both answered as consultants,
@@ -223,6 +251,13 @@ These decide where the config file and the credentials are, so they cannot live 
 | `SEVERALLY_CONFIG` | `~/.severally/config.json` / `.jsonc`, whichever exists | The config file itself. |
 | `SEVERALLY_AGY_CRED_HOME` | `$HOME` | Where the Antigravity consultant's real credentials are read from. |
 | `SEVERALLY_OPENCODE_CRED_HOME` | `$HOME` | Same for OpenCode. |
+
+Known absolute credential-location variables (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, OpenCode's `XDG_*` roots,
+`GOOGLE_APPLICATION_CREDENTIALS`, and protected subpaths under `HOME`/Windows `USERPROFILE`) are included in
+read-deny roots, as are the configured Antigravity/OpenCode credential homes and the actual severally config
+file. This does not cover arbitrary paths passed through CLI/plugin arguments, relative locations or new
+symlink aliases. Codex also has file-replacement and executable-directory limitations; see
+[the protection details](docs/how-it-works.md#how-a-consultant-is-kept-to-reading).
 
 ## Example
 

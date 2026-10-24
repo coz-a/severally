@@ -336,8 +336,20 @@ test('cancelling after the parent has exited leaves the descendant to the platfo
   await run.done;
   run.handle.stop();
   await new Promise((resolve) => setTimeout(resolve, 1500));
+  const remained = alive();
   t.diagnostic(
-    `${process.platform}: descendant ${alive() ? 'remained' : 'was stopped'} after cancelling a run whose parent had exited`,
+    `${process.platform}: descendant ${remained ? 'remained' : 'was stopped'} after cancelling a run whose parent had exited`,
+  );
+  t.diagnostic(
+    JSON.stringify({
+      schema_version: 1,
+      scenario: 'cancel-after-parent-exit-with-detached-pipes',
+      platform: process.platform,
+      os_release: os.release(),
+      node: process.version,
+      descendant: remained ? 'remained' : 'stopped',
+      windows_evidence: process.platform === 'win32',
+    }),
   );
 });
 

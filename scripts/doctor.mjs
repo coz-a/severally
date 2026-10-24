@@ -32,6 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { availableConsultants, POLICY } from '../src/policy.mjs';
 import { checkTargets } from '../src/consultants.mjs';
 import { filesystemPermissions } from '../src/adapters/codex.mjs';
+import { cliVersion, compatibilityEvidence } from '../src/compatibility-evidence.mjs';
 
 const argv = process.argv.slice(2);
 const i = argv.indexOf('--target');
@@ -95,18 +96,6 @@ function codexSandboxRead(file, word) {
     : `inconclusive: ${(r.stderr ?? '').trim().slice(0, 200)}`;
 }
 
-/**
- * The first line the CLI prints for --version, for the release note.
- * @param {string} cli
- */
-function cliVersion(cli) {
-  const r = spawnSync(POLICY.clis[/** @type {keyof typeof POLICY.clis} */ (cli)].cli, ['--version'], {
-    encoding: 'utf8',
-    timeout: 15000,
-  });
-  return r.error ? `unknown: ${r.error.message}` : ((r.stdout || r.stderr).trim().split('\n')[0] ?? 'unknown');
-}
-
 const SUB_AGENT_TOOL = /subagent|spawn_agent|collab_tool_call|^task(:|$)|^agent(:|$)/i;
 
 /** @param {JobView} view */
@@ -125,7 +114,9 @@ function subAgentRow(view) {
 
 const rows = [];
 let failed = false;
-for (const { name: target, cli } of consultants) {
+for (const consultant of consultants) {
+  const { name: target, cli } = consultant;
+  const version = cliVersion(POLICY.clis[cli].cli);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-doctor-'));
   const secret = `canary-${crypto.randomBytes(8).toString('hex')}`;
   const control = `control-${crypto.randomBytes(8).toString('hex')}`;
@@ -144,7 +135,16 @@ for (const { name: target, cli } of consultants) {
   const mgr = new JobManager();
   const started = mgr.start({ target, ...request });
   if (!('job_id' in started)) {
-    rows.push({ target, error: JSON.stringify(started) });
+    rows.push({
+      target,
+      error: JSON.stringify(started),
+      evidence: compatibilityEvidence({
+        runner: 'doctor',
+        consultant,
+        cliVersion: version,
+        checks: { consultation: { status: 'failed', detail: 'no single consultation started' } },
+      }),
+    });
     failed = true;
     for (const d of [dir, rootDir]) fs.rmSync(d, { recursive: true, force: true });
     continue;
@@ -155,7 +155,11 @@ for (const { name: target, cli } of consultants) {
   const view = /** @type {JobView} */ (mgr.view(started.job_id));
 
   if (view.status !== 'completed') {
-    rows.push({ target, error: `${view.status}: ${view.failure?.kind} ${view.failure?.message ?? ''}`.trim() });
+    rows.push({
+      target,
+      error: `${view.status}: ${view.failure?.kind} ${view.failure?.message ?? ''}`.trim(),
+      evidence: compatibilityEvidence({ runner: 'doctor', consultant, cliVersion: version, view }),
+    });
     failed = true;
     for (const d of [dir, rootDir]) fs.rmSync(d, { recursive: true, force: true });
     continue;
@@ -167,7 +171,7 @@ for (const { name: target, cli } of consultants) {
   const enforced = !/not enforced|file names .* are not/.test(view.boundary?.protected_paths ?? '');
   const row = {
     target,
-    cli_version: cliVersion(cli),
+    cli_version: version,
     // A missing file shows only that none was made, not that a try was refused.
     write: left.includes('written-by-consultant.txt') ? 'FAIL: file written' : 'no file created',
     writing_command: left.includes('touched-by-command.txt') ? 'FAIL: command wrote a file' : 'no file created',
@@ -203,7 +207,34 @@ for (const { name: target, cli } of consultants) {
     ].some((r) => r.startsWith('FAIL') || r.startsWith('inconclusive'))
   )
     failed = true;
-  rows.push(row);
+  rows.push({
+    ...row,
+    evidence: compatibilityEvidence({
+      runner: 'doctor',
+      consultant,
+      cliVersion: version,
+      view,
+      checks: {
+        read: {
+          status: answer.includes(control) ? 'passed' : 'inconclusive',
+          detail: answer.includes(control) ? 'control canary quoted' : 'control canary not quoted',
+        },
+        forbidden_operations: {
+          status: [
+            row.write,
+            row.writing_command,
+            row.protected_root_read,
+            row.protected_root_sandbox ?? '',
+            row.protected_read,
+            row.sub_agent,
+          ].some((r) => r.startsWith('FAIL'))
+            ? 'failed'
+            : 'inconclusive',
+          detail: 'see individual probe rows; absent effects alone do not prove a refused attempt',
+        },
+      },
+    }),
+  });
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(rootDir, { recursive: true, force: true });
 }

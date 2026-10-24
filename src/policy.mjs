@@ -452,8 +452,8 @@ export function opencodeCredentialsHome() {
 // holds earlier briefs about other work. A consultant that can browse could
 // otherwise read one of these and carry it out in a URL. Enforced for Claude
 // Code and OpenCode (permission deny rules) and Antigravity (the tool hook),
-// and never copied by expose_paths; Codex's read-only sandbox cannot express
-// path rules, which the boundary record says.
+// and never copied by expose_paths; Codex uses filesystem permission roots,
+// with the file and executable-directory limits described by its boundary.
 export const PROTECTED_HOME_PATHS = Object.freeze([
   '.ssh',
   '.gnupg',
@@ -505,16 +505,62 @@ export const PROTECTED_FILE_NAMES = Object.freeze([
 ]);
 
 /**
+ * Both inherited and operator-configured locations stay protected, even when
+ * a consultant uses a different store from the hosting CLI. No request can
+ * supply these values. Windows environment names are case-insensitive.
+ * @param {string} name
+ * @returns {string[]}
+ */
+function credentialEnvPaths(name) {
+  const sources = [process.env, ...Object.values(POLICY.clis).map((cli) => cli.extraEnv)];
+  return sources.flatMap((env) =>
+    Object.entries(env)
+      .filter(([key, value]) => (process.platform === 'win32' ? key.toUpperCase() : key) === name && value)
+      .map(([, value]) => path.resolve(/** @type {string} */ (value))),
+  );
+}
+
+/** Known credential locations in addition to the default home paths. */
+function configuredCredentialRoots() {
+  return [
+    path.resolve(CONFIG_PATH),
+    path.join(path.resolve(credentialsHome()), '.gemini'),
+    path.join(path.resolve(opencodeCredentialsHome()), '.local', 'share', 'opencode'),
+    ...credentialEnvPaths('CODEX_HOME'),
+    ...credentialEnvPaths('CLAUDE_CONFIG_DIR'),
+    ...credentialEnvPaths('XDG_CONFIG_HOME').map((p) => path.join(p, 'opencode')),
+    ...credentialEnvPaths('XDG_DATA_HOME').map((p) => path.join(p, 'opencode')),
+    ...credentialEnvPaths('GOOGLE_APPLICATION_CREDENTIALS'),
+    ...credentialEnvPaths('HOME').flatMap((p) => PROTECTED_HOME_PATHS.map((rel) => path.join(p, rel))),
+    ...(process.platform === 'win32'
+      ? credentialEnvPaths('USERPROFILE').flatMap((p) => PROTECTED_HOME_PATHS.map((rel) => path.join(p, rel)))
+      : []),
+  ];
+}
+
+/**
  * Absolute protected roots, with forward slashes; `*` stands for one path segment.
  * @returns {string[]}
  */
 export function protectedRoots() {
   /** @param {string} p */
   const fwd = (p) => p.replaceAll('\\', '/');
-  return [
+  const roots = [
     ...PROTECTED_HOME_PATHS.map((rel) => fwd(path.join(os.homedir(), rel))),
     ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path.join(POLICY.home, rel))),
+    ...configuredCredentialRoots().map(fwd),
   ];
+  // A relocated store may itself be a symlink. Deny its real directory too,
+  // so direct access to the target cannot evade the configured alias. This
+  // does not resolve arbitrary aliases encountered later by a CLI reader.
+  const canonical = roots.flatMap((root) => {
+    try {
+      return [fwd(fs.realpathSync.native(root))];
+    } catch {
+      return [];
+    }
+  });
+  return [...new Set([...roots, ...canonical])];
 }
 
 /** @param {string} s */
@@ -635,7 +681,7 @@ export function limitsSummary() {
       'web search/browse and reading local files allowed; the consultant starts in an empty working ' +
       'directory and is not told where your repository is. context.expose_paths copies the files or ' +
       'directories it names read-only into that working directory, but that is not a read boundary: apart ' +
-      'from the protected credential paths, Codex, Antigravity and OpenCode can read any file your account ' +
+      'from the protected credential paths (subject to the gaps recorded in boundary), Codex, Antigravity and OpenCode can read any file your account ' +
       'can, and so can Claude Code when nothing is exposed; file edits, network access, MCP tools and ' +
       'further consultations denied; the Codex consultant additionally has a read-only shell',
   };

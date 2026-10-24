@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { sandboxEnv } from './helpers.mjs';
 
 // A stand-in for the operator's real ~/.local/share/opencode, so the test
@@ -14,6 +15,56 @@ fs.writeFileSync(path.join(realAuthDir, 'auth.json'), '{"zai-coding-plan":{"type
 
 sandboxEnv({ SEVERALLY_OPENCODE_CRED_HOME: credHome });
 const { prepareSandbox, seedCredentialFromAuth } = await import('../src/adapters/opencode-sandbox.mjs');
+
+test('an unavailable SQLite recovery explains a relevant model failure without altering unrelated failures', () => {
+  const workdir = makeWorkdir();
+  const script = `
+    const { prepareSandbox } = await import('./src/adapters/opencode-sandbox.mjs');
+    const { recoverAuthFailure } = await import('./src/adapters/opencode.mjs');
+    const sandbox = prepareSandbox({ workdir: ${JSON.stringify(workdir)} });
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const interpreted = { ok: false, failureKind: 'model_unavailable', message: 'Model unavailable: provider/model' };
+    recoverAuthFailure({ interpreted, sandbox, model: 'provider/model' });
+    const beforeBootstrap = interpreted.message;
+    fs.writeFileSync(path.join(sandbox.root, '.local/share/opencode/opencode.db'), 'synthetic placeholder');
+    recoverAuthFailure({ interpreted, sandbox, model: 'provider/model' });
+    const unrelated = { ok: false, failureKind: 'auth', message: 'invalid API key' };
+    recoverAuthFailure({ interpreted: unrelated, sandbox, model: 'provider/model' });
+    console.log(JSON.stringify({ beforeBootstrap, message: interpreted.message, unrelated: unrelated.message }));
+    sandbox.cleanup();`;
+  const noSqlite = process.allowedNodeEnvironmentFlags.has('--no-experimental-sqlite') ? ['--no-experimental-sqlite'] : [];
+  const result = spawnSync(process.execPath, [...noSqlite, '--input-type=module', '-e', script], {
+    cwd: new URL('../', import.meta.url),
+    encoding: 'utf8',
+    env: process.env,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const out = JSON.parse(result.stdout);
+  assert.equal(out.beforeBootstrap, 'Model unavailable: provider/model');
+  assert.match(out.message, /Model unavailable: provider\/model.*credential recovery unavailable.*node:sqlite/);
+  assert.match(out.message, /update Node\.js/);
+  assert.equal(out.unrelated, 'invalid API key');
+});
+
+test('normal OpenCode consultations still complete without the optional SQLite recovery', () => {
+  const script = `
+    const { JobManager } = await import('./src/jobs.mjs');
+    const { reviewRequest } = await import('./test/helpers.mjs');
+    const manager = new JobManager();
+    const start = manager.start({ ...reviewRequest(), target: 'opencode' });
+    await manager.jobs.get(start.job_id).promise;
+    console.log(manager.view(start.job_id).status);`;
+  const noSqlite = process.allowedNodeEnvironmentFlags.has('--no-experimental-sqlite') ? ['--no-experimental-sqlite'] : [];
+  const result = spawnSync(process.execPath, [...noSqlite, '--input-type=module', '-e', script], {
+    cwd: new URL('../', import.meta.url),
+    encoding: 'utf8',
+    env: { ...process.env, STUB_BEHAVIOR: 'ok' },
+    timeout: 10000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'completed');
+});
 
 // node:sqlite ships unflagged from Node 23 (and late 22.x); the engines field
 // allows older runtimes, where seeding degrades to a no-op -- and these tests

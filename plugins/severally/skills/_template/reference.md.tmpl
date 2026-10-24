@@ -3,6 +3,10 @@
 `SKILL.md` covers the normal consultation: start, wait, check one point, record it. Read this file for a
 decision you will have to justify later, for a follow-up, or for the details of reading several answers at once.
 
+## Available CLI families
+
+{{PEER_TABLE}}
+
 ## Modes
 
 | Mode | Give it | Get back |
@@ -26,8 +30,11 @@ requires both a proposal and `context.counterpoints`. Code questions still need 
 
 ## A brief for a decision you will live with
 
-For an interface, a migration, a security or concurrency call, do the organising work first; a vague brief
-gets a vague answer.
+For an interface, a migration, a security or concurrency call, select the relevant evidence first.
+Inspect imports and actual call sites; include the caller, tests and configuration that determine behavior.
+Use `expose_diff` for a change and add only needed `expose_paths`. Ask the consultant to identify missing
+premises as unknowns. Zero files, exclusions, deletions and size caps are gaps to resolve or report, not
+evidence that code was checked.
 
 1. **State the question in one sentence.** `objective` is optional: add it only when what you are after is not
    already in the question.
@@ -125,6 +132,28 @@ second vote either way.
 failure was already re-run inside the same budget (see `retries`). A `timeout` carries the consultant's step trail
 in `failure.detail`, which tells you whether to retry with a longer budget or a smaller question, and may carry
 `partial_output`: the raw tail of what it had written, not an answer, its points unverified.
+
+To recover one failed member without repeating successful ones:
+
+```
+consult_start({ request: { retry_of: "<failed job_id>" } })
+```
+
+Pass only `retry_of`: the saved question/context/network are reused and current files are copied again.
+A new job and chain link back through `retry_of`; old records remain intact. Changed/deleted files are
+shown in the manifest. A saved diff excerpt remains the original one, while its files may now differ;
+inspect those changes before using the new answer. Supply a fresh explicit consultation if you need to
+change the question, diff or materials. Failed follow-up context remains available, labeled by source job ID.
+A completed, cancelled or running job and a group ID are refused. Resolve auth/quota failures before an
+explicit retry; do not loop them. If the configured primary CLI/model changed, or the failed attempt ran a
+fallback model, `retry_target_mismatch` requires a new explicit consultation. No unrequested model swap.
+
+To reuse history, `consult_list({ question: "cache", target: "{{DEFAULT_TARGET}}", limit: 20 })` searches saved
+questions by case-insensitive substring and consultant. Add `chain_id` to restrict a known exchange.
+Filters apply before the limit. Read candidate questions and ask which one if several fit; never silently
+continue a different consultation. `latest_completed_job_id` identifies the most recent answer in the
+chain, and `rounds_remaining` includes rounds used by later failures. Deletion/expiry and a changed model can
+still block continuation. Do not ask the user to transcribe an ID the list already returns.
 
 ## Follow-ups
 
@@ -226,6 +255,11 @@ Then, when the record belongs in the repository:
 consult_export({ chain_id: "..." })   // or group_id for a fan-out
 ```
 
-It comes back as Markdown — the brief as sent, each answer as it came back, your verdicts under their points, the
+It starts with the verified points, their effects and evidence, links to full points, and the unverified count.
+This is a mechanical listing: a confirmed point is not automatically adopted.
+A retry export names its source failure and retained earlier context in a separate appendix, with source
+job/chain IDs. Expired source records are named; later verdict updates may appear and prior context may have
+been shortened when sent. The full Markdown keeps
+the brief as sent, each answer as it came back, your verdicts under their points, the
 unchecked ones marked unchecked — for you to write where the decision lives. The tool never writes a file itself.
 A routine consultation does not need one.

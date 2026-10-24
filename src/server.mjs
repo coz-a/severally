@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.8.1';
+export const SEVERALLY_VERSION = '2.9.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -91,59 +91,35 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
   };
 }
 
-const SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
-Codex, Claude Code, Antigravity or OpenCode, each on the models the operator set up as consultants.
-Each consultation runs in a fresh child session of that CLI: it can read files and search and browse the web;
-it cannot edit files, change anything on the system (Codex may run read-only commands), load MCP tools, start
-other agents or consult anyone else. The server sends the brief and explicitly exposed files without your
-conversation history; the CLI may also read other files within its permission boundary.
+const SERVER_INSTRUCTIONS = `Get independent advice from fresh Codex, Claude Code, Antigravity or OpenCode CLI sessions.
+Use for important decisions, close alternatives or stalled investigations, or when asked.
+Routine: consult_start -> consult_get until finished -> verify a deciding claim -> consult_record once -> report.
+Report each actual model, stance, point ID, grounds, your check and decision; retain differing conclusions.
+A failure is no advice. Agreement is not evidence; confirmed is verification, not adoption.
+The brief and exposed files reach each model. File read boundaries vary by CLI; see each answer's boundary.
+Writes, MCP and further agents are denied. Codex has a read-only shell. network: off disables web access.
+A chain permits ${POLICY.maxRounds} rounds; spend follow-ups on deciding divergences.`;
 
-Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
-look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
-
-Flow: consult_start -> consult_get until done -> check one decision-changing point locally -> consult_record
-with the check and its effect -> report to the user. Use consult_cancel to stop a consultation.
-Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per chain, and follow-ups should be
-spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
-check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
-
-const startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) at once; the work runs in the background.
-
-target: which consultant to ask. This machine can reach (name: CLI, model):
+const startDescription = `Start one consultant (target) or several (targets); returns job_id or group_id immediately.
+Available (name: CLI, model):
 ${
   availableConsultants()
     .map((c) => `          ${c.name}: ${c.cli}, ${c.model}`)
     .join('\n') || '          (none -- no consultant CLI is installed)'
 }
-        Pass the word the user used: a name, a CLI ("codex", "agy"), a vendor or a model ("claude opus"). One
-        that fits several, unresolved by the operator's ranking, tier and version, is refused with the
-        candidates (target_ambiguous); one not listed is refused (target_unavailable). Your own CLI on a fresh
-        session is a valid consultant, marked same lineage.
-targets: several consultants, the same question (not with target, no duplicates); targets: ["all"] is every
-        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier
-        rounds) and one group_id, for consult_get and consult_cancel. A fan-out over the concurrency cap is
-        refused before any member starts.
-followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
-        (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
-        followup_to and question: everything else is the earlier round's unless you pass it, and a value you pass,
-        even empty, replaces it. Its files are copied again as they are now, with any expose_paths you add;
-        context.expose_from_parent: false keeps them back. A follow-up cannot change the consultant.
-mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
-        counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
-        also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
-context: optional when the question supplies the needed information. For code questions, attach files or a diff.
-        The consultant starts in an empty working directory and is not told where your repository is. Supply
-        additional material as facts, artifacts (not a file here: test output, a log), expose_paths (absolute
-        paths, copied read-only under ./workspace; a git work tree's
-        directory copies the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files
-        are skipped; text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the
-        brief, its files under ./workspace/repo/).
-network: "on" (default) or "off" (no web search or browsing for any consultant this round). Credential and
-        history paths are refused either way where the CLI can enforce it; each answer's \`boundary\` says what held.
-caller, caller_model: the CLI and model you run on (self-declared), for the same-vendor caveat and the record.
-initiator: "user" when the user asked for this; leave it out when you started it yourself.
-prediction: { expected, worry }, kept and never sent; it can only be written here, before the answer.
-Model, permissions, rounds, timeout and size caps are fixed by this server.`;
+Pass the user's name/CLI/vendor/model wording; target_ambiguous lists candidates, target_unavailable lists available ones.
+targets: ["all"] asks every available consultant, including your CLI (marked same lineage). Each gets an identical
+brief; one concurrency seat each. Model and limits are operator-owned.
+followup_to: completed job_id or group_id; only question is also needed. Inherits the prior inputs; explicit fields,
+even empty, replace them. Files are recopied in their current state; add expose_paths or set expose_from_parent: false.
+retry_of: failed job_id alone replays saved inputs in a new chain, with current files and a link to the failure.
+Use successful group answers first; retry only failed members after fixing auth/quota causes. No other request fields.
+mode defaults from context: facts = explore, proposal = review, proposal + counterpoints = debate.
+For code: expose_diff: { repo, base? } for changes, expose_paths: [absolute paths] for relevant callers, tests and config.
+Files are copied read-only, secrets masked; symlinks/protected paths skipped. Caps: 20 entries, 500 files, 5 MB.
+Inspect files_exposed and the manifest; missing premises stay unknown. Other context: facts, artifacts (logs/test output).
+network: on/off controls web access, not model submission or local reads; boundary states CLI-specific enforcement.
+caller/caller_model identify you; initiator: user only when asked. Optional prediction: { expected, worry } stays local.`;
 
 // One consultation's record: the single form of consult_record, and each
 // element of its `records`.
@@ -221,23 +197,12 @@ export function createServer(manager = new JobManager()) {
       title: 'Get consultation status or result',
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
-        `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call ` +
-        'timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress ' +
-        'notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call ' +
-        'again while status is running. completed carries the structured answer; failed carries ' +
-        'failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, ' +
-        'spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence ' +
-        "(quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and " +
-        'job_id, and `comparison.by_target` with each actual model, stance, summary and finding (id and grounds), cut where ' +
-        '`truncated` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds ' +
-        'and your verdict (`recorded`). A finished consultation names its brief rather than repeating it; detail: ' +
-        '"full" returns the brief and the question whole; a fan-out member\'s whole answer is consult_get({ job_id }). ' +
-        'Before your final report, check one point that could change the decision, then save the outcome with ' +
-        'consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as ' +
-        'confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. ' +
-        'Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding ' +
-        "points with ids when their grounds or details are missing or shortened, or a member's job_id for its whole answer. Record checked points in one " +
-        "records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.",
+        `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; ` +
+        'progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. ' +
+        'A group includes statuses and comparison.by_target: actual model, stance, points/grounds and truncation markers. ' +
+        'Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; ' +
+        'job_id alone gets one whole answer. detail: full adds the brief/question. ' +
+        'Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.',
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
@@ -312,9 +277,8 @@ export function createServer(manager = new JobManager()) {
       title: 'Cancel a running consultation',
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       description:
-        'Stop a running consultation and kill the consultant process and everything it spawned. ' +
-        'Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs ' +
-        'is asked to stop, and that server stops it within a second.',
+        'Stop a running consultation (job_id) or fan-out (group_id). Other severally servers receive a stop request. ' +
+        'The process tree is signalled where the platform permits; on Windows descendants may survive if the CLI already exited.',
       inputSchema: z.object({
         job_id: z.string().min(1).optional(),
         group_id: z.string().min(1).optional(),
@@ -342,16 +306,12 @@ export function createServer(manager = new JobManager()) {
       title: 'Record what checking a point showed',
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description:
-        'Write your verdict on points of an answer after checking them: ids f1 ... (findings), u1 ... (unknowns), ' +
-        'c1 ... (next_checks). verdict is what checking showed -- confirmed (holds here), not_applicable (true in ' +
-        'general, not here), unverifiable, unverified (not checked yet; say why in effect) -- not whether you adopted ' +
-        'it. effect is what it changed about your decision, note the evidence. A follow-up shows the consultant each ' +
-        'verdict and effect (credential-masked), never the note. The same id again replaces the entry. Saved beside ' +
-        'the answer in ~/.severally/history, so a job from an earlier session can be recorded against; the server ' +
-        'never infers a verdict. Answers with counts; consult_get reads the entries back. reflection records what the ' +
-        'answer added over your consult_start prediction. records: [{ job_id, entries, reflection? }, ...] records ' +
-        'every member of a fan-out in one call; all are checked first and nothing is written if any job or id is ' +
-        'wrong. A job whose write fails is listed under results with its error.',
+        'Save checks against point IDs from consult_get: f1 (finding), u1 (unknown), c1 (next check). ' +
+        'verdict = confirmed/not_applicable/unverifiable/unverified; effect = decision impact; note = checked evidence. ' +
+        'Confirmed is not adoption. Record only checked points; same ID replaces its entry. ' +
+        'Use records: [{ job_id, entries, reflection? }, ...] for one fan-out batch. Invalid jobs/IDs prevent every write; ' +
+        'write failures appear per job in results. Saved history survives restart; only verdict/effect go to follow-ups. ' +
+        'Optional reflection describes what the answer added over your prediction.',
       inputSchema: z.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),
@@ -397,7 +357,7 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         'Render one consultation (chain_id) or fan-out (group_id) as Markdown: the brief as sent, each answer as ' +
-        'it came back, and the verdicts on each point, unchecked ones marked. Nothing is summarised or scored. ' +
+        'it came back, and verdicts on each point. Starts with verified points/effects/evidence and unverified count; no inferred adoption or scoring. ' +
         'The text is returned, not written: put it beside the code the decision is about. Reads the history, so ' +
         "an earlier session's consultation can be exported.",
       inputSchema: z.object({
@@ -422,16 +382,33 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, " +
-        'status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, ' +
+        'status, summary, verdicts, latest_completed_job_id and rounds_remaining. Optional target, question ' +
+        '(case-insensitive substring), chain_id filters apply before limit. usage_totals is the tokens/cost reported this session, ' +
         'retries included. A figure a CLI does not report is named under not_reported, not counted as zero.',
-      inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional() }),
-    },
-    async ({ limit }) =>
-      ok({
-        jobs: manager.list({ limit: limit ?? 20 }),
-        usage_totals: manager.usageTotals(),
-        limits: limitsSummary(),
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(100).optional(),
+        target: z.string().trim().min(1).max(120).optional(),
+        question: z.string().trim().min(1).max(4000).optional(),
+        chain_id: z.string().trim().min(1).max(80).optional(),
       }),
+    },
+    async ({ limit, target, question, chain_id }) => {
+      try {
+        return ok({
+          jobs: manager.list({
+            limit: limit ?? 20,
+            ...(target === undefined ? {} : { target }),
+            ...(question === undefined ? {} : { question }),
+            ...(chain_id === undefined ? {} : { chain_id }),
+          }),
+          usage_totals: manager.usageTotals(),
+          limits: limitsSummary(),
+        });
+      } catch (err) {
+        if (err instanceof RequestError) return fail({ error: err.code, message: err.message });
+        return fail({ error: 'internal_error', message: errorMessage(err) });
+      }
+    },
   );
 
   return { server, manager };

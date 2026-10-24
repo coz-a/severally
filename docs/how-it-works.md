@@ -112,6 +112,30 @@ descendant remained; the outcome is observed, not guaranteed.
   counted as zero; it is named under `not_reported`. A consultation that was cancelled or timed out reports no
   usage, and `unreported` counts them, so the totals are not read as everything that ran.
 
+The Markdown export starts with a verification summary: consultant, actual model, job/point ID, verdict,
+effect and evidence, linked to the full point. It counts points that are unrecorded, unverified or
+unverifiable separately from verified points. `confirmed` does not imply adoption. Each full answer and
+record remains below; the server does not combine meanings or infer a decision.
+Retry exports also name the source failure and job/chain IDs, and append retained earlier failure/context
+records once. Missing source records are named. The appendix reflects currently retained records, including
+later verdict updates; prior context may have been shortened when sent.
+
+A short report follows the deciding point through the lead's check:
+
+```text
+Point: retry amplification (job_… / f1)
+Consultant: Codex, gpt-6.1-sol; stance: do_not_proceed
+Grounds: the caller can submit the same operation after cancellation.
+Lead's check: the cancellation regression test reproduced a second submission.
+Decision/effect: hold the release until the caller preserves the operation ID.
+Unverified: production load; no load-test environment available.
+```
+
+For code questions, select a diff plus relevant callers, tests and configuration by reading imports and call
+sites. `expose_paths` adds files outside the diff. Inspect the exposed file count and skipped/deleted entries;
+a missing premise remains unknown. A filename observed in a tool call does not prove the consultant read or
+understood all relevant behavior.
+
 ## How large a fan-out's answer is
 
 A finished fan-out uses a 19,500-character response budget, including JSON indentation. The response-size
@@ -134,18 +158,32 @@ The credential paths blocked where the table says blocked are `~/.ssh`, cloud an
 coding tools' sessions, severally's own history and the other consultants' sandbox homes, and files such as
 `.env`, `.npmrc` or `id_rsa` anywhere.
 
-Codex blocks those paths but not the file names: its sandbox cannot express "`.env` anywhere", so a `.env` in
-your repository is readable to it. Inside `~/.codex` it blocks each file that exists when the consultation
-starts, rather than the whole directory, because the directory also holds the Codex binary its sandbox runs; a
-file created there later is not blocked. On Linux, a protected file that is replaced (written to a new file and
-renamed over the old one) while a Codex consultation runs becomes readable to it for the rest of that run. That
-includes `~/.claude.json`, which Claude Code rewrites often, and `~/.codex/auth.json` if it is refreshed then.
+Codex blocks paths, not names: its sandbox cannot express “`.env` anywhere”, so a repository's `.env` is
+readable. The default `~/.codex` is denied entry by entry at launch to leave the executable available.
+New entries are not covered. A relocated `CODEX_HOME` can be denied as a whole directory when the executable
+lives elsewhere; if it lives inside a protected root, its containing entry is exempt and the other entries
+are a launch-time snapshot. New credential files must not be placed in that exempt executable entry.
 
-OpenCode checks protected paths in both absolute and Location/worktree-relative form. Its `grep` and `glob`
-tools are disabled: they authorize a search pattern, without checking each returned file against the read rules.
-On OpenCode 2.0.24, read authorization uses lexical paths; a symlink alias of a protected file is not covered.
-The protected roots use the default home locations and severally's configured home. Moving CLI credentials to
-another location does not automatically add that location to the protected roots.
+On Linux, a file-level deny can stop holding when the host replaces that file by rename during the run.
+Synthetic probes on 2026-10-24 with Codex 0.164.0 reproduced this for a default-home auth file and a readable
+new sibling. A relocated directory denied as a whole still denied existing, replaced and new children.
+Individual protected files, including `~/.claude.json`, remain subject to rename replacement. This is a CLI
+sandbox limitation, not something `expose_paths` masking fixes.
+
+OpenCode denies protected paths in absolute and Location/worktree-relative form. Its `grep` and `glob` are
+disabled because they authorize a search pattern rather than checking every returned file. On OpenCode
+2.0.24, read authorization uses lexical paths. A synthetic offline check on 2026-10-24 denied a direct
+relocated credential path but allowed a symlink alias and sent its contents to a local mock model provider.
+That bypass remains unresolved, including with `network: "off"`.
+
+Protected roots include recognized absolute credential locations from the server environment and
+`clis.<cli>.env`: `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, OpenCode under `XDG_CONFIG_HOME`/`XDG_DATA_HOME`,
+`GOOGLE_APPLICATION_CREDENTIALS`, and protected subpaths under `HOME` (`USERPROFILE` on Windows).
+They also include the actual severally config file, Antigravity's `.gemini` under `SEVERALLY_AGY_CRED_HOME`,
+and OpenCode's `.local/share/opencode` under `SEVERALLY_OPENCODE_CRED_HOME`. Existing canonical targets of
+configured symlinks are included. Arbitrary paths selected by CLI/plugin flags, relative locations, new
+aliases or changes during a run are not guaranteed. Use absolute credential paths; keep credentials outside
+executable entries, and use a dedicated OS account with no unrelated secrets when these read gaps matter.
 
 `expose_paths` never copies protected files. Credentials are masked in the brief that is sent and in the answers
 that come back; a file a consultant opens on its own is read as it is. Other services' credentials in the
@@ -264,7 +302,7 @@ What comes back to you is not a vote of "2 against, 1 alternative". It is what w
 recommends, and what has not been checked yet. Here that is whether the fixed query is fast enough without a
 cache (it needs production-like data), and how stale the stock shown after an order may be (that one is yours to
 decide). You make the call. The checked results stay next to the findings and can be exported as Markdown into
-your repository (see [History and records](../README.md#history-and-records)).
+your repository (see [History and records](../README.md#follow-ups-and-history)).
 
 ## Recommended setup
 
@@ -304,3 +342,12 @@ The arguments of `consult_start` that matter most:
 - `context.expose_diff`: `{ repo, base? }`, a change in progress: the diff goes in the brief and the files it touches are copied
 - `network`: `"off"` takes web search and browsing away from every consultant in the round
 - `followup_to`: the `job_id` of the answer a follow-up continues, or a fan-out's `group_id` to ask every consultant in it again. A follow-up needs only this and `question`; the consultant, the mode and the earlier round's context carry over unless you pass them again
+- `retry_of`: pass only a failed job ID to replay its saved question, context and network in a new chain.
+  No other fields are accepted. Successful siblings are not called, and old records stay intact. Files refresh,
+  but a saved diff excerpt stays as originally sent; inspect changed/deleted material. Start a new explicit
+  consultation to change the question or materials. Remedy auth/quota causes first. A changed primary model/CLI,
+  or a failed attempt that ran a configured fallback, is refused rather than silently swapping models.
+
+`consult_list` filters history by `target`, case-insensitive question substring (`question`) and `chain_id`,
+before applying `limit`. Each row supplies `latest_completed_job_id` for its chain and `rounds_remaining`,
+including later failed rounds already spent. Check candidate content before continuing an ambiguous exchange.
