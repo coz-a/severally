@@ -608,6 +608,28 @@ test('synthetic credentials in answers and lead records never enter history or e
   }
 });
 
+test(
+  'a credential in the detail of a failure never enters the view or the history',
+  { skip: process.platform === 'win32' },
+  async () => {
+    const secret = 'ghp_abcdefghijklmnopqrstuvwxyz0123';
+    process.env.STUB_BEHAVIOR = 'orphan_pipe_leak';
+    const mgr = new JobManager();
+    const started = mgr.start(reviewRequest());
+    try {
+      await mgr.jobs.get(started.job_id).promise;
+      const view = mgr.view(started.job_id);
+      assert.equal(view.failure.kind, 'cli_error');
+      assert.match(view.failure.detail, /detail-canary/, 'the detail is kept, only the credential is masked');
+      const history = fs.readFileSync(path.join(home, 'history', started.chain_id, 'round-01.json'), 'utf8');
+      for (const text of [JSON.stringify(view), history]) assert.ok(!text.includes(secret));
+      assert.match(view.failure.detail, /REDACTED/);
+    } finally {
+      process.env.STUB_BEHAVIOR = 'ok';
+    }
+  },
+);
+
 test('synthetic credentials in CLI failure details never enter history or exports', async () => {
   const { exportChain } = await import('../src/export.mjs');
   const secret = 'ghp_abcdefghijklmnopqrstuvwxyz0123';

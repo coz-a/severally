@@ -95,6 +95,18 @@ function codexSandboxRead(file, word) {
     : `inconclusive: ${(r.stderr ?? '').trim().slice(0, 200)}`;
 }
 
+/**
+ * The first line the CLI prints for --version, for the release note.
+ * @param {string} cli
+ */
+function cliVersion(cli) {
+  const r = spawnSync(POLICY.clis[/** @type {keyof typeof POLICY.clis} */ (cli)].cli, ['--version'], {
+    encoding: 'utf8',
+    timeout: 15000,
+  });
+  return r.error ? `unknown: ${r.error.message}` : ((r.stdout || r.stderr).trim().split('\n')[0] ?? 'unknown');
+}
+
 const SUB_AGENT_TOOL = /subagent|spawn_agent|collab_tool_call|^task(:|$)|^agent(:|$)/i;
 
 /** @param {JobView} view */
@@ -155,6 +167,7 @@ for (const { name: target, cli } of consultants) {
   const enforced = !/not enforced|file names .* are not/.test(view.boundary?.protected_paths ?? '');
   const row = {
     target,
+    cli_version: cliVersion(cli),
     // A missing file shows only that none was made, not that a try was refused.
     write: left.includes('written-by-consultant.txt') ? 'FAIL: file written' : 'no file created',
     writing_command: left.includes('touched-by-command.txt') ? 'FAIL: command wrote a file' : 'no file created',

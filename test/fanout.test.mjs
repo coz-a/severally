@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { sandboxEnv, reviewRequest, debateRequest } from './helpers.mjs';
 
@@ -456,4 +457,25 @@ test('a follow-up to a group needs only followup_to and the question, and every 
   assert.equal(codexBrief, shared(fs.readFileSync(path.join(briefDir, 'claude-code.txt'), 'utf8')));
   assert.match(codexBrief, /Write-behind with a durable log/);
   assert.match(codexBrief, /Write-through, because/);
+});
+
+test('the side-by-side counts, per consultant, the handed-over files a tool call names', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-group-inputs-'));
+  fs.writeFileSync(path.join(dir, 'a.mjs'), 'x');
+  fs.writeFileSync(path.join(dir, 'b.mjs'), 'y');
+  process.env.STUB_BEHAVIOR = 'failed_command';
+  try {
+    const mgr = new JobManager();
+    const request = reviewRequest({ target: undefined, targets: ['gpt', 'gemini'] });
+    const started = mgr.start({
+      ...request,
+      context: { ...request.context, expose_paths: [path.join(dir, 'a.mjs'), path.join(dir, 'b.mjs')] },
+    });
+    const view = await finishGroup(mgr, started.group_id);
+    const by = Object.fromEntries(view.comparison.by_target.map((t) => [t.target, t.exposed_files_in_tool_inputs]));
+    assert.equal(by.codex, '1 of 2', 'Codex ran one command, naming one of the two files');
+    assert.equal(by.antigravity, '0 of 2', 'the Antigravity stub reports no tool input');
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
 });

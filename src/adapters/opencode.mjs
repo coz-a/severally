@@ -243,7 +243,7 @@ export function buildInvocation({ consultant }) {
  *   tool?: string,
  *   callID?: string,
  *   id?: string,
- *   state?: { status?: string },
+ *   state?: { status?: string, input?: Record<string, unknown> },
  * }} [part]
  * @property {{ message?: unknown, name?: unknown, data?: { message?: unknown } }} [error]
  */
@@ -279,13 +279,26 @@ export function events(stdout) {
   return out;
 }
 
+// The tool-input fields that name what a call looked at: `path` (2.x) or
+// `filePath` (1.x) for read, `pattern` for grep and glob.
+const INPUT_KEY = /path|pattern/i;
+
+/**
+ * @param {unknown} input a tool call's `state.input`
+ * @returns {Record<string, string>}
+ */
+function lookedAt(input) {
+  if (!input || typeof input !== 'object') return {};
+  return Object.fromEntries(Object.entries(input).filter(([k, v]) => INPUT_KEY.test(k) && typeof v === 'string'));
+}
+
 /**
  * Shrink one stdout line before it is captured. A completed tool_use event
  * carries the tool's whole result -- a 2.x `read` holds the file twice
  * (state.output plus a metadata preview), ~95 KB a read -- so a few reads
  * filled rawCaptureMax and cut the final answer off the stream. Nothing here
- * reads tool results: interpret wants text/step_finish/error, and progress
- * only the tool name.
+ * reads tool results: interpret wants text/step_finish/error, progress the
+ * tool name, toolCalls the call id and toolInputs the path fields of the input.
  * @param {string} line
  * @returns {string}
  */
@@ -296,7 +309,13 @@ export function compactLine(line) {
     if (e?.type !== 'tool_use') return line;
     return JSON.stringify({
       type: e.type,
-      part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } },
+      part: {
+        type: e.part?.type,
+        tool: e.part?.tool,
+        id: e.part?.id,
+        callID: e.part?.callID,
+        state: { status: e.part?.state?.status, input: lookedAt(e.part?.state?.input) },
+      },
     });
   } catch {
     return line;
@@ -457,6 +476,21 @@ export function toolCalls({ stdout }) {
     }
   }
   return [...seen.values()].reduce((/** @type {Record<string, number>} */ o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
+}
+
+/**
+ * The paths and patterns its tool calls were given, one set per call id.
+ * @param {{ stdout?: string }} run
+ * @returns {string[]}
+ */
+export function toolInputs({ stdout }) {
+  /** @type {Map<unknown, string[]>} */
+  const seen = new Map();
+  for (const e of events(stdout)) {
+    if (e.type === 'tool_use' && e.part?.tool)
+      seen.set(e.part.callID ?? e.part.id ?? seen.size, Object.values(lookedAt(e.part.state?.input)));
+  }
+  return [...seen.values()].flat();
 }
 
 /**

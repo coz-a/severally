@@ -36,16 +36,7 @@ recommended caching only user-independent product data. Whether the fixed query 
 ## Contents
 
 - [Install](#install)
-  - [Requirements](#requirements)
-  - [Command line](#command-line)
-  - [Updating](#updating)
-  - [Uninstall](#uninstall)
 - [Usage](#usage)
-  - [Asking](#asking)
-  - [When the answers come back](#when-the-answers-come-back)
-  - [Modes](#modes)
-  - [Follow-ups](#follow-ups)
-  - [History and records](#history-and-records)
 - [Configuration](#configuration)
 - [What a consultant can see and do](#what-a-consultant-can-see-and-do)
 - [API](#api)
@@ -61,17 +52,14 @@ recommended caching only user-independent product data. Whether the fixed query 
   fresh Claude Code session.
 
 Prepare the CLI you want to consult using the [installation and login links](docs/install.md#requirements).
+
+### Installing
+
 The command below installs severally and registers it with existing CLIs; it does not install or log in to those CLIs.
-
-The installer and the server are tested on Linux, macOS and Windows; the Claude Code and Codex marketplace
-routes and the real CLIs have been tried on Linux only. On Windows, cancelling a consultation stops its process
-tree while the consultant's CLI is still running; processes it started may survive if the CLI has already exited.
-That case has not been verified on a real Windows machine.
-
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.8.0 install
+npx -y severally-mcp@2.8.1 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -81,7 +69,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.8.0 status
+npx -y severally-mcp@2.8.1 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -109,11 +97,13 @@ login (out of quota is not checked; the first consultation shows it):
 No configuration is normally needed. To ask the first question, see [Asking](#asking).
 
 Marketplace installs, installing from a clone, and the fallback when global npm installation is unavailable are
-in the [installation details](docs/install.md).
+in the [installation details](docs/install.md); `--dry-run`, `--manual`, `--force` and the other flags are in the
+[installer options](docs/install.md#command-line).
 
-### Command line
-
-See [installer options](docs/install.md#command-line) for `--dry-run`, `--manual`, `--force` and the other flags.
+The installer and the server are tested on Linux, macOS and Windows in CI. The Claude Code and Codex marketplace
+routes and the real CLIs have been tried on Linux only. On Windows, cancelling a consultation stops its process
+tree while the consultant's CLI is still running. If the CLI has already exited, processes it started may survive;
+what remains in that case is observed, not guaranteed.
 
 ### Updating
 
@@ -210,7 +200,6 @@ Codex").
 - `review`: shows the plan and asks what is wrong with it (the [example](docs/how-it-works.md#example))
 - `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
 
-
 ### Follow-ups
 
 After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
@@ -227,21 +216,20 @@ cannot continue is skipped, and the reason is listed.
 
 Every consultation is kept on your machine in `~/.severally/history/`: the brief that was sent, the consultant's
 answer, and the agent's verdict on each finding (`confirmed`, `not_applicable`, `unverifiable`, `unverified`).
-For Codex and Antigravity it also keeps the commands run or the paths opened, with how many of the files handed
-over they name; secrets are masked and command output is not kept. Verdicts can be added later, from another session. A consultation can be exported as Markdown into your
-repository.
+For Codex, Antigravity and OpenCode it also keeps the commands run or the paths opened, with how many of the files
+handed over they name; secrets are masked and command output is not kept. Verdicts can be added later, from another
+session, and a consultation can be exported as Markdown into your repository.
 
 The [product-cache example](docs/how-it-works.md#example) follows each consultant's recommendation through the
-lead's checks and decision. Naming consultants, the consultation flow and record details are also in
-[how it works](docs/how-it-works.md).
+lead's checks and decision. Record details are in [how it works](docs/how-it-works.md#records).
 
 ## Configuration
 
 **No configuration needed by default.** At startup the server looks for the CLIs on `PATH`, and each one it finds
 becomes a consultant on its default model. To turn a CLI off or add consultants on other models, put a
 `~/.severally/config.json` in place. From a clone, `npm run init-config` writes a template. Every key is in
-[CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is an example to adapt: its paths, models and notes are made up.
-For separate models for everyday work and consultations, see the optional
+[CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is an example to adapt: its paths, models
+and notes are made up. For separate models for everyday work and consultations, see the optional
 [multi-model example](docs/how-it-works.md#recommended-setup). Restart the client after changing the config.
 
 To consult a model you reach with an API key (OpenRouter, or another OpenAI-compatible API) or a local model,
@@ -313,7 +301,8 @@ a large change, open an issue first so we can talk it over. Everyone taking part
 - After changing the source or the Skill template, run `npm run build`. The built server in
   `plugins/severally/dist/` and the generated Skills are committed, and CI fails when they are out of date.
 - `npm run live-check` and `npm run doctor` run real consultations against the CLIs you have installed, and spend
-  real quota.
+  real quota. `doctor` also prints each CLI's version. Before a release, run both against the CLIs on hand and put the
+  versions, the date and the OS in the release notes.
 
 ## License
 

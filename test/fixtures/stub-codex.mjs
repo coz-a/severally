@@ -137,6 +137,15 @@ function run() {
       setInterval(() => {}, 1e9);
       return;
     }
+    if (behavior.endsWith('_leak')) {
+      // No answer, and an error naming a credential: the failure detail the
+      // leftover process leaves is built from it.
+      const message = '401 invalid api key ghp_abcdefghijklmnopqrstuvwxyz0123 detail-canary';
+      out({ type: 'error', message });
+      process.stderr.write(message);
+      setTimeout(() => process.exit(1), 200);
+      return;
+    }
     if (lastMessagePath && !behavior.endsWith('_invalid')) fs.writeFileSync(lastMessagePath, answer());
     // Give the grandchild a moment to start before the stub goes.
     setTimeout(() => process.exit(0), 200);

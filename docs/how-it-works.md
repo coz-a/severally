@@ -98,7 +98,8 @@ for example, a request with `network: "off"` can run without browsing while `lim
 The displayed setting alone does not prove an attempted operation was refused.
 On Windows, cancellation kills the process tree while the parent is alive. If the parent has already exited,
 its PID is not reused for cancellation, because that could kill an unrelated process; descendants can remain.
-The parent-exited case has not been verified on a real Windows machine.
+A test (`test/windows.test.mjs`) cancels a run whose parent has exited and reports in the CI log whether the
+descendant remained; the outcome is observed, not guaranteed.
 
 - Each round is one file, and each verdict keeps its effect on the decision. The verdicts mean: `confirmed`, it
   holds here; `not_applicable`, true in general, not in this codebase; `unverifiable`, cannot be settled with what
@@ -165,9 +166,10 @@ unreadable.
 
 Each answer carries a `boundary` record of what that consultant was launched with (what it could read, its shell,
 whether it had the web, whether credential paths were blocked) and `tool_calls`, the tools it actually called,
-counted from the CLI's own event stream (Claude Code does not stream its tool calls, so it has none). For Codex
-and Antigravity, `tool_inputs` adds what those calls were given: the shell commands Codex ran (at most 30, secrets
-masked and each cut to 200 characters; never their output) or the paths Antigravity's file tools opened, and how
+counted from the CLI's own event stream (Claude Code does not stream its tool calls, so it has none). For Codex,
+Antigravity and OpenCode, `tool_inputs` adds what those calls were given: the shell commands Codex ran (at most 30,
+secrets masked and each cut to 200 characters; never their output) or the paths and patterns the file tools of
+Antigravity and OpenCode were given, and how
 many of the files handed over a call names. A name in a call is not proof that the file was read, and a file that
 is not named was not necessarily skipped. The group view shows only the count (`exposed_files_in_tool_inputs`).
 

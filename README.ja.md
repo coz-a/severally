@@ -35,16 +35,7 @@ antigravity  alternative     会員割引がほかの利用者に漏れる。ク
 ## 目次
 
 - [インストール](#インストール)
-  - [必要なもの](#必要なもの)
-  - [コマンドライン](#コマンドライン)
-  - [更新](#更新)
-  - [アンインストール](#アンインストール)
 - [使い方](#使い方)
-  - [頼み方](#頼み方)
-  - [答えが返ったあと](#答えが返ったあと)
-  - [モード](#モード)
-  - [追加質問](#追加質問)
-  - [履歴と記録](#履歴と記録)
 - [設定](#設定)
 - [相談相手が読めるものとできること](#相談相手が読めるものとできること)
 - [API](#api)
@@ -60,17 +51,14 @@ antigravity  alternative     会員割引がほかの利用者に漏れる。ク
   Claude Code のセッションに相談できます。
 
 相談したい CLI は、[導入・ログイン方法へのリンク](docs/install.ja.md#必要なもの)から準備できます。
+
+### 入れる
+
 次のコマンドは severally を入れて既存の CLI に登録するもので、CLI 自体の導入やログインは行いません。
-
-インストーラとサーバは Linux・macOS・Windows でテストしています。Claude Code と Codex のマーケットプレイスからの
-導入と、実際の CLI での動作を試したのは Linux だけです。Windows で相談を取り消すと、相談相手の CLI が動いている間なら
-プロセスの木ごと止まります。CLI が先に終わっていると、CLI が起動したプロセスが残る場合があります。この条件は Windows 実機では
-未検証です。
-
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.8.0 install
+npx -y severally-mcp@2.8.1 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -80,7 +68,7 @@ npx -y severally-mcp@2.8.0 install
 設定を確かめるには、次を実行します。
 
 ```bash
-npx -y severally-mcp@2.8.0 status
+npx -y severally-mcp@2.8.1 status
 ```
 
 設定ファイル・この機械から使える相談相手・入っている写しの版・どのクライアントに登録されているか・各 CLI に
@@ -108,12 +96,13 @@ login (out of quota is not checked; the first consultation shows it):
 通常は無設定で使えます。最初の相談のしかたは[頼み方](#頼み方)にあります。
 
 マーケットプレイスやクローンからの導入、グローバルインストールができないときの動作は
-[インストールの詳細](docs/install.ja.md)にあります。
-
-### コマンドライン
-
-`--dry-run`、`--manual`、`--force` などの使い方は
+[インストールの詳細](docs/install.ja.md)に、`--dry-run`、`--manual`、`--force` などの使い方は
 [インストールのオプション](docs/install.ja.md#コマンドライン)にあります。
+
+インストーラとサーバは、CI で Linux・macOS・Windows のテストをしています。Claude Code と Codex のマーケットプレイスからの
+導入と、実際の CLI での動作を試したのは Linux だけです。Windows で相談を取り消すと、相談相手の CLI が動いている間なら
+プロセスの木ごと止まります。CLI が先に終わっていた場合は、CLI が起動したプロセスが残ることがあります。
+その場合に何が残るかは、テストで観察しているだけで、保証していません。
 
 ### 更新
 
@@ -222,11 +211,13 @@ Codex（gpt-6.1-sol）: 「429 invalid api key」は一時的な制限に誤分�
 ### 履歴と記録
 
 相談の記録は、あなたのマシンの `~/.severally/history/` に残ります。送ったブリーフ、相談相手の答え、指摘ごとの
-エージェントの判定（`confirmed`、`not_applicable`、`unverifiable`、`unverified`）が入っています。Codex と Antigravity では、実行したコマンドや開いたパスと、渡したファイルのうち何件がそこに現れたかも残ります（秘密は伏せ字にし、コマンドの出力は残しません）。判定は、あとから
-別のセッションで足せます。相談は、Markdown としてリポジトリに書き出せます。
+エージェントの判定（`confirmed`、`not_applicable`、`unverifiable`、`unverified`）が入っています。
+Codex・Antigravity・OpenCode では、実行したコマンドや開いたパスと、渡したファイルのうち何件がそこに現れたかも
+残ります（秘密は伏せ字にし、コマンドの出力は残しません）。判定は、あとから別のセッションで足せます。
+相談は、Markdown としてリポジトリに書き出せます。
 
 [商品ページのキャッシュを相談した例](docs/how-it-works.ja.md#使い方の例)では、相手別の判断と、主担当が指摘を検証して採否を決める流れを追えます。
-相談相手の呼び方、相談の進み方、記録の詳細も [仕組みの文書](docs/how-it-works.ja.md) にあります。
+記録の詳細は[仕組みの文書](docs/how-it-works.ja.md#記録)にあります。
 
 ## 設定
 
@@ -304,6 +295,8 @@ CLI ごとにどう守らせているかは [docs/how-it-works.ja.md](docs/how-i
 - ソースか Skill のテンプレートを変えたら、`npm run build` を実行してください。ビルド済みのサーバ
   （`plugins/severally/dist/`）と生成した Skill はコミットしてあり、古いままだと CI が失敗します。
 - `npm run live-check` と `npm run doctor` は、入っている CLI を相手に本物の相談を実行するので、実際の使用量がかかります。
+  `doctor` は各 CLI の版も表示します。リリースの前に、手元の CLI を相手に両方を実行し、CLI の版・確認日・OS を
+  リリースノートに残してください。
 
 ## ライセンス
 
