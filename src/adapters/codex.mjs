@@ -130,7 +130,19 @@ export function filesystemPermissions() {
     /* leave resolution failures to the normal launch diagnostic */
   }
   const denied = protectedRoots().flatMap((p) => {
-    const executableEntry = executable?.startsWith(`${p}/`) ? executable.slice(p.length + 1).split('/')[0] : null;
+    // Compare canonical paths on both sides: macOS temporary roots and
+    // Windows short paths may name the executable through an alias.
+    let root = p;
+    try {
+      root = fs.realpathSync.native(p);
+    } catch {
+      /* missing roots and wildcard paths retain their literal spelling */
+    }
+    const relative = executable ? path.relative(root, executable) : null;
+    const executableEntry =
+      relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+        ? relative.split(path.sep)[0]
+        : null;
     if (p === codexHome || executableEntry)
       return listDir(p)
         .filter((n) => n !== (executableEntry ?? 'packages'))

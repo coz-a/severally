@@ -38681,7 +38681,13 @@ function filesystemPermissions() {
   } catch {
   }
   const denied = protectedRoots().flatMap((p) => {
-    const executableEntry = executable?.startsWith(`${p}/`) ? executable.slice(p.length + 1).split("/")[0] : null;
+    let root = p;
+    try {
+      root = fs5.realpathSync.native(p);
+    } catch {
+    }
+    const relative = executable ? path7.relative(root, executable) : null;
+    const executableEntry = relative && relative !== ".." && !relative.startsWith(`..${path7.sep}`) && !path7.isAbsolute(relative) ? relative.split(path7.sep)[0] : null;
     if (p === codexHome || executableEntry)
       return listDir(p).filter((n) => n !== (executableEntry ?? "packages")).map((n) => `${p}/${n}`);
     const star = p.indexOf("/*/");

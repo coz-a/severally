@@ -59,11 +59,11 @@ test('configured paths reach the Codex and Claude CLI deny mechanisms', () => {
   assert.ok(permissions.includes(`${JSON.stringify(fwd(path.join(credentials, '.gemini')))} = "none"`));
   const rules = claude.protectedReadRules();
   assert.ok(
-    rules.some((r) => r.includes(fwd(claudeHome))),
+    rules.some((r) => r.includes(claude.posixAbsolute(claudeHome))),
     'Claude receives its relocated config directory',
   );
   assert.ok(
-    rules.some((r) => r.includes(fwd(codexHome))),
+    rules.some((r) => r.includes(claude.posixAbsolute(codexHome))),
     'each consultant denies other configured credential stores',
   );
 });
@@ -92,37 +92,47 @@ test('a configured symlink credential root also protects its canonical target', 
   process.env.SEVERALLY_AGY_CRED_HOME = alias;
   try {
     fs.mkdirSync(path.join(actual, '.gemini'));
+    fs.writeFileSync(path.join(actual, '.gemini', 'token'), 'synthetic-token');
     assert.equal(policy.isProtectedPath(path.join(actual, '.gemini', 'token')), true);
-    assert.ok(policy.protectedRoots().includes(fwd(path.join(actual, '.gemini'))));
+    assert.ok(policy.protectedRoots().includes(fwd(fs.realpathSync.native(path.join(actual, '.gemini')))));
   } finally {
     process.env.SEVERALLY_AGY_CRED_HOME = previous;
     fs.rmSync(actual, { recursive: true, force: true });
   }
 });
 
-test('a Codex binary installed inside a relocated credential home keeps only its executable entry readable', () => {
-  const relocated = path.join(home, 'codex-with-binary');
-  const executable = path.join(relocated, 'packages', 'codex.mjs');
-  fs.mkdirSync(path.dirname(executable), { recursive: true });
-  fs.writeFileSync(executable, '#!/usr/bin/env node\n', { mode: 0o700 });
-  fs.writeFileSync(path.join(relocated, 'auth.json'), 'synthetic-auth');
-  fs.mkdirSync(path.join(relocated, 'sessions'));
-  const file = path.join(home, 'binary-config.json');
-  fs.writeFileSync(file, JSON.stringify({ clis: { codex: { bin: executable, env: { CODEX_HOME: relocated } } } }));
-  const moduleUrl = new URL('../src/adapters/codex.mjs', import.meta.url).href;
-  const env = { ...process.env, SEVERALLY_CONFIG: file };
-  delete env.SEVERALLY_CODEX_BIN;
-  const rules = execFileSync(
-    process.execPath,
-    [
-      '--input-type=module',
-      '-e',
-      `const adapter = await import(${JSON.stringify(moduleUrl)}); console.log(adapter.filesystemPermissions());`,
-    ],
-    { env, encoding: 'utf8' },
-  );
-  assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'auth.json')))} = "none"`));
-  assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'sessions')))} = "none"`));
-  assert.ok(!rules.includes(`${JSON.stringify(fwd(relocated))} = "none"`));
-  assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'packages')))} = "none"`));
-});
+for (const linked of [false, true]) {
+  test(`a Codex binary inside a ${linked ? 'linked' : 'direct'} credential home keeps only its executable entry readable`, () => {
+    const actual = path.join(home, linked ? 'codex-linked-target' : 'codex-with-binary');
+    fs.mkdirSync(actual, { recursive: true });
+    const relocated = linked ? path.join(home, 'codex-linked-home') : actual;
+    if (linked) fs.symlinkSync(actual, relocated, process.platform === 'win32' ? 'junction' : 'dir');
+    const executable = path.join(relocated, 'packages', 'codex.mjs');
+    fs.mkdirSync(path.dirname(executable), { recursive: true });
+    fs.writeFileSync(executable, '#!/usr/bin/env node\n', { mode: 0o700 });
+    fs.writeFileSync(path.join(relocated, 'auth.json'), 'synthetic-auth');
+    fs.mkdirSync(path.join(relocated, 'sessions'));
+    const file = path.join(home, 'binary-config.json');
+    fs.writeFileSync(file, JSON.stringify({ clis: { codex: { bin: executable, env: { CODEX_HOME: relocated } } } }));
+    const moduleUrl = new URL('../src/adapters/codex.mjs', import.meta.url).href;
+    const env = { ...process.env, SEVERALLY_CONFIG: file };
+    delete env.SEVERALLY_CODEX_BIN;
+    const rules = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const adapter = await import(${JSON.stringify(moduleUrl)}); console.log(adapter.filesystemPermissions());`,
+      ],
+      { env, encoding: 'utf8' },
+    );
+    assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'auth.json')))} = "none"`));
+    assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'sessions')))} = "none"`));
+    assert.ok(!rules.includes(`${JSON.stringify(fwd(relocated))} = "none"`));
+    assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'packages')))} = "none"`));
+    const canonical = fs.realpathSync.native(relocated);
+    assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(canonical, 'auth.json')))} = "none"`));
+    assert.ok(!rules.includes(`${JSON.stringify(fwd(canonical))} = "none"`));
+    assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(canonical, 'packages')))} = "none"`));
+  });
+}
