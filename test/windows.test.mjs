@@ -304,6 +304,43 @@ test('cancellation terminates a native child and its descendant', async (t) => {
   );
 });
 
+// The parent exits first and leaves a descendant behind (it holds no pipe, so
+// the run ends on its own); cancelling afterwards must not signal the dead
+// parent's PID, which another process may have taken. Whether the descendant
+// survives is the platform's answer and is only reported: the CI log of a
+// real Windows run is the record, so README and how-it-works state it from there.
+test('cancelling after the parent has exited leaves the descendant to the platform, and reports what remained', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-orphan-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const pidFile = path.join(dir, 'pid');
+  const source = `const {spawn}=require('node:child_process'); const fs=require('node:fs');
+    const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});
+    fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid)); child.unref();`;
+  const run = runChild({ command: process.execPath, args: ['-e', source], env: childEnv('codex'), timeoutMs: 10000 });
+  const descendant = Number(await waitFor(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8')));
+  const alive = () => {
+    try {
+      process.kill(descendant, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  t.after(() => {
+    try {
+      process.kill(descendant);
+    } catch {
+      // already gone
+    }
+  });
+  await run.done;
+  run.handle.stop();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  t.diagnostic(
+    `${process.platform}: descendant ${alive() ? 'remained' : 'was stopped'} after cancelling a run whose parent had exited`,
+  );
+});
+
 test('Windows sandbox redirects native home and application config paths', { skip: !windows }, (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-home-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

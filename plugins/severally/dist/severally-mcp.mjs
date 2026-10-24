@@ -39662,6 +39662,7 @@ __export(opencode_exports, {
   recoverAuthFailure: () => recoverAuthFailure,
   resetProbe: () => resetProbe,
   toolCalls: () => toolCalls3,
+  toolInputs: () => toolInputs3,
   usageRecord: () => usageRecord4
 });
 async function prepare() {
@@ -39761,6 +39762,10 @@ function events2(stdout) {
   }
   return out;
 }
+function lookedAt(input2) {
+  if (!input2 || typeof input2 !== "object") return {};
+  return Object.fromEntries(Object.entries(input2).filter(([k, v]) => INPUT_KEY.test(k) && typeof v === "string"));
+}
 function compactLine(line) {
   if (!line.includes('"tool_use"')) return line;
   try {
@@ -39768,7 +39773,13 @@ function compactLine(line) {
     if (e?.type !== "tool_use") return line;
     return JSON.stringify({
       type: e.type,
-      part: { type: e.part?.type, tool: e.part?.tool, state: { status: e.part?.state?.status } }
+      part: {
+        type: e.part?.type,
+        tool: e.part?.tool,
+        id: e.part?.id,
+        callID: e.part?.callID,
+        state: { status: e.part?.state?.status, input: lookedAt(e.part?.state?.input) }
+      }
     });
   } catch {
     return line;
@@ -39860,6 +39871,14 @@ function toolCalls3({ stdout }) {
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
 }
+function toolInputs3({ stdout }) {
+  const seen = /* @__PURE__ */ new Map();
+  for (const e of events2(stdout)) {
+    if (e.type === "tool_use" && e.part?.tool)
+      seen.set(e.part.callID ?? e.part.id ?? seen.size, Object.values(lookedAt(e.part.state?.input)));
+  }
+  return [...seen.values()].flat();
+}
 function progress3({ stdout }) {
   const seen = events2(stdout).filter(
     (e) => e.type !== void 0 && ["step_start", "step_finish", "text", "tool_use"].includes(e.type)
@@ -39904,7 +39923,7 @@ function boundary4({ sandbox }) {
     tools: [...tools]
   };
 }
-var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4, FILE_READ_TOOLS3;
+var FORBIDDEN_FLAGS4, standaloneSupport, probePromise, RESERVED_FLAGS4, INPUT_KEY, FILE_READ_TOOLS3;
 var init_opencode = __esm({
   "src/adapters/opencode.mjs"() {
     "use strict";
@@ -39936,6 +39955,7 @@ var init_opencode = __esm({
     standaloneSupport = null;
     probePromise = null;
     RESERVED_FLAGS4 = ["--model", "--standalone", "--wizard"];
+    INPUT_KEY = /path|pattern/i;
     FILE_READ_TOOLS3 = ["read", "grep"];
   }
 });
@@ -41227,7 +41247,7 @@ var init_jobs = __esm({
             if (job.cancelRequested) handle.stop();
             return done;
           };
-          let run = await attempt(budgetMs);
+          let run = await attempt(Math.max(1, budgetMs - (Date.now() - t0)));
           let interpreted;
           let authTried = false;
           let autoRetries = 0;
@@ -41393,7 +41413,7 @@ var init_jobs = __esm({
         job.failure = {
           kind,
           message: redact(String(message ?? "")).slice(0, 4e3),
-          detail: detail ?? null,
+          detail: detail == null ? null : redact(detail).slice(0, 1200),
           retriable: isRetriable(kind),
           delivered_advice: false
         };
@@ -42376,7 +42396,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.8.0";
+    SEVERALLY_VERSION = "2.8.1";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

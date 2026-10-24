@@ -470,7 +470,7 @@ test('compactLine strips tool results but keeps what progress reads', () => {
     part: { type: 'tool', tool: 'read', state: { status: 'completed', output: 'x'.repeat(1000), metadata: { preview: 'y' } } },
   });
   const out = JSON.parse(adapter.compactLine(big));
-  assert.deepEqual(out, { type: 'tool_use', part: { type: 'tool', tool: 'read', state: { status: 'completed' } } });
+  assert.deepEqual(out, { type: 'tool_use', part: { type: 'tool', tool: 'read', state: { status: 'completed', input: {} } } });
   const text = JSON.stringify({ type: 'text', part: { type: 'text', text: 'hi' } });
   assert.equal(adapter.compactLine(text), text);
   assert.equal(adapter.compactLine('{partial'), '{partial');

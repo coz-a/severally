@@ -1,7 +1,7 @@
 {
   "name": "severally",
-  "version": "2.8.0",
-  "description": "Ask Codex, Claude Code, Antigravity or OpenCode for an independent opinion, review or structured debate, in a sandboxed child session that can read files and search the web but cannot edit files, change the system, or start other agents.",
+  "version": "2.8.1",
+  "description": "A plugin that lets your AI agent ask other coding agents for independent opinions, returned separately.",
   "author": {
     "name": "coz.a",
     "url": "https://github.com/coz-a"

@@ -1239,7 +1239,7 @@ export class JobManager {
       // to POLICY.maxAutoRetries re-runs of a transient failure, after a wait.
       // Same consultant, same model, same brief: a re-run never picks another
       // mind. Every earlier failure is kept in job.retries.
-      let run = await attempt(budgetMs);
+      let run = await attempt(Math.max(1, budgetMs - (Date.now() - t0)));
       /** @type {import('./run.mjs').Interpreted} */
       let interpreted;
       let authTried = false;
@@ -1447,7 +1447,7 @@ export class JobManager {
     job.failure = {
       kind,
       message: redact(String(message ?? '')).slice(0, 4000),
-      detail: detail ?? null,
+      detail: detail == null ? null : redact(detail).slice(0, 1200),
       retriable: isRetriable(kind),
       delivered_advice: false,
     };

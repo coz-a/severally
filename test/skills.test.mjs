@@ -351,4 +351,10 @@ test("the README's short description is package.json's description", async () =>
   const lines = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8').split(/\r?\n/);
   assert.ok(lines.includes(description), `README.md has no line reading: ${description}`);
   assert.ok(description.length < 120);
+  // The plugin entries carry the same sentence; what a consultant is kept to is in the Skill and the README.
+  for (const file of ['plugins/severally/.claude-plugin/plugin.json', 'plugins/severally/.codex-plugin/plugin.json']) {
+    assert.equal(JSON.parse(fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')).description, description, file);
+  }
+  const marketplace = JSON.parse(fs.readFileSync(new URL('../.claude-plugin/marketplace.json', import.meta.url), 'utf8'));
+  assert.equal(marketplace.plugins[0].description, description);
 });

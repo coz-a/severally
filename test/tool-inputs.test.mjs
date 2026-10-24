@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { summarizeToolInputs, MAX_ENTRIES, MAX_CHARS } from '../src/tool-inputs.mjs';
 import * as codex from '../src/adapters/codex.mjs';
 import * as agy from '../src/adapters/antigravity.mjs';
+import * as opencode from '../src/adapters/opencode.mjs';
 
 const lines = (...o) => o.map((x) => JSON.stringify(x)).join('\n');
 
@@ -38,6 +39,25 @@ test('Antigravity: the path parameters of its tool calls, once per step', () => 
     step_update: { step_index: 3, step_type: 'agent_response' },
   });
   assert.deepEqual(agy.toolInputs({ stdout }), ['/w/workspace/0-a.mjs']);
+});
+
+// The event as opencode 2.0.24 wrote it for a read (checked 2026-10-24): one
+// completed event per call, the call id in part.id, the path in state.input.
+test('OpenCode: the path fields of a call survive compactLine, which still drops the result', () => {
+  const call = (id, input, extra = {}) =>
+    JSON.stringify({
+      type: 'tool_use',
+      part: { type: 'tool', id, tool: 'read', state: { status: 'completed', input, output: 'FILE BODY '.repeat(500), ...extra } },
+    });
+  const raw = [
+    call('call_a', { path: 'workspace/0-a.mjs' }),
+    call('call_a', { path: 'workspace/0-a.mjs' }),
+    call('call_b', { filePath: 'workspace/0-b.mjs', content: 'x' }),
+  ];
+  const stdout = raw.map((l) => opencode.compactLine(l)).join('\n');
+  assert.ok(!stdout.includes('FILE BODY') && !stdout.includes('"content"'), 'only path-like fields are kept');
+  assert.deepEqual(opencode.toolInputs({ stdout }), ['workspace/0-a.mjs', 'workspace/0-b.mjs'], 'one per call id');
+  assert.deepEqual(opencode.toolCalls({ stdout }), { read: 2 });
 });
 
 test('a summary masks a secret before it cuts, caps the list, and counts the handed-over files a call names', () => {
