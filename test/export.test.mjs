@@ -177,3 +177,69 @@ test('the export tells a protected file left out apart from a skipped symlink', 
   assert.match(markdown, /1 credential or history path\(s\) were left out on purpose/);
   assert.doesNotMatch(markdown, /symlink/);
 });
+
+test('export starts with checked points, evidence and effects, and links to their full rounds', async () => {
+  const { mgr, view } = await consulted();
+  mgr.record({
+    job_id: view.job_id,
+    entries: [
+      { id: 'f1', verdict: 'confirmed', effect: 'Held the release pending a cap.', note: 'Observed retries in outage test.' },
+      { id: 'u1', verdict: 'unverifiable', effect: 'Production load remains unknown.' },
+    ],
+  });
+  const { markdown } = exportChain({ chain_id: view.chain_id });
+  const summary = markdown.slice(0, markdown.indexOf('## Round'));
+  assert.match(summary, /## Verification summary/);
+  assert.match(summary, /confirmed/);
+  assert.match(summary, /Held the release pending a cap\./);
+  assert.match(summary, /Observed retries in outage test\./);
+  assert.match(summary, /codex.*gpt-6-astra/);
+  assert.ok(summary.includes(`[${view.job_id} / f1](#${view.job_id}-f1)`));
+  assert.ok(markdown.includes(`<a id="${view.job_id}-f1"></a>`));
+  assert.match(summary, /Unverified points: 2/);
+  assert.doesNotMatch(summary, /adopted|accepted/i, 'confirmed is evidence, not an adoption decision');
+  assert.match(markdown, /Production load remains unknown\./, 'full records retain unverifiable points');
+});
+
+test('verification summary counts unrecorded points across consultants without combining their judgements', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['gpt', 'gemini'] }));
+  await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
+  const { markdown } = exportChain({ group_id: started.group_id });
+  const summary = markdown.slice(0, markdown.indexOf('## Round'));
+  assert.match(summary, /Unverified points: 6/);
+  assert.match(summary, /No verified points recorded/);
+  assert.doesNotMatch(summary, /confirmed|adopted|consensus/);
+});
+
+test('export of a retry preserves its source failure and supplied earlier context as distinct historical records', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const first = await finish(mgr, mgr.start(reviewRequest({ question: 'Original unique context for export' })).job_id);
+  process.env.STUB_BEHAVIOR = 'auth';
+  const failed = await finish(mgr, mgr.start({ followup_to: first.job_id, question: 'Failed question before export' }).job_id);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const retried = await finish(mgr, mgr.start({ retry_of: failed.job_id }).job_id);
+  const { markdown } = exportChain({ chain_id: retried.chain_id });
+  assert.ok(markdown.includes(`retry_of: \`${failed.job_id}\``));
+  assert.ok(markdown.includes(first.job_id));
+  assert.ok(markdown.includes(first.chain_id));
+  assert.match(markdown, /Original unique context for export/);
+  assert.match(markdown, /Earlier retry records/);
+  assert.match(markdown, /No advice was obtained: \*\*auth\*\*/);
+  assert.equal(markdown.split(`<a id="${first.job_id}-f1"></a>`).length - 1, 1, 'historical points appear once');
+});
+
+test('retry export names source records that aged out instead of claiming their context is present', async () => {
+  process.env.STUB_BEHAVIOR = 'auth';
+  const mgr = new JobManager();
+  const failed = await finish(mgr, mgr.start(reviewRequest()).job_id);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const retried = await finish(mgr, mgr.start({ retry_of: failed.job_id }).job_id);
+  const { roundPath } = await import('../src/store.mjs');
+  fs.rmSync(roundPath(failed.chain_id, failed.round));
+  const { markdown } = exportChain({ chain_id: retried.chain_id });
+  assert.ok(markdown.includes(`Source job \`${failed.job_id}\` is no longer available in retained history.`));
+  assert.ok(markdown.includes(`retry_of: \`${failed.job_id}\``));
+});

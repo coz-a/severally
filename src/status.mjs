@@ -13,6 +13,7 @@ import {
 } from './policy.mjs';
 import { SEVERALLY_VERSION, staleInstall } from './server.mjs';
 import { findCommand, execCommandSync } from './platform.mjs';
+import { credentialRecoveryStatus } from './adapters/opencode-sandbox.mjs';
 
 // How each client lists severally, plugin installs first. A command that exits 0
 // and names severally counts as registered.
@@ -115,6 +116,7 @@ export function status() {
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : 'ok'}`);
   for (const w of configWarnings()) lines.push(`  mistake (only that consultant or CLI is out of use): ${w}`);
   lines.push(`network: ${POLICY.network === 'off' ? 'off for every consultation (server.network)' : 'per request'}`, '');
+  lines.push(`OpenCode credential recovery: ${credentialRecoveryStatus().detail}`, '');
 
   lines.push('consultants:');
   for (const c of POLICY.consultants) {

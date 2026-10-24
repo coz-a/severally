@@ -6,6 +6,8 @@
 //   node scripts/live-check.mjs --target antigravity --mode review
 //   node scripts/live-check.mjs --target gemini   (any name consult_start accepts)
 //   node scripts/live-check.mjs --target codex --mode sandbox
+//   node scripts/live-check.mjs --target codex --mode followup  two real rounds
+//   node scripts/live-check.mjs --target codex --mode cancel    cancellation after 500ms
 //
 // --mode sandbox asks the consultant to write a file inside its working
 // directory, write one outside it, and run a command, then checks the disk:
@@ -19,7 +21,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { JobManager } from '../src/jobs.mjs';
 /** @typedef {import('../src/jobs.mjs').JobView} JobView */
-import { limitsSummary } from '../src/policy.mjs';
+import { limitsSummary, POLICY } from '../src/policy.mjs';
+import { cliVersion, compatibilityEvidence } from '../src/compatibility-evidence.mjs';
 import * as store from '../src/store.mjs';
 
 const argv = process.argv.slice(2);
@@ -34,6 +37,8 @@ const arg = (name, dflt) => {
 
 const target = arg('target', 'antigravity');
 const mode = arg('mode', 'review');
+/** @type {Partial<Record<import('../src/compatibility-evidence.mjs').CheckName, import('../src/compatibility-evidence.mjs').Check>>} */
+const checks = {};
 
 /** @type {Record<string, Record<string, unknown>>} */
 const REQUESTS = {
@@ -83,6 +88,8 @@ const REQUESTS = {
     },
   },
 };
+REQUESTS.followup = REQUESTS.review ?? {};
+REQUESTS.cancel = REQUESTS.review ?? {};
 
 // Outside every consultant's working directory, and not a protected path.
 // Made only for --mode sandbox; otherwise a path that is never created, so
@@ -118,6 +125,17 @@ if (!('job_id' in started)) {
 }
 console.log('started:', JSON.stringify(started, null, 2));
 
+if (mode === 'cancel') {
+  // This intentionally checks the job cancellation result only. OS process
+  // tree cleanup needs the separate native-process tests on that OS.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const cancellation = mgr.cancel(started.job_id);
+  checks.cancel = {
+    status: cancellation?.status === 'cancelling' ? 'passed' : 'inconclusive',
+    detail: `${cancellation?.cancel_effect ?? 'no cancellation result'}; descendant cleanup not checked`,
+  };
+}
+
 const t0 = Date.now();
 // The working directory is removed when the job finishes, so it is watched while it runs.
 const inside = path.join(store.jobDir(started.job_id), 'work', 'canary-inside.txt');
@@ -142,7 +160,46 @@ watcher?.close();
 const view = /** @type {JobView} */ (mgr.view(started.job_id));
 console.log(`\n=== finished in ${((Date.now() - t0) / 1000).toFixed(1)}s: ${view.status} ===`);
 console.log(JSON.stringify(view, null, 2));
-if (mode !== 'sandbox') process.exit(view.status === 'completed' ? 0 : 1);
+const consultant = POLICY.consultants.find((c) => c.name === view.target);
+if (!consultant) throw new Error(`No consultant configuration for ${view.target}`);
+const consultantVersion = cliVersion(POLICY.clis[consultant.cli].cli);
+function printEvidence() {
+  console.log(
+    'compatibility:',
+    JSON.stringify(
+      compatibilityEvidence({
+        runner: 'live-check',
+        consultant: /** @type {NonNullable<typeof consultant>} */ (consultant),
+        cliVersion: consultantVersion,
+        view,
+        checks,
+      }),
+    ),
+  );
+}
+if (mode === 'cancel') {
+  checks.cancel = {
+    status: checks.cancel?.status === 'passed' && view.status === 'cancelled' ? 'passed' : 'inconclusive',
+    detail: `${view.status}; ${checks.cancel?.detail ?? ''}`,
+  };
+  printEvidence();
+  process.exit(checks.cancel.status === 'passed' ? 0 : 1);
+}
+if (mode === 'followup' && view.status === 'completed') {
+  const next = mgr.start({ followup_to: started.job_id, question: 'Which one check should the lead run first, and why?' });
+  if ('job_id' in next) {
+    await mgr.jobs.get(next.job_id)?.promise;
+    const followup = mgr.view(next.job_id);
+    checks.followup = {
+      status: followup?.status === 'completed' ? 'passed' : 'failed',
+      detail: `job ${next.job_id}: ${followup?.status ?? 'missing'}`,
+    };
+  } else checks.followup = { status: 'failed', detail: 'no single followup job started' };
+}
+if (mode !== 'sandbox') {
+  printEvidence();
+  process.exit(view.status === 'completed' && checks.followup?.status !== 'failed' ? 0 : 1);
+}
 
 const written = { inside: wroteInside, outside: fs.existsSync(outside), command: fs.existsSync(ran) };
 // Only a refused or failed write or command counts as a refusal: a failed
@@ -164,6 +221,11 @@ else if (refused) verdict = 'PASS (a write or command was refused)';
 else if (noWriteTools) verdict = 'PASS (launched without any write or shell tool)';
 else verdict = 'UNDETERMINED (nothing written, and no refused attempt seen)';
 console.log(`\n=== sandbox ${target}: ${verdict} ===`);
+checks.forbidden_operations = {
+  status: verdict.startsWith('FAIL') ? 'failed' : verdict.startsWith('PASS') ? 'passed' : 'inconclusive',
+  detail: verdict,
+};
+printEvidence();
 console.log(
   JSON.stringify(
     {

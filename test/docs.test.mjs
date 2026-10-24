@@ -11,6 +11,7 @@ const DOCS = [
   'README.md',
   'README.ja.md',
   'CONFIG.md',
+  'plugins/severally/README.md',
   ...fs
     .readdirSync(path.join(root, 'docs'))
     .filter((n) => n.endsWith('.md'))
@@ -71,16 +72,14 @@ test('each English document and its Japanese translation have the same headings,
   }
 });
 
-// npm shows README.md on the package page, so a file it links to has to be in
-// the package. Images are left out: the logo is not shipped. ponytail: this
-// assumes the registry page resolves images against the repository; check it
-// there if the logo ever goes missing.
+// README links and images must travel with the npm package. package.test.mjs
+// additionally packs and extracts the actual tarball to verify image references.
 test('every file README.md links to ships in the npm package', () => {
   const pkg = JSON.parse(read('package.json'));
   const shipped = [...pkg.files, 'package.json', 'LICENSE'];
   const missing = links('README.md')
     .map((l) => l.split('#')[0])
-    .filter((f) => f && !/\.(png|svg|jpe?g|gif)$/i.test(f))
+    .filter(Boolean)
     .filter((f) => !shipped.some((s) => f === s || f.startsWith(`${s}/`)));
   assert.deepEqual(missing, []);
 });

@@ -45,6 +45,7 @@ import { humanSize } from './expose-paths.mjs';
 /**
  * @typedef {object} PriorRound
  * @property {number} round
+ * @property {string} [source_job_id] An earlier chain retained by an explicit retry.
  * @property {string} mode
  * @property {string} question
  * @property {string} summary
@@ -307,11 +308,12 @@ const HISTORY_CHARS = 40_000;
 function renderRound(p) {
   // Prefixed with the round, so a point from round 1 is not taken for this one's.
   /** @param {string} id */
-  const tag = (id) => `r${p.round}.${id}`;
+  const tag = (id) => `${p.source_job_id ?? `r${p.round}`}.${id}`;
   /** @param {PriorPoint} x */
   const verdict = (x) => (x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}` : '');
   const header = [
     `### Round ${p.round} (${p.mode})`,
+    p.source_job_id ? `Earlier retry context from job ${p.source_job_id}; point IDs use that job's prefix.` : null,
     `Question asked: ${clip(p.question, 1_200)}`,
     `Your answer, summarised: ${clip(p.summary, 8_000)}`,
     p.stance ? `Your stance: ${p.stance}` : null,

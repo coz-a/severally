@@ -5,6 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { sandboxEnv } from './helpers.mjs';
+import { createRequire } from 'node:module';
+
+let sqliteAvailable = false;
+try {
+  sqliteAvailable = typeof createRequire(import.meta.url)('node:sqlite').DatabaseSync === 'function';
+} catch {
+  /* optional */
+}
+const noSqlite = process.allowedNodeEnvironmentFlags.has('--no-experimental-sqlite') ? ['--no-experimental-sqlite'] : [];
 
 // `severally-mcp status` in a home of its own: a config with one mistake, an
 // older runtime copy, and fake clients on PATH that know (or not) about severally.
@@ -47,8 +56,8 @@ function fixture({ registered }) {
   return { home, sev, pathDir };
 }
 
-const run = (f) =>
-  spawnSync(process.execPath, [bin, 'status'], {
+const run = (f, flags = []) =>
+  spawnSync(process.execPath, [...flags, bin, 'status'], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -62,7 +71,7 @@ const run = (f) =>
 test('status says what is set up, without starting a consultation', { skip: process.platform === 'win32' }, () => {
   sandboxEnv();
   const f = fixture({ registered: ['claude'] });
-  const r = run(f);
+  const r = run(f, sqliteAvailable ? [] : noSqlite);
   assert.equal(r.status, 0, r.stderr);
   const out = r.stdout;
   assert.match(out, /^severally \d+\.\d+\.\d+/m);
@@ -77,7 +86,27 @@ test('status says what is set up, without starting a consultation', { skip: proc
   assert.match(out, /codex +not logged in/);
   assert.match(out, /antigravity +not checked/, 'a CLI without a status command is never claimed logged in');
   assert.doesNotMatch(out, /someone@example\.com/);
+  assert.match(
+    out,
+    sqliteAvailable
+      ? /OpenCode credential recovery: available \(node:sqlite\)/
+      : /OpenCode credential recovery: unavailable.*node:sqlite/,
+  );
 });
+
+test(
+  'missing SQLite disables only OpenCode credential recovery, not status or login',
+  { skip: process.platform === 'win32' },
+  () => {
+    sandboxEnv();
+    const f = fixture({ registered: ['claude'] });
+    const r = run(f, noSqlite);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /OpenCode credential recovery: unavailable.*node:sqlite/);
+    assert.match(r.stdout, /update Node\.js/);
+    assert.match(r.stdout, /claude-code +logged in/);
+  },
+);
 
 test('status exits 1 when the config file as a whole needs fixing', { skip: process.platform === 'win32' }, () => {
   const f = fixture({ registered: [] });

@@ -15,8 +15,8 @@ import {
   consultantNamed,
   consultantAvailable,
 } from './policy.mjs';
-import { vendorOf, sameModel, CLI_VENDORS, CLI_IDS } from './consultants.mjs';
-import { parseRequest, RequestError, charCount } from './schema.mjs';
+import { vendorOf, sameModel, CLI_VENDORS, CLI_IDS, resolveConsultant } from './consultants.mjs';
+import { parseRequest, requestSchema, RequestError, charCount } from './schema.mjs';
 import { renderBrief, renderGuardrails, briefRecord } from './brief.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
 import { normalizeResult, OutputError } from './parse-result.mjs';
@@ -83,7 +83,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
  * @property {number} chars
  * @property {string} sha256
  * @property {string} history_file
- * @property {({skipped: Record<string, number>} & import('./expose-paths.mjs').ExposeTotals) | null} exposed
+ * @property {({skipped: Record<string, number>, changed: number, action_needed?: string} & import('./expose-paths.mjs').ExposeTotals) | null} exposed
  * @property {string} full_with
  */
 
@@ -357,6 +357,8 @@ export class JobManager {
       failure: job.failure,
       references_count: job.result ? job.result.references.length : null,
       followup_to: job.followup_to,
+      retry_of: job.retry_of ?? null,
+      ...(job.retry_context?.length ? { retry_context: job.retry_context } : {}),
       rounds_used: job.round,
       rounds_remaining: Math.max(0, POLICY.maxRounds - job.round),
     };
@@ -431,8 +433,19 @@ export class JobManager {
   // job_id and group_id can still be followed up and recorded against. The
   // index only picks and orders; each row shown is read from its round, which
   // holds the verdicts written since. Running jobs keep their runtime state.
-  /** @param {{limit?: number}} [opts] */
-  list({ limit = 20 } = {}) {
+  /** @param {{limit?: number | undefined, target?: string | undefined, question?: string | undefined, chain_id?: string | undefined}} [opts] */
+  list({ limit = 20, target, question, chain_id } = {}) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new RequestError('limit must be an integer from 1 to 100');
+    for (const [key, value] of Object.entries({ target, question, chain_id })) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'string' || !value.trim() || value.length > (key === 'question' ? POLICY.input.questionMax : 120))
+      )
+        throw new RequestError(`${key} must be a nonempty string within the input limit`);
+    }
+    if (chain_id !== undefined && !/^chain_[0-9a-f]{12}$/.test(chain_id))
+      throw new RequestError('chain_id must be a consultation chain ID');
+    const needle = question?.trim().toLowerCase();
     // Sorted by when each was created; a round file is read only for the rows shown.
     /** @type {Array<{at: string, load: () => Round | null}>} */
     const candidates = [];
@@ -464,15 +477,35 @@ export class JobManager {
         seen.add(row.job_id);
         candidates.push({ at: row.created_at ?? '', load: () => store.loadRoundAt(row) });
       }
+    let targetName;
+    if (target !== undefined) {
+      const exact = POLICY.consultants.find((c) => c.name === target.trim());
+      // Saved names remain searchable after removal/rename in operator config.
+      const historical = !exact && candidates.some((candidate) => candidate.load()?.target === target.trim());
+      const resolved = exact ? { consultant: exact } : resolveConsultant(target, POLICY.consultants, POLICY.ranking);
+      if (historical) targetName = target.trim();
+      else if (resolved.none) throw new RequestError(`no consultant answers to ${JSON.stringify(target)}`, 'unknown_target');
+      else if (resolved.ambiguous)
+        throw new RequestError(`target ${JSON.stringify(target)} is ambiguous; name one consultant`, 'target_ambiguous');
+      else targetName = resolved.consultant.name;
+    }
     /** @type {Round[]} */
     const picked = [];
     // One that cannot be read is passed over.
     for (const x of candidates.sort((p, q) => (q.at < p.at ? -1 : q.at > p.at ? 1 : 0))) {
       if (picked.length >= limit) break;
       const j = x.load();
-      if (j) picked.push(j);
+      if (
+        j &&
+        (!targetName || j.target === targetName) &&
+        (!chain_id || j.chain_id === chain_id) &&
+        (!needle || j.question.toLowerCase().includes(needle))
+      )
+        picked.push(j);
     }
     return picked.map((j) => {
+      const rounds = this.#chainRounds(j.chain_id);
+      const completed = rounds.filter((r) => r.status === 'completed').sort((a, b) => b.round - a.round)[0];
       return {
         job_id: j.job_id,
         group_id: j.group_id ?? null,
@@ -483,6 +516,10 @@ export class JobManager {
         model: j.model,
         mode: j.mode,
         status: j.status,
+        retry_of: j.retry_of ?? null,
+        question: j.question.slice(0, 200),
+        latest_completed_job_id: completed?.job_id ?? null,
+        rounds_remaining: Math.max(0, POLICY.maxRounds - Math.max(j.round, ...rounds.map((r) => r.round))),
         failure_kind: j.failure?.kind ?? null,
         created_at: j.created_at,
         duration_ms: j.duration_ms,
@@ -550,6 +587,61 @@ export class JobManager {
     if (configProblem())
       throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, 'config_invalid');
 
+    // Explicit replay is deliberately narrow. Saved text and sources are the
+    // input; another question or target is a new consultation, not a retry.
+    /** @type {Round | null} */
+    let retryFrom = null;
+    if (rawRequest?.retry_of !== undefined) {
+      const validated = requestSchema.safeParse(rawRequest);
+      const emptyContext = (/** @type {unknown} */ value) =>
+        value === undefined ||
+        (value !== null &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          Object.entries(value).every(([k, v]) => k === 'expose_paths' && Array.isArray(v) && v.length === 0));
+      if (
+        !validated.success ||
+        Object.keys(rawRequest).some((k) => k !== 'retry_of' && !(k === 'context' && emptyContext(rawRequest.context))) ||
+        typeof rawRequest.retry_of !== 'string' ||
+        !rawRequest.retry_of.trim().startsWith('job_')
+      )
+        throw new RequestError('retry_of takes one failed job_id and no question, target, follow-up or input overrides');
+      const jobId = rawRequest.retry_of.trim();
+      const live = this.jobs.get(jobId);
+      retryFrom = live ? this.#refreshRound(live) : this.#fromDisk(jobId);
+      if (!retryFrom) throw new RequestError(`retry_of references unknown job "${jobId}"`, 'unknown_job');
+      if (retryFrom.status !== 'failed')
+        throw new RequestError(
+          `retry_of job "${jobId}" is ${retryFrom.status}; only a failed consultation can be retried`,
+          'retry_not_failed',
+        );
+      if (!retryFrom.brief) throw new RequestError(`job "${jobId}" has no saved brief to replay`, 'retry_inputs_missing');
+      const configured = consultantByName(retryFrom.target);
+      if (!configured || configured.cli !== retryFrom.cli || configured.model !== retryFrom.model)
+        throw new RequestError(
+          `job "${jobId}" ran ${retryFrom.cli}/${retryFrom.model}; its configured consultant has changed; start a new consultation explicitly`,
+          'retry_target_mismatch',
+        );
+      rawRequest = inherit(
+        {
+          retry_of: jobId,
+          target: retryFrom.target,
+          question: retryFrom.question,
+          mode: retryFrom.mode,
+          caller: retryFrom.caller ?? null,
+          caller_model: retryFrom.caller_model ?? null,
+          initiator: retryFrom.initiator ?? null,
+        },
+        retryFrom,
+      );
+      // Replay preserves even the generated diff excerpt. Its touched files
+      // are refreshed separately from the manifest, with changes visible.
+      rawRequest.context = {
+        ...rawRequest.context,
+        artifacts: retryFrom.brief.artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null))),
+      };
+    }
+
     // Resolve the chain before validating, so follow-up rules can be applied.
     const followupTo =
       typeof rawRequest?.followup_to === 'string' && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
@@ -603,8 +695,8 @@ export class JobManager {
     if (inheritFrom) rawRequest = inherit(rawRequest, inheritFrom);
 
     const req = parseRequest(rawRequest, {
-      isFollowup: Boolean(parent || fromGroup),
-      parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+      isFollowup: Boolean(parent || fromGroup || retryFrom),
+      parentMode: parent?.mode ?? fromGroup?.group.mode ?? retryFrom?.mode ?? null,
       groupFollowup: Boolean(fromGroup),
     });
     // The operator's setting only ever closes: a request cannot reopen the web.
@@ -674,7 +766,7 @@ export class JobManager {
       // Each target's parent round and the round it opens, in req.targets order.
       /** @type {Array<{parent: Round | null, round: number, groupMember?: Round}>} */
       const links = fromGroup?.links ?? req.targets.map(() => ({ parent, round }));
-      return this.#admitted(req, links, seats, fromGroup);
+      return this.#admitted(req, links, seats, fromGroup, retryFrom);
     } catch (err) {
       for (const seat of seats) if (!this.jobs.has(seat.job_id)) store.releaseSeat(seat.job_id);
       throw err;
@@ -745,12 +837,13 @@ export class JobManager {
    * @param {Array<{parent: Round | null, round: number, groupMember?: Round}>} links
    * @param {Seat[]} seats
    * @param {GroupParents | null} [fromGroup]
+   * @param {Round | null} [retryFrom]
    */
-  #admitted(req, links, seats, fromGroup = null) {
+  #admitted(req, links, seats, fromGroup = null, retryFrom = null) {
     // What expose_from_parent copies again: for a group, what that fan-out
     // exposed (one manifest, shared by its members); otherwise the parent's.
     const first = links[0];
-    const parent = first?.groupMember ?? first?.parent;
+    const parent = retryFrom ?? first?.groupMember ?? first?.parent;
     const groupId = id('group');
     // Copied once for the whole request, before a round is counted or a job
     // exists, into the group's own directory: every member is then handed the
@@ -765,7 +858,7 @@ export class JobManager {
     const explicit = req.context.expose_from_parent === true;
     const implied =
       req.context.expose_from_parent === undefined &&
-      links.every((l) => l.parent && sameSeat(l.parent, consultantByName(l.parent.target)));
+      (Boolean(retryFrom) || links.every((l) => l.parent && sameSeat(l.parent, consultantByName(l.parent.target))));
     /** @type {BriefExposeEntry[]} */
     const parentEntries = explicit || implied ? (parent?.brief?.expose_paths?.entries ?? []) : [];
     if (explicit && parentEntries.length === 0) {
@@ -873,6 +966,14 @@ export class JobManager {
         tool_calls: null,
         tool_inputs: null,
         followup_to: from?.job_id ?? null,
+        retry_of: retryFrom?.job_id ?? null,
+        ...(retryFrom
+          ? {
+              retry_context: this.#historyRounds(retryFrom.chain_id)
+                .filter((r) => r.status === 'completed' && (r.chain_id !== retryFrom.chain_id || r.round < retryFrom.round))
+                .map((r) => r.job_id),
+            }
+          : {}),
         status: 'queued',
         // What this consultant is: the CLI it runs on, the model and its
         // lineage, as the operator defined it.
@@ -941,6 +1042,7 @@ export class JobManager {
       group_id: groupId,
       ...(sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {}),
       ...(fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {}),
+      ...(retryFrom ? { retry_of: retryFrom.job_id } : {}),
       ...(parentEntries.length && exposeManifest ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {}),
       mode: req.mode,
       // Counted, not refused: a brief of facts alone is a legitimate
@@ -1015,9 +1117,8 @@ export class JobManager {
    * @returns {PriorRound[]}
    */
   #chainHistory(chainId) {
-    return this.#chainRounds(chainId)
+    return this.#historyRounds(chainId)
       .filter(/** @returns {j is Round & {result: ConsultResult}} */ (j) => j.status === 'completed' && Boolean(j.result))
-      .sort((a, b) => a.round - b.round)
       .map((j) => {
         const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
         // The checked points first, then the unchecked ones, each with the
@@ -1056,6 +1157,7 @@ export class JobManager {
           disagreements.length;
         return {
           round: j.round,
+          ...(j.chain_id !== chainId ? { source_job_id: j.job_id } : {}),
           mode: j.mode,
           question: j.question,
           summary: j.result.summary,
@@ -1069,6 +1171,21 @@ export class JobManager {
           omitted_count: omitted,
         };
       });
+  }
+
+  // A retry has its own round budget and chain. Its completed earlier context
+  // remains linked by job ID, so restart and later follow-ups can recover it.
+  /** @param {string} chainId @returns {Round[]} */
+  #historyRounds(chainId) {
+    const rounds = this.#chainRounds(chainId).sort((a, b) => a.round - b.round);
+    const ids = [...new Set(rounds.flatMap((r) => r.retry_context ?? []))];
+    const prior = ids
+      .map((jid) => {
+        const cached = this.jobs.get(jid);
+        return cached ? this.#refreshRound(cached) : store.loadRound(jid);
+      })
+      .filter((r) => r !== null && r !== undefined);
+    return [...prior, ...rounds];
   }
 
   #evict() {
@@ -2569,6 +2686,7 @@ function compactBrief(view, detail) {
   if (detail === 'full' || !view.brief) return view;
   const json = JSON.stringify(view.brief);
   const ex = view.brief.expose_paths;
+  const gaps = ex?.skipped?.some((x) => ['gone', 'masked', 'symlink', 'protected'].includes(x.reason));
   return {
     ...view,
     brief: {
@@ -2577,7 +2695,17 @@ function compactBrief(view, detail) {
       // Under the severally home (~/.severally unless the operator moved it).
       history_file: path.relative(POLICY.home, store.roundPath(view.chain_id, view.round)),
       exposed: ex
-        ? { ...ex.totals, skipped: tally((ex.skipped ?? []).map((/** @type {{reason: string}} */ x) => x.reason)) }
+        ? {
+            ...ex.totals,
+            skipped: tally((ex.skipped ?? []).map((/** @type {{reason: string}} */ x) => x.reason)),
+            changed: ex.entries.filter((e) => e.changed_since_parent).length,
+            ...(gaps
+              ? {
+                  action_needed:
+                    'Missing material remains unverified. Inspect detail: "full" for skipped paths and select safe replacement paths; for a symlink select its actual target only if it is permitted. Protected paths stay excluded.',
+                }
+              : {}),
+          }
         : null,
       full_with: `consult_get({ job_id: "${view.job_id}", detail: "full" }) or consult_export`,
     },
@@ -2606,16 +2734,17 @@ function nextStep(job) {
         : 'rounds exhausted: decide with what you have.') + close
     );
   }
+  const retry = `consult_start({ request: { retry_of: "${job.job_id}" } })`;
   if (job.failure?.kind === 'timeout' || job.failure?.kind === 'cli_error')
-    return 'retriable: narrow the brief and start a new consultation';
+    return `retry the saved inputs with ${retry}, or narrow the brief and start a new consultation`;
   if (job.failure?.kind === 'interrupted')
-    return 'the severally process running it exited before the consultant answered; start the consultation again if you still need it';
+    return `the severally process running it exited before the consultant answered; retry the saved inputs with ${retry} if still needed`;
   if (job.failure?.kind === 'rate_limited')
-    return 'the consultant was rate-limited and the server already re-ran it (see retries); try again in a few minutes, or proceed on your own judgement';
+    return `the consultant was rate-limited and the server already re-ran it (see retries); wait before using ${retry}, or proceed on your own judgement`;
   if (job.failure?.kind === 'usage_limit' || job.failure?.kind === 'auth')
-    return 'not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first';
+    return `not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota before explicitly retrying with ${retry}; do not loop retries`;
   if (job.failure?.kind === 'invalid_output')
-    return 'the consultant answered but not in the required shape; retry once with a shorter brief before giving up';
+    return `the consultant answered but not in the required shape; retry once with ${retry}, or start a new consultation with a shorter brief`;
   return 'proceed on your own judgement and note that no peer input was obtained';
 }
 

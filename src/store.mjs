@@ -156,6 +156,8 @@ import { POLICY } from './policy.mjs';
  * @property {JobFailure | null} failure
  * @property {number | null | undefined} [references_count]
  * @property {string | null} followup_to
+ * @property {string | null | undefined} [retry_of]
+ * @property {string[] | undefined} [retry_context] Prior completed jobs carried into a retry's new chain.
  * @property {number | undefined} [rounds_used]
  * @property {number | undefined} [rounds_remaining]
  */

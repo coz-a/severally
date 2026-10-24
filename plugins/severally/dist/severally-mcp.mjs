@@ -1036,12 +1036,44 @@ function credentialsHome() {
 function opencodeCredentialsHome() {
   return str("SEVERALLY_OPENCODE_CRED_HOME", os.homedir());
 }
+function credentialEnvPaths(name) {
+  const sources = [process.env, ...Object.values(POLICY.clis).map((cli) => cli.extraEnv)];
+  return sources.flatMap(
+    (env) => Object.entries(env).filter(([key, value]) => (process.platform === "win32" ? key.toUpperCase() : key) === name && value).map(([, value]) => path2.resolve(
+      /** @type {string} */
+      value
+    ))
+  );
+}
+function configuredCredentialRoots() {
+  return [
+    path2.resolve(CONFIG_PATH),
+    path2.join(path2.resolve(credentialsHome()), ".gemini"),
+    path2.join(path2.resolve(opencodeCredentialsHome()), ".local", "share", "opencode"),
+    ...credentialEnvPaths("CODEX_HOME"),
+    ...credentialEnvPaths("CLAUDE_CONFIG_DIR"),
+    ...credentialEnvPaths("XDG_CONFIG_HOME").map((p) => path2.join(p, "opencode")),
+    ...credentialEnvPaths("XDG_DATA_HOME").map((p) => path2.join(p, "opencode")),
+    ...credentialEnvPaths("GOOGLE_APPLICATION_CREDENTIALS"),
+    ...credentialEnvPaths("HOME").flatMap((p) => PROTECTED_HOME_PATHS.map((rel) => path2.join(p, rel))),
+    ...process.platform === "win32" ? credentialEnvPaths("USERPROFILE").flatMap((p) => PROTECTED_HOME_PATHS.map((rel) => path2.join(p, rel))) : []
+  ];
+}
 function protectedRoots() {
   const fwd = (p) => p.replaceAll("\\", "/");
-  return [
+  const roots = [
     ...PROTECTED_HOME_PATHS.map((rel) => fwd(path2.join(os.homedir(), rel))),
-    ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path2.join(POLICY.home, rel)))
+    ...PROTECTED_SEVERALLY_PATHS.map((rel) => fwd(path2.join(POLICY.home, rel))),
+    ...configuredCredentialRoots().map(fwd)
   ];
+  const canonical = roots.flatMap((root) => {
+    try {
+      return [fwd(fs2.realpathSync.native(root))];
+    } catch {
+      return [];
+    }
+  });
+  return [.../* @__PURE__ */ new Set([...roots, ...canonical])];
 }
 function protectedRootPatterns(extraRoots = []) {
   return [...protectedRoots(), ...extraRoots.map((r) => r.replaceAll("\\", "/"))].map(
@@ -1111,7 +1143,7 @@ function limitsSummary() {
     // when files are exposed (claude-code.mjs). Codex is additionally
     // sandboxed read-only rather than execution-free, so do not advertise
     // "no execution".
-    consultant_permissions: "web search/browse and reading local files allowed; the consultant starts in an empty working directory and is not told where your repository is. context.expose_paths copies the files or directories it names read-only into that working directory, but that is not a read boundary: apart from the protected credential paths, Codex, Antigravity and OpenCode can read any file your account can, and so can Claude Code when nothing is exposed; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
+    consultant_permissions: "web search/browse and reading local files allowed; the consultant starts in an empty working directory and is not told where your repository is. context.expose_paths copies the files or directories it names read-only into that working directory, but that is not a read boundary: apart from the protected credential paths (subject to the gaps recorded in boundary), Codex, Antigravity and OpenCode can read any file your account can, and so can Claude Code when nothing is exposed; file edits, network access, MCP tools and further consultations denied; the Codex consultant additionally has a read-only shell"
   };
 }
 var CONFIG_HOME, CONFIG_PATH, configError, CONFIG, BUILT, FROM, LOCAL, usable, cfgCli, cfgServer, num, limit, str, CALLER_ALIASES, CALLER_INPUTS, MODES, VERDICTS, STANCES, binFor, disabledNote, isEnabled, CODEX_BIN, CLAUDE_BIN, AGY_BIN, OPENCODE_BIN, extras, POLICY, PROTECTED_HOME_PATHS, PROTECTED_SEVERALLY_PATHS, PROTECTED_FILE_NAMES, escapeRe, PATHS_CASE_INSENSITIVE, artifactKinds;
@@ -36592,6 +36624,7 @@ function parseRequest(raw, { isFollowup = false, parentMode = null, groupFollowu
     /** @type {DraftRequest} */
     parsed.data
   );
+  if (!req.question) throw new RequestError("question is required unless retry_of replays a failed job", "invalid_request");
   const hoist = (k) => {
     const inner = req.context[k];
     if (inner === void 0) return;
@@ -36792,7 +36825,7 @@ var init_schema = __esm({
       // round, for a brief that must not leave the machine through a URL. The
       // consultant still reads the brief and the disk; it reaches nothing else.
       network: external_exports.enum(NETWORK_MODES).optional(),
-      question: trimmed(L.questionMax, "question"),
+      question: trimmed(L.questionMax, "question").optional(),
       // Optional: most consultations state what they are after in the question
       // itself, and a second field that repeats it is friction, not information.
       objective: trimmed(L.objectiveMax, "objective").nullish(),
@@ -36809,7 +36842,9 @@ var init_schema = __esm({
         expected: external_exports.enum(STANCES).describe("the bottom line you expect to come back"),
         worry: trimmed(2e3, "prediction.worry").describe("the one thing you are most worried about, in a sentence")
       }).strict().nullish(),
-      followup_to: external_exports.string().trim().max(80).nullish()
+      followup_to: external_exports.string().trim().max(80).nullish(),
+      // A failed job only, replayed by JobManager from its saved inputs.
+      retry_of: trimmed(80, "retry_of").optional()
     }).strict();
     RequestError = class extends Error {
       /**
@@ -37557,10 +37592,11 @@ function renderExposeManifest(manifest) {
   ].join("\n");
 }
 function renderRound(p) {
-  const tag = (id2) => `r${p.round}.${id2}`;
+  const tag = (id2) => `${p.source_job_id ?? `r${p.round}`}.${id2}`;
   const verdict = (x) => x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ""}` : "";
   const header = [
     `### Round ${p.round} (${p.mode})`,
+    p.source_job_id ? `Earlier retry context from job ${p.source_job_id}; point IDs use that job's prefix.` : null,
     `Question asked: ${clip(p.question, 1200)}`,
     `Your answer, summarised: ${clip(p.summary, 8e3)}`,
     p.stance ? `Your stance: ${p.stance}` : null,
@@ -38639,9 +38675,15 @@ import path7 from "node:path";
 function filesystemPermissions() {
   fs5.mkdirSync(path7.join(POLICY.home, "homes"), { recursive: true, mode: 448 });
   const codexHome = path7.join(os2.homedir(), ".codex").replaceAll("\\", "/");
+  let executable = findCommand(POLICY.clis.codex.cli);
+  try {
+    if (executable) executable = fs5.realpathSync.native(executable).replaceAll("\\", "/");
+  } catch {
+  }
   const denied = protectedRoots().flatMap((p) => {
-    if (p === codexHome)
-      return listDir(codexHome).filter((n) => n !== "packages").map((n) => `${codexHome}/${n}`);
+    const executableEntry = executable?.startsWith(`${p}/`) ? executable.slice(p.length + 1).split("/")[0] : null;
+    if (p === codexHome || executableEntry)
+      return listDir(p).filter((n) => n !== (executableEntry ?? "packages")).map((n) => `${p}/${n}`);
     const star = p.indexOf("/*/");
     if (star === -1) return [p];
     const [parent, rest] = [p.slice(0, star), p.slice(star + 3)];
@@ -38828,7 +38870,7 @@ function boundary({ args }) {
     web: args.includes("tools.web_search=true"),
     writes: false,
     mcp: false,
-    protected_paths: args.some((a) => a.startsWith(`permissions.${PROFILE}.filesystem=`)) ? "denied by path (permission profile), as the paths stood at launch: ~/.codex entries other than packages/, and legacy job homes, created later are not covered; file names such as .env anywhere are not; on Linux a protected file replaced by rename during the run is readable" : "not enforced",
+    protected_paths: args.some((a) => a.startsWith(`permissions.${PROFILE}.filesystem=`)) ? "denied by path (permission profile), including recognized configured credential locations; ~/.codex and protected roots containing the CLI executable are listed at launch with the executable entry (normally packages/) left readable; new entries there and later legacy job homes are not covered; file names such as .env anywhere are not denied; on Linux an individually denied file replaced by rename during the run is readable" : "not enforced",
     tools: null
   };
 }
@@ -38837,6 +38879,7 @@ var init_codex = __esm({
   "src/adapters/codex.mjs"() {
     "use strict";
     init_policy();
+    init_platform();
     init_failures();
     FORBIDDEN_FLAGS = [
       "--dangerously-bypass-approvals-and-sandbox",
@@ -39460,6 +39503,17 @@ import fs8 from "node:fs";
 import path10 from "node:path";
 import crypto3 from "node:crypto";
 import { createRequire as sqliteRequire } from "node:module";
+function credentialRecoveryStatus() {
+  return {
+    available: DatabaseSync !== null,
+    detail: DatabaseSync ? "available (node:sqlite)" : "unavailable (node:sqlite is not available); update Node.js to a current supported release for OpenCode 2.x credential recovery; normal CLI login is still allowed"
+  };
+}
+function credentialRecoveryUnavailableReason(sandbox) {
+  if (DatabaseSync || typeof sandbox.root !== "string" || !fs8.existsSync(path10.join(sandbox.root, ".local", "share", "opencode", "opencode.db")))
+    return null;
+  return `OpenCode credential recovery ${credentialRecoveryStatus().detail}`;
+}
 function readRules(workdir) {
   const roots = protectedRoots();
   const paths = new Set(roots);
@@ -39720,6 +39774,11 @@ function recoverAuthFailure({ interpreted, sandbox, model }) {
   if (typeof model !== "string" || !model.includes("/")) return false;
   const provider = model.slice(0, model.indexOf("/"));
   if (!provider) return false;
+  const unavailable = sandbox && credentialRecoveryUnavailableReason(sandbox);
+  if (unavailable) {
+    interpreted.message = `${interpreted.message ?? "Model unavailable"}; ${unavailable}`;
+    return false;
+  }
   return typeof sandbox?.seed === "function" ? sandbox.seed(provider) : false;
 }
 function buildInvocation4({ consultant }) {
@@ -39930,6 +39989,7 @@ var init_opencode = __esm({
     init_policy();
     init_failures();
     init_platform();
+    init_opencode_sandbox();
     init_opencode_sandbox();
     FORBIDDEN_FLAGS4 = [
       "--auto",
@@ -40357,6 +40417,7 @@ function compactBrief(view, detail) {
   if (detail === "full" || !view.brief) return view;
   const json2 = JSON.stringify(view.brief);
   const ex = view.brief.expose_paths;
+  const gaps = ex?.skipped?.some((x) => ["gone", "masked", "symlink", "protected"].includes(x.reason));
   return {
     ...view,
     brief: {
@@ -40364,7 +40425,14 @@ function compactBrief(view, detail) {
       sha256: crypto4.createHash("sha256").update(json2).digest("hex"),
       // Under the severally home (~/.severally unless the operator moved it).
       history_file: path11.relative(POLICY.home, roundPath(view.chain_id, view.round)),
-      exposed: ex ? { ...ex.totals, skipped: tally((ex.skipped ?? []).map((x) => x.reason)) } : null,
+      exposed: ex ? {
+        ...ex.totals,
+        skipped: tally((ex.skipped ?? []).map((x) => x.reason)),
+        changed: ex.entries.filter((e) => e.changed_since_parent).length,
+        ...gaps ? {
+          action_needed: 'Missing material remains unverified. Inspect detail: "full" for skipped paths and select safe replacement paths; for a symlink select its actual target only if it is permitted. Protected paths stay excluded.'
+        } : {}
+      } : null,
       full_with: `consult_get({ job_id: "${view.job_id}", detail: "full" }) or consult_export`
     }
   };
@@ -40378,16 +40446,17 @@ function nextStep(job) {
     const close = open2 > 0 ? ` Before the final report, write what checking showed: consult_record({ job_id: "${job.job_id}", entries: [{ id, verdict, effect }] }) -- ${open2} point(s) still carry no verdict; record the checked points, and leave the rest unverified without another consultation.` : "";
     return (left > 0 ? `check the grounds behind the points that matter, run the one check that would change the decision, then either decide, or spend one of your ${left} remaining round(s) on the specific divergences (followup_to: "${job.job_id}").` : "rounds exhausted: decide with what you have.") + close;
   }
+  const retry = `consult_start({ request: { retry_of: "${job.job_id}" } })`;
   if (job.failure?.kind === "timeout" || job.failure?.kind === "cli_error")
-    return "retriable: narrow the brief and start a new consultation";
+    return `retry the saved inputs with ${retry}, or narrow the brief and start a new consultation`;
   if (job.failure?.kind === "interrupted")
-    return "the severally process running it exited before the consultant answered; start the consultation again if you still need it";
+    return `the severally process running it exited before the consultant answered; retry the saved inputs with ${retry} if still needed`;
   if (job.failure?.kind === "rate_limited")
-    return "the consultant was rate-limited and the server already re-ran it (see retries); try again in a few minutes, or proceed on your own judgement";
+    return `the consultant was rate-limited and the server already re-ran it (see retries); wait before using ${retry}, or proceed on your own judgement`;
   if (job.failure?.kind === "usage_limit" || job.failure?.kind === "auth")
-    return "not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota first";
+    return `not a consultation outcome: the consultant never answered. Proceed on your own judgement, or fix the credentials/quota before explicitly retrying with ${retry}; do not loop retries`;
   if (job.failure?.kind === "invalid_output")
-    return "the consultant answered but not in the required shape; retry once with a shorter brief before giving up";
+    return `the consultant answered but not in the required shape; retry once with ${retry}, or start a new consultation with a shorter brief`;
   return "proceed on your own judgement and note that no peer input was obtained";
 }
 function extraArgsProblem(target, adapterArgs, extra) {
@@ -40570,6 +40639,8 @@ var init_jobs = __esm({
           failure: job.failure,
           references_count: job.result ? job.result.references.length : null,
           followup_to: job.followup_to,
+          retry_of: job.retry_of ?? null,
+          ...job.retry_context?.length ? { retry_context: job.retry_context } : {},
           rounds_used: job.round,
           rounds_remaining: Math.max(0, POLICY.maxRounds - job.round)
         };
@@ -40625,8 +40696,16 @@ var init_jobs = __esm({
       // job_id and group_id can still be followed up and recorded against. The
       // index only picks and orders; each row shown is read from its round, which
       // holds the verdicts written since. Running jobs keep their runtime state.
-      /** @param {{limit?: number}} [opts] */
-      list({ limit: limit2 = 20 } = {}) {
+      /** @param {{limit?: number | undefined, target?: string | undefined, question?: string | undefined, chain_id?: string | undefined}} [opts] */
+      list({ limit: limit2 = 20, target, question, chain_id } = {}) {
+        if (!Number.isInteger(limit2) || limit2 < 1 || limit2 > 100) throw new RequestError("limit must be an integer from 1 to 100");
+        for (const [key, value] of Object.entries({ target, question, chain_id })) {
+          if (value !== void 0 && (typeof value !== "string" || !value.trim() || value.length > (key === "question" ? POLICY.input.questionMax : 120)))
+            throw new RequestError(`${key} must be a nonempty string within the input limit`);
+        }
+        if (chain_id !== void 0 && !/^chain_[0-9a-f]{12}$/.test(chain_id))
+          throw new RequestError("chain_id must be a consultation chain ID");
+        const needle = question?.trim().toLowerCase();
         const candidates = [];
         const seen = /* @__PURE__ */ new Set();
         for (const jid of this.order) {
@@ -40650,13 +40729,27 @@ var init_jobs = __esm({
             seen.add(row.job_id);
             candidates.push({ at: row.created_at ?? "", load: () => loadRoundAt(row) });
           }
+        let targetName;
+        if (target !== void 0) {
+          const exact = POLICY.consultants.find((c) => c.name === target.trim());
+          const historical = !exact && candidates.some((candidate) => candidate.load()?.target === target.trim());
+          const resolved = exact ? { consultant: exact } : resolveConsultant(target, POLICY.consultants, POLICY.ranking);
+          if (historical) targetName = target.trim();
+          else if (resolved.none) throw new RequestError(`no consultant answers to ${JSON.stringify(target)}`, "unknown_target");
+          else if (resolved.ambiguous)
+            throw new RequestError(`target ${JSON.stringify(target)} is ambiguous; name one consultant`, "target_ambiguous");
+          else targetName = resolved.consultant.name;
+        }
         const picked = [];
         for (const x of candidates.sort((p, q) => q.at < p.at ? -1 : q.at > p.at ? 1 : 0)) {
           if (picked.length >= limit2) break;
           const j = x.load();
-          if (j) picked.push(j);
+          if (j && (!targetName || j.target === targetName) && (!chain_id || j.chain_id === chain_id) && (!needle || j.question.toLowerCase().includes(needle)))
+            picked.push(j);
         }
         return picked.map((j) => {
+          const rounds = this.#chainRounds(j.chain_id);
+          const completed = rounds.filter((r) => r.status === "completed").sort((a, b) => b.round - a.round)[0];
           return {
             job_id: j.job_id,
             group_id: j.group_id ?? null,
@@ -40667,6 +40760,10 @@ var init_jobs = __esm({
             model: j.model,
             mode: j.mode,
             status: j.status,
+            retry_of: j.retry_of ?? null,
+            question: j.question.slice(0, 200),
+            latest_completed_job_id: completed?.job_id ?? null,
+            rounds_remaining: Math.max(0, POLICY.maxRounds - Math.max(j.round, ...rounds.map((r) => r.round))),
             failure_kind: j.failure?.kind ?? null,
             created_at: j.created_at,
             duration_ms: j.duration_ms,
@@ -40726,6 +40823,45 @@ var init_jobs = __esm({
         }
         if (configProblem())
           throw new RequestError(`the severally config file needs fixing first: ${configProblem()}`, "config_invalid");
+        let retryFrom = null;
+        if (rawRequest?.retry_of !== void 0) {
+          const validated = requestSchema.safeParse(rawRequest);
+          const emptyContext = (value) => value === void 0 || value !== null && typeof value === "object" && !Array.isArray(value) && Object.entries(value).every(([k, v]) => k === "expose_paths" && Array.isArray(v) && v.length === 0);
+          if (!validated.success || Object.keys(rawRequest).some((k) => k !== "retry_of" && !(k === "context" && emptyContext(rawRequest.context))) || typeof rawRequest.retry_of !== "string" || !rawRequest.retry_of.trim().startsWith("job_"))
+            throw new RequestError("retry_of takes one failed job_id and no question, target, follow-up or input overrides");
+          const jobId = rawRequest.retry_of.trim();
+          const live = this.jobs.get(jobId);
+          retryFrom = live ? this.#refreshRound(live) : this.#fromDisk(jobId);
+          if (!retryFrom) throw new RequestError(`retry_of references unknown job "${jobId}"`, "unknown_job");
+          if (retryFrom.status !== "failed")
+            throw new RequestError(
+              `retry_of job "${jobId}" is ${retryFrom.status}; only a failed consultation can be retried`,
+              "retry_not_failed"
+            );
+          if (!retryFrom.brief) throw new RequestError(`job "${jobId}" has no saved brief to replay`, "retry_inputs_missing");
+          const configured = consultantByName(retryFrom.target);
+          if (!configured || configured.cli !== retryFrom.cli || configured.model !== retryFrom.model)
+            throw new RequestError(
+              `job "${jobId}" ran ${retryFrom.cli}/${retryFrom.model}; its configured consultant has changed; start a new consultation explicitly`,
+              "retry_target_mismatch"
+            );
+          rawRequest = inherit(
+            {
+              retry_of: jobId,
+              target: retryFrom.target,
+              question: retryFrom.question,
+              mode: retryFrom.mode,
+              caller: retryFrom.caller ?? null,
+              caller_model: retryFrom.caller_model ?? null,
+              initiator: retryFrom.initiator ?? null
+            },
+            retryFrom
+          );
+          rawRequest.context = {
+            ...rawRequest.context,
+            artifacts: retryFrom.brief.artifacts.map((a) => Object.fromEntries(Object.entries(a).filter(([, v]) => v != null)))
+          };
+        }
         const followupTo = typeof rawRequest?.followup_to === "string" && rawRequest.followup_to.trim() ? rawRequest.followup_to.trim() : null;
         let parent = null;
         let fromGroup = null;
@@ -40764,8 +40900,8 @@ var init_jobs = __esm({
         const inheritFrom = first ? first.groupMember ?? first.parent : parent;
         if (inheritFrom) rawRequest = inherit(rawRequest, inheritFrom);
         const req = parseRequest(rawRequest, {
-          isFollowup: Boolean(parent || fromGroup),
-          parentMode: parent?.mode ?? fromGroup?.group.mode ?? null,
+          isFollowup: Boolean(parent || fromGroup || retryFrom),
+          parentMode: parent?.mode ?? fromGroup?.group.mode ?? retryFrom?.mode ?? null,
           groupFollowup: Boolean(fromGroup)
         });
         if (POLICY.network === "off") req.network = "off";
@@ -40820,7 +40956,7 @@ var init_jobs = __esm({
         }
         try {
           const links = fromGroup?.links ?? req.targets.map(() => ({ parent, round }));
-          return this.#admitted(req, links, seats, fromGroup);
+          return this.#admitted(req, links, seats, fromGroup, retryFrom);
         } catch (err) {
           for (const seat of seats) if (!this.jobs.has(seat.job_id)) releaseSeat(seat.job_id);
           throw err;
@@ -40878,14 +41014,15 @@ var init_jobs = __esm({
        * @param {Array<{parent: Round | null, round: number, groupMember?: Round}>} links
        * @param {Seat[]} seats
        * @param {GroupParents | null} [fromGroup]
+       * @param {Round | null} [retryFrom]
        */
-      #admitted(req, links, seats, fromGroup = null) {
+      #admitted(req, links, seats, fromGroup = null, retryFrom = null) {
         const first = links[0];
-        const parent = first?.groupMember ?? first?.parent;
+        const parent = retryFrom ?? first?.groupMember ?? first?.parent;
         const groupId = id("group");
         let exposeManifest = null;
         const explicit = req.context.expose_from_parent === true;
-        const implied = req.context.expose_from_parent === void 0 && links.every((l) => l.parent && sameSeat(l.parent, consultantByName(l.parent.target)));
+        const implied = req.context.expose_from_parent === void 0 && (Boolean(retryFrom) || links.every((l) => l.parent && sameSeat(l.parent, consultantByName(l.parent.target))));
         const parentEntries = explicit || implied ? parent?.brief?.expose_paths?.entries ?? [] : [];
         if (explicit && parentEntries.length === 0) {
           throw new RequestError(
@@ -40983,6 +41120,10 @@ var init_jobs = __esm({
             tool_calls: null,
             tool_inputs: null,
             followup_to: from?.job_id ?? null,
+            retry_of: retryFrom?.job_id ?? null,
+            ...retryFrom ? {
+              retry_context: this.#historyRounds(retryFrom.chain_id).filter((r) => r.status === "completed" && (r.chain_id !== retryFrom.chain_id || r.round < retryFrom.round)).map((r) => r.job_id)
+            } : {},
             status: "queued",
             // What this consultant is: the CLI it runs on, the model and its
             // lineage, as the operator defined it.
@@ -41039,6 +41180,7 @@ var init_jobs = __esm({
           group_id: groupId,
           ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
           ...fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {},
+          ...retryFrom ? { retry_of: retryFrom.job_id } : {},
           ...parentEntries.length && exposeManifest ? { exposed_from_parent: inheritedSummary(exposeManifest) } : {},
           mode: req.mode,
           // Counted, not refused: a brief of facts alone is a legitimate
@@ -41102,10 +41244,10 @@ var init_jobs = __esm({
        * @returns {PriorRound[]}
        */
       #chainHistory(chainId) {
-        return this.#chainRounds(chainId).filter(
+        return this.#historyRounds(chainId).filter(
           /** @returns {j is Round & {result: ConsultResult}} */
           (j) => j.status === "completed" && Boolean(j.result)
-        ).sort((a, b) => a.round - b.round).map((j) => {
+        ).map((j) => {
           const verdicts = new Map((j.record?.entries ?? []).map((e) => [e.id, e]));
           const ordered = (items, shape) => [...items.filter((x) => verdicts.has(x.id)), ...items.filter((x) => !verdicts.has(x.id))].map((x) => ({
             id: x.id,
@@ -41130,6 +41272,7 @@ var init_jobs = __esm({
           omitted += j.result.decision_changers.length - decisionChangers.length + j.result.remaining_disagreements.length - disagreements.length;
           return {
             round: j.round,
+            ...j.chain_id !== chainId ? { source_job_id: j.job_id } : {},
             mode: j.mode,
             question: j.question,
             summary: j.result.summary,
@@ -41143,6 +41286,18 @@ var init_jobs = __esm({
             omitted_count: omitted
           };
         });
+      }
+      // A retry has its own round budget and chain. Its completed earlier context
+      // remains linked by job ID, so restart and later follow-ups can recover it.
+      /** @param {string} chainId @returns {Round[]} */
+      #historyRounds(chainId) {
+        const rounds = this.#chainRounds(chainId).sort((a, b) => a.round - b.round);
+        const ids = [...new Set(rounds.flatMap((r) => r.retry_context ?? []))];
+        const prior = ids.map((jid) => {
+          const cached2 = this.jobs.get(jid);
+          return cached2 ? this.#refreshRound(cached2) : loadRound(jid);
+        }).filter((r) => r !== null && r !== void 0);
+        return [...prior, ...rounds];
       }
       #evict() {
         while (this.order.length > POLICY.maxJobsRetained) {
@@ -41861,6 +42016,24 @@ function roundsOf(chainId) {
   }
   return names.filter((n) => /^round-\d+\.json$/.test(n)).sort().map((n) => readJson(path12.join(dir, n))).filter(Boolean);
 }
+function retryRecords(rounds) {
+  const seen = new Set(rounds.map((round) => round.job_id));
+  const linked = [];
+  const missing = [];
+  const visit2 = (round) => {
+    for (const jobId of [...round.retry_context ?? [], ...round.retry_of ? [round.retry_of] : []]) {
+      if (seen.has(jobId)) continue;
+      seen.add(jobId);
+      const source = loadRound(jobId);
+      if (source) {
+        visit2(source);
+        linked.push(source);
+      } else missing.push(jobId);
+    }
+  };
+  for (const round of rounds) visit2(round);
+  return { linked, missing };
+}
 function chainsOfGroup(groupId) {
   const group = readJson(path12.join(historyDir(), "groups", `${groupId}.json`));
   if (!group) throw new ExportError(`no fan-out with group_id "${groupId}" in ~/.severally/history`, "unknown_group");
@@ -41943,6 +42116,41 @@ function verdictLine(record2, id2) {
   const tail = [entry.effect, entry.note ? `(${entry.note})` : null].filter(Boolean).join(" ");
   return `  - checked: ${entry.verdict}${tail ? ` -- ${tail}` : ""}`;
 }
+function verificationSummary(rounds) {
+  const lines = [
+    "## Verification summary",
+    "",
+    "Verdicts describe verification; effects describe the lead's decision. See each linked point for the full answer.",
+    ""
+  ];
+  let unverified = 0;
+  let checked = 0;
+  for (const round of rounds) {
+    const r = round.result;
+    if (!r) continue;
+    const points = [...r.findings, ...r.unknowns, ...r.next_checks];
+    for (const point of points) {
+      const entry = round.record?.entries.find((e) => e.id === point.id);
+      if (!entry || !["confirmed", "not_applicable"].includes(entry.verdict)) {
+        unverified += 1;
+        continue;
+      }
+      checked += 1;
+      lines.push(
+        `- [${round.job_id} / ${point.id}](#${round.job_id}-${point.id}) \u2014 ${round.target} (${round.model ?? "model not reported"}), round ${round.round}: ${entry.verdict}`
+      );
+      if (entry.effect) lines.push(`  - effect: ${entry.effect}`);
+      if (entry.note) lines.push(`  - evidence: ${entry.note}`);
+    }
+  }
+  if (!checked) lines.push("No verified points recorded.");
+  lines.push(
+    "",
+    `Unverified points: ${unverified} (unrecorded, unverified or unverifiable). Full points and records follow.`,
+    ""
+  );
+  return lines;
+}
 function answerSection(round) {
   const r = round.result;
   if (!r) {
@@ -41959,6 +42167,7 @@ function answerSection(round) {
   if (r.findings.length) {
     out.push("**Findings**", "");
     for (const f of r.findings) {
+      out.push(`<a id="${round.job_id}-${f.id}"></a>`, "");
       out.push(`- **${f.id}** [${f.severity ?? "unrated"}] ${f.point}`);
       if (f.grounds) out.push(`  - grounds: ${f.grounds}`);
       if (f.impact) out.push(`  - impact: ${f.impact}`);
@@ -41978,6 +42187,7 @@ function answerSection(round) {
   if (r.unknowns.length) {
     out.push("**Unknowns**", "");
     for (const u of r.unknowns) {
+      out.push(`<a id="${round.job_id}-${u.id}"></a>`, "");
       out.push(`- **${u.id}** ${u.item}`);
       if (u.why_it_matters) out.push(`  - matters because: ${u.why_it_matters}`);
       if (u.how_to_obtain) out.push(`  - obtain by: ${u.how_to_obtain}`);
@@ -41993,6 +42203,7 @@ function answerSection(round) {
   if (r.next_checks.length) {
     out.push("**Checks proposed**", "");
     for (const c of r.next_checks) {
+      out.push(`<a id="${round.job_id}-${c.id}"></a>`, "");
       out.push(`- **${c.id}** ${c.check}`);
       if (c.method) out.push(`  - method: ${c.method}`);
       if (c.expected_signal) out.push(`  - expected signal: ${c.expected_signal}`);
@@ -42022,8 +42233,12 @@ function roundSection(round, previousBrief) {
     `## Round ${round.round} -- ${round.target}${round.model ? ` (${round.model})` : ""}, mode ${round.mode}`,
     "",
     `- asked: ${round.created_at}${secs ? `, took ${secs}s` : ""}`,
-    `- status: ${round.status}`
+    `- status: ${round.status}`,
+    `- job_id: \`${round.job_id}\``,
+    `- chain_id: \`${round.chain_id}\``
   ];
+  if (round.retry_of) head.push(`- retry_of: \`${round.retry_of}\``);
+  if (round.retry_context?.length) head.push(`- retry_context: ${round.retry_context.map((id2) => `\`${id2}\``).join(", ")}`);
   if (round.result) {
     head.push(`- stance as declared: ${round.result.stance ?? "not declared"}`);
     head.push(
@@ -42065,6 +42280,8 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     throw new ExportError(`no consultation recorded under "${chainId ?? groupId}" in ~/.severally/history`, "unknown_chain");
   }
   const total = perChain.reduce((n, c) => n + c.rounds.length, 0);
+  const requestedRounds = perChain.flatMap((chain) => chain.rounds);
+  const context = retryRecords(requestedRounds);
   const lines = [
     `# Consultation record: ${first.question}`,
     "",
@@ -42077,9 +42294,25 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     "ways, both are printed and the difference is left standing.",
     ""
   ];
+  lines.push(...verificationSummary([...requestedRounds, ...context.linked]));
   let previousBrief = null;
   for (const chain of perChain) {
     for (const round of chain.rounds) {
+      lines.push(...roundSection(round, previousBrief));
+      if (round.brief) previousBrief = round.brief;
+    }
+  }
+  if (context.linked.length || context.missing.length) {
+    lines.push(
+      "## Earlier retry records",
+      "",
+      "Historical source failures and completed context linked by the retry, not new consultations.",
+      "These are the currently retained records, including later verdict updates. Prior context may have been shortened when sent.",
+      ""
+    );
+    for (const jobId of context.missing) lines.push(`- Source job \`${jobId}\` is no longer available in retained history.`);
+    lines.push("");
+    for (const round of context.linked) {
       lines.push(...roundSection(round, previousBrief));
       if (round.brief) previousBrief = round.brief;
     }
@@ -42088,7 +42321,8 @@ function exportChain({ chain_id: chainId, group_id: groupId } = {}) {
     markdown: `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}
 `,
     rounds: total,
-    chain_ids: chainIds
+    chain_ids: chainIds,
+    ...context.linked.length ? { context_rounds: context.linked.length } : {}
   };
 }
 var ExportError, historyDir, bullets2;
@@ -42097,6 +42331,7 @@ var init_export = __esm({
     "use strict";
     init_policy();
     init_expose_paths();
+    init_store();
     ExportError = class extends Error {
       /**
        * @param {string} message
@@ -42190,7 +42425,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Fetch a consultation's state or answer. It waits up to ${DEFAULT_WAIT_MS} ms (under this client's tool-call timeout) for it to finish; wait_ms sets another wait, 0 answers at once. While waiting it sends a progress notification every 15 s when asked; a cancelled call stops waiting. Most take one to ten minutes: call again while status is running. completed carries the structured answer; failed carries failure.kind (timeout, auth, usage_limit, rate_limited, model_unavailable, invalid_output, cli_error, spawn_error, interrupted), meaning no advice was obtained -- not the same as advice with thin evidence (quality.evidence_basis, quality.caveat). group_id fetches a fan-out: each member's status, failure and job_id, and \`comparison.by_target\` with each actual model, stance, summary and finding (id and grounds), cut where \`truncated\` says so. ids: ["f2", "u1"] with a job_id returns just those points, whole, with their grounds and your verdict (\`recorded\`). A finished consultation names its brief rather than repeating it; detail: "full" returns the brief and the question whole; a fan-out member's whole answer is consult_get({ job_id }). Before your final report, check one point that could change the decision, then save the outcome with consult_record({ job_id, entries: [{ id, verdict, note, effect }] }). Record an actual local check as confirmed or not_applicable; a point only read stays unverified, and a check you cannot run is unverifiable. Read the grounds already shown; do not fetch them again when whole. For a fan-out fetch deciding points with ids when their grounds or details are missing or shortened, or a member's job_id for its whole answer. Record checked points in one records batch. Report each consultant's stance and actual model, your check, recommendation and unchecked points.`,
+      description: `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. A group includes statuses and comparison.by_target: actual model, stance, points/grounds and truncation markers. Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; job_id alone gets one whole answer. detail: full adds the brief/question. Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -42258,7 +42493,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Cancel a running consultation",
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
-      description: "Stop a running consultation and kill the consultant process and everything it spawned. Pass group_id instead of job_id to stop every consultant in a fan-out. One another severally server runs is asked to stop, and that server stops it within a second.",
+      description: "Stop a running consultation (job_id) or fan-out (group_id). Other severally servers receive a stop request. The process tree is signalled where the platform permits; on Windows descendants may survive if the CLI already exited.",
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional()
@@ -42286,7 +42521,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Record what checking a point showed",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      description: "Write your verdict on points of an answer after checking them: ids f1 ... (findings), u1 ... (unknowns), c1 ... (next_checks). verdict is what checking showed -- confirmed (holds here), not_applicable (true in general, not here), unverifiable, unverified (not checked yet; say why in effect) -- not whether you adopted it. effect is what it changed about your decision, note the evidence. A follow-up shows the consultant each verdict and effect (credential-masked), never the note. The same id again replaces the entry. Saved beside the answer in ~/.severally/history, so a job from an earlier session can be recorded against; the server never infers a verdict. Answers with counts; consult_get reads the entries back. reflection records what the answer added over your consult_start prediction. records: [{ job_id, entries, reflection? }, ...] records every member of a fan-out in one call; all are checked first and nothing is written if any job or id is wrong. A job whose write fails is listed under results with its error.",
+      description: "Save checks against point IDs from consult_get: f1 (finding), u1 (unknown), c1 (next check). verdict = confirmed/not_applicable/unverifiable/unverified; effect = decision impact; note = checked evidence. Confirmed is not adoption. Record only checked points; same ID replaces its entry. Use records: [{ job_id, entries, reflection? }, ...] for one fan-out batch. Invalid jobs/IDs prevent every write; write failures appear per job in results. Saved history survives restart; only verdict/effect go to follow-ups. Optional reflection describes what the answer added over your prediction.",
       inputSchema: external_exports.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),
@@ -42323,7 +42558,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Export a consultation as a record to commit",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: "Render one consultation (chain_id) or fan-out (group_id) as Markdown: the brief as sent, each answer as it came back, and the verdicts on each point, unchecked ones marked. Nothing is summarised or scored. The text is returned, not written: put it beside the code the decision is about. Reads the history, so an earlier session's consultation can be exported.",
+      description: "Render one consultation (chain_id) or fan-out (group_id) as Markdown: the brief as sent, each answer as it came back, and verdicts on each point. Starts with verified points/effects/evidence and unverified count; no inferred adoption or scoring. The text is returned, not written: put it beside the code the decision is about. Reads the history, so an earlier session's consultation can be exported.",
       inputSchema: external_exports.object({
         chain_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional()
@@ -42343,14 +42578,31 @@ function createServer(manager = new JobManager()) {
     {
       title: "List recent consultations",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, status, summary and verdicts; and usage_totals, the tokens (and cost) each consultant reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
-      inputSchema: external_exports.object({ limit: external_exports.number().int().min(1).max(100).optional() })
+      description: "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, status, summary, verdicts, latest_completed_job_id and rounds_remaining. Optional target, question (case-insensitive substring), chain_id filters apply before limit. usage_totals is the tokens/cost reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
+      inputSchema: external_exports.object({
+        limit: external_exports.number().int().min(1).max(100).optional(),
+        target: external_exports.string().trim().min(1).max(120).optional(),
+        question: external_exports.string().trim().min(1).max(4e3).optional(),
+        chain_id: external_exports.string().trim().min(1).max(80).optional()
+      })
     },
-    async ({ limit: limit2 }) => ok({
-      jobs: manager.list({ limit: limit2 ?? 20 }),
-      usage_totals: manager.usageTotals(),
-      limits: limitsSummary()
-    })
+    async ({ limit: limit2, target, question, chain_id }) => {
+      try {
+        return ok({
+          jobs: manager.list({
+            limit: limit2 ?? 20,
+            ...target === void 0 ? {} : { target },
+            ...question === void 0 ? {} : { question },
+            ...chain_id === void 0 ? {} : { chain_id }
+          }),
+          usage_totals: manager.usageTotals(),
+          limits: limitsSummary()
+        });
+      } catch (err) {
+        if (err instanceof RequestError) return fail({ error: err.code, message: err.message });
+        return fail({ error: "internal_error", message: errorMessage2(err) });
+      }
+    }
   );
   return { server, manager };
 }
@@ -42396,7 +42648,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.8.1";
+    SEVERALLY_VERSION = "2.9.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42409,54 +42661,30 @@ var init_server = __esm({
       }
       return false;
     };
-    SERVER_INSTRUCTIONS = `severally lets you get a genuinely independent opinion from another coding agent:
-Codex, Claude Code, Antigravity or OpenCode, each on the models the operator set up as consultants.
-Each consultation runs in a fresh child session of that CLI: it can read files and search and browse the web;
-it cannot edit files, change anything on the system (Codex may run read-only commands), load MCP tools, start
-other agents or consult anyone else. The server sends the brief and explicitly exposed files without your
-conversation history; the CLI may also read other files within its permission boundary.
-
-Use it for decisions that deserve a second mind: an architectural or irreversible choice, two options that
-look genuinely close, or an investigation that has stalled. Do not use it for routine edits.
-
-Flow: consult_start -> consult_get until done -> check one decision-changing point locally -> consult_record
-with the check and its effect -> report to the user. Use consult_cancel to stop a consultation.
-Budget is 1 initial round plus at most ${POLICY.maxRounds - 1} follow-ups per chain, and follow-ups should be
-spent only on the specific points where you and the consultant actually diverge. Agreement is not evidence:
-check the grounds behind a point before you adopt it, and record what you adopted, rejected or held, and why.`;
-    startDescription = `Start a consultation with another agent (or several, via targets). Returns a job_id (or a group_id for several) at once; the work runs in the background.
-
-target: which consultant to ask. This machine can reach (name: CLI, model):
+    SERVER_INSTRUCTIONS = `Get independent advice from fresh Codex, Claude Code, Antigravity or OpenCode CLI sessions.
+Use for important decisions, close alternatives or stalled investigations, or when asked.
+Routine: consult_start -> consult_get until finished -> verify a deciding claim -> consult_record once -> report.
+Report each actual model, stance, point ID, grounds, your check and decision; retain differing conclusions.
+A failure is no advice. Agreement is not evidence; confirmed is verification, not adoption.
+The brief and exposed files reach each model. File read boundaries vary by CLI; see each answer's boundary.
+Writes, MCP and further agents are denied. Codex has a read-only shell. network: off disables web access.
+A chain permits ${POLICY.maxRounds} rounds; spend follow-ups on deciding divergences.`;
+    startDescription = `Start one consultant (target) or several (targets); returns job_id or group_id immediately.
+Available (name: CLI, model):
 ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`).join("\n") || "          (none -- no consultant CLI is installed)"}
-        Pass the word the user used: a name, a CLI ("codex", "agy"), a vendor or a model ("claude opus"). One
-        that fits several, unresolved by the operator's ranking, tier and version, is refused with the
-        candidates (target_ambiguous); one not listed is refused (target_unavailable). Your own CLI on a fresh
-        session is a valid consultant, marked same lineage.
-targets: several consultants, the same question (not with target, no duplicates); targets: ["all"] is every
-        consultant listed above. Every member gets the byte-identical brief (a follow-up adds its own earlier
-        rounds) and one group_id, for consult_get and consult_cancel. A fan-out over the concurrency cap is
-        refused before any member starts.
-followup_to: the job_id of the answer to continue, or a group_id to ask every member of that fan-out again
-        (each on its own chain; a member that cannot take one is skipped and listed). A follow-up needs only
-        followup_to and question: everything else is the earlier round's unless you pass it, and a value you pass,
-        even empty, replaces it. Its files are copied again as they are now, with any expose_paths you add;
-        context.expose_from_parent: false keeps them back. A follow-up cannot change the consultant.
-mode: optional, read from context when left out: no proposal is explore, a proposal is review, a proposal with
-        counterpoints is debate. review and debate need context.proposal (your plan and its reasoning); debate
-        also needs context.counterpoints (the other side's claims); explore refuses a proposal on round 1.
-context: optional when the question supplies the needed information. For code questions, attach files or a diff.
-        The consultant starts in an empty working directory and is not told where your repository is. Supply
-        additional material as facts, artifacts (not a file here: test output, a log), expose_paths (absolute
-        paths, copied read-only under ./workspace; a git work tree's
-        directory copies the files git lists; at most 20 entries, 500 files, 5 MB; symlinks and protected files
-        are skipped; text is credential-masked like the brief), expose_diff: { repo, base? } (the diff in the
-        brief, its files under ./workspace/repo/).
-network: "on" (default) or "off" (no web search or browsing for any consultant this round). Credential and
-        history paths are refused either way where the CLI can enforce it; each answer's \`boundary\` says what held.
-caller, caller_model: the CLI and model you run on (self-declared), for the same-vendor caveat and the record.
-initiator: "user" when the user asked for this; leave it out when you started it yourself.
-prediction: { expected, worry }, kept and never sent; it can only be written here, before the answer.
-Model, permissions, rounds, timeout and size caps are fixed by this server.`;
+Pass the user's name/CLI/vendor/model wording; target_ambiguous lists candidates, target_unavailable lists available ones.
+targets: ["all"] asks every available consultant, including your CLI (marked same lineage). Each gets an identical
+brief; one concurrency seat each. Model and limits are operator-owned.
+followup_to: completed job_id or group_id; only question is also needed. Inherits the prior inputs; explicit fields,
+even empty, replace them. Files are recopied in their current state; add expose_paths or set expose_from_parent: false.
+retry_of: failed job_id alone replays saved inputs in a new chain, with current files and a link to the failure.
+Use successful group answers first; retry only failed members after fixing auth/quota causes. No other request fields.
+mode defaults from context: facts = explore, proposal = review, proposal + counterpoints = debate.
+For code: expose_diff: { repo, base? } for changes, expose_paths: [absolute paths] for relevant callers, tests and config.
+Files are copied read-only, secrets masked; symlinks/protected paths skipped. Caps: 20 entries, 500 files, 5 MB.
+Inspect files_exposed and the manifest; missing premises stay unknown. Other context: facts, artifacts (logs/test output).
+network: on/off controls web access, not model submission or local reads; boundary states CLI-specific enforcement.
+caller/caller_model identify you; initiator: user only when asked. Optional prediction: { expected, worry } stays local.`;
     recordShape = {
       job_id: external_exports.string().min(1).describe("the job_id consult_get returned"),
       entries: external_exports.array(
@@ -42521,6 +42749,7 @@ function status() {
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : "ok"}`);
   for (const w of configWarnings()) lines.push(`  mistake (only that consultant or CLI is out of use): ${w}`);
   lines.push(`network: ${POLICY.network === "off" ? "off for every consultation (server.network)" : "per request"}`, "");
+  lines.push(`OpenCode credential recovery: ${credentialRecoveryStatus().detail}`, "");
   lines.push("consultants:");
   for (const c of POLICY.consultants) {
     lines.push(
@@ -42550,6 +42779,7 @@ var init_status = __esm({
     init_policy();
     init_server();
     init_platform();
+    init_opencode_sandbox();
     CLIENTS = [
       {
         label: "Claude Code",

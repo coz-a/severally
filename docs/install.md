@@ -23,6 +23,13 @@ you do not need all four. These official guides cover installation and authentic
 Open a new terminal after installation so the CLI is on `PATH`. severally uses the CLI's existing login;
 its installer prepares the server and client registration, not the consultant's account.
 
+OpenCode 2.x credential recovery also needs Node's optional `node:sqlite` module. severally detects whether it is
+available; some older Node 22 releases do not provide it without a flag. `severally-mcp status` reports this
+separately from login. If recovery is unavailable, update Node.js to a current supported release. Normal CLI
+login and consultations that do not need recovery remain allowed. An unavailable recovery is also reported
+beside the original model error when an OpenCode session database exists; it does not establish what caused
+that error. The minimum Node requirement remains 22.
+
 Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 
 - macOS/Linux: nothing about npm's global folder is required. The default (plugin mode, below) runs
@@ -32,10 +39,36 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 - Windows runs natively from PowerShell or Command Prompt; WSL is not required. CLIs are found through
   `PATH`/`PATHEXT` (`.exe`, `.cmd`, `.bat`, paths with spaces included).
 
+## Checking CLI compatibility after an update
+
+The ordinary `npm test` suite uses offline fixtures. These commands explicitly start real consultations and
+spend the selected CLI's quota; run them from a source checkout with the CLI already authenticated:
+
+```bash
+node scripts/doctor.mjs --target codex
+node scripts/live-check.mjs --target codex --mode review
+node scripts/live-check.mjs --target codex --mode sandbox
+node scripts/live-check.mjs --target codex --mode followup
+node scripts/live-check.mjs --target codex --mode cancel
+```
+
+Replace `codex` with one consultant's configured name, CLI, or model. `doctor` checks control-file reading and
+forbidden operations using synthetic canaries. `followup` starts a second round after the first succeeds;
+`cancel` requests cancellation after 500 ms. If the first round has already ended, cancellation is inconclusive.
+Job cancellation alone does not verify descendant-process cleanup, particularly after a Windows parent exits.
+
+Each doctor row includes an `evidence` object. `live-check` prints a `compatibility:` JSON record. The shared
+format records its schema version, timestamp, severally and CLI versions, OS and Node version, configured
+model/effort, launched model, and results for consultation, reading, forbidden operations, follow-up, and
+cancellation. Unexercised checks are `not_run`; a missing observed model or effort is `null`. Current job
+records do not independently establish the provider's effective model or effort, so these scripts leave those
+observations null. A successful launch or configured value is not evidence of an effective value. Keep the
+raw probe rows and relevant CLI events beside the record when investigating changed tools or event shapes.
+
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.8.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.9.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |

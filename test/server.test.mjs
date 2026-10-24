@@ -37,7 +37,7 @@ test("exposes the three protocol tools, the lead's record, and a history listing
   assert.match(start.description, /targets: \["all"\]/);
   assert.doesNotMatch(start.description, /claude:claude-opus|allowed_models|suffix/);
   assert.deepEqual(req.properties.mode.enum, ['explore', 'review', 'debate']);
-  assert.equal(req.required.includes('mode'), false, 'a mode left out is read from the context');
+  assert.equal((req.required ?? []).includes('mode'), false, 'a mode left out is read from the context');
   assert.equal(req.additionalProperties, false, 'requests must not accept extra fields');
   await close();
 });
@@ -494,4 +494,52 @@ test('over MCP, a follow-up with only followup_to and the question is accepted, 
   assert.equal(next.isError, undefined, next.content[0].text);
   assert.equal(payload(next).round, 2);
   await close();
+});
+
+test('over MCP, retry replays a failed job without a question and list filters find its completed replacement', async () => {
+  const { client, close } = await connect();
+  try {
+    const missing = await client.callTool({ name: 'consult_start', arguments: { request: {} } });
+    assert.equal(missing.isError, true, 'ordinary requests still need a question');
+    process.env.STUB_BEHAVIOR = 'auth';
+    const original = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
+    const failed = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: original.job_id } }));
+    assert.equal(failed.status, 'failed');
+    process.env.STUB_BEHAVIOR = 'ok';
+    const retried = payload(
+      await client.callTool({ name: 'consult_start', arguments: { request: { retry_of: failed.job_id } } }),
+    );
+    assert.ok(retried.job_id);
+    assert.equal(retried.retry_of, failed.job_id);
+    const answer = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: retried.job_id } }));
+    assert.equal(answer.status, 'completed');
+    assert.equal(answer.question, failed.question);
+    const record = await client.callTool({
+      name: 'consult_record',
+      arguments: {
+        records: [
+          {
+            job_id: answer.job_id,
+            entries: [{ id: 'f1', verdict: 'unverified', effect: 'Checking outside this synthetic test is pending.' }],
+          },
+        ],
+      },
+    });
+    assert.notEqual(record.isError, true);
+    const listed = payload(
+      await client.callTool({
+        name: 'consult_list',
+        arguments: { target: 'codex', question: 'DOWNSTREAM OUTAGE', chain_id: answer.chain_id, limit: 1 },
+      }),
+    );
+    assert.equal(listed.jobs.length, 1);
+    assert.equal(listed.jobs[0].job_id, answer.job_id);
+    assert.equal(listed.jobs[0].latest_completed_job_id, answer.job_id);
+    assert.equal(listed.jobs[0].retry_of, failed.job_id);
+    const invalid = await client.callTool({ name: 'consult_start', arguments: { request: { retry_of: answer.job_id } } });
+    assert.equal(invalid.isError, true);
+    assert.equal(payload(invalid).error, 'retry_not_failed');
+  } finally {
+    await close();
+  }
 });

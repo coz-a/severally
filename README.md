@@ -20,18 +20,9 @@ Each consultant's answer stays separate. The lead checks the findings and the re
 itself, then carries on from what it found. For an important decision, such as a change that is hard to reverse,
 it consults before asking you to approve it, and asks you only about what is yours to decide.
 
-Asked whether to cache a slow product page for five minutes, three consultants answered on their own
-(see the [example](docs/how-it-works.md#example) for the whole run):
-
-```text
-codex        do_not_proceed  the price depends on the member's tier, so the first visitor's price is served to everyone
-claude-code  do_not_proceed  whoever fills the cache first sets the price everyone else sees for 5 minutes
-antigravity  alternative     member discounts leak to other users; fix the query and a cache may not be needed
-```
-
-In that example, the lead reproduced inflated stock in a test database and chose to fix the query first.
-It also checked that login was not yet wired in: the price leak would begin when login was added, so it
-recommended caching only user-independent product data. Whether the fixed query was fast enough remained unverified.
+For example, a cache review can reveal that member-specific prices would leak to other users. The lead
+checks the pricing assumptions, chooses what can be cached, and records what remains unverified. The
+[worked example](docs/how-it-works.md#example) follows the separate recommendations through that decision.
 
 ## Contents
 
@@ -47,7 +38,8 @@ recommended caching only user-independent product data. Whether the fixed query 
 
 ### Requirements
 
-- Node.js 22 or newer
+- Node.js 22 or newer. Some OpenCode 2.x authentication recovery needs `node:sqlite`; `status` reports whether
+  it is available. Normal login can still work without it. See [recovery requirements](docs/install.md#requirements).
 - At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
   fresh Claude Code session.
 
@@ -59,7 +51,7 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.8.1 install
+npx -y severally-mcp@2.9.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -69,7 +61,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y severally-mcp@2.8.1 status
+npx -y severally-mcp@2.9.0 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -169,72 +161,42 @@ what that showed, what it recommends, and what is still unverified. The [example
 It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
 same bug. One consultation takes minutes and real quota, so it is not for small fixes.
 
-### When the answers come back
+### Answers, checks and failures
 
-Starting a consultation does not make the agent wait: it can work on something that does not depend on the
-answers, which usually arrive within one to ten minutes. Timing depends on the CLI, model and load.
+The agent can work on independent tasks while it waits. Answers usually take one to ten minutes, depending
+on the CLI, model and load. Each includes a stance, findings with grounds, unknowns and proposed checks.
+A failure (`usage_limit`, `timeout` and so on) means no advice was obtained.
 
-Every answer is asked for in the same shape: a bottom line, findings with their grounds, what the consultant could
-not determine, conditions that would change its judgement, and how to check. When an answer leaves part of that
-out, such as the bottom line or the grounds for a finding, it says so in a caveat. A consultant that fails comes
-back as a failure with the reason (`usage_limit`, `timeout` …), never as "no problems found".
+The lead checks the claims that could change the decision and records evidence separately from adoption.
+It reports each consultant's actual model, the deciding point and its ID, what the check showed, its
+recommendation and what remains unverified. Different conclusions stay separate. If one consultant fails,
+the successful answers remain usable; the agent can retry just the failed consultation when needed.
 
-The agent checks the findings that would change the decision itself, then tells you what it checked, what it did
-not adopt, and what is still unverified.
+### Follow-ups and history
 
-For example, in a review of the classifier before its authentication-priority fix, the result and the lead's
-verification were separate:
+Ask “Continue yesterday's cache consultation” or “Recheck that finding against the updated code.” The agent
+can find the saved consultation and continue with the same consultant; you do not need to copy IDs. When
+several candidates fit, it checks which one you mean. By default a chain permits five rounds in total.
+Files are sent again in their current state, with changes and deletions noted.
 
-```text
-Codex (gpt-6.1-sol): “429 invalid api key” is misclassified as a transient limit.
-Lead: ran the classifier, reproduced rate_limited, and saved the finding as confirmed.
-Recommendation: classify authentication before transient limits. Provider-specific quota behavior remains untested.
-```
-
-### Modes
-
-There are three modes, chosen from what the agent hands over. You can also ask for one ("debate this with
-Codex").
-
-- `explore`: asks without showing the plan, so the consultant answers with its own approach first
-- `review`: shows the plan and asks what is wrong with it (the [example](docs/how-it-works.md#example))
-- `debate`: shows the plan with the opposing claims, and asks the consultant to weigh them
-
-### Follow-ups
-
-After the first answer, the agent can send follow-ups to the same consultant: up to four by default, five rounds
-in total. A follow-up to a fan-out asks every consultant in it again, each continuing its own exchange; one that
-cannot continue is skipped, and the reason is listed.
-
-- The files of the earlier round are handed over again, as they are now: changes and deletions are noted, a
-  directory is listed afresh (files added since go too), and the agent can add more. It can also ask for a
-  text-only follow-up.
-- They go again only if the consultant still runs the CLI and model of the earlier round (a fallback model set for
-  it counts). Otherwise the agent names the files again.
-
-### History and records
-
-Every consultation is kept on your machine in `~/.severally/history/`: the brief that was sent, the consultant's
-answer, and the agent's verdict on each finding (`confirmed`, `not_applicable`, `unverifiable`, `unverified`).
-For Codex, Antigravity and OpenCode it also keeps the commands run or the paths opened, with how many of the files
-handed over they name; secrets are masked and command output is not kept. Verdicts can be added later, from another
-session, and a consultation can be exported as Markdown into your repository.
-
-The [product-cache example](docs/how-it-works.md#example) follows each consultant's recommendation through the
-lead's checks and decision. Record details are in [how it works](docs/how-it-works.md#records).
+Consultations and verification records stay in `~/.severally/history/`. They can be updated from a later
+session or exported as Markdown with verified points, decision effects and unchecked counts before the full
+answers. A confirmed point means the check supported it; it does not mean the lead adopted the advice.
+See [modes and follow-up details](docs/how-it-works.md#how-a-consultation-runs) and
+[records](docs/how-it-works.md#records).
 
 ## Configuration
 
 **No configuration needed by default.** At startup the server looks for the CLIs on `PATH`, and each one it finds
 becomes a consultant on its default model. To turn a CLI off or add consultants on other models, put a
-`~/.severally/config.json` in place. From a clone, `npm run init-config` writes a template. Every key is in
+`~/.severally/config.jsonc` or `config.json` in place (`config.jsonc` takes precedence). From a clone, `npm run init-config` writes a template. Every key is in
 [CONFIG.md](CONFIG.md), and [config.example.json](config.example.json) is an example to adapt: its paths, models
 and notes are made up. For separate models for everyday work and consultations, see the optional
 [multi-model example](docs/how-it-works.md#recommended-setup). Restart the client after changing the config.
 
 To consult a model you reach with an API key (OpenRouter, or another OpenAI-compatible API) or a local model,
 install OpenCode and add the model as a consultant: see
-[CONFIG.md](CONFIG.md#api-keys-and-other-model-families-through-opencode).
+[the four-step OpenCode setup](CONFIG.md#api-keys-and-other-model-families-through-opencode).
 
 ## What a consultant can see and do
 
@@ -261,7 +223,8 @@ the credential paths the table marks blocked. The one exception is Claude Code i
 it can then read only those copies.
 Codex does not block by file name, so a `.env` in your repository is readable to it.
 Its protection also misses files created later under `~/.codex` and, on Linux, protected files replaced by rename
-during a run. Credentials stored outside the configured protected paths are not covered.
+during a run. Recognized absolute credential-location variables are protected, but arbitrary locations and new
+aliases are not. A relocated Codex credential directory is denied as a whole only if its executable lives elsewhere.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
@@ -280,11 +243,11 @@ state and records. Every argument is described in the tool descriptions the agen
 
 | Tool | What it does |
 |---|---|
-| `consult_start` | Starts a consultation with one consultant (`target`) or several (`targets`), and returns a `job_id` or `group_id` at once |
+| `consult_start` | Starts one (`target`) or several (`targets`) consultations; `retry_of` replays only a failed job |
 | `consult_get` | Waits for a consultation and returns its state or answer; with `ids`, just those points of the answer |
 | `consult_cancel` | Stops a consultation or a whole fan-out, and its consultant processes, also one another session started |
 | `consult_record` | Writes the lead's verdicts on an answer's points, and what the answer added |
-| `consult_list` | Lists recent consultations, earlier sessions' included, with the usage each consultant reported in this session |
+| `consult_list` | Finds consultations by consultant, question or chain; includes continuation IDs and session usage |
 | `consult_export` | Returns a consultation, follow-ups and verdicts included, as Markdown |
 
 Arguments and file exposure are described in [How it works](docs/how-it-works.md#api-arguments).

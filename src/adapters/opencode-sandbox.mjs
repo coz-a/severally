@@ -56,6 +56,31 @@ try {
   /* unavailable */
 }
 
+/** The optional recovery capability, independently of normal CLI login. */
+export function credentialRecoveryStatus() {
+  return {
+    available: DatabaseSync !== null,
+    detail: DatabaseSync
+      ? 'available (node:sqlite)'
+      : 'unavailable (node:sqlite is not available); update Node.js to a current supported release for OpenCode 2.x credential recovery; normal CLI login is still allowed',
+  };
+}
+
+/**
+ * Only a bootstrapped 2.x session could need this recovery. This describes a
+ * recovery we could not attempt, not the cause of the CLI's original error.
+ * @param {{ root?: string }} sandbox
+ */
+export function credentialRecoveryUnavailableReason(sandbox) {
+  if (
+    DatabaseSync ||
+    typeof sandbox.root !== 'string' ||
+    !fs.existsSync(path.join(sandbox.root, '.local', 'share', 'opencode', 'opencode.db'))
+  )
+    return null;
+  return `OpenCode credential recovery ${credentialRecoveryStatus().detail}`;
+}
+
 // Reading is allowed, not denied: every consultant is an equal reader (Codex
 // runs a read-only shell; Claude Code and Antigravity can read the whole
 // disk). Everything that changes state or reaches another agent is denied

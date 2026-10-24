@@ -29,6 +29,7 @@
 import { POLICY } from '../policy.mjs';
 import { classifyMessage } from '../failures.mjs';
 import { spawnCommand } from '../platform.mjs';
+import { credentialRecoveryUnavailableReason } from './opencode-sandbox.mjs';
 
 /** @typedef {import('../run.mjs').BuildRequest} BuildRequest */
 /** @typedef {import('../run.mjs').ChildResult} ChildResult */
@@ -188,6 +189,11 @@ export function recoverAuthFailure({ interpreted, sandbox, model }) {
   if (typeof model !== 'string' || !model.includes('/')) return false;
   const provider = model.slice(0, model.indexOf('/'));
   if (!provider) return false;
+  const unavailable = sandbox && credentialRecoveryUnavailableReason(sandbox);
+  if (unavailable) {
+    interpreted.message = `${interpreted.message ?? 'Model unavailable'}; ${unavailable}`;
+    return false;
+  }
   return typeof sandbox?.seed === 'function' ? sandbox.seed(provider) : false;
 }
 
