@@ -7,19 +7,21 @@
 // running user, and by default it ALLOWS every operation ("By default,
 // opencode allows all operations without requiring explicit approval" --
 // docs/config). So the isolation is built the antigravity way: the child gets
-// a synthesised HOME whose only opencode content is a linked credential and
-// one config file we wrote ourselves.
+// a synthesised HOME whose opencode content is a copied credential, one config
+// file and a pre-read guard plugin we wrote ourselves.
 //
 //   .config/opencode/opencode.json   -> permissions: deny write/bash/task,
 //                                       allow read tools and web; mcp: {},
 //                                       share off, snapshots off, no autoupdate
+//   .config/opencode/plugins/        -> our read guard checks lexical and real
+//                                       paths before each read tool call
 //   .local/share/opencode/auth.json  -> a copy of the real provider keys, so
 //                                       a CLI-side credential refresh can
 //                                       never write through to the operator's
 //                                       store (2.x rewrites the file in place)
 //
 // Anything not in that tree cannot be inherited: no user MCP servers (the
-// recursion barrier), no plugins, no skills, no agents, no instructions.
+// recursion barrier), no user plugins, no skills, no agents, no instructions.
 // The synthesised data directory also holds the session database the child
 // writes, so the brief never reaches the user's real session store and the
 // whole tree is deleted with the job -- what `--ephemeral` buys on Codex.
@@ -44,6 +46,7 @@ import crypto from 'node:crypto';
 import { createRequire as sqliteRequire } from 'node:module';
 import { POLICY, opencodeCredentialsHome, protectedRoots, PROTECTED_FILE_NAMES } from '../policy.mjs';
 import { sandboxHome } from '../store.mjs';
+import { writeReadGuard } from './opencode-read-guard.mjs';
 
 // node:sqlite ships unflagged from Node 23 (and late 22.x); the engines field
 // allows older runtimes, where credential seeding degrades to a no-op and the
@@ -170,6 +173,7 @@ export function prepareSandbox({ workdir, network = 'on' }) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   fs.chmodSync(root, 0o700);
+  writeReadGuard(configDir, workdir);
 
   fs.writeFileSync(
     path.join(configDir, 'opencode.json'),

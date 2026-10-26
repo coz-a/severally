@@ -50,7 +50,7 @@ AI エージェントが、ほかのコーディングエージェントに独�
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.9.0 install
+npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -60,7 +60,7 @@ npx -y severally-mcp@2.9.0 install
 設定を確かめるには、次を実行します。
 
 ```bash
-npx -y severally-mcp@2.9.0 status
+npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-mcp status
 ```
 
 設定ファイル・この機械から使える相談相手・入っている写しの版・どのクライアントに登録されているか・各 CLI に
@@ -98,13 +98,14 @@ login (out of quota is not checked; the first consultation shows it):
 
 ### 更新
 
-次の 1 行で、最新版に入れ替わります。バージョン番号を調べる必要はありません。
+このリリースは GitHub Release のアーカイブで配布します。2.9.1 への更新には次のコマンドを使います。
 
 ```bash
-npx -y severally-mcp@latest install
+npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install
 ```
 
-`@latest` を付けると、npx は毎回 npm に最新版を問い合わせます。手元に古い写しがあっても、それは使いません。
+今後の更新には、[最新の GitHub Release](https://github.com/coz-a/severally/releases/latest) に添付したアーカイブを使ってください。
+`severally-mcp@latest` は npm の最新版を指します。2.9.1 は npm には公開していません。
 Claude Code にマーケットプレイス版の severally が入っていれば、同じ 1 行でその写しも更新されます（詳しくは
 [docs/install.ja.md](docs/install.ja.md#更新)）。終わったら、クライアントを再起動してください。版ごとの変更点は
 [リリース](https://github.com/coz-a/severally/releases)にあります。
@@ -210,15 +211,19 @@ API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの 
 | Codex | できる | パスで拒否（権限プロファイル）。`.env` のようなファイル名では拒否しない | ある。サンドボックスの中（コマンドは動くが、書き込みとネットワークはできない） | できない | できる（`network: "off"` のときを除く） |
 | Claude Code | できる（`Read` / `Glob` / `Grep`） | 拒否（権限の規則） | なし | できない | できる（`network: "off"` のときを除く） |
 | Antigravity | できる（`view_file`・`read_file`） | 拒否（ツールのフック） | なし | できない | できる（`network: "off"` のときを除く） |
-| OpenCode | できる（`read`） | パスで拒否。シンボリックリンクの別名経由は対象外 | なし（Code Mode の `execute` は拒否） | できない | できる（`network: "off"` のときを除く） |
+| OpenCode | できる（`read`） | 権限の規則と読取り前の実パス検査で拒否。制約は表の下に記載 | なし（Code Mode の `execute` は拒否） | できない | できる（`network: "off"` のときを除く） |
 
 どの相談相手も、渡したファイルの写しだけが入った専用の作業ディレクトリで始まり、サーバはあなたのリポジトリの
 場所を伝えません。それでも、あなたのユーザーアカウントで読めるファイルは、表で「拒否」とした秘密のパスを除いて
 読めます。例外は、ファイルを渡した相談での Claude Code です。そのときは、渡したファイルの写ししか読めません。
 Codex はファイルの名前では拒否しないので、あなたのリポジトリにある `.env` は Codex から読めます。
-起動後に `~/.codex` に作られたファイルや、Linux で実行中に rename 置換された保護ファイルも読めます。
-既知の環境変数で指定した絶対パスは保護しますが、任意の場所や新しい別名は対象外です。
-移動した Codex の資格情報ディレクトリを全体として拒否できるのは、実行ファイルがその外にある場合です。
+既定の `~/.codex` を含む資格情報ディレクトリは、Codex の実行ファイルが外にあれば全体を拒否します。
+保護対象の中に実行ファイルがある場合は、実行ファイルを含む項目を読取り可能なまま残し、ほかの項目を起動時点で
+列挙して拒否します。その後に増えた項目は対象外です。Linux では、個別に拒否したファイルが実行中に rename で
+置換されると読めることがあります。既知の環境変数で指定した絶対パスは保護しますが、任意の資格情報の場所は自動検出しません。
+OpenCode は読取りのたびに指定パスと実パスを調べ、シンボリックリンクの別名経由も拒否します。ただし、フックの検査から
+CLI の読取りまでの間に実パス側が差し替わる場合は保証しません。これらの変更は Linux の Codex 0.164.0 と
+OpenCode 2.0.24 で確認しました。macOS・Windows と、ほかの CLI バージョンでの強制結果は未検証です。
 
 **ディスクを読めて Web も閲覧できる相談相手は、読んだ内容を URL に載せて外に持ち出せます**。開いたページに、
 そうするよう書かれていた場合などです。それを防ぎたいときは、エージェントが `network: "off"` を渡します。その回の

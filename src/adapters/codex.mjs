@@ -14,12 +14,11 @@
 //                         cannot resolve, ~/.ssh and ~/.codex/auth.json
 //                         "Permission denied". Not yet run on macOS / Windows.
 //                         Limits, both Linux: a denied directory becomes an
-//                         empty mount. ~/.codex is denied entry by entry;
-//                         its executable entry (normally packages/) remains
-//                         readable for sandbox re-execution. A relocated
-//                         credential home is denied as a directory when its
-//                         executable lives elsewhere; a protected root that
-//                         contains the executable retains that entry too.
+//                         empty mount. Credential directories, including
+//                         ~/.codex, are denied whole when the executable lives
+//                         elsewhere. A protected root containing the executable
+//                         is denied entry by entry; its executable entry
+//                         (normally packages/) remains readable for re-execution.
 //                         A denied file that is replaced by
 //                         rename while the consultation runs is readable again
 //                         -- the kernel drops a bind mount whose file the host
@@ -55,7 +54,6 @@
 //                         read-only sandbox already blocks the shell's network.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { POLICY, protectedRoots } from '../policy.mjs';
 import { findCommand } from '../platform.mjs';
@@ -109,17 +107,15 @@ const listDir = (dir) => {
 /**
  * The profile's filesystem table, as TOML: everything readable, the protected
  * roots not. The profile has no wildcard, so a `*` segment (jobs/<id>/home) is
- * expanded to what exists at launch. ~/.codex and a protected root containing
- * the executable are listed entry by entry, retaining the executable entry
- * (normally packages/; the default home also retains packages/ when the
- * executable lives elsewhere). These lists are snapshots: an entry created
- * after launch is not covered. Other credential directories are denied whole.
+ * expanded to what exists at launch. A protected root containing the executable
+ * is listed entry by entry, retaining the executable entry (normally packages/).
+ * These lists are snapshots: an entry created after launch is not covered.
+ * Other credential directories, including ~/.codex, are denied whole.
  */
 export function filesystemPermissions() {
   // A path that does not exist at launch cannot be masked: a homes/<id> made
   // by a concurrent agy or OpenCode consultation was readable (verified).
   fs.mkdirSync(path.join(POLICY.home, 'homes'), { recursive: true, mode: 0o700 });
-  const codexHome = path.join(os.homedir(), '.codex').replaceAll('\\', '/');
   // Relocated credential stores can be denied as whole directories when the
   // CLI executable lives elsewhere. If an operator also moved the binary
   // into one, retain only its containing entry so the sandbox can re-exec.
@@ -129,23 +125,27 @@ export function filesystemPermissions() {
   } catch {
     /* leave resolution failures to the normal launch diagnostic */
   }
-  const denied = protectedRoots().flatMap((p) => {
-    // Compare canonical paths on both sides: macOS temporary roots and
-    // Windows short paths may name the executable through an alias.
-    let root = p;
+  // Use each canonical root once. Masking both a symlink and its target can
+  // make Linux bubblewrap fail to construct the second mount after the first
+  // has hidden its destination. Canonical paths also preserve executable
+  // exceptions through macOS temporary roots and Windows short-path aliases.
+  const roots = protectedRoots().map((p) => {
     try {
-      root = fs.realpathSync.native(p);
+      return fs.realpathSync.native(p).replaceAll('\\', '/');
     } catch {
       /* missing roots and wildcard paths retain their literal spelling */
+      return p;
     }
-    const relative = executable ? path.relative(root, executable) : null;
+  });
+  const denied = [...new Set(roots)].flatMap((p) => {
+    const relative = executable ? path.relative(p, executable) : null;
     const executableEntry =
       relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
         ? relative.split(path.sep)[0]
         : null;
-    if (p === codexHome || executableEntry)
+    if (executableEntry)
       return listDir(p)
-        .filter((n) => n !== (executableEntry ?? 'packages'))
+        .filter((n) => n !== executableEntry)
         .map((n) => `${p}/${n}`);
     const star = p.indexOf('/*/');
     if (star === -1) return [p];
@@ -427,8 +427,9 @@ export function boundary({ args }) {
     mcp: false,
     protected_paths: args.some((a) => a.startsWith(`permissions.${PROFILE}.filesystem=`))
       ? 'denied by path (permission profile), including recognized configured credential locations; ' +
-        '~/.codex and protected roots containing the CLI executable are listed at launch with the executable entry ' +
-        '(normally packages/) left readable; new entries there and later legacy job homes are not covered; ' +
+        'credential directories including ~/.codex are denied whole when the CLI executable lives elsewhere; ' +
+        'roots containing the executable are listed at launch with its entry (normally packages/) left readable; ' +
+        'new entries in those listed roots and later legacy job homes are not covered; ' +
         'file names such as .env anywhere are not denied; on Linux an individually denied file replaced by rename ' +
         'during the run is readable'
       : 'not enforced',

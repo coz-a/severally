@@ -68,7 +68,7 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.9.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |
@@ -105,7 +105,7 @@ run `npm run init-config` (see [Configuration](../README.md#configuration) in th
 
 ## Checking the registration
 
-`npx -y severally-mcp@latest status` shows it all at once, without starting a consultation: whether the config
+`npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-mcp status` shows it all at once, without starting a consultation: whether the config
 file is valid, which consultants this machine can reach (and why the others cannot), whether every installed copy
 is the same version, which clients have severally registered, and whether each CLI is logged in. The login check
 reads each CLI's own status command and sends no prompt: `claude auth status` for Claude Code, `codex login status`
@@ -239,12 +239,16 @@ agent can reach may go to those vendors.
 
 ## Updating
 
+Version 2.9.1 is distributed through GitHub Releases only. The commands below use that archive;
+`severally-mcp@latest` resolves npm's latest version and does not install this release. For later releases,
+use the archive attached to the [latest GitHub Release](https://github.com/coz-a/severally/releases/latest).
+
 When developing from a clone, run `npm run build` and then `node scripts/install.mjs` again to copy the generated
 server and Skills into the client installs. Add `--force` if an existing direct registration needs replacing.
 Restart the clients afterwards.
 
 
-Run `npx -y severally-mcp@latest install`, or pull the clone and run `npm install` and
+Run `npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install`, or pull the clone and run `npm install` and
 `node scripts/install.mjs` again. The installer checks the new server's syntax and backs up the previous runtime
 and marketplace files under `~/.severally/backups/` before replacing them. Then restart the clients.
 
@@ -253,7 +257,7 @@ existing registrations to the copied runtime. Without it, existing registrations
 
 Installed from the marketplace: when Claude Code already has severally from the marketplace, the installer also
 runs `claude plugin marketplace update severally` and `claude plugin update severally@<marketplace>`, so one
-`npx -y severally-mcp@latest install` brings every copy to the same version. If that fails, it prints the command to
+`npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install` brings every copy to the same version. If that fails, it prints the command to
 run inside Claude Code, `/plugin marketplace update severally`. Restart Claude Code afterwards. For Claude Code
 alone you can also run that command yourself instead of the installer. Automatic updates are off by default; to
 turn them on, select severally under Marketplaces in `/plugin`, then Enable auto-update. Codex, Antigravity and

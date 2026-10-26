@@ -451,7 +451,8 @@ export function opencodeCredentialsHome() {
 // disk: credentials, other tools' sessions, and severally's own history, which
 // holds earlier briefs about other work. A consultant that can browse could
 // otherwise read one of these and carry it out in a URL. Enforced for Claude
-// Code and OpenCode (permission deny rules) and Antigravity (the tool hook),
+// Code (permission deny rules), OpenCode (permission rules and a pre-read
+// realpath guard), and Antigravity (the tool hook),
 // and never copied by expose_paths; Codex uses filesystem permission roots,
 // with the file and executable-directory limits described by its boundary.
 export const PROTECTED_HOME_PATHS = Object.freeze([
