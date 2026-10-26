@@ -6,6 +6,9 @@ What the [README](../README.md) leaves out of how a consultation runs: who consu
 how a consultation runs, the records, how large a fan-out's answer is, and how each consultant is kept to
 reading. Every configuration key is in [CONFIG.md](../CONFIG.md).
 
+This page includes unreleased sensitive-key masking, redaction observations, recommendations and verification-note
+changes. They are not in npm 2.9.2. The [clone installation](install.md#from-a-clone) runs the development source.
+
 ## Who consults whom
 
 ```mermaid

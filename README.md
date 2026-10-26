@@ -136,6 +136,10 @@ Ask for consultations, follow-ups and Markdown exports in your agent's chat.
 
 ### Answers, checks and failures
 
+The sensitive-key masking fix, redaction observations, `recommendation`, `refuted` and shared verification notes
+described here are unreleased changes. npm 2.9.2 does not include them; use a [clone](docs/install.md#from-a-clone)
+to try the development version.
+
 The agent can work on independent tasks while it waits. Answers usually take one to ten minutes, depending
 on the CLI, model and load. Each includes a stance, a separate concrete recommendation, findings with grounds, unknowns and proposed checks.
 Matching stances can recommend different options; older answers without a recommendation remain not declared.
