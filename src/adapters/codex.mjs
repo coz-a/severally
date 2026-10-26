@@ -28,6 +28,12 @@
 //                         directory entries are not affected. File-name rules
 //                         (.env anywhere) cannot be expressed: an unrooted
 //                         `**` glob is refused.
+//   windows.sandbox="elevated"  Windows only. The unelevated restricted-token
+//                         sandbox cannot enforce deny-read entries and refuses
+//                         to run ("cannot enforce deny-read restrictions
+//                         directly"); --ignore-user-config drops the user's
+//                         own setting, so it is set here. The first run may
+//                         ask for administrator approval of Codex's setup.
 //   hooks.enabled=false   no hook inheritance.
 //   agents.enabled=false  no sub-agent tools. Codex enables them by default and
 //                         --ignore-user-config keeps that default: on
@@ -193,6 +199,7 @@ export function buildInvocation({ workdir, schemaPath, consultant, network = 'on
     `default_permissions="${PROFILE}"`,
     '-c',
     `permissions.${PROFILE}.filesystem=${filesystemPermissions()}`,
+    ...(process.platform === 'win32' ? ['-c', 'windows.sandbox="elevated"'] : []),
     '-C',
     workdir,
     '--output-schema',

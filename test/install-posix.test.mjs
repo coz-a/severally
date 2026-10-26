@@ -639,7 +639,7 @@ test('severally-mcp install runs the installer from the package, and points else
         encoding: 'utf8',
         stdio: 'pipe',
       }),
-    (err) => err.status === 1 && /https:\/\/github\.com\/coz-a\/severally\/releases\/latest/.test(err.stderr),
+    (err) => err.status === 1 && /npx -y severally-mcp@latest install/.test(err.stderr),
   );
 });
 
@@ -784,11 +784,7 @@ test('POSIX install summary guides the installed client to a first consultation'
   assert.match(summary, /Ready clients: Codex/);
   assert.match(summary, /Restart.*Codex/);
   const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
-  assert.ok(
-    summary.includes(
-      `npx -y -p https://github.com/coz-a/severally/releases/download/v${version}/severally-mcp-${version}.tgz severally-mcp status`,
-    ),
-  );
+  assert.ok(summary.includes(`severally-mcp@${version} status`));
   assert.match(summary, /ask Codex.*100.*requests.*minute/i);
   assert.doesNotMatch(summary, /claude|agy|opencode|npm run build/);
 });

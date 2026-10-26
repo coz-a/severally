@@ -51,7 +51,7 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install
+npx -y severally-mcp@2.9.2 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -61,7 +61,7 @@ Then restart the clients: a running session does not reload the new registration
 starting a consultation, run:
 
 ```bash
-npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-mcp status
+npx -y severally-mcp@2.9.2 status
 ```
 
 It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
@@ -99,14 +99,14 @@ what remains in that case is observed, not guaranteed.
 
 ### Updating
 
-This release is distributed as a GitHub Release archive. Use the following command to update to 2.9.1:
+This line replaces your install with the latest version, with no version number to look up:
 
 ```bash
-npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install
+npx -y severally-mcp@latest install
 ```
 
-For later releases, use the archive attached to the [latest GitHub Release](https://github.com/coz-a/severally/releases/latest).
-`severally-mcp@latest` tracks npm, where 2.9.1 is not published. If Claude Code has severally from its plugin marketplace, the same line updates that copy too (details in
+With `@latest`, npx asks npm for the newest version every time, so an older copy it already has is not used.
+If Claude Code has severally from its plugin marketplace, the same line updates that copy too (details in
 [docs/install.md](docs/install.md#updating)). Then restart the clients. What changed in each version is in the
 [releases](https://github.com/coz-a/severally/releases).
 
@@ -230,6 +230,8 @@ arbitrary credential locations are not automatically discovered.
 OpenCode's guard checks each read's path and its canonical target, including symlink aliases. Replacement of a
 canonical path between the hook and the CLI's read remains outside its guarantee. These changes were checked
 on Linux with Codex 0.164.0 and OpenCode 2.0.24; enforcement on macOS, Windows and other CLI versions is unverified.
+On Windows, Codex runs in its elevated sandbox, because the unelevated one cannot deny reads. If Codex has not set
+that sandbox up yet, the first consultation asks for administrator approval.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
