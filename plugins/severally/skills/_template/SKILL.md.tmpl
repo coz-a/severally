@@ -59,12 +59,18 @@ Pass `initiator: "user"` when the user asked; leave it out when you started it y
 ## Reading the answer
 
 Every group member received the identical brief. In `comparison.by_target`, read each actual model and
-`stance` first: consultants can share a finding and reach opposite conclusions. **Matching summaries are not agreement.** Keep different grounds and assumptions separate; do not count votes.
+`stance` and `recommendation` first: matching stances can recommend different actions, and consultants can share
+a finding and reach opposite conclusions. **Matching summaries are not agreement.** Compare `decision_changers`
+and `unknowns` as conditions; keep different grounds and assumptions separate. Do not count votes. A null
+recommendation was not declared; do not invent one from its summary. A failed member gave no advice.
 
 Read the grounds already shown. A `quality.caveat` or thin evidence limits what the answer establishes.
 Only when a deciding point's grounds or details are missing or shortened, fetch
 `consult_get({ job_id, ids: ["f2", "u1"] })`; `{ job_id }` gets one member's full answer. Do not mark a point
 confirmed from a clipped summary or treat a filename in a tool input as proof of understanding.
+`quality.redaction` marks replacements in files, brief and result; null means unknown. Identical markers do not
+establish equality of original values. Compare field presence/removal, types and structure, and reproduce a
+safe local example. Never recover secrets or treat two masked values as equal.
 
 ## Before you hand the decision back
 
@@ -79,8 +85,11 @@ consult_record({ job_id: "...", entries: [
 ```
 
 For a fan-out use one `consult_record({ records: [{ job_id: "...", entries: [...] }, ...] })` call.
-`verdict` is verification: `confirmed`, `not_applicable`, `unverifiable` or `unverified`. `effect` is the decision's
-change; `note` is the evidence. Confirmed does not mean adopted. Reading alone stays unverified; remaining
+`verdict` is verification: `confirmed`, `refuted`, `not_applicable`, `unverifiable` or `unverified`. `effect` is the decision's
+change; `note` names checked inputs/environment, evidence and limits. Refuted means the claim did not hold in
+that check; partial confirmation stays unverified with its scope in note. New notes go to follow-ups in bounded
+form; legacy notes remain local until recorded again. Keep detailed or private logs out of shareable notes.
+Confirmed does not mean adopted. Reading alone stays unverified; remaining
 points need no entry. Report the deciding point, consultant and actual model, job/point ID, grounds, your
 check, adoption or rejection and remaining unknowns. Preserve opposite stances even with a shared finding.
 

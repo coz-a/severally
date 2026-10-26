@@ -23,6 +23,7 @@ import { POLICY } from './policy.mjs';
  * @property {string} verdict
  * @property {string | null} effect
  * @property {string | null} note
+ * @property {string | null | undefined} [followup_note] Bounded shareable evidence from a new record; legacy notes stay local.
  * @property {string} recorded_at
  */
 
@@ -68,11 +69,13 @@ import { POLICY } from './policy.mjs';
  * @property {Record<string, number> | undefined} [list_truncated]
  * @property {import('./parse-result.mjs').EvidenceBasis | null | undefined} [evidence_basis]
  * @property {string | null | undefined} [caveat]
+ * @property {{files: boolean | null, brief: boolean | null, result: boolean | null} | undefined} [redaction]
  */
 
 /**
  * The material the lead handed over, as the round keeps it (see briefRecord).
  * @typedef {object} BriefRecord
+ * @property {{files: boolean | null, brief: boolean | null} | undefined} [redaction]
  * @property {string | null} objective
  * @property {string[]} success_criteria
  * @property {string[]} constraints
@@ -80,7 +83,7 @@ import { POLICY } from './policy.mjs';
  * @property {string | null} proposal
  * @property {string[]} counterpoints
  * @property {Array<{name: string, kind: string, language: string | null, source: string | null, excerpt: string}>} artifacts
- * @property {{entries: BriefExposeEntry[], totals: import('./expose-paths.mjs').ExposeTotals, skipped: import('./expose-paths.mjs').SkippedPath[]} | null} expose_paths
+ * @property {{entries: BriefExposeEntry[], totals: import('./expose-paths.mjs').ExposeTotals, skipped: import('./expose-paths.mjs').SkippedPath[], redacted?: boolean | null} | null} expose_paths
  */
 
 /**

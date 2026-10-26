@@ -174,7 +174,7 @@ test('retry context refreshes verdicts recorded by another manager before contin
   const retried = await finish(owner, owner.start({ retry_of: failed.job_id }));
   new JobManager().record({
     job_id: first.job_id,
-    entries: [{ id: 'f1', verdict: 'confirmed', effect: 'external-verified-effect', note: 'private local evidence' }],
+    entries: [{ id: 'f1', verdict: 'confirmed', effect: 'external-verified-effect', note: 'bounded checked scope' }],
   });
   const briefPath = path.join(home, 'external-record-retry-brief.txt');
   process.env.STUB_BRIEF_OUT = briefPath;
@@ -183,7 +183,7 @@ test('retry context refreshes verdicts recorded by another manager before contin
     const brief = fs.readFileSync(briefPath, 'utf8');
     assert.match(brief, new RegExp(`${first.job_id}\\.f1`));
     assert.match(brief, /external-verified-effect/);
-    assert.doesNotMatch(brief, /private local evidence/, 'local evidence notes stay outside the consultant brief');
+    assert.match(brief, /bounded checked scope/, 'new evidence notes accompany their refreshed verdict');
   } finally {
     delete process.env.STUB_BRIEF_OUT;
   }

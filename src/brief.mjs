@@ -4,7 +4,7 @@
 
 import { POLICY } from './policy.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
-import { redact } from './redact.mjs';
+import { redact, redactWithReport, REDACTION_CAVEAT } from './redact.mjs';
 import { humanSize } from './expose-paths.mjs';
 
 /**
@@ -38,6 +38,7 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string | null} [grounds]
  * @property {string | null} [verdict]
  * @property {string | null} [effect]
+ * @property {string | null} [note]
  * @property {string | null} [method]
  * @property {string | null} [expected_signal]
  */
@@ -112,6 +113,7 @@ const WORKDIR_EXPOSED =
 
 const GUARDRAILS_TAIL = [
   '- Never include credentials, API keys, tokens, or environment variable values in your answer.',
+  '- Explain credential counterexamples using field presence/removal, types and structure, plus safe local reproduction steps. Redaction markers cannot establish whether original values were equal. Never reconstruct a secret or depend on repeating it.',
   '- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.',
   '',
   'This session is time-boxed and is killed when the budget runs out, which produces no answer at all -- the',
@@ -183,6 +185,7 @@ export function briefRecord(req, exposeManifest = null) {
           })),
           totals: exposeManifest.totals,
           skipped: exposeManifest.skipped,
+          redacted: exposeManifest.redacted ?? null,
         }
       : null,
   });
@@ -286,6 +289,8 @@ function renderExposeManifest(manifest) {
     "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     'not here, record it under `unknowns` rather than guessing. Text files were passed through the same',
     'credential masking as this brief; binary files were copied unchanged.',
+    `Redaction observed in exposed files: ${manifest.redacted ?? 'unknown'}.`,
+    ...(manifest.redacted ? [REDACTION_CAVEAT] : []),
     '',
     ...lines,
     ...skipped,
@@ -310,7 +315,10 @@ function renderRound(p) {
   /** @param {string} id */
   const tag = (id) => `${p.source_job_id ?? `r${p.round}`}.${id}`;
   /** @param {PriorPoint} x */
-  const verdict = (x) => (x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}` : '');
+  const verdict = (x) =>
+    x.verdict
+      ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}${x.note ? `\n  checked scope and evidence: ${clip(x.note)}` : ''}`
+      : '';
   const header = [
     `### Round ${p.round} (${p.mode})`,
     p.source_job_id ? `Earlier retry context from job ${p.source_job_id}; point IDs use that job's prefix.` : null,
@@ -396,6 +404,15 @@ function renderRound(p) {
  * @param {ExposeManifest | null} [exposeManifest]
  */
 export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
+  return renderBriefWithReport(req, chain, exposeManifest).text;
+}
+
+/**
+ * @param {BriefRequest} req
+ * @param {BriefChain} [chain]
+ * @param {ExposeManifest | null} [exposeManifest]
+ */
+export function renderBriefWithReport(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
   parts.push(renderGuardrails(Boolean(exposeManifest), req.network));
   parts.push('');
@@ -426,7 +443,7 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
     parts.push('');
     parts.push('## Earlier rounds of this same consultation');
     parts.push(
-      "Each point carries the lead's own check where there is one -- confirmed: it held; not_applicable: checked, and" +
+      "Each point carries the lead's own check where there is one -- confirmed: it held within the recorded scope; refuted: it did not hold in that check; not_applicable: checked, and" +
         ' it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet.',
     );
     const blocks = chain.priorRounds.map(renderRound);
@@ -456,5 +473,9 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
   parts.push('');
   parts.push('Reply now with the single JSON object and nothing else.');
 
-  return redact(parts.join('\n'));
+  const observed = redactWithReport(parts.join('\n'));
+  return {
+    text: observed.redacted ? `${REDACTION_CAVEAT}\n\n${observed.value}` : observed.value,
+    redacted: observed.redacted,
+  };
 }

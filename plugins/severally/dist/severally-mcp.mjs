@@ -1224,7 +1224,7 @@ var init_policy = __esm({
     );
     CALLER_INPUTS = Object.freeze(Object.keys(CALLER_ALIASES));
     MODES = ["explore", "review", "debate"];
-    VERDICTS = ["unverified", "confirmed", "not_applicable", "unverifiable"];
+    VERDICTS = ["unverified", "confirmed", "refuted", "not_applicable", "unverifiable"];
     STANCES = /** @type {const} */
     ["proceed", "do_not_proceed", "alternative", "undetermined"];
     binFor = (id2, envName, dflt) => {
@@ -36880,6 +36880,9 @@ var init_result_schema = __esm({
     CONSULT_RESULT_SCHEMA = obj(
       {
         summary: s("2-6 sentence summary of your overall view, written for a peer who will act on it."),
+        recommendation: s(
+          "One concise sentence naming the concrete action or option you recommend. State it separately from stance; matching stances need not recommend the same option. Put its conditions under decision_changers and unknowns."
+        ),
         confidence: enumOf(["high", "medium", "low"], "Your confidence in this overall view."),
         stance: enumOf(
           ["proceed", "do_not_proceed", "alternative", "undetermined"],
@@ -36961,21 +36964,41 @@ function looksLikeCode(name, value) {
   return /^[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(value) || /^[A-Za-z_][\w$.]*\(/.test(value) || value.startsWith("&");
 }
 function redact(value) {
-  if (value === null || value === void 0) return value;
-  if (typeof value === "string") {
-    let out = value;
-    for (const [re, rep] of PATTERNS) out = typeof rep === "string" ? out.replace(re, rep) : out.replace(re, rep);
-    return out;
-  }
-  if (Array.isArray(value)) return value.map(redact);
-  if (typeof value === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = redact(v);
-    return out;
-  }
-  return value;
+  return redactWithReport(value).value;
 }
-var CODE_WORDS, PATTERNS;
+function redactWithReport(value) {
+  let redacted = false;
+  function visit2(input2) {
+    if (input2 === null || input2 === void 0) return input2;
+    if (typeof input2 === "string") {
+      let out = input2;
+      for (const [re, rep] of PATTERNS) out = typeof rep === "string" ? out.replace(re, rep) : out.replace(re, rep);
+      if (out !== input2) redacted = true;
+      return out;
+    }
+    if (Array.isArray(input2)) return input2.map(visit2);
+    if (typeof input2 === "object") {
+      const out = {};
+      for (const [k, v] of Object.entries(input2)) {
+        const sensitive = SECRET_PROPERTY.test(k) || ENV_KEY_PROPERTY.test(k);
+        if (sensitive && v !== "[REDACTED]") redacted = true;
+        Object.defineProperty(out, k, {
+          value: sensitive ? "[REDACTED]" : visit2(v),
+          enumerable: true,
+          writable: true,
+          configurable: true
+        });
+      }
+      return out;
+    }
+    return input2;
+  }
+  return { value: (
+    /** @type {T} */
+    visit2(value)
+  ), redacted };
+}
+var CODE_WORDS, SECRET_NAME, PASSWORD_NAME, SECRET_PROPERTY, ENV_KEY_PROPERTY, PATTERNS, REDACTION_CAVEAT;
 var init_redact = __esm({
   "src/redact.mjs"() {
     "use strict";
@@ -36993,6 +37016,10 @@ var init_redact = __esm({
       "int",
       "bytes"
     ]);
+    SECRET_NAME = "(?:[A-Za-z0-9_]*_)?(?:API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|SECRET_KEY|CLIENT_SECRET|AUTH_TOKEN|CREDENTIALS|ACCOUNTKEY|SHAREDACCESSKEY|SECRET|TOKEN)";
+    PASSWORD_NAME = "(?:[A-Za-z0-9_]*_)?(?:PASSWORD|PASSWD|PASS|(?<=[A-Za-z_])PWD)";
+    SECRET_PROPERTY = new RegExp(`^(?:${SECRET_NAME}|${PASSWORD_NAME})$`, "i");
+    ENV_KEY_PROPERTY = /^[A-Z0-9_]+_KEY$/;
     PATTERNS = [
       // Provider API keys
       [/\bsk-ant-[A-Za-z0-9_-]{12,}/g, "[REDACTED:anthropic-key]"],
@@ -37018,21 +37045,19 @@ var init_redact = __esm({
       // The password in a URL's userinfo, also with an empty user (redis://:pass@host)
       [/(:\/\/[^\s:/@]*:)[^\s@/]+(@)/g, "$1[REDACTED]$2"],
       // KEY=value / "token": "value" style assignments
-      [
-        /\b((?:[A-Za-z0-9_]*_)?(?:API_KEY|APIKEY|ACCESS_KEY|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|SECRET_KEY|CLIENT_SECRET|AUTH_TOKEN|CREDENTIALS|ACCOUNTKEY|SHAREDACCESSKEY|SECRET|TOKEN))(["']?\s*[:=]\s*["']?)([^\s"',;)]{8,})/gi,
-        (_m, k, sep, _v) => `${k}${sep}[REDACTED]`
-      ],
+      [new RegExp(`\\b(${SECRET_NAME})(["']?\\s*[:=]\\s*["']?)([^\\s"',;)]{8,})`, "gi"), (_m, k, sep, _v) => `${k}${sep}[REDACTED]`],
       // Password-type names, with values from 4 characters; PASS and PWD too (PWD
       // only after `_` or a letter: bare PWD is the working directory). What reads
       // as code rather than a password is left alone (looksLikeCode).
       [
-        /\b((?:[A-Za-z0-9_]*_)?(?:PASSWORD|PASSWD|PASS|(?<=[A-Za-z_])PWD))(["']?\s*[:=]\s*["']?)([^\s"',;)]{4,})/gi,
+        new RegExp(`\\b(${PASSWORD_NAME})(["']?\\s*[:=]\\s*["']?)([^\\s"',;)]{4,})`, "gi"),
         (m, k, sep, v) => looksLikeCode(k, v) ? m : `${k}${sep}[REDACTED]`
       ],
       // Any environment variable named *_KEY. Upper case only: in code, primary_key,
       // sort_key and idempotency_key name things, not secrets.
       [/\b([A-Z0-9_]+_KEY)(\s*=\s*["']?)([^\s"',;)]{8,})/g, (_m, k, sep, _v) => `${k}${sep}[REDACTED]`]
     ];
+    REDACTION_CAVEAT = "Redaction may hide values or structure needed for comparison. Identical markers do not establish equality of the original values; use field presence, types, structure or safe local reproduction. Unobserved stages are unknown.";
   }
 });
 
@@ -37215,27 +37240,36 @@ function materializeExposedPaths(workdir, exposePaths) {
   const root = path4.join(workdir, "workspace");
   fs3.mkdirSync(root, { recursive: true, mode: 448 });
   const hashes = [];
+  let redacted = false;
   const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals) => {
     ensureRoom(totals, fs3.statSync(abs).size);
     const base = path4.join(root, `${index}-${path4.basename(source)}`);
-    const out = copyMasked(abs, rel ? path4.join(base, rel) : base);
+    const copy = copyMasked(abs, rel ? path4.join(base, rel) : base);
+    const out = copy.bytes;
+    redacted ||= copy.redacted;
     (hashes[index] ??= crypto2.createHash("sha256")).update(`${rel}\0`).update(out);
     totals.files += 1;
     totals.bytes += out.length;
   });
   for (const e of manifest.entries) e.sha256 = hashes[e.index]?.digest("hex") ?? null;
+  manifest.redacted = redacted;
   return manifest;
 }
 function copyMasked(abs, dest) {
   const buf = fs3.readFileSync(abs);
   let out = buf;
+  let redacted = false;
   if (!isBinary(buf)) {
     const text2 = buf.toString("utf8");
-    if (Buffer.from(text2, "utf8").equals(buf)) out = Buffer.from(redact(text2), "utf8");
+    if (Buffer.from(text2, "utf8").equals(buf)) {
+      const observed = redactWithReport(text2);
+      out = Buffer.from(observed.value, "utf8");
+      redacted = observed.redacted;
+    }
   }
   fs3.mkdirSync(path4.dirname(dest), { recursive: true, mode: 448 });
   fs3.writeFileSync(dest, out, { mode: 384 });
-  return out;
+  return { bytes: out, redacted };
 }
 function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const root = path4.join(workdir, "workspace", "repo");
@@ -37282,7 +37316,9 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const hash2 = crypto2.createHash("sha256");
   for (const c of copied) {
     ensureRoom(manifest.totals, c.size);
-    const out = copyMasked(path4.join(top, c.path), path4.join(root, c.path));
+    const copy = copyMasked(path4.join(top, c.path), path4.join(root, c.path));
+    const out = copy.bytes;
+    manifest.redacted = Boolean(manifest.redacted || copy.redacted);
     hash2.update(`${c.path}\0`).update(out);
     manifest.totals.files += 1;
     manifest.totals.bytes += out.length;
@@ -37442,13 +37478,15 @@ function exposeDiff(workdir, { repo, base = "HEAD" }, manifest, maxChars) {
     base,
     "--"
   ]).toString("utf8") : "";
-  let text2 = redact(
+  const observed = redactWithReport(
     full.split(/^(?=diff --git )/m).filter((sec) => {
       const rest = sec.slice("diff --git ".length, sec.indexOf("\n"));
       const p = rest.slice(2, 2 + (rest.length - 1) / 2 - 2);
       return tracked.has(p) && rest === `a/${p} b/${p}`;
     }).join("")
   );
+  manifest.redacted = Boolean(manifest.redacted || observed.redacted);
+  let text2 = observed.value;
   if (text2.length > maxChars) {
     text2 = maxChars < 500 ? "" : `${text2.slice(0, maxChars - 200)}
 ... [diff cut by severally: ${text2.length} characters in all; every changed file is under workspace/repo/]`;
@@ -37521,7 +37559,8 @@ function briefRecord(req, exposeManifest = null) {
         ...e.changed === void 0 ? {} : { changed_since_parent: e.changed }
       })),
       totals: exposeManifest.totals,
-      skipped: exposeManifest.skipped
+      skipped: exposeManifest.skipped,
+      redacted: exposeManifest.redacted ?? null
     } : null
   });
 }
@@ -37586,6 +37625,8 @@ function renderExposeManifest(manifest) {
     "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     "not here, record it under `unknowns` rather than guessing. Text files were passed through the same",
     "credential masking as this brief; binary files were copied unchanged.",
+    `Redaction observed in exposed files: ${manifest.redacted ?? "unknown"}.`,
+    ...manifest.redacted ? [REDACTION_CAVEAT] : [],
     "",
     ...lines,
     ...skipped
@@ -37593,7 +37634,8 @@ function renderExposeManifest(manifest) {
 }
 function renderRound(p) {
   const tag = (id2) => `${p.source_job_id ?? `r${p.round}`}.${id2}`;
-  const verdict = (x) => x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ""}` : "";
+  const verdict = (x) => x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ""}${x.note ? `
+  checked scope and evidence: ${clip(x.note)}` : ""}` : "";
   const header = [
     `### Round ${p.round} (${p.mode})`,
     p.source_job_id ? `Earlier retry context from job ${p.source_job_id}; point IDs use that job's prefix.` : null,
@@ -37653,7 +37695,7 @@ function renderRound(p) {
   if (omitted) parts.push(`(${omitted} history item(s) omitted to keep this brief within its size.)`);
   return parts.join("\n");
 }
-function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
+function renderBriefWithReport(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
   parts.push(renderGuardrails(Boolean(exposeManifest), req.network));
   parts.push("");
@@ -37682,7 +37724,7 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
     parts.push("");
     parts.push("## Earlier rounds of this same consultation");
     parts.push(
-      "Each point carries the lead's own check where there is one -- confirmed: it held; not_applicable: checked, and it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet."
+      "Each point carries the lead's own check where there is one -- confirmed: it held within the recorded scope; refuted: it did not hold in that check; not_applicable: checked, and it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet."
     );
     const blocks = chain.priorRounds.map(renderRound);
     let kept = 0;
@@ -37708,7 +37750,13 @@ function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest 
   parts.push("```");
   parts.push("");
   parts.push("Reply now with the single JSON object and nothing else.");
-  return redact(parts.join("\n"));
+  const observed = redactWithReport(parts.join("\n"));
+  return {
+    text: observed.redacted ? `${REDACTION_CAVEAT}
+
+${observed.value}` : observed.value,
+    redacted: observed.redacted
+  };
 }
 var MODE_BRIEFS, GUARDRAILS_HEAD, GUARDRAILS_RULES, WEB_ON, WEB_OFF, WORKDIR_EMPTY, WORKDIR_EXPOSED, GUARDRAILS_TAIL, EXPOSE_LISTING_MAX, clip, HISTORY_CHARS;
 var init_brief = __esm({
@@ -37755,6 +37803,7 @@ var init_brief = __esm({
     WORKDIR_EXPOSED = '- Your working directory is not empty: the lead exposed specific paths, listed under "Files available to you" below and copied read-only under ./workspace. Those are the only part of the lead\'s repository the lead gave you; read the ones the question turns on before you answer. If something you need is missing, record it under `unknowns` instead of guessing or substituting an assumption.';
     GUARDRAILS_TAIL = [
       "- Never include credentials, API keys, tokens, or environment variable values in your answer.",
+      "- Explain credential counterexamples using field presence/removal, types and structure, plus safe local reproduction steps. Redaction markers cannot establish whether original values were equal. Never reconstruct a secret or depend on repeating it.",
       "- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.",
       "",
       "This session is time-boxed and is killed when the budget runs out, which produces no answer at all -- the",
@@ -37860,13 +37909,14 @@ function normalizeResult(raw) {
   if (!objIn || typeof objIn !== "object" || Array.isArray(objIn)) {
     throw new OutputError("consultant did not return a JSON object", typeof raw === "string" ? raw.slice(0, 2e3) : String(raw));
   }
-  const src = redact(objIn);
+  const { value: src, redacted } = redactWithReport(objIn);
   const summary = clampText(src.summary, O.summaryMax);
   if (!summary) {
     throw new OutputError('consultant response has no usable "summary" field', JSON.stringify(src).slice(0, 2e3));
   }
   const result = {
     summary,
+    recommendation: clampText(src.recommendation, O.itemTextMax),
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
     stance: stance(src.stance),
@@ -37944,6 +37994,7 @@ function normalizeResult(raw) {
   return {
     result,
     quality: {
+      redaction: { files: null, brief: null, result: redacted },
       missing_sections: missing,
       findings_without_grounds: groundless,
       unsourced: result.references.length === 0,
@@ -40233,11 +40284,11 @@ function recordSummary(job) {
     unrecorded: ids.filter((id2) => !written.has(id2))
   };
 }
-function text(value) {
+function text(value, max = POLICY.output.itemTextMax) {
   if (typeof value !== "string") return null;
   const t = redact(value).trim();
   if (!t) return null;
-  return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}
+  return t.length > max ? `${t.slice(0, max)}
 \u2026[truncated by severally]` : t;
 }
 function inherit(raw, round) {
@@ -40324,7 +40375,7 @@ function comparison(members2, budget) {
   }
   return {
     by_target: columns,
-    note: "This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. Each stance is the consultant's own declaration, relayed as given -- consultants that share a finding can still declare opposite stances, and that is a divergence. Compare the grounds behind each point yourself, and spend a follow-up only where a divergence would change your decision."
+    note: "This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. Each stance is the consultant's own declaration, relayed as given -- consultants that share a finding can still declare opposite stances, and that is a divergence. Compare the grounds behind each point yourself, and spend a follow-up only where a divergence would change your decision. Matching stances need not recommend the same option; a null recommendation was not declared. Redaction flags show observed replacements; null means unknown. Masked values cannot be compared for equality."
   };
 }
 function byTarget(m, budget) {
@@ -40363,7 +40414,8 @@ function byTarget(m, budget) {
   const summary = clip2(m.result?.summary ?? null, Math.min(SUMMARY_CHARS, budget / 3));
   const caveat = clip2(m.quality?.caveat ?? null, Math.min(CAVEAT_CHARS, budget / 3));
   const model = clip2(m.model ?? null, Math.min(ITEM_CHARS, budget / 10)) ?? null;
-  if (!full) left -= printed(summary) + printed(caveat) + printed(model);
+  const recommendation = clip2(m.result?.recommendation ?? null, Math.min(SUMMARY_CHARS, budget / 4));
+  if (!full) left -= printed(summary) + printed(caveat) + printed(model) + printed(recommendation);
   const r = m.result ?? {};
   const findingPoints = list(
     "finding_points",
@@ -40402,6 +40454,9 @@ function byTarget(m, budget) {
     // bottom lines were opposite; one word per consultant makes that
     // visible without the server interpreting anyone's summary.
     stance: m.result?.stance ?? null,
+    recommendation,
+    decision_changers: decisionChangers,
+    unknowns,
     confidence: m.result?.confidence ?? null,
     evidence_basis: m.result?.evidence_basis ?? null,
     summary,
@@ -40415,9 +40470,7 @@ function byTarget(m, budget) {
     // Counted and relayed, never compared: two consultants naming the same
     // condition is for the lead to notice, not for the server to assert.
     severity_counts: tally((m.result?.findings ?? []).map((f) => f.severity ?? "unrated")),
-    decision_changers: decisionChangers,
     alternative_options: alternatives,
-    unknowns,
     next_checks: nextChecks,
     remaining_disagreements: disagreements,
     caveat,
@@ -40425,7 +40478,12 @@ function byTarget(m, budget) {
     // names. Not a claim that they were read; the call list is in the job.
     ...m.tool_inputs?.exposed_files ? { exposed_files_in_tool_inputs: `${m.tool_inputs.exposed_mentioned} of ${m.tool_inputs.exposed_files}` } : {},
     // Counted, not judged: how many of this answer's points carry no verdict yet.
-    points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null
+    points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null,
+    redaction: {
+      files: m.quality?.redaction?.files ?? null,
+      brief: m.quality?.redaction?.brief ?? null,
+      result: m.quality?.redaction?.result ?? null
+    }
   };
   if (!full) {
     delete entry.cli;
@@ -40471,6 +40529,7 @@ function pointsOf(view, ids) {
     stance: r.stance,
     evidence_basis: r.evidence_basis,
     caveat: view.quality?.caveat ?? null,
+    redaction: view.quality?.redaction ?? { files: null, brief: null, result: null },
     points,
     // What this projection leaves out, counted; the whole answer is one call away.
     not_shown: {
@@ -40520,7 +40579,8 @@ function compactBrief(view, detail) {
           action_needed: 'Missing material remains unverified. Inspect detail: "full" for skipped paths and select safe replacement paths; for a symlink select its actual target only if it is permitted. Protected paths stay excluded.'
         } : {}
       } : null,
-      full_with: `consult_get({ job_id: "${view.job_id}", detail: "full" }) or consult_export`
+      full_with: `consult_get({ job_id: "${view.job_id}", detail: "full" }) or consult_export`,
+      redaction: view.brief.redaction ?? { files: null, brief: null }
     }
   };
 }
@@ -41255,10 +41315,14 @@ var init_jobs = __esm({
         }
         for (const job of members2) {
           const chain = { round: job.round, priorRounds: this.#chainHistory(job.chain_id) };
-          const brief = renderBrief(req, chain, exposeManifest);
-          job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
-            this.#fail(job, "cli_error", err?.message ?? String(err));
-          });
+          const observed = renderBriefWithReport(req, chain, exposeManifest);
+          const redaction = { files: exposeManifest ? exposeManifest.redacted ?? null : false, brief: observed.redacted };
+          if (job.brief) job.brief.redaction = redaction;
+          job.promise = this.#execute(job, { ...req, target: job.target, _redaction: redaction }, chain, observed.text).catch(
+            (err) => {
+              this.#fail(job, "cli_error", err?.message ?? String(err));
+            }
+          );
         }
         if (req._snapshot) cleanupJobDir(groupId);
         const { round } = firstMember;
@@ -41340,7 +41404,8 @@ var init_jobs = __esm({
             id: x.id,
             ...shape(x),
             verdict: verdicts.get(x.id)?.verdict ?? null,
-            effect: verdicts.get(x.id)?.effect ?? null
+            effect: verdicts.get(x.id)?.effect ?? null,
+            note: verdicts.get(x.id)?.followup_note ?? null
           }));
           const checked = (x) => x.verdict != null && x.verdict !== "unverified";
           let omitted = 0;
@@ -41429,7 +41494,7 @@ var init_jobs = __esm({
             return this.#fail(job, "spawn_error", `could not copy the exposed files: ${err instanceof Error ? err.message : err}`);
           }
         }
-        const text2 = brief ?? renderBrief(req, chain);
+        const text2 = brief ?? renderBriefWithReport(req, chain).text;
         const schemaPath = writeJobArtifact(job.job_id, "response-schema.json", JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
         const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir, network: req.network }) : null;
         try {
@@ -41619,7 +41684,13 @@ var init_jobs = __esm({
             }
           }
           job.result = normalized.result;
+          const redaction = {
+            files: req._redaction?.files ?? null,
+            brief: req._redaction?.brief ?? null,
+            result: normalized.quality.redaction?.result ?? null
+          };
           const notes = [
+            Object.values(redaction).some((v) => v === true) && REDACTION_CAVEAT,
             adviceCaveat(normalized),
             // The model that answered, which after a fallback is not the one asked.
             sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
@@ -41631,6 +41702,7 @@ var init_jobs = __esm({
           ].filter(Boolean);
           job.quality = {
             ...normalized.quality,
+            redaction,
             evidence_basis: normalized.result.evidence_basis,
             caveat: notes.length ? notes.join("; ") : null
           };
@@ -41800,6 +41872,7 @@ var init_jobs = __esm({
             verdict,
             effect: text(entry?.effect),
             note: text(entry?.note),
+            followup_note: text(entry?.note, 400),
             recorded_at: now
           });
         }
@@ -42067,8 +42140,8 @@ var init_jobs = __esm({
     };
     PARTIAL_TAIL_CHARS = 8e3;
     GROUP_CHARS = 19500;
-    COLUMN_FIXED_CHARS = 800;
-    COMPARISON_NOTE_CHARS = 500;
+    COLUMN_FIXED_CHARS = 1e3;
+    COMPARISON_NOTE_CHARS = 800;
     QUESTION_CHARS = 1e3;
     FAILURE_MESSAGE_CHARS = 300;
     SUMMARY_CHARS = 400;
@@ -42218,7 +42291,7 @@ function verificationSummary(rounds) {
     const points = [...r.findings, ...r.unknowns, ...r.next_checks];
     for (const point of points) {
       const entry = round.record?.entries.find((e) => e.id === point.id);
-      if (!entry || !["confirmed", "not_applicable"].includes(entry.verdict)) {
+      if (!entry || !["confirmed", "refuted", "not_applicable"].includes(entry.verdict)) {
         unverified += 1;
         continue;
       }
@@ -42328,10 +42401,17 @@ function roundSection(round, previousBrief) {
   if (round.retry_context?.length) head.push(`- retry_context: ${round.retry_context.map((id2) => `\`${id2}\``).join(", ")}`);
   if (round.result) {
     head.push(`- stance as declared: ${round.result.stance ?? "not declared"}`);
+    head.push(`- recommendation: ${round.result.recommendation ?? "not declared"}`);
     head.push(
       `- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`
     );
   }
+  const observation = round.quality?.redaction;
+  const flag = (value) => value == null ? "unknown" : String(value);
+  head.push(
+    `- redaction observed: files=${flag(observation?.files)}, brief=${flag(observation?.brief)}, result=${flag(observation?.result)}`
+  );
+  if (observation && Object.values(observation).some((v) => v === true)) head.push(`- ${REDACTION_CAVEAT}`);
   head.push("");
   head.push("### Question", "", round.question, "");
   head.push("### Brief as sent", "");
@@ -42416,6 +42496,7 @@ var ExportError, historyDir, bullets2;
 var init_export = __esm({
   "src/export.mjs"() {
     "use strict";
+    init_redact();
     init_policy();
     init_expose_paths();
     init_store();
@@ -42608,7 +42689,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Record what checking a point showed",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-      description: "Save checks against point IDs from consult_get: f1 (finding), u1 (unknown), c1 (next check). verdict = confirmed/not_applicable/unverifiable/unverified; effect = decision impact; note = checked evidence. Confirmed is not adoption. Record only checked points; same ID replaces its entry. Use records: [{ job_id, entries, reflection? }, ...] for one fan-out batch. Invalid jobs/IDs prevent every write; write failures appear per job in results. Saved history survives restart; only verdict/effect go to follow-ups. Optional reflection describes what the answer added over your prediction.",
+      description: "Save checks against point IDs from consult_get: f1 (finding), u1 (unknown), c1 (next check). verdict = confirmed/refuted/not_applicable/unverifiable/unverified; effect = decision impact; note = checked inputs, environment, evidence and limits. Confirmed is not adoption; refuted means the claim did not hold in the recorded check. Partial checks stay unverified with their scope in note. Record only checked points; same ID replaces its entry. Use records: [{ job_id, entries, reflection? }, ...] for one fan-out batch. Invalid jobs/IDs prevent every write; write failures appear per job in results. Saved history survives restart; verdict/effect and bounded new evidence notes go to follow-ups. Legacy notes remain local until recorded again. Optional reflection describes what the answer added over your prediction.",
       inputSchema: external_exports.object({
         ...recordShape,
         job_id: recordShape.job_id.optional(),

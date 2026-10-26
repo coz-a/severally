@@ -8,11 +8,11 @@
 // The scanner has to know where strings are: a naive regex would eat the "//"
 // in "bin": "https://example.com/agy", and a naive trailing-comma rule would
 // corrupt a value like "a,}". Comments are blanked rather than deleted so the
-// byte offsets -- and therefore JSON.parse's error positions -- still point at
-// the right place in the original text.
+// UTF-16 code-unit offsets -- and therefore JSON.parse's error positions --
+// still point at the right place in the original text.
 
 /**
- * Remove // and /* *\/ comments and trailing commas, preserving offsets.
+ * Remove // and /* *\/ comments and trailing commas, preserving UTF-16 code-unit offsets.
  * @param {string} text
  */
 export function stripJsonc(text) {

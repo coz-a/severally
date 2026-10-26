@@ -307,10 +307,10 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'Save checks against point IDs from consult_get: f1 (finding), u1 (unknown), c1 (next check). ' +
-        'verdict = confirmed/not_applicable/unverifiable/unverified; effect = decision impact; note = checked evidence. ' +
-        'Confirmed is not adoption. Record only checked points; same ID replaces its entry. ' +
+        'verdict = confirmed/refuted/not_applicable/unverifiable/unverified; effect = decision impact; note = checked inputs, environment, evidence and limits. ' +
+        'Confirmed is not adoption; refuted means the claim did not hold in the recorded check. Partial checks stay unverified with their scope in note. Record only checked points; same ID replaces its entry. ' +
         'Use records: [{ job_id, entries, reflection? }, ...] for one fan-out batch. Invalid jobs/IDs prevent every write; ' +
-        'write failures appear per job in results. Saved history survives restart; only verdict/effect go to follow-ups. ' +
+        'write failures appear per job in results. Saved history survives restart; verdict/effect and bounded new evidence notes go to follow-ups. Legacy notes remain local until recorded again. ' +
         'Optional reflection describes what the answer added over your prediction.',
       inputSchema: z.object({
         ...recordShape,

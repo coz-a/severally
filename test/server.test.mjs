@@ -25,6 +25,7 @@ test("exposes the three protocol tools, the lead's record, and a history listing
   assert.deepEqual(record.inputSchema.properties.entries.items.properties.verdict.enum, [
     'unverified',
     'confirmed',
+    'refuted',
     'not_applicable',
     'unverifiable',
   ]);

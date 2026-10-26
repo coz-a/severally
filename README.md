@@ -164,7 +164,8 @@ same bug. One consultation takes minutes and real quota, so it is not for small 
 ### Answers, checks and failures
 
 The agent can work on independent tasks while it waits. Answers usually take one to ten minutes, depending
-on the CLI, model and load. Each includes a stance, findings with grounds, unknowns and proposed checks.
+on the CLI, model and load. Each includes a stance, a separate concrete recommendation, findings with grounds, unknowns and proposed checks.
+Matching stances can recommend different options; older answers without a recommendation remain not declared.
 A failure (`usage_limit`, `timeout` and so on) means no advice was obtained.
 
 The lead checks the claims that could change the decision and records evidence separately from adoption.
@@ -181,7 +182,8 @@ Files are sent again in their current state, with changes and deletions noted.
 
 Consultations and verification records stay in `~/.severally/history/`. They can be updated from a later
 session or exported as Markdown with verified points, decision effects and unchecked counts before the full
-answers. A confirmed point means the check supported it; it does not mean the lead adopted the advice.
+answers. A confirmed point means the check supported it within the recorded scope; it does not mean the lead adopted
+the advice. `refuted` means it did not hold in that check. Partial checks stay `unverified` with their limits recorded.
 See [modes and follow-up details](docs/how-it-works.md#how-a-consultation-runs) and
 [records](docs/how-it-works.md#records).
 
@@ -226,7 +228,9 @@ Credential directories, including the default `~/.codex`, are denied as a whole 
 elsewhere. A protected root containing the executable instead keeps its executable entry readable and denies
 the other entries present at launch; new entries are not covered. On Linux, individually denied files replaced
 by rename during a run can become readable. Recognized absolute credential-location variables are protected;
-arbitrary credential locations are not automatically discovered.
+arbitrary credential locations are not automatically discovered. Legacy `jobs/<id>/home` directories created
+after launch are also outside this protection. Keep the executable outside credential roots and avoid running
+pre-1.7 severally alongside current consultations; see the [tested limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading).
 OpenCode's guard checks each read's path and its canonical target, including symlink aliases. Replacement of a
 canonical path between the hook and the CLI's read remains outside its guarantee. These changes were checked
 on Linux with Codex 0.164.0 and OpenCode 2.0.24; enforcement on macOS, Windows and other CLI versions is unverified.

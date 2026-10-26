@@ -7,6 +7,7 @@ const { normalizeResult, extractJson, OutputError } = await import('../src/parse
 
 const full = {
   summary: 'S',
+  recommendation: 'Use a bounded retry budget.',
   confidence: 'medium',
   evidence_basis: 'sufficient',
   stance: 'proceed',
