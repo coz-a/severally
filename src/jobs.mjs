@@ -85,6 +85,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
  * @property {string} history_file
  * @property {({skipped: Record<string, number>, changed: number, action_needed?: string} & import('./expose-paths.mjs').ExposeTotals) | null} exposed
  * @property {string} full_with
+ * @property {{files: boolean | null, brief: boolean | null}} redaction
  */
 
 /** @typedef {Round & ViewExtras} FullView A round as consult_get shows it with `detail: "full"`. */
@@ -1169,6 +1170,8 @@ export class JobManager {
           question: j.question,
           summary: j.result.summary,
           stance: j.result.stance,
+          recommendation: j.result.recommendation ?? null,
+          redaction: j.quality?.redaction ?? null,
           reflection: j.reflection ?? null,
           findings,
           unknowns,
@@ -2573,8 +2576,8 @@ function byTarget(m, budget) {
     // Counted, not judged: how many of this answer's points carry no verdict yet.
     points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null,
     redaction: {
-      files: m.quality?.redaction?.files ?? null,
-      brief: m.quality?.redaction?.brief ?? null,
+      files: m.quality?.redaction?.files ?? m.brief?.redaction?.files ?? null,
+      brief: m.quality?.redaction?.brief ?? m.brief?.redaction?.brief ?? null,
       result: m.quality?.redaction?.result ?? null,
     },
   };
@@ -2712,7 +2715,9 @@ function compactBrief(view, detail) {
   if (detail === 'full' || !view.brief) return view;
   const json = JSON.stringify(view.brief);
   const ex = view.brief.expose_paths;
-  const gaps = ex?.skipped?.some((x) => ['gone', 'masked', 'symlink', 'protected'].includes(x.reason));
+  const gaps =
+    ex &&
+    (ex.totals.files === 0 || ex.skipped?.length > 0 || ex.entries.some((e) => e.changes?.some((c) => c.endsWith(' (deleted)'))));
   return {
     ...view,
     brief: {

@@ -37594,7 +37594,7 @@ function deletedLines(changes = []) {
   ];
 }
 function renderExposeManifest(manifest) {
-  if (!manifest || manifest.entries.length === 0 && manifest.skipped.length === 0) return null;
+  if (!manifest) return null;
   let room = EXPOSE_LISTING_MAX;
   const lines = manifest.entries.flatMap((e) => {
     const shape = (e.kind === "diff" ? `the files the lead's change touches, against ${e.base}, at their paths in the repository; ${e.files} copied, ${humanSize(e.bytes)}; the diff itself is among the artifacts` : e.kind === "change_files" ? `the files the lead's change touched in the earlier round, at their paths in the repository, copied again as they are now; ${e.files} copied, ${humanSize(e.bytes)}; the diff is not repeated` : e.kind === "directory" ? `directory, ${e.files} file(s), ${humanSize(e.bytes)}` : `file, ${humanSize(e.bytes)}`) + (e.changed === void 0 ? "" : e.changed ? "; changed since the earlier round" : "; unchanged since the earlier round");
@@ -37625,6 +37625,7 @@ function renderExposeManifest(manifest) {
     "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     "not here, record it under `unknowns` rather than guessing. Text files were passed through the same",
     "credential masking as this brief; binary files were copied unchanged.",
+    ...manifest.totals.files === 0 ? ["0 files were copied. No implementation has been supplied by this exposure; missing code premises stay unknown."] : [],
     `Redaction observed in exposed files: ${manifest.redacted ?? "unknown"}.`,
     ...manifest.redacted ? [REDACTION_CAVEAT] : [],
     "",
@@ -37642,6 +37643,8 @@ function renderRound(p) {
     `Question asked: ${clip(p.question, 1200)}`,
     `Your answer, summarised: ${clip(p.summary, 8e3)}`,
     p.stance ? `Your stance: ${p.stance}` : null,
+    p.recommendation ? `Your recommendation: ${clip(p.recommendation)}` : null,
+    p.redaction ? `Earlier redaction observations: ${JSON.stringify(p.redaction)}. ${REDACTION_CAVEAT}` : null,
     p.reflection ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` + (p.reflection.related_item_ids.length ? ` (related: ${p.reflection.related_item_ids.slice(0, 5).map(tag).join(", ")}${p.reflection.related_item_ids.length > 5 ? `; ${p.reflection.related_item_ids.length - 5} more` : ""})` : "") : null
   ].filter(Boolean).join("\n");
   const entries = [];
@@ -37740,7 +37743,7 @@ function renderBriefWithReport(req, chain = { round: 1, priorRounds: [] }, expos
     parts.push(...blocks.slice(blocks.length - kept));
     parts.push("");
     parts.push(
-      "This round is a follow-up. The lead has narrowed the exchange to the divergences above. Do not restate your earlier answer; address what is new, and say plainly if the new information changes or does not change your position."
+      "This round is a follow-up. Do not restate the earlier answer. State each changed premise, the recommendation you keep or retract, and the concrete next change and check. Explain what the prior recorded checks support and what remains unknown; do not extend a partial check to an untested claim. Distinguish a known failure from an unknown outcome when that changes whether an operation can safely be repeated."
     );
   }
   parts.push("");
@@ -40481,8 +40484,8 @@ function byTarget(m, budget) {
     // Counted, not judged: how many of this answer's points carry no verdict yet.
     points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null,
     redaction: {
-      files: m.quality?.redaction?.files ?? null,
-      brief: m.quality?.redaction?.brief ?? null,
+      files: m.quality?.redaction?.files ?? m.brief?.redaction?.files ?? null,
+      brief: m.quality?.redaction?.brief ?? m.brief?.redaction?.brief ?? null,
       result: m.quality?.redaction?.result ?? null
     }
   };
@@ -40564,7 +40567,7 @@ function compactBrief(view, detail) {
   if (detail === "full" || !view.brief) return view;
   const json2 = JSON.stringify(view.brief);
   const ex = view.brief.expose_paths;
-  const gaps = ex?.skipped?.some((x) => ["gone", "masked", "symlink", "protected"].includes(x.reason));
+  const gaps = ex && (ex.totals.files === 0 || ex.skipped?.length > 0 || ex.entries.some((e) => e.changes?.some((c) => c.endsWith(" (deleted)"))));
   return {
     ...view,
     brief: {
@@ -41430,6 +41433,8 @@ var init_jobs = __esm({
             question: j.question,
             summary: j.result.summary,
             stance: j.result.stance,
+            recommendation: j.result.recommendation ?? null,
+            redaction: j.quality?.redaction ?? null,
             reflection: j.reflection ?? null,
             findings,
             unknowns,
@@ -42407,7 +42412,11 @@ function roundSection(round, previousBrief) {
       `- the consultant's own confidence: ${round.result.confidence ?? "not declared"}, evidence basis: ${round.result.evidence_basis ?? "not declared"}`
     );
   }
-  const observation = round.quality?.redaction;
+  const observation = {
+    files: round.quality?.redaction?.files ?? round.brief?.redaction?.files ?? null,
+    brief: round.quality?.redaction?.brief ?? round.brief?.redaction?.brief ?? null,
+    result: round.quality?.redaction?.result ?? null
+  };
   const flag = (value) => value == null ? "unknown" : String(value);
   head.push(
     `- redaction observed: files=${flag(observation?.files)}, brief=${flag(observation?.brief)}, result=${flag(observation?.result)}`
@@ -42594,7 +42603,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. A group includes statuses and comparison.by_target: actual model, stance, points/grounds and truncation markers. Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; job_id alone gets one whole answer. detail: full adds the brief/question. Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.`,
+      description: `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. A group includes statuses and comparison.by_target: actual model, stance, concrete recommendation, conditions, points/grounds, redaction observations and truncation markers. Null observations are unknown; matching stances need not recommend the same action. Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; job_id alone gets one whole answer. detail: full adds the brief/question. Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),

@@ -199,7 +199,7 @@ export function createServer(manager = new JobManager()) {
       description:
         `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; ` +
         'progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. ' +
-        'A group includes statuses and comparison.by_target: actual model, stance, points/grounds and truncation markers. ' +
+        'A group includes statuses and comparison.by_target: actual model, stance, concrete recommendation, conditions, points/grounds, redaction observations and truncation markers. Null observations are unknown; matching stances need not recommend the same action. ' +
         'Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; ' +
         'job_id alone gets one whole answer. detail: full adds the brief/question. ' +
         'Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.',

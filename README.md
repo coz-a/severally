@@ -24,6 +24,10 @@ For example, a cache review can reveal that member-specific prices would leak to
 checks the pricing assumptions, chooses what can be cached, and records what remains unverified. The
 [worked example](docs/how-it-works.md#example) follows the separate recommendations through that decision.
 
+Consultations send the brief, exposed files and anything the consultant reads to that CLI's model.
+Asking everyone spends quota per consultant. Read restrictions have CLI-specific gaps and untested environments;
+turning off the web still sends material to the model. See [what is sent and the protection limits](#what-a-consultant-can-see-and-do).
+
 ## Contents
 
 - [Install](#install)
@@ -57,65 +61,11 @@ npx -y severally-mcp@2.9.2 install
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
 would change without changing anything.
 
-Then restart the clients: a running session does not reload the new registration. To check the setup without
-starting a consultation, run:
+Then restart the clients: a running session does not reload the new registration.
+No configuration is normally needed. Continue with the [first question](#asking).
 
-```bash
-npx -y severally-mcp@2.9.2 status
-```
-
-It shows the config file, the consultants this machine can reach, the installed copies' versions, which clients
-have severally registered and whether each CLI is logged in. The login check reads the CLI's own status command and
-sends no prompt; running out of quota is not checked, and the first consultation shows it.
-
-Part of the output on a machine with Codex and Claude Code:
-
-```text
-config: ok
-
-consultants:
-  codex: codex, gpt-6.1-sol  available
-  claude-code: claude-code, claude-opus-5-5  available
-
-clients:
-  Claude Code  registered (listed by the client)
-  Codex        registered (listed by the client)
-
-login (out of quota is not checked; the first consultation shows it):
-  codex        logged in
-  claude-code  logged in
-```
-
-No configuration is normally needed. To ask the first question, see [Asking](#asking).
-
-Marketplace installs, installing from a clone, and the fallback when global npm installation is unavailable are
-in the [installation details](docs/install.md); `--dry-run`, `--manual`, `--force` and the other flags are in the
-[installer options](docs/install.md#command-line).
-
-The installer and the server are tested on Linux, macOS and Windows in CI. The Claude Code and Codex marketplace
-routes and the real CLIs have been tried on Linux only. On Windows, cancelling a consultation stops its process
-tree while the consultant's CLI is still running. If the CLI has already exited, processes it started may survive;
-what remains in that case is observed, not guaranteed.
-
-### Updating
-
-This line replaces your install with the latest version, with no version number to look up:
-
-```bash
-npx -y severally-mcp@latest install
-```
-
-With `@latest`, npx asks npm for the newest version every time, so an older copy it already has is not used.
-If Claude Code has severally from its plugin marketplace, the same line updates that copy too (details in
-[docs/install.md](docs/install.md#updating)). Then restart the clients. What changed in each version is in the
-[releases](https://github.com/coz-a/severally/releases).
-
-### Uninstall
-
-Installed from the marketplace: run `/plugin marketplace remove severally` in Claude Code, which also removes the
-plugin. For an installer install, the commands for each OS and install mode are in
-[docs/install.md](docs/install.md#uninstall). Either way, history and backups stay in `~/.severally/`; delete it
-if you no longer need them.
+To check the registration, see [CLI](#cli). Other install routes and platform-specific notes are in the
+[installation details](docs/install.md).
 
 ## Usage
 
@@ -161,6 +111,29 @@ what that showed, what it recommends, and what is still unverified. The [example
 It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
 same bug. One consultation takes minutes and real quota, so it is not for small fixes.
 
+### CLI
+
+Use the terminal to install or check the registration:
+
+```bash
+npx -y severally-mcp@2.9.2 install
+npx -y severally-mcp@2.9.2 status
+```
+
+`status` shows configuration, available consultants, registrations and login without starting a consultation
+or sending a prompt. It does not check remaining quota. See the [output and checks](docs/install.md#checking-the-registration),
+[installer options](docs/install.md#command-line), [updating](docs/install.md#updating) and
+[uninstalling](docs/install.md#uninstall). Restart the clients after updating.
+
+From a source checkout, diagnose an authenticated CLI with:
+
+```bash
+node scripts/doctor.mjs --target codex
+```
+
+This starts real consultations and spends quota. See [what it checks and its limits](docs/install.md#checking-cli-compatibility-after-an-update).
+Ask for consultations, follow-ups and Markdown exports in your agent's chat.
+
 ### Answers, checks and failures
 
 The agent can work on independent tasks while it waits. Answers usually take one to ten minutes, depending
@@ -178,7 +151,8 @@ the successful answers remain usable; the agent can retry just the failed consul
 Ask “Continue yesterday's cache consultation” or “Recheck that finding against the updated code.” The agent
 can find the saved consultation and continue with the same consultant; you do not need to copy IDs. When
 several candidates fit, it checks which one you mean. By default a chain permits five rounds in total.
-Files are sent again in their current state, with changes and deletions noted.
+Each follow-up starts a fresh CLI session with the saved question, answer and checks; it does not resume the
+CLI's native session. Files are sent again in their current state, with changes and deletions noted.
 
 Consultations and verification records stay in `~/.severally/history/`. They can be updated from a later
 session or exported as Markdown with verified points, decision effects and unchecked counts before the full
@@ -205,12 +179,12 @@ install OpenCode and add the model as a consultant: see
 A consultation sends the brief to that CLI's model, the same way using the CLI yourself does. It does not
 automatically inherit your parent session's history: anything the lead includes in the brief is sent, and files
 the consultant is allowed to read also go to its model. The read-only setting does not isolate what it can read.
-No consultant can:
+The server configures each consultant to prohibit:
 
-- write files
-- use MCP
-- start other agents or consult anyone else
-- use the network, except for web search and browsing
+- writing files
+- using MCP
+- starting other agents or consulting anyone else
+- using the network, except for web search and browsing
 
 | Consultant | Reads files | Credential paths | Shell | Writes | Web search / browsing |
 |---|---|---|---|---|---|

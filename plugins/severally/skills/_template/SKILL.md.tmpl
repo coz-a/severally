@@ -30,6 +30,9 @@ Each consultant gets a fresh CLI session, the brief and exposed files, without y
    `counterpoints` imply debate. Ask for one decision, not a broad investigation that may exhaust the timeout.
    Inspect `files_exposed` and the manifest: zero files for a code question, skipped or deleted files, or a
    size-limit error need attention. Select replacements or a smaller set; missing material stays unknown.
+   If the answer names a missing premise that changes the decision, select only its implementation, caller,
+   related test or configuration and supplement once with a follow-up. If still unavailable, report its effect
+   on the decision instead of widening to the whole repository or looping consultations.
 
 2. **Collect** with `consult_get({ group_id })` (one consultant: `{ job_id }`). It waits by default; repeat
    while running. `progress` shows activity; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
@@ -104,6 +107,9 @@ For a failed member use `consult_start({ request: { retry_of: "<failed job_id>" 
 after fixing auth/quota causes; keep successful answers. The retry is a new chain linked to the failure.
 Find saved consultations with `consult_list({ question: "cache", target: "{{DEFAULT_TARGET}}" })`; use the
 matching chain's `latest_completed_job_id` and check `rounds_remaining`. Confirm ambiguous candidates.
+Ask for a choice once when several saved candidates fit; retrieve the IDs yourself. In a changed-requirement
+follow-up, state the changed premise and ask which advice is retained or withdrawn, the concrete next change,
+and its verification. A prior cache collision check does not establish authentication order or bypass.
 
 A group's `group_id` asks every eligible member again; use a member's `job_id` for one. Files are recopied in
 their current state, changes and deletions noted; add needed `expose_paths`. See the reference for recovery.

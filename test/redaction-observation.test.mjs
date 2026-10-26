@@ -104,3 +104,12 @@ test('legacy observations are explicitly unknown in comparison and export', asyn
   }
   assert.match(exportChain({ group_id: s.group_id }).markdown, /files=unknown, brief=unknown, result=unknown/);
 });
+
+test('a failed consultation keeps observations from its outbound brief', async () => {
+  process.env.STUB_BEHAVIOR = 'invalid';
+  const mgr = new JobManager();
+  const s = mgr.start(reviewRequest({ context: { proposal: 'Remove API_KEY="synthetic-one"' } }));
+  await mgr.jobs.get(s.job_id).promise;
+  assert.equal(mgr.view(s.job_id).status, 'failed');
+  assert.match(exportChain({ chain_id: s.chain_id }).markdown, /files=false, brief=true, result=unknown/);
+});

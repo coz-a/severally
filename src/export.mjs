@@ -355,7 +355,11 @@ function roundSection(round, previousBrief) {
       `- the consultant's own confidence: ${round.result.confidence ?? 'not declared'}, evidence basis: ${round.result.evidence_basis ?? 'not declared'}`,
     );
   }
-  const observation = round.quality?.redaction;
+  const observation = {
+    files: round.quality?.redaction?.files ?? round.brief?.redaction?.files ?? null,
+    brief: round.quality?.redaction?.brief ?? round.brief?.redaction?.brief ?? null,
+    result: round.quality?.redaction?.result ?? null,
+  };
   const flag = (/** @type {boolean | null | undefined} */ value) => (value == null ? 'unknown' : String(value));
   head.push(
     `- redaction observed: files=${flag(observation?.files)}, brief=${flag(observation?.brief)}, result=${flag(observation?.result)}`,

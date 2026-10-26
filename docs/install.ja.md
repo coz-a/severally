@@ -39,6 +39,11 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 - Windows では、PowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
   `PATHEXT` から探します（`.exe`、`.cmd`、`.bat`、空白を含むパスにも対応します）。
 
+インストーラとサーバは、CI で Linux・macOS・Windows のテストをしています。Claude Code と Codex のマーケットプレイスからの
+導入と、実際の CLI での動作を試したのは Linux だけです。Windows で相談を取り消すと、相談相手の CLI が動いている間なら
+プロセスの木ごと止まります。CLI が先に終わっていた場合は、CLI が起動したプロセスが残ることがあります。
+その場合に何が残るかは、テストで観察しているだけで、保証していません。
+
 ## CLI 更新後の互換性確認
 
 通常の `npm test` は、オフラインの fixture で確認します。次のコマンドは明示的に実際の相談を始め、選んだ CLI の
@@ -126,6 +131,24 @@ agy      mcp list                    # severally  stdio  enabled
 opencode mcp list                    # severally  connected
 ```
 
+Codex と Claude Code がある機械での出力の一部を示します。
+
+```text
+config: ok
+
+consultants:
+  codex: codex, gpt-6.1-sol  available
+  claude-code: claude-code, claude-opus-5-5  available
+
+clients:
+  Claude Code  registered (listed by the client)
+  Codex        registered (listed by the client)
+
+login (out of quota is not checked; the first consultation shows it):
+  codex        logged in
+  claude-code  logged in
+```
+
 ## Claude Code のプラグインマーケットプレイスから入れる
 
 Claude Code だけで使うなら、クローンもインストーラも要りません。Claude Code で次を実行します。
@@ -209,8 +232,10 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   ] } }
   ```
 - **Codex**: `codex mcp add` で登録したサーバ（`--manual`）なら、`~/.codex/config.toml` にツールごとの表を書きます。
-  codex 0.163 がこのキーを受け付けること（値は `auto`、`prompt`、`writes`、`approve`）は確かめましたが、セッションでの
-  効き目と、プラグイン方式での動きは確かめていません。
+  [公式の設定一覧](https://developers.openai.com/codex/config-reference)には `auto`・`prompt`・`writes`・`approve` があります。
+  Linux / Codex 0.164.0 の非対話試験では、`approval_policy = "never"` のままでは `consult_start` が拒否され、
+  ツールごとの `approve` 設定後は開始・取得・記録がローカルの合成テストサーバへ届きました。
+  プラグインが提供するサーバの場合は未検証です。許可したいツールだけを指定してください。インストーラはこの設定を追加しません。
   ```toml
   [mcp_servers.severally.tools.consult_get]
   approval_mode = "approve"
@@ -233,6 +258,9 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 エージェントが触れるものがすべてそのベンダーに渡ってよい環境でだけ、省いてください。
 
 ## 更新
+
+`npx -y severally-mcp@latest install` の `@latest` を付けると、npx は毎回 npm に最新版を問い合わせ、
+キャッシュにある古い版は使いません。版ごとの変更点は[リリース](https://github.com/coz-a/severally/releases)にあります。
 
 開発中のクローンでは、`npm run build` のあとに `node scripts/install.mjs` を再実行すると、
 生成したサーバとSkillを各クライアントのインストール先に反映できます。既存の直接登録を置き換える必要がある場合は `--force` を付けます。実行後はクライアントを再起動してください。

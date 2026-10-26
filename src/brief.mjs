@@ -51,6 +51,8 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string} question
  * @property {string} summary
  * @property {string | null} [stance]
+ * @property {string | null} [recommendation]
+ * @property {{files: boolean | null, brief: boolean | null, result: boolean | null} | null} [redaction]
  * @property {{delta: string, related_item_ids: string[]} | null} [reflection]
  * @property {PriorPoint[]} [findings]
  * @property {PriorPoint[]} [unknowns]
@@ -237,7 +239,7 @@ function deletedLines(changes = []) {
 
 /** @param {ExposeManifest | null} manifest */
 function renderExposeManifest(manifest) {
-  if (!manifest || (manifest.entries.length === 0 && manifest.skipped.length === 0)) return null;
+  if (!manifest) return null;
   let room = EXPOSE_LISTING_MAX;
   const lines = manifest.entries.flatMap((e) => {
     const shape =
@@ -290,6 +292,9 @@ function renderExposeManifest(manifest) {
     "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     'not here, record it under `unknowns` rather than guessing. Text files were passed through the same',
     'credential masking as this brief; binary files were copied unchanged.',
+    ...(manifest.totals.files === 0
+      ? ['0 files were copied. No implementation has been supplied by this exposure; missing code premises stay unknown.']
+      : []),
     `Redaction observed in exposed files: ${manifest.redacted ?? 'unknown'}.`,
     ...(manifest.redacted ? [REDACTION_CAVEAT] : []),
     '',
@@ -326,6 +331,8 @@ function renderRound(p) {
     `Question asked: ${clip(p.question, 1_200)}`,
     `Your answer, summarised: ${clip(p.summary, 8_000)}`,
     p.stance ? `Your stance: ${p.stance}` : null,
+    p.recommendation ? `Your recommendation: ${clip(p.recommendation)}` : null,
+    p.redaction ? `Earlier redaction observations: ${JSON.stringify(p.redaction)}. ${REDACTION_CAVEAT}` : null,
     p.reflection
       ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` +
         (p.reflection.related_item_ids.length
@@ -462,7 +469,7 @@ export function renderBriefWithReport(req, chain = { round: 1, priorRounds: [] }
     parts.push(...blocks.slice(blocks.length - kept));
     parts.push('');
     parts.push(
-      'This round is a follow-up. The lead has narrowed the exchange to the divergences above. Do not restate your earlier answer; address what is new, and say plainly if the new information changes or does not change your position.',
+      'This round is a follow-up. Do not restate the earlier answer. State each changed premise, the recommendation you keep or retract, and the concrete next change and check. Explain what the prior recorded checks support and what remains unknown; do not extend a partial check to an untested claim. Distinguish a known failure from an unknown outcome when that changes whether an operation can safely be repeated.',
     );
   }
 

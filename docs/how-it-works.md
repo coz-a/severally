@@ -91,6 +91,10 @@ there is no need to repeat the question's premises there. Code questions still n
   consultant, `network`, the objective, constraints, success criteria, facts, plan, opposing claims and supplied
   material. The new brief restates them. The follow-up limit is `server.max_rounds` in the config file.
 
+A follow-up starts a fresh CLI session, with a brief assembled from the saved question, answer and checks;
+it does not resume the CLI's native session. When a premise changes, identify the updated premise, advice kept
+or withdrawn, specific changes to make and checks to run.
+
 ## Records
 
 `limits.network` reports the server default. A job's `network` and `boundary.network` describe that round;
@@ -140,7 +144,9 @@ Unverified: production load; no load-test environment available.
 
 For code questions, select a diff plus relevant callers, tests and configuration by reading imports and call
 sites. `expose_paths` adds files outside the diff. Inspect the exposed file count and skipped/deleted entries;
-a missing premise remains unknown. A filename observed in a tool call does not prove the consultant read or
+a missing premise remains unknown. If deciding material is missing, select only the needed implementation,
+callers, configuration and tests and supplement once. If still missing, state its effect on the decision.
+A filename observed in a tool call does not prove the consultant read or
 understood all relevant behavior.
 
 ## How large a fan-out's answer is
@@ -242,6 +248,22 @@ The exposed-file manifest also reports `redacted`; comparison views and Markdown
 The `files` stage covers copied-file masking and diff preparation; the brief stage observes the rendered text afterward.
 For safe counterexamples, compare field presence or removal, types and structure, and reproduce behavior locally.
 Do not recover masked secrets or treat matching markers as evidence of equal originals.
+
+For an executable counterexample, separate a public field name from a clearly synthetic sample value.
+Literal assignments to credential-like fields can become invalid syntax after masking replaces their values.
+For example, run this from the repository root. Evaluate booleans or assertions without printing secret values.
+
+```js
+import assert from 'node:assert/strict';
+import { redact } from './src/redact.mjs';
+
+const field = 'api_key';
+const sample = 'SYNTHETIC_ONLY';
+const input = Object.fromEntries([[field, sample]]);
+const output = redact(input);
+assert.equal(Object.hasOwn(output, field), true);
+assert.equal(Object.is(output[field], sample), false);
+```
 
 `node scripts/live-check.mjs --target <name> --mode sandbox` asks a consultant to write a file inside and outside
 its working directory and to run a command, then checks the disk. On 2026-10-18 none of Codex, Claude Code and
