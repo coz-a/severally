@@ -50,7 +50,7 @@ AI エージェントが、ほかのコーディングエージェントに独�
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install
+npx -y severally-mcp@2.9.2 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -60,7 +60,7 @@ npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-
 設定を確かめるには、次を実行します。
 
 ```bash
-npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-mcp status
+npx -y severally-mcp@2.9.2 status
 ```
 
 設定ファイル・この機械から使える相談相手・入っている写しの版・どのクライアントに登録されているか・各 CLI に
@@ -98,14 +98,13 @@ login (out of quota is not checked; the first consultation shows it):
 
 ### 更新
 
-このリリースは GitHub Release のアーカイブで配布します。2.9.1 への更新には次のコマンドを使います。
+次の 1 行で、最新版に入れ替わります。バージョン番号を調べる必要はありません。
 
 ```bash
-npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install
+npx -y severally-mcp@latest install
 ```
 
-今後の更新には、[最新の GitHub Release](https://github.com/coz-a/severally/releases/latest) に添付したアーカイブを使ってください。
-`severally-mcp@latest` は npm の最新版を指します。2.9.1 は npm には公開していません。
+`@latest` を付けると、npx は毎回 npm に最新版を問い合わせます。手元に古い写しがあっても、それは使いません。
 Claude Code にマーケットプレイス版の severally が入っていれば、同じ 1 行でその写しも更新されます（詳しくは
 [docs/install.ja.md](docs/install.ja.md#更新)）。終わったら、クライアントを再起動してください。版ごとの変更点は
 [リリース](https://github.com/coz-a/severally/releases)にあります。
@@ -224,6 +223,8 @@ Codex はファイルの名前では拒否しないので、あなたのリポ�
 OpenCode は読取りのたびに指定パスと実パスを調べ、シンボリックリンクの別名経由も拒否します。ただし、フックの検査から
 CLI の読取りまでの間に実パス側が差し替わる場合は保証しません。これらの変更は Linux の Codex 0.164.0 と
 OpenCode 2.0.24 で確認しました。macOS・Windows と、ほかの CLI バージョンでの強制結果は未検証です。
+Windows の Codex は、権限を上げたサンドボックス（elevated）で動かします。権限を上げないサンドボックスでは読取りを拒否できないためです。
+Codex がまだそのサンドボックスを準備していなければ、最初の相談で管理者の承認を求められます。
 
 **ディスクを読めて Web も閲覧できる相談相手は、読んだ内容を URL に載せて外に持ち出せます**。開いたページに、
 そうするよう書かれていた場合などです。それを防ぎたいときは、エージェントが `network: "off"` を渡します。その回の

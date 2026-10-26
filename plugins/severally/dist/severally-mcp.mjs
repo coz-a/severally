@@ -38729,6 +38729,7 @@ function buildInvocation({ workdir, schemaPath, consultant, network = "on" }) {
     `default_permissions="${PROFILE}"`,
     "-c",
     `permissions.${PROFILE}.filesystem=${filesystemPermissions()}`,
+    ...process.platform === "win32" ? ["-c", 'windows.sandbox="elevated"'] : [],
     "-C",
     workdir,
     "--output-schema",
@@ -42475,7 +42476,7 @@ function staleInstall(home = os4.homedir(), severallyHome = POLICY.home) {
   return {
     copies,
     behind: Object.entries(copies).filter(([, v]) => older(v, newest)).map(([k]) => k),
-    fix: `bring every copy to ${newest}: run \`npx -y -p https://github.com/coz-a/severally/releases/download/v${newest}/severally-mcp-${newest}.tgz severally-install\` (or \`node scripts/install.mjs\` from a checkout of that version) (it updates the runtime and the ~/.claude/skills copy), run \`/plugin marketplace update severally\` for a marketplace install, then restart the clients`
+    fix: `bring every copy to ${newest}: run \`npx -y severally-mcp@${newest} install\` (or \`node scripts/install.mjs\` from a checkout of that version) (it updates the runtime and the ~/.claude/skills copy), run \`/plugin marketplace update severally\` for a marketplace install, then restart the clients`
   };
 }
 function createServer(manager = new JobManager()) {
@@ -42734,7 +42735,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.9.1";
+    SEVERALLY_VERSION = "2.9.2";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42919,7 +42920,7 @@ if (process.argv[2] === "install") {
   const installer = new URL("../scripts/install.mjs", import.meta.url);
   if (!fs13.existsSync(installer)) {
     process.stderr.write(
-      "severally: this is the installed server, not the installer; use the installer archive from https://github.com/coz-a/severally/releases/latest\n"
+      "severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n"
     );
     process.exit(1);
   }

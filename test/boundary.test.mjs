@@ -197,6 +197,12 @@ test('codex is launched without sub-agent tools', () => {
   assert.ok(args.includes('agents.enabled=false'), 'codex enables sub-agents by default');
 });
 
+test('codex asks for the elevated sandbox on Windows only', () => {
+  const args = codex.buildInvocation({ consultant: asConsultant('codex'), workdir: '/w', schemaPath: '/s' }).args;
+  // The unelevated Windows sandbox refuses a profile with deny-read entries.
+  assert.equal(args.includes('windows.sandbox="elevated"'), process.platform === 'win32');
+});
+
 test('codex turns web search off with the network', () => {
   const off = codex.buildInvocation({ consultant: asConsultant('codex'), workdir: '/w', schemaPath: '/s', network: 'off' }).args;
   assert.ok(off.includes('tools.web_search=false'));

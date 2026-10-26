@@ -332,13 +332,14 @@ test('no skill recommends a smaller default than the one consultant-count rule',
   }
 });
 
-test("the README's installer command names the GitHub archive being released", async () => {
+test("the README's npx line names the version being released", async () => {
   const fs = await import('node:fs');
   const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   for (const readme of ['README.md', 'README.ja.md']) {
     const text = fs.readFileSync(new URL(`../${readme}`, import.meta.url), 'utf8');
-    const command = `npx -y -p https://github.com/coz-a/severally/releases/download/v${version}/severally-mcp-${version}.tgz severally-install`;
-    assert.ok(text.includes(command), `${readme} must install the released GitHub archive ${version}`);
+    const named = [...text.matchAll(/severally-mcp@(\d+\.\d+\.\d+) install/g)].map((m) => m[1]);
+    assert.ok(named.length > 0, `${readme} has an npx line`);
+    for (const v of named) assert.equal(v, version, `${readme} names ${v}, the package is ${version}`);
   }
 });
 

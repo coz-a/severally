@@ -230,8 +230,7 @@ if (mode === 'plugin' && !skipGlobal) {
   if (globalRoot && inside(globalRoot)) {
     throw new Error(
       'severally-install was run from a global npm install of severally-mcp, which installing would replace. ' +
-        'Remove it (npm uninstall -g severally-mcp), then use the installer archive from ' +
-        'https://github.com/coz-a/severally/releases/latest, or install from a clone.',
+        'Remove it (npm uninstall -g severally-mcp), then run npx -y severally-mcp@latest install, or install from a clone.',
     );
   }
 }
@@ -878,9 +877,7 @@ log(`   ${dryRun ? 'Planned clients' : 'Ready clients'}: ${clients || '(none)'}`
 if (clients) {
   log(`   ${dryRun ? 'After installing, restart' : 'Restart'} ${clients} to load severally.`);
   const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
-  log(
-    `   Check without using consultation quota: npx -y -p https://github.com/coz-a/severally/releases/download/v${version}/severally-mcp-${version}.tgz severally-mcp status`,
-  );
+  log(`   Check without using consultation quota: npx -y severally-mcp@${version} status`);
   log('   Then ask your agent:');
   log(
     '   "ask Codex: Our read-only public API gets 100 requests per minute; updates may appear 60 seconds late. Is a 30-second cache reasonable?"',
