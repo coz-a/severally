@@ -55,7 +55,7 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.9.2 install
+npx -y severally-mcp@2.10.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -116,8 +116,8 @@ same bug. One consultation takes minutes and real quota, so it is not for small 
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.9.2 install
-npx -y severally-mcp@2.9.2 status
+npx -y severally-mcp@2.10.0 install
+npx -y severally-mcp@2.10.0 status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation
@@ -136,9 +136,8 @@ Ask for consultations, follow-ups and Markdown exports in your agent's chat.
 
 ### Answers, checks and failures
 
-The sensitive-key masking fix, redaction observations, `recommendation`, `refuted` and shared verification notes
-described here are unreleased changes. npm 2.9.2 does not include them; use a [clone](docs/install.md#from-a-clone)
-to try the development version.
+Sensitive-key masking, redaction observations, `recommendation`, `refuted` and shared verification notes are
+available from v2.10.0. Earlier answers remain readable; unavailable fields are shown as unknown or undeclared.
 
 The agent can work on independent tasks while it waits. Answers usually take one to ten minutes, depending
 on the CLI, model and load. Each includes a stance, a separate concrete recommendation, findings with grounds, unknowns and proposed checks.

@@ -54,7 +54,7 @@ Web を切ってもモデルへの送信は続きます。[送信内容と保護
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.9.2 install
+npx -y severally-mcp@2.10.0 install
 ```
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -114,8 +114,8 @@ Codex（gpt-6.1-sol）は、30秒のキャッシュを候補に挙げました�
 ターミナルでは、導入と登録確認を行えます。
 
 ```bash
-npx -y severally-mcp@2.9.2 install
-npx -y severally-mcp@2.9.2 status
+npx -y severally-mcp@2.10.0 install
+npx -y severally-mcp@2.10.0 status
 ```
 
 `status` は設定・使える相談相手・登録・ログイン状態を、相談を始めずに表示します。プロンプトは送りません。
@@ -134,8 +134,8 @@ node scripts/doctor.mjs --target codex
 
 ### 答え・検証・失敗
 
-ここで説明する機密キーのマスク修正、置換の観測、`recommendation`、`refuted`、検証メモの引継ぎは開発中の変更です。
-npm 2.9.2には未搭載です。試す場合は[クローンから導入](docs/install.ja.md#クローンから入れる)してください。
+機密キーのマスク修正、置換の観測、`recommendation`、`refuted`、検証メモの引継ぎはv2.10.0から利用できます。
+旧履歴も読めます。項目がない場合は、不明または未表明として扱います。
 
 答えを待つ間、エージェントは答えに左右されない作業を進められます。所要時間はふつう 1〜10 分で、CLI・モデル・
 負荷によって変わります。各回答には立場と具体的な推奨案を分けて記し、根拠つきの指摘、不明点、確かめ方も求めます。
