@@ -2242,7 +2242,8 @@ function text(value, max = POLICY.output.itemTextMax) {
   if (typeof value !== 'string') return null;
   const t = redact(value).trim();
   if (!t) return null;
-  return t.length > max ? `${t.slice(0, max)}\n…[truncated by severally]` : t;
+  const marker = '\n…[truncated by severally]';
+  return t.length > max ? `${t.slice(0, Math.max(0, max - marker.length))}${marker}` : t;
 }
 
 // A follow-up restates what the round before was given unless it says

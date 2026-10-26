@@ -51,6 +51,7 @@ test('followup evidence notes are bounded and visibly truncated', async (t) => {
     entries: [{ id: 'f1', verdict: 'unverified', note: `only-collision-checked ${'x'.repeat(2000)} hidden-tail` }],
   });
   process.env.STUB_BRIEF_OUT = path.join(home, 'bounded-note.txt');
+  assert.ok(loadRound(s.job_id).record.entries[0].followup_note.length <= 400);
   t.after(() => {
     delete process.env.STUB_BRIEF_OUT;
   });
@@ -58,7 +59,7 @@ test('followup evidence notes are bounded and visibly truncated', async (t) => {
   await mgr.jobs.get(next.job_id).promise;
   const brief = fs.readFileSync(process.env.STUB_BRIEF_OUT, 'utf8');
   assert.match(brief, /only-collision-checked/);
-  assert.match(brief, /\[truncated\]/);
+  assert.match(brief, /truncated/);
   assert.doesNotMatch(brief, /hidden-tail/);
 });
 

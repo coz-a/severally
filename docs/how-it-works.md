@@ -239,6 +239,7 @@ identical markers do not establish that the original values were equal.
 `quality.redaction` records observed replacements at the `files`, `brief` and `result` stages: `true` means a
 replacement was observed, `false` means none was observed, and `null` means unknown, including older history.
 The exposed-file manifest also reports `redacted`; comparison views and Markdown exports retain these observations.
+The `files` stage covers copied-file masking and diff preparation; the brief stage observes the rendered text afterward.
 For safe counterexamples, compare field presence or removal, types and structure, and reproduce behavior locally.
 Do not recover masked secrets or treat matching markers as evidence of equal originals.
 

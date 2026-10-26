@@ -40288,8 +40288,8 @@ function text(value, max = POLICY.output.itemTextMax) {
   if (typeof value !== "string") return null;
   const t = redact(value).trim();
   if (!t) return null;
-  return t.length > max ? `${t.slice(0, max)}
-\u2026[truncated by severally]` : t;
+  const marker = "\n\u2026[truncated by severally]";
+  return t.length > max ? `${t.slice(0, Math.max(0, max - marker.length))}${marker}` : t;
 }
 function inherit(raw, round) {
   const { brief } = round;
