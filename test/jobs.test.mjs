@@ -135,10 +135,14 @@ test('the consultant is launched with the restriction flags and none that widen 
   const fsRules = codexArgs.find((a) => a.startsWith('permissions.severally.filesystem='));
   assert.match(fsRules, /":root" = "read"/);
   assert.ok(fsRules.includes(`${JSON.stringify(path.join(os.homedir(), '.ssh').replaceAll('\\', '/'))} = "none"`));
-  assert.ok(fsRules.includes(`${JSON.stringify(path.join(home, 'homes').replaceAll('\\', '/'))} = "none"`));
   assert.ok(
-    !fsRules.includes(`"${path.join(os.homedir(), '.codex').replaceAll('\\', '/')}" =`),
-    '~/.codex holds the binary the sandbox re-executes',
+    fsRules.includes(`${JSON.stringify(fs.realpathSync.native(path.join(home, 'homes')).replaceAll('\\', '/'))} = "none"`),
+  );
+  const defaultCodexHome = path.join(os.homedir(), '.codex');
+  const codexHomeRoot = fs.existsSync(defaultCodexHome) ? fs.realpathSync.native(defaultCodexHome) : defaultCodexHome;
+  assert.ok(
+    fsRules.includes(`${JSON.stringify(codexHomeRoot.replaceAll('\\', '/'))} = "none"`),
+    'the stub executable lives outside ~/.codex, so its credentials are denied as a directory',
   );
   assert.ok(codexArgs.includes('tools.web_search=true'));
   assert.ok(codexArgs.includes('hooks.enabled=false'));

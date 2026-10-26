@@ -67,7 +67,7 @@ doctor の各行には `evidence`、live-check の出力には `compatibility:` 
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.9.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |
@@ -104,7 +104,7 @@ node scripts/install.mjs
 
 ## 登録の確かめ方
 
-`npx -y severally-mcp@latest status` を実行すると、相談を始めずに、まとめて確かめられます。設定ファイルが正しいか、
+`npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-mcp status` を実行すると、相談を始めずに、まとめて確かめられます。設定ファイルが正しいか、
 この機械から使える相談相手（使えないものはその理由）、入っている写しの版がそろっているか、どのクライアントに
 severally が登録されているか、各 CLI にログインしているかを表示します。ログインの確認は、各 CLI 自身の状態確認
 コマンドを読むだけで、プロンプトは送りません。Claude Code は `claude auth status`、Codex は `codex login status` です。
@@ -234,11 +234,15 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 
 ## 更新
 
+2.9.1 は GitHub Release のみで配布します。以下のコマンドは、そのアーカイブを使います。
+`severally-mcp@latest` は npm の最新版を指すため、このリリースには更新されません。今後の更新には、
+[最新の GitHub Release](https://github.com/coz-a/severally/releases/latest) に添付したアーカイブを使ってください。
+
 開発中のクローンでは、`npm run build` のあとに `node scripts/install.mjs` を再実行すると、
 生成したサーバとSkillを各クライアントのインストール先に反映できます。既存の直接登録を置き換える必要がある場合は `--force` を付けます。実行後はクライアントを再起動してください。
 
 
-`npx -y severally-mcp@latest install` を実行します。
+`npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install` を実行します。
 クローンから入れた場合は、pull してから `npm install` と `node scripts/install.mjs` をもう一度実行します。
 インストーラは新しいサーバの構文を確かめ、前の runtime とマーケットプレイスのファイルを `~/.severally/backups/` に
 バックアップしてから置き換えます。そのあとクライアントを再起動します。
@@ -248,7 +252,7 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 
 マーケットプレイスから入れた場合は、Claude Code にマーケットプレイス版の severally がすでに入っていれば、インストーラが
 `claude plugin marketplace update severally` と `claude plugin update severally@<マーケットプレイス名>` も実行します。
-そのため `npx -y severally-mcp@latest install` を 1 回実行すれば、すべての写しが同じバージョンになります。失敗したときは、
+そのため `npx -y -p https://github.com/coz-a/severally/releases/download/v2.9.1/severally-mcp-2.9.1.tgz severally-install` を 1 回実行すれば、すべての写しが同じバージョンになります。失敗したときは、
 Claude Code の中で実行するコマンド `/plugin marketplace update severally` を表示します。そのあと Claude Code を
 再起動してください。Claude Code だけなら、インストーラの代わりにこのコマンドを自分で実行しても構いません。
 自動の更新は既定では無効です。有効にするには、`/plugin` の Marketplaces で severally を選び、Enable auto-update を

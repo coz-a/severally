@@ -2,8 +2,8 @@
 //
 // The isolation does not live in flags here, so it lives in
 // opencode-sandbox.mjs: the child gets a synthesised HOME whose opencode
-// content is exactly one config we wrote (write/bash/task denied, read and
-// web allowed, zero MCP servers) plus a linked auth.json. What the flags
+// content is one config we wrote (write/bash/task denied, read and web
+// allowed, zero MCP servers), our pre-read guard and a copied auth.json. What the flags
 // below add:
 //   run               non-interactive mode: one prompt, then exit
 //   --format json     raw JSON events on stdout; the answer is the last
@@ -14,7 +14,8 @@
 //   --title severally  labels the session inside the ephemeral store
 // --pure (1.x: no external plugins) is gone as of opencode 2.0, which rejects
 // unknown flags with a usage dump; plugin isolation is the synthesised HOME's
-// empty plugin/skill/agent dirs, not a flag.
+// exclusion of user plugins/skills/agents, not a flag. Our own local plugin
+// checks each read path before OpenCode executes it.
 // The brief goes in on stdin (run reads piped stdin as the prompt), never
 // argv: it is long and would otherwise show up in the process list.
 //
@@ -551,7 +552,11 @@ export function boundary({ sandbox }) {
     web: tools.includes('webfetch'),
     writes: false,
     mcp: false,
-    protected_paths: 'denied by lexical path (permission rules); symlink aliases are not covered',
+    protected_paths:
+      'denied by permission rules and a pre-read realpath guard (OpenCode plugin); ' +
+      'the guard checks aliases on each read and passes the canonical path to the CLI; ' +
+      'replacement of canonical paths between the hook and read is not covered; ' +
+      'requires a CLI that loads the guard plugin (verified on Linux with 2.0.24)',
     tools: [...tools],
   };
 }

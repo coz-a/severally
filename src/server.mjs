@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.9.0';
+export const SEVERALLY_VERSION = '2.9.1';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -85,7 +85,7 @@ export function staleInstall(home = os.homedir(), severallyHome = POLICY.home) {
       .filter(([, v]) => older(v, newest))
       .map(([k]) => k),
     fix:
-      `bring every copy to ${newest}: run \`npx -y severally-mcp@${newest} install\` (or \`node scripts/install.mjs\` from a checkout of that version) ` +
+      `bring every copy to ${newest}: run \`npx -y -p https://github.com/coz-a/severally/releases/download/v${newest}/severally-mcp-${newest}.tgz severally-install\` (or \`node scripts/install.mjs\` from a checkout of that version) ` +
       '(it updates the runtime and the ~/.claude/skills copy), run `/plugin marketplace update severally` for a ' +
       'marketplace install, then restart the clients',
   };

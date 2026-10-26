@@ -35,6 +35,42 @@ const claude = await import('../src/adapters/claude-code.mjs');
 const { prepareSandbox } = await import('../src/adapters/opencode-sandbox.mjs');
 const fwd = (p) => p.replaceAll('\\', '/');
 
+for (const linked of [false, true]) {
+  test(`the ${linked ? 'linked' : 'direct'} default Codex home is denied whole when the executable lives outside it`, () => {
+    const userHome = fs.mkdtempSync(path.join(home, 'default-home-'));
+    const defaultHome = path.join(userHome, '.codex');
+    const actual = linked ? path.join(userHome, 'credential-target') : defaultHome;
+    fs.mkdirSync(actual);
+    if (linked) fs.symlinkSync(actual, defaultHome, process.platform === 'win32' ? 'junction' : 'dir');
+    fs.writeFileSync(path.join(actual, 'auth.json'), 'synthetic-auth');
+    fs.mkdirSync(path.join(actual, 'packages'));
+    const moduleUrl = new URL('../src/adapters/codex.mjs', import.meta.url).href;
+    const env = { ...process.env, HOME: userHome, USERPROFILE: userHome };
+    delete env.CODEX_HOME;
+    const rules = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const a = await import(${JSON.stringify(moduleUrl)}); console.log(a.filesystemPermissions());`,
+      ],
+      { env, encoding: 'utf8' },
+    );
+    const canonical = fs.realpathSync.native(defaultHome);
+    for (const root of [canonical]) {
+      assert.ok(rules.includes(`${JSON.stringify(fwd(root))} = "none"`), root);
+      assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(root, 'auth.json')))} = "none"`));
+      assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(root, 'packages')))} = "none"`));
+    }
+    if (fwd(defaultHome) !== fwd(canonical))
+      assert.ok(
+        !rules.includes(`${JSON.stringify(fwd(defaultHome))} = "none"`),
+        'do not mask the same mount twice through aliases',
+      );
+    fs.rmSync(userHome, { recursive: true, force: true });
+  });
+}
+
 test('configured credential locations and the external operator config are excluded from exposure', () => {
   for (const file of [
     path.join(credentials, '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),
@@ -53,10 +89,10 @@ test('configured credential locations and the external operator config are exclu
 test('configured paths reach the Codex and Claude CLI deny mechanisms', () => {
   const permissions = codex.filesystemPermissions();
   assert.ok(
-    permissions.includes(`${JSON.stringify(fwd(codexHome))} = "none"`),
+    permissions.includes(`${JSON.stringify(fwd(fs.realpathSync.native(codexHome)))} = "none"`),
     'the relocated Codex home can be denied as a directory when the executable lives elsewhere',
   );
-  assert.ok(permissions.includes(`${JSON.stringify(fwd(path.join(credentials, '.gemini')))} = "none"`));
+  assert.ok(permissions.includes(`${JSON.stringify(fwd(fs.realpathSync.native(path.join(credentials, '.gemini'))))} = "none"`));
   const rules = claude.protectedReadRules();
   assert.ok(
     rules.some((r) => r.includes(claude.posixAbsolute(claudeHome))),
@@ -126,12 +162,11 @@ for (const linked of [false, true]) {
       ],
       { env, encoding: 'utf8' },
     );
-    assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'auth.json')))} = "none"`));
-    assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'sessions')))} = "none"`));
     assert.ok(!rules.includes(`${JSON.stringify(fwd(relocated))} = "none"`));
     assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(relocated, 'packages')))} = "none"`));
     const canonical = fs.realpathSync.native(relocated);
     assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(canonical, 'auth.json')))} = "none"`));
+    assert.ok(rules.includes(`${JSON.stringify(fwd(path.join(canonical, 'sessions')))} = "none"`));
     assert.ok(!rules.includes(`${JSON.stringify(fwd(canonical))} = "none"`));
     assert.ok(!rules.includes(`${JSON.stringify(fwd(path.join(canonical, 'packages')))} = "none"`));
   });

@@ -11,8 +11,7 @@ if (major < 22) {
   process.exit(1);
 }
 
-// `npx -y severally-mcp@latest install` runs the installer, so installing and
-// updating name the package once. Only the npm package has the installer
+// The package's `install` command runs the installer. Only the full package has the installer
 // beside this file; the bundled server copies (the plugin's dist, the
 // installed runtime) say what to run instead of starting a server that waits
 // on stdin.
@@ -20,7 +19,7 @@ if (process.argv[2] === 'install') {
   const installer = new URL('../scripts/install.mjs', import.meta.url);
   if (!fs.existsSync(installer)) {
     process.stderr.write(
-      'severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n',
+      'severally: this is the installed server, not the installer; use the installer archive from https://github.com/coz-a/severally/releases/latest\n',
     );
     process.exit(1);
   }

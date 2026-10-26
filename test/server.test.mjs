@@ -412,6 +412,12 @@ test('an installed copy on another version is named, with how to bring it level'
   assert.deepEqual(stale.behind, ['runtime']);
   assert.equal(stale.copies.runtime, '1.8.1');
   assert.match(stale.fix, /install\.mjs/);
+  const { SEVERALLY_VERSION } = await import('../src/server.mjs');
+  assert.ok(
+    stale.fix.includes(
+      `npx -y -p https://github.com/coz-a/severally/releases/download/v${SEVERALLY_VERSION}/severally-mcp-${SEVERALLY_VERSION}.tgz severally-install`,
+    ),
+  );
 });
 
 test('the server reports the version package.json releases', async () => {

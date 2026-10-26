@@ -159,22 +159,37 @@ coding tools' sessions, severally's own history and the other consultants' sandb
 `.env`, `.npmrc` or `id_rsa` anywhere.
 
 Codex blocks paths, not names: its sandbox cannot express “`.env` anywhere”, so a repository's `.env` is
-readable. The default `~/.codex` is denied entry by entry at launch to leave the executable available.
-New entries are not covered. A relocated `CODEX_HOME` can be denied as a whole directory when the executable
-lives elsewhere; if it lives inside a protected root, its containing entry is exempt and the other entries
-are a launch-time snapshot. New credential files must not be placed in that exempt executable entry.
+readable. Credential directories, including the default `~/.codex` and a relocated `CODEX_HOME`, are denied
+as a whole when the executable lives elsewhere. If it lives inside a protected root, its containing entry
+is exempt and the other entries are a launch-time snapshot; new entries are not covered. New credential
+files must not be placed in that exempt executable entry. Existing symlink roots are resolved and registered
+once by canonical path, avoiding duplicate Linux sandbox mounts through aliases.
 
 On Linux, a file-level deny can stop holding when the host replaces that file by rename during the run.
 Synthetic probes on 2026-10-24 with Codex 0.164.0 reproduced this for a default-home auth file and a readable
-new sibling. A relocated directory denied as a whole still denied existing, replaced and new children.
+new sibling before the default-home change. On 2026-10-26, synthetic probes with the revised adapter on
+Linux/Codex 0.164.0 denied existing, replaced and new children under both direct and symlinked default homes
+with an external executable, while public-file reads succeeded. An authenticated consultation also completed
+(configured and launched: `gpt-6.1-sol`, effort `low`; effective provider model and effort not independently observed).
 Individual protected files, including `~/.claude.json`, remain subject to rename replacement. This is a CLI
 sandbox limitation, not something `expose_paths` masking fixes.
 
 OpenCode denies protected paths in absolute and Location/worktree-relative form. Its `grep` and `glob` are
 disabled because they authorize a search pattern rather than checking every returned file. On OpenCode
-2.0.24, read authorization uses lexical paths. A synthetic offline check on 2026-10-24 denied a direct
-relocated credential path but allowed a symlink alias and sent its contents to a local mock model provider.
-That bypass remains unresolved, including with `network: "off"`.
+2.0.24, the built-in read authorization uses lexical paths. To cover aliases, severally now places its own
+dependency-free local plugin in the synthetic HOME, using OpenCode's
+[pre-execution hooks](https://opencode.ai/v2/docs/build/plugins#tools). Before each `read`, the guard checks
+the requested path and its real path against the same protected roots and filenames, rejects paths it cannot
+resolve, and passes the canonical path to the CLI. It also resolves the protected roots on each read so a
+root created or retargeted after launch remains covered. It supplies both the V1 `server()` and V2 `setup()` hooks;
+no user plugins are inherited. The check and the CLI's file open are separate operations: replacement of a
+canonical file or ancestor between them remains unprotected.
+
+On Linux/OpenCode 2.0.24, synthetic checks on 2026-10-26 refused direct, relative, symlinked and swapped-alias
+reads before any synthetic secret reached the localhost mock provider; a public file was read successfully.
+The tests used `network: "off"`, which by itself does not prevent read results from reaching the model.
+V1 hook behavior and the generated bundle are unit-tested; actual V1 CLI loading, macOS and Windows enforcement
+have not been verified. These guarantees require a CLI that loads the guard plugin.
 
 Protected roots include recognized absolute credential locations from the server environment and
 `clis.<cli>.env`: `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, OpenCode under `XDG_CONFIG_HOME`/`XDG_DATA_HOME`,
@@ -182,7 +197,7 @@ Protected roots include recognized absolute credential locations from the server
 They also include the actual severally config file, Antigravity's `.gemini` under `SEVERALLY_AGY_CRED_HOME`,
 and OpenCode's `.local/share/opencode` under `SEVERALLY_OPENCODE_CRED_HOME`. Existing canonical targets of
 configured symlinks are included. Arbitrary paths selected by CLI/plugin flags, relative locations, new
-aliases or changes during a run are not guaranteed. Use absolute credential paths; keep credentials outside
+aliases or changes during a run beyond the checks described above are not guaranteed. Use absolute credential paths; keep credentials outside
 executable entries, and use a dedicated OS account with no unrelated secrets when these read gaps matter.
 
 `expose_paths` never copies protected files. Credentials are masked in the brief that is sent and in the answers

@@ -459,7 +459,7 @@ test('codex runs under a permission profile that denies the protected roots, not
   assert.ok(!args.includes('-s'));
   const rules = args.find((a) => a.startsWith('permissions.severally.filesystem='));
   assert.ok(
-    rules.includes(`"${path.join(home, 'homes').replaceAll('\\', '/')}" = "none"`),
+    rules.includes(`${JSON.stringify(fs.realpathSync.native(path.join(home, 'homes')).replaceAll('\\', '/'))} = "none"`),
     'every synthesised home, including later ones',
   );
   assert.match(codex.boundary({ args }).protected_paths, /^denied by path/);
