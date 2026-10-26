@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { sandboxEnv, reviewRequest } from './helpers.mjs';
 
 const home = sandboxEnv();
@@ -12,6 +13,17 @@ const { exportChain } = await import('../src/export.mjs');
 const store = await import('../src/store.mjs');
 
 const observation = { files: true, brief: true, result: true };
+
+test('a value-free synthetic reproduction remains executable after answer masking', () => {
+  const source = `const field = 'api_key'; const sample = 'SYNTHETIC_ONLY';
+const input = Object.fromEntries([[field, sample]]); const output = redact(input);
+({ field_present: Object.hasOwn(output, field), original_value_retained: Object.is(output[field], sample) });`;
+  const safe = masking.redact(source);
+  assert.equal(safe, source);
+  const facts = vm.runInNewContext(safe, { redact: masking.redact });
+  assert.equal(facts.field_present, true);
+  assert.equal(facts.original_value_retained, false);
+});
 
 test('redaction reports actual replacements without keeping original values or treating markers as equality', () => {
   const one = masking.redactWithReport({ api_key: 'synthetic-one', public: 42 });

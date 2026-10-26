@@ -114,6 +114,7 @@ const WORKDIR_EXPOSED =
 const GUARDRAILS_TAIL = [
   '- Never include credentials, API keys, tokens, or environment variable values in your answer.',
   '- Explain credential counterexamples using field presence/removal, types and structure, plus safe local reproduction steps. Redaction markers cannot establish whether original values were equal. Never reconstruct a secret or depend on repeating it.',
+  '- Literal credential-field assignments can be masked into invalid code even with dummy values. For runnable examples, name a public field and a clearly synthetic sample in separate variables, construct the fixture with Object.fromEntries([[field, sample]]), and report boolean predicates or assertions without printing original field values. Do not show input/output objects containing credential values.',
   '- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.',
   '',
   'This session is time-boxed and is killed when the budget runs out, which produces no answer at all -- the',

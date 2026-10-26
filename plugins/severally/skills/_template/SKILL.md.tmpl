@@ -71,6 +71,9 @@ confirmed from a clipped summary or treat a filename in a tool input as proof of
 `quality.redaction` marks replacements in files, brief and result; null means unknown. Identical markers do not
 establish equality of original values. Compare field presence/removal, types and structure, and reproduce a
 safe local example. Never recover secrets or treat two masked values as equal.
+For a runnable synthetic example, keep field and sample in separate variables, construct it with
+`Object.fromEntries([[field, sample]])` and inspect boolean predicates; literal credential assignments can
+become invalid after masking. Do not print original field values.
 
 ## Before you hand the decision back
 
