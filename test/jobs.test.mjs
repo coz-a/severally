@@ -135,7 +135,9 @@ test('the consultant is launched with the restriction flags and none that widen 
   const fsRules = codexArgs.find((a) => a.startsWith('permissions.severally.filesystem='));
   assert.match(fsRules, /":root" = "read"/);
   assert.ok(fsRules.includes(`${JSON.stringify(path.join(os.homedir(), '.ssh').replaceAll('\\', '/'))} = "none"`));
-  assert.ok(fsRules.includes(`${JSON.stringify(path.join(home, 'homes').replaceAll('\\', '/'))} = "none"`));
+  assert.ok(
+    fsRules.includes(`${JSON.stringify(fs.realpathSync.native(path.join(home, 'homes')).replaceAll('\\', '/'))} = "none"`),
+  );
   const defaultCodexHome = path.join(os.homedir(), '.codex');
   const codexHomeRoot = fs.existsSync(defaultCodexHome) ? fs.realpathSync.native(defaultCodexHome) : defaultCodexHome;
   assert.ok(

@@ -89,10 +89,10 @@ test('configured credential locations and the external operator config are exclu
 test('configured paths reach the Codex and Claude CLI deny mechanisms', () => {
   const permissions = codex.filesystemPermissions();
   assert.ok(
-    permissions.includes(`${JSON.stringify(fwd(codexHome))} = "none"`),
+    permissions.includes(`${JSON.stringify(fwd(fs.realpathSync.native(codexHome)))} = "none"`),
     'the relocated Codex home can be denied as a directory when the executable lives elsewhere',
   );
-  assert.ok(permissions.includes(`${JSON.stringify(fwd(path.join(credentials, '.gemini')))} = "none"`));
+  assert.ok(permissions.includes(`${JSON.stringify(fwd(fs.realpathSync.native(path.join(credentials, '.gemini'))))} = "none"`));
   const rules = claude.protectedReadRules();
   assert.ok(
     rules.some((r) => r.includes(claude.posixAbsolute(claudeHome))),
