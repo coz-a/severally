@@ -4,7 +4,7 @@
 
 import { POLICY } from './policy.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
-import { redact } from './redact.mjs';
+import { redact, redactWithReport, REDACTION_CAVEAT } from './redact.mjs';
 import { humanSize } from './expose-paths.mjs';
 
 /**
@@ -38,6 +38,7 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string | null} [grounds]
  * @property {string | null} [verdict]
  * @property {string | null} [effect]
+ * @property {string | null} [note]
  * @property {string | null} [method]
  * @property {string | null} [expected_signal]
  */
@@ -50,6 +51,8 @@ import { humanSize } from './expose-paths.mjs';
  * @property {string} question
  * @property {string} summary
  * @property {string | null} [stance]
+ * @property {string | null} [recommendation]
+ * @property {{files: boolean | null, brief: boolean | null, result: boolean | null} | null} [redaction]
  * @property {{delta: string, related_item_ids: string[]} | null} [reflection]
  * @property {PriorPoint[]} [findings]
  * @property {PriorPoint[]} [unknowns]
@@ -112,6 +115,8 @@ const WORKDIR_EXPOSED =
 
 const GUARDRAILS_TAIL = [
   '- Never include credentials, API keys, tokens, or environment variable values in your answer.',
+  '- Explain credential counterexamples using field presence/removal, types and structure, plus safe local reproduction steps. Redaction markers cannot establish whether original values were equal. Never reconstruct a secret or depend on repeating it.',
+  '- Literal credential-field assignments can be masked into invalid code even with dummy values. For runnable examples, name a public field and a clearly synthetic sample in separate variables, construct the fixture with Object.fromEntries([[field, sample]]), and report boolean predicates or assertions without printing original field values. Do not show input/output objects containing credential values.',
   '- Do not output your internal reasoning trace. Report conclusions with their grounds and evidence.',
   '',
   'This session is time-boxed and is killed when the budget runs out, which produces no answer at all -- the',
@@ -183,6 +188,7 @@ export function briefRecord(req, exposeManifest = null) {
           })),
           totals: exposeManifest.totals,
           skipped: exposeManifest.skipped,
+          redacted: exposeManifest.redacted ?? null,
         }
       : null,
   });
@@ -233,7 +239,7 @@ function deletedLines(changes = []) {
 
 /** @param {ExposeManifest | null} manifest */
 function renderExposeManifest(manifest) {
-  if (!manifest || (manifest.entries.length === 0 && manifest.skipped.length === 0)) return null;
+  if (!manifest) return null;
   let room = EXPOSE_LISTING_MAX;
   const lines = manifest.entries.flatMap((e) => {
     const shape =
@@ -286,6 +292,11 @@ function renderExposeManifest(manifest) {
     "them directly. They are the only part of the lead's repository the lead gave you -- if you need something that is",
     'not here, record it under `unknowns` rather than guessing. Text files were passed through the same',
     'credential masking as this brief; binary files were copied unchanged.',
+    ...(manifest.totals.files === 0
+      ? ['0 files were copied. No implementation has been supplied by this exposure; missing code premises stay unknown.']
+      : []),
+    `Redaction observed in exposed files: ${manifest.redacted ?? 'unknown'}.`,
+    ...(manifest.redacted ? [REDACTION_CAVEAT] : []),
     '',
     ...lines,
     ...skipped,
@@ -310,13 +321,18 @@ function renderRound(p) {
   /** @param {string} id */
   const tag = (id) => `${p.source_job_id ?? `r${p.round}`}.${id}`;
   /** @param {PriorPoint} x */
-  const verdict = (x) => (x.verdict ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}` : '');
+  const verdict = (x) =>
+    x.verdict
+      ? ` -- lead's verdict: ${x.verdict}${x.effect ? ` (${clip(x.effect)})` : ''}${x.note ? `\n  checked scope and evidence: ${clip(x.note)}` : ''}`
+      : '';
   const header = [
     `### Round ${p.round} (${p.mode})`,
     p.source_job_id ? `Earlier retry context from job ${p.source_job_id}; point IDs use that job's prefix.` : null,
     `Question asked: ${clip(p.question, 1_200)}`,
     `Your answer, summarised: ${clip(p.summary, 8_000)}`,
     p.stance ? `Your stance: ${p.stance}` : null,
+    p.recommendation ? `Your recommendation: ${clip(p.recommendation)}` : null,
+    p.redaction ? `Earlier redaction observations: ${JSON.stringify(p.redaction)}. ${REDACTION_CAVEAT}` : null,
     p.reflection
       ? `Lead's reflection on what this answer added: ${clip(p.reflection.delta)}` +
         (p.reflection.related_item_ids.length
@@ -396,6 +412,15 @@ function renderRound(p) {
  * @param {ExposeManifest | null} [exposeManifest]
  */
 export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
+  return renderBriefWithReport(req, chain, exposeManifest).text;
+}
+
+/**
+ * @param {BriefRequest} req
+ * @param {BriefChain} [chain]
+ * @param {ExposeManifest | null} [exposeManifest]
+ */
+export function renderBriefWithReport(req, chain = { round: 1, priorRounds: [] }, exposeManifest = null) {
   const parts = [];
   parts.push(renderGuardrails(Boolean(exposeManifest), req.network));
   parts.push('');
@@ -426,7 +451,7 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
     parts.push('');
     parts.push('## Earlier rounds of this same consultation');
     parts.push(
-      "Each point carries the lead's own check where there is one -- confirmed: it held; not_applicable: checked, and" +
+      "Each point carries the lead's own check where there is one -- confirmed: it held within the recorded scope; refuted: it did not hold in that check; not_applicable: checked, and" +
         ' it does not apply here; unverifiable: could not be checked; unverified, or no verdict: not checked yet.',
     );
     const blocks = chain.priorRounds.map(renderRound);
@@ -444,7 +469,7 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
     parts.push(...blocks.slice(blocks.length - kept));
     parts.push('');
     parts.push(
-      'This round is a follow-up. The lead has narrowed the exchange to the divergences above. Do not restate your earlier answer; address what is new, and say plainly if the new information changes or does not change your position.',
+      'This round is a follow-up. Do not restate the earlier answer. State each changed premise, the recommendation you keep or retract, and the concrete next change and check. Explain what the prior recorded checks support and what remains unknown; do not extend a partial check to an untested claim. Distinguish a known failure from an unknown outcome when that changes whether an operation can safely be repeated.',
     );
   }
 
@@ -456,5 +481,9 @@ export function renderBrief(req, chain = { round: 1, priorRounds: [] }, exposeMa
   parts.push('');
   parts.push('Reply now with the single JSON object and nothing else.');
 
-  return redact(parts.join('\n'));
+  const observed = redactWithReport(parts.join('\n'));
+  return {
+    text: observed.redacted ? `${REDACTION_CAVEAT}\n\n${observed.value}` : observed.value,
+    redacted: observed.redacted,
+  };
 }

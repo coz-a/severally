@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { POLICY, isProtectedPath } from './policy.mjs';
-import { redact } from './redact.mjs';
+import { redactWithReport } from './redact.mjs';
 
 /** @typedef {{ files: number, bytes: number }} ExposeTotals */
 
@@ -51,7 +51,7 @@ import { redact } from './redact.mjs';
 
 /**
  * What an expose_paths request comes to: the entries, their totals, and what was left out.
- * @typedef {{ entries: ExposeEntry[], totals: ExposeTotals, skipped: SkippedPath[] }} ExposeManifest
+ * @typedef {{ entries: ExposeEntry[], totals: ExposeTotals, skipped: SkippedPath[], redacted?: boolean }} ExposeManifest
  */
 
 /** A path as the lead names it, or as an earlier round numbered it. @typedef {string | { source: string, index: number }} ExposePathSpec */
@@ -384,15 +384,19 @@ export function materializeExposedPaths(workdir, exposePaths) {
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   /** @type {import('node:crypto').Hash[]} */
   const hashes = [];
+  let redacted = false;
   const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals) => {
     ensureRoom(totals, fs.statSync(abs).size);
     const base = path.join(root, `${index}-${path.basename(source)}`);
-    const out = copyMasked(abs, rel ? path.join(base, rel) : base);
+    const copy = copyMasked(abs, rel ? path.join(base, rel) : base);
+    const out = copy.bytes;
+    redacted ||= copy.redacted;
     (hashes[index] ??= crypto.createHash('sha256')).update(`${rel}\0`).update(out);
     totals.files += 1;
     totals.bytes += out.length;
   });
   for (const e of manifest.entries) e.sha256 = hashes[e.index]?.digest('hex') ?? null;
+  manifest.redacted = redacted;
   return manifest;
 }
 
@@ -405,17 +409,22 @@ export function materializeExposedPaths(workdir, exposePaths) {
 function copyMasked(abs, dest) {
   const buf = fs.readFileSync(abs);
   let out = buf;
+  let redacted = false;
   if (!isBinary(buf)) {
     const text = buf.toString('utf8');
     // A lossy round-trip (lone continuation bytes, Shift-JIS, Latin-1, ...)
     // means the original was never valid utf8 text, so redact()'s decode
     // would silently replace bytes with U+FFFD and corrupt the file --
     // treat it like binary and copy it through instead.
-    if (Buffer.from(text, 'utf8').equals(buf)) out = Buffer.from(redact(text), 'utf8');
+    if (Buffer.from(text, 'utf8').equals(buf)) {
+      const observed = redactWithReport(text);
+      out = Buffer.from(observed.value, 'utf8');
+      redacted = observed.redacted;
+    }
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
   fs.writeFileSync(dest, out, { mode: 0o600 });
-  return out;
+  return { bytes: out, redacted };
 }
 
 // The files of a change, copied under <workdir>/workspace/repo/ at their
@@ -484,7 +493,9 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const hash = crypto.createHash('sha256');
   for (const c of copied) {
     ensureRoom(manifest.totals, c.size);
-    const out = copyMasked(path.join(top, c.path), path.join(root, c.path));
+    const copy = copyMasked(path.join(top, c.path), path.join(root, c.path));
+    const out = copy.bytes;
+    manifest.redacted = Boolean(manifest.redacted || copy.redacted);
     hash.update(`${c.path}\0`).update(out);
     manifest.totals.files += 1;
     manifest.totals.bytes += out.length;
@@ -731,7 +742,7 @@ export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars)
     : '';
   // A section whose header names no shown path (a protected one, or one git
   // had to quote) is dropped rather than guessed at.
-  let text = redact(
+  const observed = redactWithReport(
     full
       .split(/^(?=diff --git )/m)
       .filter((sec) => {
@@ -741,6 +752,8 @@ export function exposeDiff(workdir, { repo, base = 'HEAD' }, manifest, maxChars)
       })
       .join(''),
   );
+  manifest.redacted = Boolean(manifest.redacted || observed.redacted);
+  let text = observed.value;
   if (text.length > maxChars) {
     text =
       maxChars < 500

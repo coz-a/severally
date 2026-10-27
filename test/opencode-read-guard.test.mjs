@@ -12,6 +12,9 @@ const { prepareSandbox } = await import('../src/adapters/opencode-sandbox.mjs');
 
 test('the bundled server emits a working guard without references to bundle-local imports', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-bundled-guard-'));
+  // OpenCode loads ESM plugins; the Node test loader needs an explicit format
+  // on early Node 22 releases that do not perform syntax detection.
+  fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const outfile = path.join(root, 'bundled.mjs');
   await build({
@@ -37,6 +40,7 @@ async function guard(t, version = 2) {
   const work = path.join(workdir, 'work');
   fs.mkdirSync(work);
   const sandbox = prepareSandbox({ workdir: work });
+  fs.writeFileSync(path.join(sandbox.root, 'package.json'), '{"type":"module"}');
   t.after(() => {
     sandbox.cleanup();
     fs.rmSync(workdir, { recursive: true, force: true });

@@ -5,7 +5,7 @@
 
 import { POLICY, STANCES } from './policy.mjs';
 import { RESULT_KEYS } from './result-schema.mjs';
-import { redact } from './redact.mjs';
+import { redactWithReport } from './redact.mjs';
 
 export class OutputError extends Error {
   /**
@@ -36,6 +36,7 @@ const O = POLICY.output;
  * The validated consult result, in the shape of CONSULT_RESULT_SCHEMA.
  * @typedef {object} ConsultResult
  * @property {string} summary
+ * @property {string | null | undefined} [recommendation] Absent in older history; never inferred from summary.
  * @property {Level | null} confidence
  * @property {EvidenceBasis | null} evidence_basis
  * @property {Stance | null} stance
@@ -188,14 +189,14 @@ function mapList(raw, fields, { requiredField, idPrefix = null }) {
 
 /**
  * @param {Record<string, unknown> | string} raw  parsed JSON object, or raw text to mine one out of
- * @returns {{result: ConsultResult, quality: {missing_sections: string[], findings_without_grounds: number, unsourced: boolean, list_truncated?: Record<string, number>}}}
+ * @returns {{result: ConsultResult, quality: import('./store.mjs').Quality}}
  */
 export function normalizeResult(raw) {
   const objIn = typeof raw === 'string' ? extractJson(raw) : raw;
   if (!objIn || typeof objIn !== 'object' || Array.isArray(objIn)) {
     throw new OutputError('consultant did not return a JSON object', typeof raw === 'string' ? raw.slice(0, 2000) : String(raw));
   }
-  const src = redact(objIn);
+  const { value: src, redacted } = redactWithReport(objIn);
 
   const summary = clampText(src.summary, O.summaryMax);
   if (!summary) {
@@ -205,6 +206,7 @@ export function normalizeResult(raw) {
   /** @type {ConsultResult} */
   const result = {
     summary,
+    recommendation: clampText(src.recommendation, O.itemTextMax),
     confidence: level(src.confidence),
     evidence_basis: basis(src.evidence_basis),
     stance: stance(src.stance),
@@ -295,6 +297,7 @@ export function normalizeResult(raw) {
   return {
     result,
     quality: {
+      redaction: { files: null, brief: null, result: redacted },
       missing_sections: missing,
       findings_without_grounds: groundless,
       unsourced: result.references.length === 0,

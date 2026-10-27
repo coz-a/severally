@@ -31,6 +31,75 @@ test('nested structures are scrubbed recursively', () => {
   assert.equal(out.b.c, 'fine');
 });
 
+test('sensitive object keys replace their whole values, even short or non-string credentials', () => {
+  const keys = [
+    'api_key',
+    'APIKEY',
+    'Access_Token',
+    'refresh_token',
+    'id_token',
+    'client_secret',
+    'private_key',
+    'secret_key',
+    'auth_token',
+    'credentials',
+    'AccountKey',
+    'SharedAccessKey',
+    'secret',
+    'token',
+    'password',
+    'passwd',
+    'pass',
+    'db_pwd',
+    'AWS_SECRET_ACCESS_KEY',
+    'STRIPE_WEBHOOK_KEY',
+  ];
+  for (const key of keys) {
+    for (const value of ['x', '', 'string', 'process.env.API_KEY', 1234, false, null, ['x'], { nested: 'x' }]) {
+      assert.deepEqual(redact({ [key]: value }), { [key]: '[REDACTED]' }, `${key}: ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test('key masking reaches nested objects and arrays without mutating the input', () => {
+  const input = { rows: [{ api_key: 'synthetic-example-only', child: { password: 1234 } }], ok: true };
+  const snapshot = structuredClone(input);
+  assert.deepEqual(redact(input), { rows: [{ api_key: '[REDACTED]', child: { password: '[REDACTED]' } }], ok: true });
+  assert.deepEqual(input, snapshot);
+});
+
+test('ordinary object keys and non-string data keep their values and structure', () => {
+  const input = {
+    primary_key: 'organization_id',
+    sort_key: 'created_at_desc',
+    idempotency_key: 'request_uuid_value',
+    partition_key: 'tenant_region_id',
+    PWD: '/home/u',
+    OLDPWD: '/home/u',
+    bypass: 'ordinary-value',
+    api_key_count: 2,
+    access_tokenizer: 'code',
+    values: [null, false, 42, { type: 'string' }],
+  };
+  assert.deepEqual(redact(input), input);
+});
+
+test('a JSON __proto__ property stays a data property and its nested credentials are scrubbed', () => {
+  const input = JSON.parse('{"__proto__":{"api_key":"synthetic-example-only"},"value":"public"}');
+  const out = redact(input);
+  assert.equal(Object.getPrototypeOf(out), Object.prototype);
+  assert.ok(Object.hasOwn(out, '__proto__'));
+  assert.deepEqual(out.__proto__, { api_key: '[REDACTED]' });
+  assert.equal(out.value, 'public');
+});
+
+test('structured data is conservative where textual code keeps its flags and references', () => {
+  assert.equal(redact('password: true'), 'password: true');
+  assert.deepEqual(redact({ password: true }), { password: '[REDACTED]' });
+  assert.equal(redact('password = process.env.DB_PASSWORD'), 'password = process.env.DB_PASSWORD');
+  assert.deepEqual(redact({ password: 'process.env.DB_PASSWORD' }), { password: '[REDACTED]' });
+});
+
 test('the secrets found getting through on 2026-10-18 are scrubbed', () => {
   const cases = [
     ['AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'wJalrXUtnFEMI'],

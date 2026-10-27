@@ -21,6 +21,7 @@ function result(n, len, summaryLen = len) {
   const range = (p) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
   return {
     summary: 's'.repeat(summaryLen),
+    recommendation: 'a'.repeat(len),
     stance: 'proceed',
     confidence: 'medium',
     evidence_basis: 'adequate',

@@ -32,6 +32,9 @@ const arr = (items, description) => ({ type: 'array', description, items });
 export const CONSULT_RESULT_SCHEMA = obj(
   {
     summary: s('2-6 sentence summary of your overall view, written for a peer who will act on it.'),
+    recommendation: s(
+      'One concise sentence naming the concrete action or option you recommend. State it separately from stance; matching stances need not recommend the same option. Put its conditions under decision_changers and unknowns.',
+    ),
     confidence: enumOf(['high', 'medium', 'low'], 'Your confidence in this overall view.'),
     stance: enumOf(
       ['proceed', 'do_not_proceed', 'alternative', 'undetermined'],

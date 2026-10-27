@@ -220,12 +220,12 @@ export function detectCaller(env = process.env) {
 
 export const MODES = ['explore', 'review', 'debate'];
 
-// What the lead may write against one point of an answer. Four words, chosen so
+// What the lead may write against one point of an answer. These words are chosen so
 // that "I have not checked this" is a first-class outcome rather than the
 // absence of a record: an unchecked finding and a finding that turned out not
 // to apply are different things a month later. The server stores the word and
 // counts the words; it never derives one from anything else the lead wrote.
-export const VERDICTS = ['unverified', 'confirmed', 'not_applicable', 'unverifiable'];
+export const VERDICTS = ['unverified', 'confirmed', 'refuted', 'not_applicable', 'unverifiable'];
 
 // The consultant's own one-word bottom line. Also what the lead may predict
 // before asking -- the same vocabulary, so a prediction and an answer can be

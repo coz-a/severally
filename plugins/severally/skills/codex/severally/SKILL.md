@@ -35,6 +35,9 @@ brief and the files you hand it.
    `counterpoints` imply debate. Ask for one decision, not a broad investigation that may exhaust the timeout.
    Inspect `files_exposed` and the manifest: zero files for a code question, skipped or deleted files, or a
    size-limit error need attention. Select replacements or a smaller set; missing material stays unknown.
+   If the answer names a missing premise that changes the decision, select only its implementation, caller,
+   related test or configuration and supplement once with a follow-up. If still unavailable, report its effect
+   on the decision instead of widening to the whole repository or looping consultations.
 
 2. **Collect** with `consult_get({ group_id })` (one consultant: `{ job_id }`). It waits by default; repeat
    while running. `progress` shows activity; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
@@ -64,12 +67,21 @@ Pass `initiator: "user"` when the user asked; leave it out when you started it y
 ## Reading the answer
 
 Every group member received the identical brief. In `comparison.by_target`, read each actual model and
-`stance` first: consultants can share a finding and reach opposite conclusions. **Matching summaries are not agreement.** Keep different grounds and assumptions separate; do not count votes.
+`stance` and `recommendation` first: matching stances can recommend different actions, and consultants can share
+a finding and reach opposite conclusions. **Matching summaries are not agreement.** Compare `decision_changers`
+and `unknowns` as conditions; keep different grounds and assumptions separate. Do not count votes. A null
+recommendation was not declared; do not invent one from its summary. A failed member gave no advice.
 
 Read the grounds already shown. A `quality.caveat` or thin evidence limits what the answer establishes.
 Only when a deciding point's grounds or details are missing or shortened, fetch
 `consult_get({ job_id, ids: ["f2", "u1"] })`; `{ job_id }` gets one member's full answer. Do not mark a point
 confirmed from a clipped summary or treat a filename in a tool input as proof of understanding.
+`quality.redaction` marks replacements in files, brief and result; null means unknown. Identical markers do not
+establish equality of original values. Compare field presence/removal, types and structure, and reproduce a
+safe local example. Never recover secrets or treat two masked values as equal.
+For a runnable synthetic example, keep field and sample in separate variables, construct it with
+`Object.fromEntries([[field, sample]])` and inspect boolean predicates; literal credential assignments can
+become invalid after masking. Do not print original field values.
 
 ## Before you hand the decision back
 
@@ -84,8 +96,11 @@ consult_record({ job_id: "...", entries: [
 ```
 
 For a fan-out use one `consult_record({ records: [{ job_id: "...", entries: [...] }, ...] })` call.
-`verdict` is verification: `confirmed`, `not_applicable`, `unverifiable` or `unverified`. `effect` is the decision's
-change; `note` is the evidence. Confirmed does not mean adopted. Reading alone stays unverified; remaining
+`verdict` is verification: `confirmed`, `refuted`, `not_applicable`, `unverifiable` or `unverified`. `effect` is the decision's
+change; `note` names checked inputs/environment, evidence and limits. Refuted means the claim did not hold in
+that check; partial confirmation stays unverified with its scope in note. New notes go to follow-ups in bounded
+form; legacy notes remain local until recorded again. Keep detailed or private logs out of shareable notes.
+Confirmed does not mean adopted. Reading alone stays unverified; remaining
 points need no entry. Report the deciding point, consultant and actual model, job/point ID, grounds, your
 check, adoption or rejection and remaining unknowns. Preserve opposite stances even with a shared finding.
 
@@ -97,6 +112,9 @@ For a failed member use `consult_start({ request: { retry_of: "<failed job_id>" 
 after fixing auth/quota causes; keep successful answers. The retry is a new chain linked to the failure.
 Find saved consultations with `consult_list({ question: "cache", target: "claude-code" })`; use the
 matching chain's `latest_completed_job_id` and check `rounds_remaining`. Confirm ambiguous candidates.
+Ask for a choice once when several saved candidates fit; retrieve the IDs yourself. In a changed-requirement
+follow-up, state the changed premise and ask which advice is retained or withdrawn, the concrete next change,
+and its verification. A prior cache collision check does not establish authentication order or bypass.
 
 A group's `group_id` asks every eligible member again; use a member's `job_id` for one. Files are recopied in
 their current state, changes and deletions noted; add needed `expose_paths`. See the reference for recovery.

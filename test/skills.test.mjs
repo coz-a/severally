@@ -358,3 +358,16 @@ test("the README's short description is package.json's description", async () =>
   const marketplace = JSON.parse(fs.readFileSync(new URL('../.claude-plugin/marketplace.json', import.meta.url), 'utf8'));
   assert.equal(marketplace.plugins[0].description, description);
 });
+
+test('every generated skill preserves masking limits, concrete recommendations and scoped verification', () => {
+  for (const host of Object.keys(HOSTS)) {
+    const text = read(host);
+    assert.match(text, /recommendation/);
+    assert.match(text, /same stance|matching stances/i);
+    assert.match(text, /refuted/);
+    assert.match(text, /partial.*unverified|unverified.*partial/i);
+    assert.match(text, /legacy notes.*local/i);
+    assert.match(text, /markers[\s\S]{0,100}equal|equality.*markers/i);
+    assert.match(text, /field presence|field removal/i);
+  }
+});

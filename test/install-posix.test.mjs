@@ -21,6 +21,9 @@ function fixture(t) {
     fs.cpSync(path.join(root, relative), dest, { recursive: true });
   }
   fs.symlinkSync(path.join(root, 'node_modules'), path.join(checkout, 'node_modules'), 'dir');
+  // The extensionless CLI fixtures are ESM. Node 22.0 does not infer that
+  // from their syntax, so declare their format independently of the host.
+  fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
   const bin = path.join(dir, 'bin');
   fs.mkdirSync(bin);
   const registry = path.join(dir, 'registry.json');

@@ -17,10 +17,10 @@ import {
 } from './policy.mjs';
 import { vendorOf, sameModel, CLI_VENDORS, CLI_IDS, resolveConsultant } from './consultants.mjs';
 import { parseRequest, requestSchema, RequestError, charCount } from './schema.mjs';
-import { renderBrief, renderGuardrails, briefRecord } from './brief.mjs';
+import { renderBriefWithReport, renderGuardrails, briefRecord } from './brief.mjs';
 import { CONSULT_RESULT_SCHEMA } from './result-schema.mjs';
 import { normalizeResult, OutputError } from './parse-result.mjs';
-import { redact } from './redact.mjs';
+import { redact, REDACTION_CAVEAT } from './redact.mjs';
 import { isRetriable, AUTO_RETRY_KINDS } from './failures.mjs';
 import { childEnv, operatorEnvProblem, runChild } from './run.mjs';
 import * as store from './store.mjs';
@@ -39,7 +39,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
 /** @typedef {import('./store.mjs').Seat} Seat */
 /** @typedef {NonNullable<Seat['owner']>} JobOwner Who runs a consultation: the severally process, and when it counts as overdue. */
 /** @typedef {import('./brief.mjs').PriorRound} PriorRound */
-/** @typedef {import('./schema.mjs').ParsedRequest & {_snapshot?: string, _exposedFiles?: string[]}} ParsedRequest A validated request (see parseRequest), with the copy of the exposed files the job manager adds. */
+/** @typedef {import('./schema.mjs').ParsedRequest & {_snapshot?: string, _exposedFiles?: string[], _redaction?: {files: boolean | null, brief: boolean}}} ParsedRequest A validated request (see parseRequest), with the copy of the exposed files the job manager adds. */
 
 /**
  * The tool arguments, not yet validated; only the keys inherit() and start() look at are named.
@@ -85,6 +85,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
  * @property {string} history_file
  * @property {({skipped: Record<string, number>, changed: number, action_needed?: string} & import('./expose-paths.mjs').ExposeTotals) | null} exposed
  * @property {string} full_with
+ * @property {{files: boolean | null, brief: boolean | null}} redaction
  */
 
 /** @typedef {Round & ViewExtras} FullView A round as consult_get shows it with `detail: "full"`. */
@@ -126,6 +127,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
  * @property {string} [status]
  * @property {string | null} [failure_kind]
  * @property {string | null} stance
+ * @property {string | null | undefined} recommendation
  * @property {string | null} confidence
  * @property {string | null} evidence_basis
  * @property {string | null | undefined} summary
@@ -139,6 +141,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
  * @property {unknown[]} remaining_disagreements
  * @property {string | null | undefined} caveat
  * @property {number | null} points_without_verdict
+ * @property {{files: boolean | null, brief: boolean | null, result: boolean | null}} redaction
  * @property {Record<string, number>} [omitted]
  * @property {boolean} [truncated]
  * @property {string} [full_with]
@@ -1025,10 +1028,14 @@ export class JobManager {
     // own, on a follow-up to a group; none, on a first round.
     for (const job of members) {
       const chain = { round: job.round, priorRounds: this.#chainHistory(job.chain_id) };
-      const brief = renderBrief(req, chain, exposeManifest);
-      job.promise = this.#execute(job, { ...req, target: job.target }, chain, brief).catch((err) => {
-        this.#fail(job, 'cli_error', err?.message ?? String(err));
-      });
+      const observed = renderBriefWithReport(req, chain, exposeManifest);
+      const redaction = { files: exposeManifest ? (exposeManifest.redacted ?? null) : false, brief: observed.redacted };
+      if (job.brief) job.brief.redaction = redaction;
+      job.promise = this.#execute(job, { ...req, target: job.target, _redaction: redaction }, chain, observed.text).catch(
+        (err) => {
+          this.#fail(job, 'cli_error', err?.message ?? String(err));
+        },
+      );
     }
     // Every member copied the snapshot into its own workspace before its
     // first await (#execute), so it can go now: nothing outlives start(), even
@@ -1134,6 +1141,7 @@ export class JobManager {
             ...shape(x),
             verdict: verdicts.get(x.id)?.verdict ?? null,
             effect: verdicts.get(x.id)?.effect ?? null,
+            note: verdicts.get(x.id)?.followup_note ?? null,
           }));
         const checked = (/** @type {{verdict?: unknown}} */ x) => x.verdict != null && x.verdict !== 'unverified';
         let omitted = 0;
@@ -1162,6 +1170,8 @@ export class JobManager {
           question: j.question,
           summary: j.result.summary,
           stance: j.result.stance,
+          recommendation: j.result.recommendation ?? null,
+          redaction: j.quality?.redaction ?? null,
           reflection: j.reflection ?? null,
           findings,
           unknowns,
@@ -1240,7 +1250,7 @@ export class JobManager {
     // start() renders the brief and hands it in: every member of a fan-out is
     // sent the same request in the same words, with only its own earlier rounds
     // added on a follow-up to the group.
-    const text = brief ?? renderBrief(req, chain);
+    const text = brief ?? renderBriefWithReport(req, chain).text;
     const schemaPath = store.writeJobArtifact(job.job_id, 'response-schema.json', JSON.stringify(CONSULT_RESULT_SCHEMA, null, 2));
     // Left out, not undefined, when the request names none.
     const sandbox = adapter.prepareSandbox ? adapter.prepareSandbox({ workdir, network: req.network }) : null;
@@ -1518,7 +1528,13 @@ export class JobManager {
       }
 
       job.result = normalized.result;
+      const redaction = {
+        files: req._redaction?.files ?? null,
+        brief: req._redaction?.brief ?? null,
+        result: normalized.quality.redaction?.result ?? null,
+      };
       const notes = [
+        Object.values(redaction).some((v) => v === true) && REDACTION_CAVEAT,
         adviceCaveat(normalized),
         // The model that answered, which after a fallback is not the one asked.
         sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
@@ -1539,6 +1555,7 @@ export class JobManager {
       // does not have.
       job.quality = {
         ...normalized.quality,
+        redaction,
         evidence_basis: normalized.result.evidence_basis,
         caveat: notes.length ? notes.join('; ') : null,
       };
@@ -1728,6 +1745,7 @@ export class JobManager {
         verdict,
         effect: text(entry?.effect),
         note: text(entry?.note),
+        followup_note: text(entry?.note, 400),
         recorded_at: now,
       });
     }
@@ -2220,13 +2238,15 @@ function recordSummary(job) {
 
 /**
  * @param {unknown} value
+ * @param {number} [max]
  * @returns {string | null}
  */
-function text(value) {
+function text(value, max = POLICY.output.itemTextMax) {
   if (typeof value !== 'string') return null;
   const t = redact(value).trim();
   if (!t) return null;
-  return t.length > POLICY.output.itemTextMax ? `${t.slice(0, POLICY.output.itemTextMax)}\n…[truncated by severally]` : t;
+  const marker = '\n…[truncated by severally]';
+  return t.length > max ? `${t.slice(0, Math.max(0, max - marker.length))}${marker}` : t;
 }
 
 // A follow-up restates what the round before was given unless it says
@@ -2415,7 +2435,8 @@ function comparison(members, budget) {
       'This server does not judge whether the consultants agree: similar summaries are not evidence of agreement. ' +
       "Each stance is the consultant's own declaration, relayed as given -- consultants that share a finding can still " +
       'declare opposite stances, and that is a divergence. Compare the grounds behind each point yourself, and spend a ' +
-      'follow-up only where a divergence would change your decision.',
+      'follow-up only where a divergence would change your decision. Matching stances need not recommend the same option; ' +
+      'a null recommendation was not declared. Redaction flags show observed replacements; null means unknown. Masked values cannot be compared for equality.',
   };
 }
 
@@ -2482,7 +2503,8 @@ function byTarget(m, budget) {
   const summary = clip(m.result?.summary ?? null, Math.min(SUMMARY_CHARS, budget / 3));
   const caveat = clip(m.quality?.caveat ?? null, Math.min(CAVEAT_CHARS, budget / 3));
   const model = clip(m.model ?? null, Math.min(ITEM_CHARS, budget / 10)) ?? null;
-  if (!full) left -= printed(summary) + printed(caveat) + printed(model);
+  const recommendation = clip(m.result?.recommendation ?? null, Math.min(SUMMARY_CHARS, budget / 4));
+  if (!full) left -= printed(summary) + printed(caveat) + printed(model) + printed(recommendation);
   /** @type {Partial<ConsultResult>} */
   const r = m.result ?? {};
   // The findings first, with up to 75% of what is left and their texts cut
@@ -2526,6 +2548,9 @@ function byTarget(m, budget) {
     // bottom lines were opposite; one word per consultant makes that
     // visible without the server interpreting anyone's summary.
     stance: m.result?.stance ?? null,
+    recommendation,
+    decision_changers: decisionChangers,
+    unknowns,
     confidence: m.result?.confidence ?? null,
     evidence_basis: m.result?.evidence_basis ?? null,
     summary,
@@ -2539,9 +2564,7 @@ function byTarget(m, budget) {
     // Counted and relayed, never compared: two consultants naming the same
     // condition is for the lead to notice, not for the server to assert.
     severity_counts: tally((m.result?.findings ?? []).map((f) => f.severity ?? 'unrated')),
-    decision_changers: decisionChangers,
     alternative_options: alternatives,
-    unknowns,
     next_checks: nextChecks,
     remaining_disagreements: disagreements,
     caveat,
@@ -2552,6 +2575,11 @@ function byTarget(m, budget) {
       : {}),
     // Counted, not judged: how many of this answer's points carry no verdict yet.
     points_without_verdict: m.result ? (m.record?.unrecorded ?? recordableIds(m.result)).length : null,
+    redaction: {
+      files: m.quality?.redaction?.files ?? m.brief?.redaction?.files ?? null,
+      brief: m.quality?.redaction?.brief ?? m.brief?.redaction?.brief ?? null,
+      result: m.quality?.redaction?.result ?? null,
+    },
   };
   // A member's status and failure are in `members`; say them once.
   if (!full) {
@@ -2573,8 +2601,8 @@ function byTarget(m, budget) {
 // COLUMN_FIXED_CHARS is what one column's fixed fields take, the note's the
 // comparison note's.
 const GROUP_CHARS = 19_500;
-const COLUMN_FIXED_CHARS = 800;
-const COMPARISON_NOTE_CHARS = 500;
+const COLUMN_FIXED_CHARS = 1000;
+const COMPARISON_NOTE_CHARS = 800;
 const QUESTION_CHARS = 1_000;
 const FAILURE_MESSAGE_CHARS = 300;
 const SUMMARY_CHARS = 400;
@@ -2626,6 +2654,7 @@ export function pointsOf(view, ids) {
     stance: r.stance,
     evidence_basis: r.evidence_basis,
     caveat: view.quality?.caveat ?? null,
+    redaction: view.quality?.redaction ?? { files: null, brief: null, result: null },
     points,
     // What this projection leaves out, counted; the whole answer is one call away.
     not_shown: {
@@ -2686,7 +2715,9 @@ function compactBrief(view, detail) {
   if (detail === 'full' || !view.brief) return view;
   const json = JSON.stringify(view.brief);
   const ex = view.brief.expose_paths;
-  const gaps = ex?.skipped?.some((x) => ['gone', 'masked', 'symlink', 'protected'].includes(x.reason));
+  const gaps =
+    ex &&
+    (ex.totals.files === 0 || ex.skipped?.length > 0 || ex.entries.some((e) => e.changes?.some((c) => c.endsWith(' (deleted)'))));
   return {
     ...view,
     brief: {
@@ -2708,6 +2739,7 @@ function compactBrief(view, detail) {
           }
         : null,
       full_with: `consult_get({ job_id: "${view.job_id}", detail: "full" }) or consult_export`,
+      redaction: view.brief.redaction ?? { files: null, brief: null },
     },
   };
 }

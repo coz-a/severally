@@ -39,6 +39,11 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 - Windows runs natively from PowerShell or Command Prompt; WSL is not required. CLIs are found through
   `PATH`/`PATHEXT` (`.exe`, `.cmd`, `.bat`, paths with spaces included).
 
+The installer and the server are tested on Linux, macOS and Windows in CI. The Claude Code and Codex marketplace
+routes and the real CLIs have been tried on Linux only. On Windows, cancelling a consultation stops its process
+tree while the consultant's CLI is still running. If the CLI has already exited, processes it started may survive;
+what remains in that case is observed, not guaranteed.
+
 ## Checking CLI compatibility after an update
 
 The ordinary `npm test` suite uses offline fixtures. These commands explicitly start real consultations and
@@ -68,7 +73,7 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.9.2 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.10.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |
@@ -125,6 +130,24 @@ codex  mcp get severally
 # both
 agy      mcp list                    # severally  stdio  enabled
 opencode mcp list                    # severally  connected
+```
+
+Part of the output on a machine with Codex and Claude Code:
+
+```text
+config: ok
+
+consultants:
+  codex: codex, gpt-6.1-sol  available
+  claude-code: claude-code, claude-opus-5-5  available
+
+clients:
+  Claude Code  registered (listed by the client)
+  Codex        registered (listed by the client)
+
+login (out of quota is not checked; the first consultation shows it):
+  codex        logged in
+  claude-code  logged in
 ```
 
 ## From the Claude Code plugin marketplace
@@ -212,8 +235,11 @@ material leaves for another vendor, and the installer never adds it.
   ] } }
   ```
 - **Codex**, in `~/.codex/config.toml`, one table per tool, for a server registered with `codex mcp add`
-  (`--manual`). codex 0.163 accepts the key (`auto`, `prompt`, `writes` or `approve`); the effect in a session
-  and the plugin install have not been checked:
+  (`--manual`). The [official configuration reference](https://developers.openai.com/codex/config-reference)
+  lists `auto`, `prompt`, `writes` and `approve`. On Linux/Codex 0.164.0, a noninteractive test with
+  `approval_policy = "never"` blocked `consult_start` without an override; explicit per-tool `approve` settings
+  let start, get and record reach a local synthetic test server. The plugin-provided server path was not tested.
+  Approve only the tools you intend to allow; the installer does not add these settings:
   ```toml
   [mcp_servers.severally.tools.consult_get]
   approval_mode = "approve"
@@ -238,6 +264,9 @@ it exposes, and whatever the consultant reads while it runs (see
 agent can reach may go to those vendors.
 
 ## Updating
+
+With `npx -y severally-mcp@latest install`, npx asks npm for the newest version each time rather than reusing
+an older cached version. Version-by-version changes are in the [releases](https://github.com/coz-a/severally/releases).
 
 When developing from a clone, run `npm run build` and then `node scripts/install.mjs` again to copy the generated
 server and Skills into the client installs. Add `--force` if an existing direct registration needs replacing.

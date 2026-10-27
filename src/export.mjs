@@ -9,6 +9,7 @@
 // checked is written as unchecked; both are facts the record must not lose.
 
 import fs from 'node:fs';
+import { REDACTION_CAVEAT } from './redact.mjs';
 import path from 'node:path';
 import { POLICY } from './policy.mjs';
 import { humanSize } from './expose-paths.mjs';
@@ -228,7 +229,7 @@ function verificationSummary(rounds) {
     const points = [...r.findings, ...r.unknowns, ...r.next_checks];
     for (const point of points) {
       const entry = round.record?.entries.find((e) => e.id === point.id);
-      if (!entry || !['confirmed', 'not_applicable'].includes(entry.verdict)) {
+      if (!entry || !['confirmed', 'refuted', 'not_applicable'].includes(entry.verdict)) {
         unverified += 1;
         continue;
       }
@@ -349,10 +350,21 @@ function roundSection(round, previousBrief) {
   if (round.retry_context?.length) head.push(`- retry_context: ${round.retry_context.map((id) => `\`${id}\``).join(', ')}`);
   if (round.result) {
     head.push(`- stance as declared: ${round.result.stance ?? 'not declared'}`);
+    head.push(`- recommendation: ${round.result.recommendation ?? 'not declared'}`);
     head.push(
       `- the consultant's own confidence: ${round.result.confidence ?? 'not declared'}, evidence basis: ${round.result.evidence_basis ?? 'not declared'}`,
     );
   }
+  const observation = {
+    files: round.quality?.redaction?.files ?? round.brief?.redaction?.files ?? null,
+    brief: round.quality?.redaction?.brief ?? round.brief?.redaction?.brief ?? null,
+    result: round.quality?.redaction?.result ?? null,
+  };
+  const flag = (/** @type {boolean | null | undefined} */ value) => (value == null ? 'unknown' : String(value));
+  head.push(
+    `- redaction observed: files=${flag(observation?.files)}, brief=${flag(observation?.brief)}, result=${flag(observation?.result)}`,
+  );
+  if (observation && Object.values(observation).some((v) => v === true)) head.push(`- ${REDACTION_CAVEAT}`);
   head.push('');
   head.push('### Question', '', round.question, '');
   head.push('### Brief as sent', '');

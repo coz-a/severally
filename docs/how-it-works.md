@@ -6,6 +6,9 @@ What the [README](../README.md) leaves out of how a consultation runs: who consu
 how a consultation runs, the records, how large a fan-out's answer is, and how each consultant is kept to
 reading. Every configuration key is in [CONFIG.md](../CONFIG.md).
 
+Sensitive-key masking, redaction observations, recommendations and verification-note changes described here
+are available from v2.10.0. Older history remains readable, with absent fields shown as unknown or undeclared.
+
 ## Who consults whom
 
 ```mermaid
@@ -91,6 +94,10 @@ there is no need to repeat the question's premises there. Code questions still n
   consultant, `network`, the objective, constraints, success criteria, facts, plan, opposing claims and supplied
   material. The new brief restates them. The follow-up limit is `server.max_rounds` in the config file.
 
+A follow-up starts a fresh CLI session, with a brief assembled from the saved question, answer and checks;
+it does not resume the CLI's native session. When a premise changes, identify the updated premise, advice kept
+or withdrawn, specific changes to make and checks to run.
+
 ## Records
 
 `limits.network` reports the server default. A job's `network` and `boundary.network` describe that round;
@@ -102,10 +109,16 @@ A test (`test/windows.test.mjs`) cancels a run whose parent has exited and repor
 descendant remained; the outcome is observed, not guaranteed.
 
 - Each round is one file, and each verdict keeps its effect on the decision. The verdicts mean: `confirmed`, it
-  holds here; `not_applicable`, true in general, not in this codebase; `unverifiable`, cannot be settled with what
-  the lead can reach; `unverified`, not checked, with the reason.
+  held within the recorded scope; `refuted`, it did not hold in that check; `not_applicable`, true in general,
+  not in this codebase; `unverifiable`, cannot be settled with what the lead can reach; `unverified`, not checked, with the reason.
 - The lead records its verdicts on every consultant of a fan-out in one `consult_record` call (`records`). If any
   job or point id is wrong, nothing is written; a verdict that could not be saved is reported, not dropped.
+- A partial check stays `unverified`, with its scope in `note`. `effect` records the impact on adoption or
+  the decision, separately from verification. Reproducing a cache-key collision alone does not confirm an
+  authentication bypass: record the collision and leave the broader claim unverified until the real auth path is checked.
+- A new `consult_record` note is a shareable summary of checked inputs, environment, result and limits.
+  The server stores a `followup_note` capped at 400 characters, marks truncation visibly, and sends that summary
+  in follow-ups. Legacy notes without a stored `followup_note` stay local until explicitly recorded again.
 - The record also keeps which model asked which, and whether you asked for the consultation.
 - The list of recent consultations (`consult_list`) adds up, per consultant, the token and cost figures each CLI
   reported in this session (`usage_totals`), automatic re-runs included. A figure a CLI does not report is not
@@ -125,6 +138,7 @@ A short report follows the deciding point through the lead's check:
 ```text
 Point: retry amplification (job_… / f1)
 Consultant: Codex, gpt-6.1-sol; stance: do_not_proceed
+Recommendation: preserve the operation ID before release.
 Grounds: the caller can submit the same operation after cancellation.
 Lead's check: the cancellation regression test reproduced a second submission.
 Decision/effect: hold the release until the caller preserves the operation ID.
@@ -133,15 +147,20 @@ Unverified: production load; no load-test environment available.
 
 For code questions, select a diff plus relevant callers, tests and configuration by reading imports and call
 sites. `expose_paths` adds files outside the diff. Inspect the exposed file count and skipped/deleted entries;
-a missing premise remains unknown. A filename observed in a tool call does not prove the consultant read or
+a missing premise remains unknown. If deciding material is missing, select only the needed implementation,
+callers, configuration and tests and supplement once. If still missing, state its effect on the decision.
+A filename observed in a tool call does not prove the consultant read or
 understood all relevant behavior.
 
 ## How large a fan-out's answer is
 
 A finished fan-out uses a 19,500-character response budget, including JSON indentation. The response-size
 tests cover up to nine consultants at every answer length cap, escaped text and partial failures.
-It places each consultant's actual answering model, stance, summary and findings (id, severity, point and grounds)
-side by side. Findings get more space than the other lists. Text shortened to fit is marked `truncated`, and
+The comparison puts each consultant's actual answering model, stance and concrete `recommendation` side by
+side, followed by `decision_changers` and `unknowns`. Matching stances can recommend different options.
+`recommendation` is separate from stance; when absent in older history it is `null` (not declared), never inferred
+from a summary. The response also includes summary and findings (id, severity, point and grounds).
+Findings get more space than the other lists. Text shortened to fit is marked `truncated`, and
 `omitted` counts items left out of a list; no finding is ranked or rewritten by the server.
 
 The lead reads grounds already shown whole and checks deciding claims itself. For missing or shortened details,
@@ -174,6 +193,16 @@ with an external executable, while public-file reads succeeded. An authenticated
 Individual protected files, including `~/.claude.json`, remain subject to rename replacement. This is a CLI
 sandbox limitation, not something `expose_paths` masking fixes.
 
+Further synthetic probes on 2026-10-27 (JST), Linux/Codex 0.164.0, reproduced three remaining gaps:
+an individually denied file became readable after rename replacement; a protected root containing the
+executable admitted new siblings; and a legacy `jobs/<id>/home` created after launch was readable.
+Existing legacy homes were denied, and public-file reads succeeded. Moving the executable outside the
+credential root kept replaced and new children of that root denied. Denying the whole root and adding a
+read exception for its executable directory also denied the executable in this probe, so that configuration
+cannot replace the entry snapshot. Keep the executable outside credential roots and avoid running pre-1.7
+severally alongside current consultations. These probes did not call a model or repeat an authenticated
+consultation; macOS and Windows remain untested for these cases.
+
 OpenCode denies protected paths in absolute and Location/worktree-relative form. Its `grep` and `glob` are
 disabled because they authorize a search pattern rather than checking every returned file. On OpenCode
 2.0.24, the built-in read authorization uses lexical paths. To cover aliases, severally now places its own
@@ -205,6 +234,39 @@ that come back; a file a consultant opens on its own is read as it is. Other ser
 server's environment (`AWS_*`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK`, any name ending in `_TOKEN`, `_SECRET` or
 `_API_KEY` …) are not passed to a consultant. Of the credentials, it gets its own vendor's keys, what you set in
 `clis.<cli>.env`, and for OpenCode the variables that an `{env:NAME}` in `clis.opencode.provider` names.
+
+Masking recognizes case-insensitive credential names such as `api_key`, `password`, `access_token`, and
+`client_secret`, including underscore-separated prefixes, and conservatively treats uppercase custom
+`*_KEY` names as credentials. In structured objects, the entire value of a recognized property becomes
+`[REDACTED]`, even when short, numeric, null, a code reference, an array, or an object. Other objects and
+arrays are traversed without changing the input; ordinary names such as `primary_key` and `sort_key` remain.
+Text assignments keep their existing minimum lengths and code-reference exceptions, so `password: true`
+can remain in textual code while `{ password: true }` is masked as structured data. CamelCase and hyphenated
+spellings are not covered generally. Masking is best effort; missing a pattern is still possible, and two
+identical markers do not establish that the original values were equal.
+
+`quality.redaction` records observed replacements at the `files`, `brief` and `result` stages: `true` means a
+replacement was observed, `false` means none was observed, and `null` means unknown, including older history.
+The exposed-file manifest also reports `redacted`; comparison views and Markdown exports retain these observations.
+The `files` stage covers copied-file masking and diff preparation; the brief stage observes the rendered text afterward.
+For safe counterexamples, compare field presence or removal, types and structure, and reproduce behavior locally.
+Do not recover masked secrets or treat matching markers as evidence of equal originals.
+
+For an executable counterexample, separate a public field name from a clearly synthetic sample value.
+Literal assignments to credential-like fields can become invalid syntax after masking replaces their values.
+For example, run this from the repository root. Evaluate booleans or assertions without printing secret values.
+
+```js
+import assert from 'node:assert/strict';
+import { redact } from './src/redact.mjs';
+
+const field = 'api_key';
+const sample = 'SYNTHETIC_ONLY';
+const input = Object.fromEntries([[field, sample]]);
+const output = redact(input);
+assert.equal(Object.hasOwn(output, field), true);
+assert.equal(Object.is(output[field], sample), false);
+```
 
 `node scripts/live-check.mjs --target <name> --mode sandbox` asks a consultant to write a file inside and outside
 its working directory and to run a command, then checks the disk. On 2026-10-18 none of Codex, Claude Code and
