@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { sandboxEnv } from './helpers.mjs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 let sqliteAvailable = false;
 try {
@@ -17,7 +18,7 @@ const noSqlite = process.allowedNodeEnvironmentFlags.has('--no-experimental-sqli
 
 // `severally-mcp status` in a home of its own: a config with one mistake, an
 // older runtime copy, and fake clients on PATH that know (or not) about severally.
-const bin = new URL('../bin/severally-mcp.mjs', import.meta.url).pathname;
+const bin = fileURLToPath(new URL('../bin/severally-mcp.mjs', import.meta.url));
 
 function fixture({ registered }) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-status-'));
@@ -114,4 +115,60 @@ test('status exits 1 when the config file as a whole needs fixing', { skip: proc
   const r = run(f);
   assert.equal(r.status, 1);
   assert.match(r.stdout, /needs fixing.*targets/);
+});
+
+test('status shows effective effort and timeout while distinguishing availability from live verification', () => {
+  const home = sandboxEnv({ SEVERALLY_TIMEOUT_MS: '45000' });
+  const config = path.join(home, 'config.json');
+  fs.writeFileSync(
+    config,
+    JSON.stringify({
+      consultants: {
+        codex: { cli: 'codex', model: 'gpt-6-astra', effort: 'low', timeout_ms: 12000 },
+        claude: { cli: 'claude-code', model: 'claude-opus-5-5' },
+        agy: { cli: 'antigravity', model: 'gemini-test-high' },
+        open: { cli: 'opencode', model: 'provider/model#' },
+      },
+    }),
+  );
+  const result = spawnSync(process.execPath, [bin, 'status'], {
+    encoding: 'utf8',
+    env: { ...process.env, SEVERALLY_CONFIG: config, PATH: path.dirname(process.execPath) },
+    timeout: 15000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /codex: codex, gpt-6-astra.*effort: low.*timeout: 12000 ms/);
+  assert.match(result.stdout, /claude: claude-code, claude-opus-5-5.*effort: high.*timeout: 45000 ms/);
+  assert.match(result.stdout, /agy: antigravity, gemini-test-high.*effort: in model name/);
+  assert.match(result.stdout, /open: opencode, provider\/model#.*effort: no variant/);
+  assert.match(result.stdout, /availability.*CLI.*live consultation.*not verified/i);
+});
+
+test('status warns when the configured Codex executable is inside a protected root', () => {
+  const home = sandboxEnv();
+  const credentials = path.join(home, 'codex-credentials');
+  const outside = path.join(home, 'outside');
+  fs.mkdirSync(credentials, { recursive: true });
+  fs.mkdirSync(outside, { recursive: true });
+  const executableName = process.platform === 'win32' ? 'codex.exe' : 'codex';
+  const insideExecutable = path.join(credentials, executableName);
+  const outsideExecutable = path.join(outside, executableName);
+  fs.writeFileSync(insideExecutable, '', { mode: 0o755 });
+  fs.writeFileSync(outsideExecutable, '', { mode: 0o755 });
+  const config = path.join(home, 'config.json');
+  const statusFor = (binPath) => {
+    fs.writeFileSync(config, JSON.stringify({ clis: { codex: { bin: binPath, env: { CODEX_HOME: credentials } } } }));
+    return spawnSync(process.execPath, [bin, 'status'], {
+      encoding: 'utf8',
+      env: { ...process.env, SEVERALLY_CONFIG: config, SEVERALLY_CODEX_BIN: binPath, PATH: path.dirname(process.execPath) },
+      timeout: 15000,
+    });
+  };
+  const inside = statusFor(insideExecutable);
+  assert.equal(inside.status, 0, inside.stderr);
+  assert.match(inside.stdout, /Codex executable.*inside a protected root/i);
+  assert.match(inside.stdout, /new files.*readable/i);
+  const safe = statusFor(outsideExecutable);
+  assert.equal(safe.status, 0, safe.stderr);
+  assert.doesNotMatch(safe.stdout, /Codex executable.*inside a protected root/i);
 });

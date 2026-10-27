@@ -55,7 +55,7 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.10.0 install
+npx -y severally-mcp@2.11.0 install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -78,7 +78,8 @@ Ask Codex: Our read-only public API gets 100 requests per minute.
 Updates may appear 60 seconds late. Is a 30-second cache reasonable?
 ```
 
-If Codex is not installed, use a consultant marked `available` by `status`. A report looks like this; the
+If Codex is not installed, use a consultant marked `available` by `status`. Availability indicates the CLI was
+found; it does not guarantee login or a successful consultation. A report looks like this; the
 answering model, checks and unverified points depend on the consultation:
 
 ```text
@@ -109,15 +110,15 @@ What comes back to you is the lead's report, not the consultants' answers as the
 what that showed, what it recommends, and what is still unverified. The [example](docs/how-it-works.md#example) shows one.
 
 It is worth it for important design decisions, hard-to-reverse choices, and two or more failed attempts at the
-same bug. One consultation takes minutes and real quota, so it is not for small fixes.
+same bug. A consultation takes time and real quota, so it is not for small fixes.
 
 ### CLI
 
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.10.0 install
-npx -y severally-mcp@2.10.0 status
+npx -y severally-mcp@2.11.0 install
+npx -y severally-mcp@2.11.0 status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation
@@ -139,8 +140,9 @@ Ask for consultations, follow-ups and Markdown exports in your agent's chat.
 Sensitive-key masking, redaction observations, `recommendation`, `refuted` and shared verification notes are
 available from v2.10.0. Earlier answers remain readable; unavailable fields are shown as unknown or undeclared.
 
-The agent can work on independent tasks while it waits. Answers usually take one to ten minutes, depending
-on the CLI, model and load. Each includes a stance, a separate concrete recommendation, findings with grounds, unknowns and proposed checks.
+The agent can work on independent tasks while it waits. Time varies with the CLI, model and load. The default
+budget for the whole consultation is 30 minutes, separate from one `consult_get` wait; it can be configured.
+Each answer includes a stance, a separate concrete recommendation, findings with grounds, unknowns and proposed checks.
 Matching stances can recommend different options; older answers without a recommendation remain not declared.
 A failure (`usage_limit`, `timeout` and so on) means no advice was obtained.
 

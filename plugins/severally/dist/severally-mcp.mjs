@@ -136,8 +136,8 @@ var require_windows = __commonJS({
   "node_modules/isexe/windows.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs14 = __require("fs");
-    function checkPathExt(path15, options) {
+    var fs15 = __require("fs");
+    function checkPathExt(path16, options) {
       var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
       if (!pathext) {
         return true;
@@ -148,25 +148,25 @@ var require_windows = __commonJS({
       }
       for (var i = 0; i < pathext.length; i++) {
         var p = pathext[i].toLowerCase();
-        if (p && path15.substr(-p.length).toLowerCase() === p) {
+        if (p && path16.substr(-p.length).toLowerCase() === p) {
           return true;
         }
       }
       return false;
     }
-    function checkStat(stat, path15, options) {
+    function checkStat(stat, path16, options) {
       if (!stat.isSymbolicLink() && !stat.isFile()) {
         return false;
       }
-      return checkPathExt(path15, options);
+      return checkPathExt(path16, options);
     }
-    function isexe(path15, options, cb) {
-      fs14.stat(path15, function(er, stat) {
-        cb(er, er ? false : checkStat(stat, path15, options));
+    function isexe(path16, options, cb) {
+      fs15.stat(path16, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path16, options));
       });
     }
-    function sync(path15, options) {
-      return checkStat(fs14.statSync(path15), path15, options);
+    function sync(path16, options) {
+      return checkStat(fs15.statSync(path16), path16, options);
     }
   }
 });
@@ -176,14 +176,14 @@ var require_mode = __commonJS({
   "node_modules/isexe/mode.js"(exports, module) {
     module.exports = isexe;
     isexe.sync = sync;
-    var fs14 = __require("fs");
-    function isexe(path15, options, cb) {
-      fs14.stat(path15, function(er, stat) {
+    var fs15 = __require("fs");
+    function isexe(path16, options, cb) {
+      fs15.stat(path16, function(er, stat) {
         cb(er, er ? false : checkStat(stat, options));
       });
     }
-    function sync(path15, options) {
-      return checkStat(fs14.statSync(path15), options);
+    function sync(path16, options) {
+      return checkStat(fs15.statSync(path16), options);
     }
     function checkStat(stat, options) {
       return stat.isFile() && checkMode(stat, options);
@@ -207,7 +207,7 @@ var require_mode = __commonJS({
 // node_modules/isexe/index.js
 var require_isexe = __commonJS({
   "node_modules/isexe/index.js"(exports, module) {
-    var fs14 = __require("fs");
+    var fs15 = __require("fs");
     var core;
     if (process.platform === "win32" || global.TESTING_WINDOWS) {
       core = require_windows();
@@ -216,7 +216,7 @@ var require_isexe = __commonJS({
     }
     module.exports = isexe;
     isexe.sync = sync;
-    function isexe(path15, options, cb) {
+    function isexe(path16, options, cb) {
       if (typeof options === "function") {
         cb = options;
         options = {};
@@ -226,7 +226,7 @@ var require_isexe = __commonJS({
           throw new TypeError("callback not provided");
         }
         return new Promise(function(resolve, reject) {
-          isexe(path15, options || {}, function(er, is) {
+          isexe(path16, options || {}, function(er, is) {
             if (er) {
               reject(er);
             } else {
@@ -235,7 +235,7 @@ var require_isexe = __commonJS({
           });
         });
       }
-      core(path15, options || {}, function(er, is) {
+      core(path16, options || {}, function(er, is) {
         if (er) {
           if (er.code === "EACCES" || options && options.ignoreErrors) {
             er = null;
@@ -245,9 +245,9 @@ var require_isexe = __commonJS({
         cb(er, is);
       });
     }
-    function sync(path15, options) {
+    function sync(path16, options) {
       try {
-        return core.sync(path15, options || {});
+        return core.sync(path16, options || {});
       } catch (er) {
         if (options && options.ignoreErrors || er.code === "EACCES") {
           return false;
@@ -263,7 +263,7 @@ var require_isexe = __commonJS({
 var require_which = __commonJS({
   "node_modules/which/which.js"(exports, module) {
     var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
-    var path15 = __require("path");
+    var path16 = __require("path");
     var COLON = isWindows ? ";" : ":";
     var isexe = require_isexe();
     var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
@@ -301,7 +301,7 @@ var require_which = __commonJS({
           return opt.all && found.length ? resolve(found) : reject(getNotFoundError(cmd));
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path15.join(pathPart, cmd);
+        const pCmd = path16.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         resolve(subStep(p, i, 0));
       });
@@ -328,7 +328,7 @@ var require_which = __commonJS({
       for (let i = 0; i < pathEnv.length; i++) {
         const ppRaw = pathEnv[i];
         const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
-        const pCmd = path15.join(pathPart, cmd);
+        const pCmd = path16.join(pathPart, cmd);
         const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
         for (let j = 0; j < pathExt.length; j++) {
           const cur = p + pathExt[j];
@@ -376,7 +376,7 @@ var require_path_key = __commonJS({
 var require_resolveCommand = __commonJS({
   "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
     "use strict";
-    var path15 = __require("path");
+    var path16 = __require("path");
     var which2 = require_which();
     var getPathKey = require_path_key();
     function resolveCommandAttempt(parsed, withoutPathExt) {
@@ -394,7 +394,7 @@ var require_resolveCommand = __commonJS({
       try {
         resolved = which2.sync(parsed.command, {
           path: env[getPathKey({ env })],
-          pathExt: withoutPathExt ? path15.delimiter : void 0
+          pathExt: withoutPathExt ? path16.delimiter : void 0
         });
       } catch (e) {
       } finally {
@@ -403,7 +403,7 @@ var require_resolveCommand = __commonJS({
         }
       }
       if (resolved) {
-        resolved = path15.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+        resolved = path16.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
       }
       return resolved;
     }
@@ -457,8 +457,8 @@ var require_shebang_command = __commonJS({
       if (!match) {
         return null;
       }
-      const [path15, argument] = match[0].replace(/#! ?/, "").split(" ");
-      const binary = path15.split("/").pop();
+      const [path16, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path16.split("/").pop();
       if (binary === "env") {
         return argument;
       }
@@ -471,16 +471,16 @@ var require_shebang_command = __commonJS({
 var require_readShebang = __commonJS({
   "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
     "use strict";
-    var fs14 = __require("fs");
+    var fs15 = __require("fs");
     var shebangCommand = require_shebang_command();
     function readShebang(command) {
       const size = 150;
       const buffer = Buffer.alloc(size);
       let fd;
       try {
-        fd = fs14.openSync(command, "r");
-        fs14.readSync(fd, buffer, 0, size, 0);
-        fs14.closeSync(fd);
+        fd = fs15.openSync(command, "r");
+        fs15.readSync(fd, buffer, 0, size, 0);
+        fs15.closeSync(fd);
       } catch (e) {
       }
       return shebangCommand(buffer.toString());
@@ -493,7 +493,7 @@ var require_readShebang = __commonJS({
 var require_parse = __commonJS({
   "node_modules/cross-spawn/lib/parse.js"(exports, module) {
     "use strict";
-    var path15 = __require("path");
+    var path16 = __require("path");
     var resolveCommand = require_resolveCommand();
     var escape3 = require_escape();
     var readShebang = require_readShebang();
@@ -518,7 +518,7 @@ var require_parse = __commonJS({
       const needsShell = !isExecutableRegExp.test(commandFile);
       if (parsed.options.forceShell || needsShell) {
         const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
-        parsed.command = path15.normalize(parsed.command);
+        parsed.command = path16.normalize(parsed.command);
         parsed.command = escape3.command(parsed.command);
         parsed.args = parsed.args.map((arg) => escape3.argument(arg, needsDoubleEscapeMetaChars));
         const shellCommand = [parsed.command].concat(parsed.args).join(" ");
@@ -1623,10 +1623,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj2, path15) {
-  if (!path15)
+function getElementAtPath(obj2, path16) {
+  if (!path16)
     return obj2;
-  return path15.reduce((acc, key) => acc?.[key], obj2);
+  return path16.reduce((acc, key) => acc?.[key], obj2);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -1885,11 +1885,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path15, issues) {
+function prefixIssues(path16, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path15);
+    iss.path.unshift(path16);
     return iss;
   });
 }
@@ -2410,16 +2410,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path15 = []) => {
+  const processError = (error63, path16 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path16, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else {
-        const fullpath = [...path15, ...issue2.path];
+        const fullpath = [...path16, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -2458,17 +2458,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path15 = []) => {
+  const processError = (error63, path16 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path15, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path16, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path15, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path16, ...issue2.path]);
       } else {
-        const fullpath = [...path15, ...issue2.path];
+        const fullpath = [...path16, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -2507,8 +2507,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path15 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path15) {
+  const path16 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path16) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -20504,13 +20504,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path15 = ref.slice(1).split("/").filter(Boolean);
-  if (path15.length === 0) {
+  const path16 = ref.slice(1).split("/").filter(Boolean);
+  if (path16.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path15[0] === defsKey) {
-    const key = path15[1] === void 0 ? void 0 : decodeJSONPointerSegment(path15[1]);
+  if (path16[0] === defsKey) {
+    const key = path16[1] === void 0 ? void 0 : decodeJSONPointerSegment(path16[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -25027,29 +25027,29 @@ function assertCompleteRequestResourceTemplate(request) {
 function scanXMcpHeaderDeclarations(inputSchema) {
   const declarations = [];
   const seenLower = /* @__PURE__ */ new Map();
-  const visit2 = (node2, path15, reachable) => {
+  const visit2 = (node2, path16, reachable) => {
     if (node2 === null || typeof node2 !== "object") return void 0;
     const schema = node2;
     if (X_MCP_HEADER_KEY in schema) {
-      if (!reachable || path15.length === 0) return `${pathName(path15)}: x-mcp-header is only permitted on properties statically reachable via a chain of 'properties' keys (not under items, additionalProperties, oneOf/anyOf/allOf/not, if/then/else, or $ref)`;
+      if (!reachable || path16.length === 0) return `${pathName(path16)}: x-mcp-header is only permitted on properties statically reachable via a chain of 'properties' keys (not under items, additionalProperties, oneOf/anyOf/allOf/not, if/then/else, or $ref)`;
       const raw = schema[X_MCP_HEADER_KEY];
-      if (typeof raw !== "string" || raw.length === 0) return `${pathName(path15)}: x-mcp-header MUST be a non-empty string`;
-      if (!RFC9110_TOKEN.test(raw)) return `${pathName(path15)}: x-mcp-header '${raw}' is not a valid RFC 9110 token (no spaces, control characters or HTTP delimiters)`;
+      if (typeof raw !== "string" || raw.length === 0) return `${pathName(path16)}: x-mcp-header MUST be a non-empty string`;
+      if (!RFC9110_TOKEN.test(raw)) return `${pathName(path16)}: x-mcp-header '${raw}' is not a valid RFC 9110 token (no spaces, control characters or HTTP delimiters)`;
       const type = typeof schema.type === "string" ? schema.type : void 0;
-      if (type === void 0 || !PERMITTED_X_MCP_HEADER_TYPES.has(type)) return `${pathName(path15)}: x-mcp-header is only permitted on primitive-typed properties (string, integer, boolean); got ${type ?? "<none>"}`;
+      if (type === void 0 || !PERMITTED_X_MCP_HEADER_TYPES.has(type)) return `${pathName(path16)}: x-mcp-header is only permitted on primitive-typed properties (string, integer, boolean); got ${type ?? "<none>"}`;
       const lower = raw.toLowerCase();
       const prior = seenLower.get(lower);
       if (prior !== void 0) return `x-mcp-header '${raw}' is not case-insensitively unique (also declared as '${prior}')`;
       seenLower.set(lower, raw);
       declarations.push({
-        path: path15,
+        path: path16,
         headerName: raw,
         type
       });
     }
     const properties = schema.properties;
     if (properties !== null && typeof properties === "object") for (const [key, child] of Object.entries(properties)) {
-      const fault$1 = visit2(child, [...path15, key], reachable);
+      const fault$1 = visit2(child, [...path16, key], reachable);
       if (fault$1 !== void 0) return fault$1;
     }
     for (const k of NON_REACHABLE_SUBSCHEMA_KEYWORDS) {
@@ -25057,7 +25057,7 @@ function scanXMcpHeaderDeclarations(inputSchema) {
       if (sub === void 0) continue;
       const branches = Array.isArray(sub) ? sub : sub !== null && typeof sub === "object" && OBJECT_VALUED_SUBSCHEMA_KEYWORDS.has(k) ? Object.values(sub) : [sub];
       for (const branch of branches) {
-        const fault$1 = visit2(branch, [...path15, `<${k}>`], false);
+        const fault$1 = visit2(branch, [...path16, `<${k}>`], false);
         if (fault$1 !== void 0) return fault$1;
       }
     }
@@ -25071,8 +25071,8 @@ function scanXMcpHeaderDeclarations(inputSchema) {
     reason: fault
   };
 }
-function pathName(path15) {
-  return path15.length === 0 ? "<root>" : path15.join(".");
+function pathName(path16) {
+  return path16.length === 0 ? "<root>" : path16.join(".");
 }
 function rejection(rung, cell, httpStatus, error62, settled2) {
   return {
@@ -25248,7 +25248,7 @@ function convertStandardElicitationSchema(schema) {
 function isAnnotationOnlyJsonSchemaKeyword(key) {
   return ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS.has(key) || key.startsWith("x-");
 }
-function walkProperty(node2, path15, vendor, unsupported) {
+function walkProperty(node2, path16, vendor, unsupported) {
   if (!isJsonObject(node2)) return node2;
   const allowedKeys = typeof node2.type === "string" && Object.hasOwn(PROPERTY_KEYS_BY_TYPE, node2.type) ? PROPERTY_KEYS_BY_TYPE[node2.type] : void 0;
   if (allowedKeys === void 0) return node2;
@@ -25256,8 +25256,8 @@ function walkProperty(node2, path15, vendor, unsupported) {
   for (const [key, value] of Object.entries(node2)) if (allowedKeys.has(key) || isAnnotationOnlyJsonSchemaKeyword(key)) pruned[key] = value;
   else if (key === "pattern" && node2.type === "string" && typeof node2.format === "string") {
     if (!SUPPORTED_STRING_FORMATS.has(node2.format)) pruned[key] = value;
-    else if (typeof value !== "string" || !isLibraryFormatPattern(node2.format, value, vendor)) unsupported.push(`${path15}.${key}`);
-  } else unsupported.push(`${path15}.${key}`);
+    else if (typeof value !== "string" || !isLibraryFormatPattern(node2.format, value, vendor)) unsupported.push(`${path16}.${key}`);
+  } else unsupported.push(`${path16}.${key}`);
   return pruned;
 }
 function walkRequestedSchema(converted, vendor) {
@@ -25274,11 +25274,11 @@ function describeUnsupportedProperties(pruned, fallback) {
   const offenders = Object.entries(pruned.properties).filter(([, node2]) => !parseSchema(PrimitiveSchemaDefinitionSchema, node2).success).map(([name]) => `properties.${name}`);
   return offenders.length > 0 ? offenders.join(", ") : fallback;
 }
-function findDroppedConstraintPaths(original, parsed, path15 = "") {
-  if (Array.isArray(original) && Array.isArray(parsed)) return original.flatMap((item, index) => findDroppedConstraintPaths(item, parsed[index], `${path15}[${index}]`));
+function findDroppedConstraintPaths(original, parsed, path16 = "") {
+  if (Array.isArray(original) && Array.isArray(parsed)) return original.flatMap((item, index) => findDroppedConstraintPaths(item, parsed[index], `${path16}[${index}]`));
   if (!isJsonObject(original) || !isJsonObject(parsed)) return [];
   return Object.entries(original).flatMap(([key, value]) => {
-    const childPath = path15 ? `${path15}.${key}` : key;
+    const childPath = path16 ? `${path16}.${key}` : key;
     if (!Object.prototype.hasOwnProperty.call(parsed, key)) return isAnnotationOnlyJsonSchemaKeyword(key) ? [] : [childPath];
     return findDroppedConstraintPaths(value, parsed[key], childPath);
   });
@@ -26009,9 +26009,9 @@ var init_src_Cqbh3MYc = __esm({
         });
         const parsed = buildSchemas2026().RequestMetaEnvelopeSchema.safeParse(meta3);
         if (!parsed.success) for (const issue2 of parsed.error.issues) {
-          const path15 = issue2.path.map(String);
-          const key = path15.length > 0 ? path15.join(".") : "_meta";
-          if (path15.length === 1 && issues.some((existing) => existing.key === key && existing.problem === "missing")) continue;
+          const path16 = issue2.path.map(String);
+          const key = path16.length > 0 ? path16.join(".") : "_meta";
+          if (path16.length === 1 && issues.some((existing) => existing.key === key && existing.problem === "missing")) continue;
           issues.push({
             key,
             problem: issue2.message
@@ -30257,8 +30257,8 @@ var init_ajvProvider_CEoC_sr = __esm({
         for (let i = 0; i < str2.length; i++) if (str2[i] === token) ind++;
         return ind;
       }
-      function removeDotSegments(path15) {
-        let input2 = path15;
+      function removeDotSegments(path16) {
+        let input2 = path16;
         const output2 = [];
         let nextSlash = -1;
         let len = 0;
@@ -30411,8 +30411,8 @@ var init_ajvProvider_CEoC_sr = __esm({
           wsComponent.secure = void 0;
         }
         if (wsComponent.resourceName) {
-          const [path15, query] = wsComponent.resourceName.split("?");
-          wsComponent.path = path15 && path15 !== "/" ? path15 : void 0;
+          const [path16, query] = wsComponent.resourceName.split("?");
+          wsComponent.path = path16 && path16 !== "/" ? path16 : void 0;
           wsComponent.query = query;
           wsComponent.resourceName = void 0;
         }
@@ -34400,11 +34400,11 @@ var init_ajvProvider_CEoC_sr = __esm({
         if (!f) throw new Error(`Unknown format "${name}"`);
         return f;
       };
-      function addFormats2(ajv, list, fs14, exportName) {
+      function addFormats2(ajv, list, fs15, exportName) {
         var _a3;
         var _b;
         (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 || (_b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`);
-        for (const f of list) ajv.addFormat(f, fs14[f]);
+        for (const f of list) ajv.addFormat(f, fs15[f]);
       }
       module.exports = exports = formatsPlugin;
       Object.defineProperty(exports, "__esModule", { value: true });
@@ -37077,8 +37077,24 @@ function isBinary(buf) {
   for (let i = 0; i < len; i++) if (buf[i] === 0) return true;
   return false;
 }
-function ensureRoom(totals, size) {
-  checkBudget({ files: totals.files + 1, bytes: totals.bytes + size });
+function ensureRoom(totals, size, source) {
+  const observed = { files: totals.files + 1, bytes: totals.bytes + size };
+  try {
+    checkBudget(observed);
+  } catch (err) {
+    if (err instanceof ExposeError && err.code === "too_large") {
+      err.details = [
+        {
+          kind: "exposure_limit",
+          partial: true,
+          observed,
+          limits: { files: POLICY.input.exposeFilesMax, bytes: POLICY.input.exposeBytesMax },
+          crossing: { source: redact(source).slice(0, 1e3), bytes: size }
+        }
+      ];
+    }
+    throw err;
+  }
 }
 function checkBudget(totals) {
   if (totals.files > POLICY.input.exposeFilesMax) {
@@ -37242,7 +37258,7 @@ function materializeExposedPaths(workdir, exposePaths) {
   const hashes = [];
   let redacted = false;
   const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals) => {
-    ensureRoom(totals, fs3.statSync(abs).size);
+    ensureRoom(totals, fs3.statSync(abs).size, abs);
     const base = path4.join(root, `${index}-${path4.basename(source)}`);
     const copy = copyMasked(abs, rel ? path4.join(base, rel) : base);
     const out = copy.bytes;
@@ -37315,7 +37331,7 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   copied.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   const hash2 = crypto2.createHash("sha256");
   for (const c of copied) {
-    ensureRoom(manifest.totals, c.size);
+    ensureRoom(manifest.totals, c.size, path4.join(top, c.path));
     const copy = copyMasked(path4.join(top, c.path), path4.join(root, c.path));
     const out = copy.bytes;
     manifest.redacted = Boolean(manifest.redacted || copy.redacted);
@@ -37503,11 +37519,13 @@ var init_expose_paths = __esm({
       /**
        * @param {string} message
        * @param {string} code
+       * @param {unknown[] | undefined} [details]
        */
-      constructor(message, code) {
+      constructor(message, code, details = void 0) {
         super(message);
         this.name = "ExposeError";
         this.code = code;
+        this.details = details;
       }
     };
     messageOf = (err) => err instanceof Error ? err.message : String(err);
@@ -37816,6 +37834,12 @@ var init_brief = __esm({
       "When you have enough to be useful, answer. A thin answer delivered beats a thorough one that never arrives:",
       'set `evidence_basis` to "thin", put what you could not verify under `unknowns`, and put the checks you would',
       "have run under `next_checks`. That is a legitimate outcome, not a failure.",
+      "",
+      "Prioritize findings that could change the decision and avoid duplicating detail unnecessarily across fields;",
+      "keep the relationships between findings, conditions and checks clear.",
+      "Give concrete grounds for each finding, including the relevant evidence or specific example, and retain",
+      "the unknowns, decision changers and disagreements that affect the advice. Aim for 3\u20135 findings and brief",
+      "field values as a soft target, not a cap: do not omit material disagreement, unknowns or evidence to meet it.",
       "",
       "Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not."
     ];
@@ -38131,6 +38155,7 @@ function runChild({
   onCancelSignal,
   compactLine: compactLine2 = null,
   settleAfter: settleAfter2 = null,
+  onOutputLine = null,
   stopSignal: stopSignal2 = "SIGTERM"
 }) {
   const child = spawnCommand(command, args, {
@@ -38183,13 +38208,14 @@ function runChild({
     }
   };
   let pending = "";
-  const byLine = Boolean(compactLine2 || settleAfter2);
+  const byLine = Boolean(compactLine2 || settleAfter2 || onOutputLine);
   const compact = compactLine2 ?? ((l) => l);
   const flushLines = () => {
     const lines = pending.split("\n");
     pending = lines.pop() ?? "";
     for (const l of lines) {
       if (settleAfter2) watch(l);
+      onOutputLine?.(l);
       append("out", `${compact(l)}
 `);
     }
@@ -38210,22 +38236,21 @@ function runChild({
     timedOut = true;
     handle.stop(stopSignal2);
   }, timeoutMs2);
-  if (onCancelSignal) {
-    onCancelSignal(() => {
-      cancelled = true;
-      handle.stop(stopSignal2);
-    });
-  }
   const done = new Promise((resolve) => {
     let settled2 = false;
     let pipesForced = false;
     let orphanTimer;
+    let stopTimer;
+    let exitInfo;
+    let stopGraceElapsed = false;
     const finish = (payload) => {
       if (settled2) return;
       settled2 = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
       clearTimeout(orphanTimer);
+      clearTimeout(stopTimer);
+      handle.onStop = void 0;
       resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
     };
     const flushPending = () => {
@@ -38234,8 +38259,29 @@ function runChild({
         pending = "";
       }
     };
+    const closeOrphanPipes = () => {
+      if (!exitInfo || settled2) return;
+      pipesForced = true;
+      handle.forceKill();
+      flushPending();
+      child.stdout.destroy();
+      child.stderr.destroy();
+      finish(exitInfo);
+    };
+    handle.onStop = () => {
+      stopTimer = setTimeout(() => {
+        stopGraceElapsed = true;
+        handle.forceKill();
+        closeOrphanPipes();
+      }, POLICY.killGraceMs);
+    };
     child.on("error", (err) => finish({ code: null, signal: null, spawnError: err.message }));
     child.on("exit", (code, signal) => {
+      exitInfo = { code, signal };
+      if (stopGraceElapsed) {
+        closeOrphanPipes();
+        return;
+      }
       const grace = POLICY.killGraceMs;
       orphanTimer = setTimeout(() => {
         pipesForced = true;
@@ -38255,6 +38301,12 @@ function runChild({
       finish({ code, signal });
     });
   });
+  if (onCancelSignal) {
+    onCancelSignal(() => {
+      cancelled = true;
+      handle.stop(stopSignal2);
+    });
+  }
   if (input2 !== void 0 && input2 !== null) {
     child.stdin.on("error", () => {
     });
@@ -38304,6 +38356,7 @@ var init_run = __esm({
       constructor(child, readStdout = () => "") {
         this.child = child;
         this.killed = false;
+        this.onStop = void 0;
         this.stdoutSoFar = readStdout;
       }
       /**
@@ -38315,6 +38368,7 @@ var init_run = __esm({
       stop(signal = "SIGTERM") {
         if (this.killed || !this.child) return;
         this.killed = true;
+        this.onStop?.();
         const pid = this.child.pid;
         if (!pid) return;
         if (process.platform === "win32") {
@@ -40702,7 +40756,7 @@ var init_jobs = __esm({
           removeRunning(jobId);
           return done;
         }
-        const { owner, ...round } = rec;
+        const { owner, progress_observation, progress_text, ...round } = rec;
         round.status = "failed";
         round.finished_at = (/* @__PURE__ */ new Date()).toISOString();
         round.failure = {
@@ -40734,12 +40788,13 @@ var init_jobs = __esm({
        * @returns {FullView}
        */
       #diskView(rec) {
-        const { owner, ...view } = rec;
+        const { owner, progress_observation, progress_text, ...view } = rec;
         return {
           ...view,
           // consult_cancel asks the process that owns it to stop it.
           cancellable: Boolean(owner) && (view.status === "running" || view.status === "queued"),
-          progress: null,
+          progress: owner ? progress_text ?? null : null,
+          progress_observation: owner ? progress_observation ?? null : null,
           record: view.record ? recordSummary(view) : null,
           brief: owner ? null : view.brief,
           limits: owner ? null : limitsSummary(),
@@ -40820,7 +40875,8 @@ var init_jobs = __esm({
         this.#refreshRound(job);
         const rec = this.#record(job);
         rec.cancellable = job.status === "running" || job.status === "queued";
-        rec.progress = job.status === "running" && job._handle ? ADAPTERS[job.cli]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null : null;
+        rec.progress = job.status === "running" ? job._progressText ?? null : null;
+        rec.progress_observation = job._progress ?? null;
         rec.record = job.record ? recordSummary(job) : null;
         rec.prediction = job.prediction ?? null;
         rec.reflection = job.reflection ?? null;
@@ -41224,7 +41280,11 @@ var init_jobs = __esm({
           } catch (err) {
             cleanupJobDir(groupId);
             if (err instanceof RequestError || !(err instanceof Error) || !("code" in err) || !err.code) throw err;
-            throw new RequestError(err.message, err.code === "too_large" ? "expose_paths_too_large" : "expose_path_invalid");
+            throw new RequestError(
+              err.message,
+              err.code === "too_large" ? "expose_paths_too_large" : "expose_path_invalid",
+              err instanceof ExposeError ? err.details : void 0
+            );
           }
           req._snapshot = path12.join(snapshot, "workspace");
           req._exposedFiles = exposeManifest.entries.flatMap(
@@ -41331,6 +41391,9 @@ var init_jobs = __esm({
         if (req._snapshot) cleanupJobDir(groupId);
         const { round } = firstMember;
         const sameRound = members2.every((m) => m.round === round);
+        const material = firstMember.brief?.expose_paths;
+        const skippedCounts = /* @__PURE__ */ Object.create(null);
+        for (const item of material?.skipped ?? []) skippedCounts[item.reason] = (skippedCounts[item.reason] ?? 0) + 1;
         const common = {
           group_id: groupId,
           ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
@@ -41342,6 +41405,16 @@ var init_jobs = __esm({
           // consultation, but one about code that hands over no file is one the
           // consultant answers without having seen the repository.
           files_exposed: exposeManifest?.totals.files ?? 0,
+          // The full manifest remains in the record; bound the start response even
+          // when a directory contains a very large number of excluded paths.
+          ...material ? {
+            exposed_material: {
+              ...material,
+              skipped: material.skipped.slice(0, 20),
+              skipped_counts: skippedCounts,
+              skipped_omitted: Math.max(0, material.skipped.length - 20)
+            }
+          } : {},
           // A follow-up that asked for text only (expose_from_parent: false) was
           // told so; the earlier round's files are offered back only if it had any.
           ...exposeManifest?.totals.files || first?.parent && req.context.expose_from_parent === false ? {} : {
@@ -41541,7 +41614,13 @@ var init_jobs = __esm({
           const first = launch(consultant);
           if (typeof first === "string") return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${first}`);
           let invocation = first;
-          const attempt = (timeout) => {
+          let attemptNumber = 0;
+          const attempt = async (timeout) => {
+            attemptNumber += 1;
+            let eventCount = 0;
+            let itemCount = 0;
+            let lastEventAt = null;
+            let progressText = null;
             const { handle, done } = runChild({
               command: invocation.command,
               args: invocation.args,
@@ -41554,11 +41633,72 @@ var init_jobs = __esm({
               },
               compactLine: adapter.compactLine,
               settleAfter: adapter.settleAfter,
-              stopSignal: adapter.stopSignal
+              stopSignal: adapter.stopSignal,
+              onOutputLine: (line) => {
+                let event;
+                try {
+                  event = JSON.parse(line);
+                } catch {
+                  return;
+                }
+                if (cli === "codex") {
+                  if (![
+                    "thread.started",
+                    "turn.started",
+                    "turn.completed",
+                    "turn.failed",
+                    "item.started",
+                    "item.completed",
+                    "item.updated"
+                  ].includes(event?.type))
+                    return;
+                  if (event.type.startsWith("item.")) {
+                    itemCount++;
+                    const kind = [
+                      "command_execution",
+                      "web_search",
+                      "file_change",
+                      "agent_message",
+                      "reasoning",
+                      "mcp_tool_call"
+                    ].includes(event.item?.type) ? event.item.type : "item";
+                    progressText = `${itemCount} item event(s), last was ${kind}`;
+                  }
+                } else if (cli === "opencode") {
+                  if (!["step_start", "step_finish", "text", "tool_use"].includes(event?.type)) return;
+                  progressText = `${eventCount + 1} event(s), last was ${event.type}`;
+                } else if (cli === "antigravity") {
+                  if (event?.event !== "step_update" || !event.step_update) return;
+                  progressText = `${eventCount + 1} step event(s), last was step_update`;
+                } else return;
+                eventCount++;
+                lastEventAt = (/* @__PURE__ */ new Date()).toISOString();
+              }
             });
             job._handle = handle;
+            const observe = () => {
+              const now = (/* @__PURE__ */ new Date()).toISOString();
+              job._progress = {
+                phase: eventCount ? "events_observed" : "started_no_activity_observed",
+                observed_at: now,
+                elapsed_ms: Date.now() - t0,
+                last_event_at: lastEventAt,
+                event_count: eventCount,
+                attempt: attemptNumber,
+                deadline_at: new Date(t0 + budgetMs).toISOString()
+              };
+              job._progressText = progressText;
+              this.#mark(job);
+            };
+            observe();
+            const timer = setInterval(observe, 1e3);
+            timer.unref();
             if (job.cancelRequested) handle.stop();
-            return done;
+            try {
+              return await done;
+            } finally {
+              clearInterval(timer);
+            }
           };
           let run = await attempt(Math.max(1, budgetMs - (Date.now() - t0)));
           let interpreted;
@@ -41745,7 +41885,12 @@ var init_jobs = __esm({
       /** @param {Job} job */
       #mark(job) {
         try {
-          writeRunning({ ...this.#record(job), owner: job._owner });
+          writeRunning({
+            ...this.#record(job),
+            owner: job._owner,
+            progress_observation: job._progress,
+            progress_text: job._progressText
+          });
         } catch {
         }
       }
@@ -41760,6 +41905,8 @@ var init_jobs = __esm({
         LIVE_HERE.delete(job.job_id);
         cleanupJobDir(job.job_id);
         job._handle = void 0;
+        job._progress = void 0;
+        job._progressText = void 0;
         job._cancelFns = [];
       }
       // The lead's own column: what they checked, what it turned out to be, and
@@ -42826,7 +42973,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.10.0";
+    SEVERALLY_VERSION = "2.11.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42887,6 +43034,8 @@ var status_exports = {};
 __export(status_exports, {
   status: () => status
 });
+import fs13 from "node:fs";
+import path15 from "node:path";
 function registration({ cmd, checks }) {
   if (!findCommand(cmd)) return "not installed";
   let ran = false;
@@ -42921,17 +43070,54 @@ function login(cli) {
     return `could not tell (${check2.cmd} ${check2.args.join(" ")} answered in an unexpected form)`;
   }
 }
+function effectiveEffort(consultant) {
+  if (consultant.cli === "antigravity") return "in model name";
+  if (consultant.cli === "opencode" && consultant.model.includes("#")) {
+    const variant = consultant.model.slice(consultant.model.indexOf("#") + 1);
+    return variant || "no variant";
+  }
+  return consultant.effort ?? "high";
+}
+function codexPlacementWarning() {
+  const command = findCommand(POLICY.clis.codex.cli);
+  if (!command) return null;
+  let executable;
+  try {
+    executable = fs13.realpathSync.native(command);
+  } catch {
+    return "Codex executable placement could not be resolved; check it against protected credential roots.";
+  }
+  for (const root of protectedRoots()) {
+    if (root.includes("*")) continue;
+    let canonical;
+    try {
+      canonical = fs13.realpathSync.native(root);
+    } catch {
+      continue;
+    }
+    const relative = path15.relative(canonical, executable);
+    if (relative && relative !== ".." && !relative.startsWith(`..${path15.sep}`) && !path15.isAbsolute(relative)) {
+      return "Codex executable is inside a protected root; new files there may be readable. Move the executable outside credential roots and verify PATH.";
+    }
+  }
+  return null;
+}
 function status() {
   const lines = [`severally ${SEVERALLY_VERSION}`, ""];
   const problem = configProblem();
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : "ok"}`);
   for (const w of configWarnings()) lines.push(`  mistake (only that consultant or CLI is out of use): ${w}`);
   lines.push(`network: ${POLICY.network === "off" ? "off for every consultation (server.network)" : "per request"}`, "");
+  const placementWarning = codexPlacementWarning();
+  if (placementWarning) lines.push(`warning: ${placementWarning}`, "");
   lines.push(`OpenCode credential recovery: ${credentialRecoveryStatus().detail}`, "");
-  lines.push("consultants:");
+  lines.push(
+    "consultants:",
+    "  availability means the CLI is enabled and found; login, quota and live consultation are not verified by it."
+  );
   for (const c of POLICY.consultants) {
     lines.push(
-      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? "available" : `not available: ${unavailableReason(c)}`}`
+      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? "available" : `not available: ${unavailableReason(c)}`} (effort: ${effectiveEffort(c)}, timeout: ${timeoutMs(c)} ms)`
     );
   }
   for (const name of brokenConsultantNames()) lines.push(`  ${name}: not available: ${brokenConsultant(name)}`);
@@ -42998,7 +43184,7 @@ var init_status = __esm({
 });
 
 // bin/severally-mcp.mjs
-import fs13 from "node:fs";
+import fs14 from "node:fs";
 var major = Number(process.versions.node.split(".")[0]);
 if (major < 22) {
   process.stderr.write(
@@ -43009,7 +43195,7 @@ if (major < 22) {
 }
 if (process.argv[2] === "install") {
   const installer = new URL("../scripts/install.mjs", import.meta.url);
-  if (!fs13.existsSync(installer)) {
+  if (!fs14.existsSync(installer)) {
     process.stderr.write(
       "severally: this is the installed server, not the installer; run: npx -y severally-mcp@latest install\n"
     );

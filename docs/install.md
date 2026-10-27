@@ -23,6 +23,14 @@ you do not need all four. These official guides cover installation and authentic
 Open a new terminal after installation so the CLI is on `PATH`. severally uses the CLI's existing login;
 its installer prepares the server and client registration, not the consultant's account.
 
+Keep the Codex executable outside credential directories, including `~/.codex` and a relocated `CODEX_HOME`.
+Check the resolved executable and credential paths, including symlink targets, before starting consultations.
+An executable inside a protected credential root requires an exception, and new files in that root can then be
+readable. Follow the CLI's installation instructions to move or reinstall it outside that root, then verify that
+`PATH` resolves to the intended installation. Do not put credentials in the exempt executable directory. This
+mitigation was tested with synthetic files on Linux and Codex 0.164.0; these cases remain untested on macOS and
+Windows. See [reading restrictions](how-it-works.md#how-a-consultant-is-kept-to-reading) for the remaining limits.
+
 OpenCode 2.x credential recovery also needs Node's optional `node:sqlite` module. severally detects whether it is
 available; some older Node 22 releases do not provide it without a flag. `severally-mcp status` reports this
 separately from login. If recovery is unavailable, update Node.js to a current supported release. Normal CLI
@@ -73,7 +81,7 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.10.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.11.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |
@@ -264,6 +272,10 @@ it exposes, and whatever the consultant reads while it runs (see
 agent can reach may go to those vendors.
 
 ## Updating
+
+Before moving from a pre-1.7 installation, finish or stop its consultations and stop its servers. Do not run
+that version alongside current consultations: an old-format `jobs/<id>/home` created after a current consultant
+starts was readable in a Linux synthetic probe. After updating, restart the clients so they use the new server.
 
 With `npx -y severally-mcp@latest install`, npx asks npm for the newest version each time rather than reusing
 an older cached version. Version-by-version changes are in the [releases](https://github.com/coz-a/severally/releases).

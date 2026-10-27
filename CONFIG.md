@@ -103,7 +103,7 @@ If your existing CLI consultants are enough, no changes are needed. To add an Op
 
    The trailing `#` selects no effort variant. For a custom compatible API or a local model, use the provider
    example below as well; listing a model in your own OpenCode config does not copy its provider settings.
-3. Restart the client and run `npx -y severally-mcp@2.9.0 status`. Confirm the new consultant is available and
+3. Restart the client and run `npx -y severally-mcp@2.11.0 status`. Confirm the new consultant is available and
    OpenCode is logged in. This does not send a prompt or prove the model exists or has quota.
 4. Ask “Ask qwen whether a 30-second cache meets a 60-second freshness limit.” An `auth` failure calls for
    checking provider credentials; `model_unavailable` calls for checking the exact model and provider config.
@@ -113,8 +113,9 @@ The API and local routes have different validation limits: OpenRouter read an ex
 required answer shape in the dated checks below; the tested Ollama model answered from the brief but did not
 read the exposed file. These checks do not establish that every listed model can review code reliably.
 
-OpenCode is the way to consult other model families. Any `provider/model` that `opencode models` lists can be
-a consultant. Checked on 2026-10-17 with opencode 2.0.24: `opencode/deepseek-v4.1-flash-free` (DeepSeek) and
+OpenCode is the way to consult other model families. A `provider/model` listed by `opencode models` can be
+configured as a consultant, but listing it does not prove your provider offers it, has quota, or can return the
+required response. Checked on 2026-10-17 with opencode 2.0.24: `opencode/deepseek-v4.1-flash-free` (DeepSeek) and
 `opencode/nemotron-3-ultra-free#` (NVIDIA Nemotron, which has no effort variant) both answered as consultants,
 under the same boundary as GLM. The consultant uses the providers your own OpenCode already has credentials
 for; provider settings in your own `opencode.json` (a custom base URL, for example) are not carried into its
@@ -181,6 +182,12 @@ Set `OPENROUTER_API_KEY` in `clis.opencode.env`, or export it in the environment
 from. Exporting works only when the lead is Claude Code or Antigravity (see [Server-wide keys](#server-wide-keys)),
 but it keeps the key out of the config file: a variable named by an `{env:NAME}` in this provider config is
 passed to the OpenCode consultant, while other services' credentials are still dropped.
+
+The two named entries above use the same OpenCode CLI with different models. Replace the example model IDs with
+IDs available to your provider and preserve any other consultants you want: an explicit `consultants` object
+replaces the built-in list. A generic request for `opencode` may match both entries; name `qwen` or `kimi`
+explicitly when the destination matters. Different sessions or model names alone do not establish independent
+model lineages or prove that a provider served the model named in configuration.
 
 Checked on 2026-10-18 with opencode 2.0.24, for both `qwen/qwen3.7-plus` and `moonshotai/kimi-k2.6`:
 - Each read an exposed file (one `read` call) and quoted a word that only that file held.

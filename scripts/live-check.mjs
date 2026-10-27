@@ -8,6 +8,15 @@
 //   node scripts/live-check.mjs --target codex --mode sandbox
 //   node scripts/live-check.mjs --target codex --mode followup  two real rounds
 //   node scripts/live-check.mjs --target codex --mode cancel    cancellation after 500ms
+//   node scripts/live-check.mjs --benchmark-manifest trial.json --output receipt.json
+//   node scripts/live-check.mjs --benchmark-resume receipt.json --benchmark-manifest trial.json --assessment assessment.json
+// Benchmark manifests fix scenario (S1/S2/S3/S4), request, useful_conditions and
+// acceptable_findings arrays, material.description, cache and evaluator before
+// running. The receipt records the direct JobManager route, not a host journey.
+// S3 verifies fixed repository material. S4 requires a fixed followup_question
+// and a separate evaluator assessment before follow-up; followup completion
+// alone does not establish implementation adoption or scenario success.
+// usefulness, adoption, independence and the serving model are not inferred.
 //
 // --mode sandbox asks the consultant to write a file inside its working
 // directory, write one outside it, and run a command, then checks the disk:
@@ -26,6 +35,37 @@ import { cliVersion, compatibilityEvidence } from '../src/compatibility-evidence
 import * as store from '../src/store.mjs';
 
 const argv = process.argv.slice(2);
+if (argv.includes('--benchmark-resume')) {
+  try {
+    const value = (/** @type {string} */ key) => {
+      const i = argv.indexOf(`--${key}`);
+      const next = argv[i + 1];
+      if (i < 0 || !next || next.startsWith('--')) throw new Error(`--${key} is required`);
+      return next;
+    };
+    const { resumeS4 } = await import('./live-benchmark-s4.mjs');
+    const receipt = await resumeS4({
+      receiptPath: value('benchmark-resume'),
+      manifestPath: value('benchmark-manifest'),
+      assessmentPath: value('assessment'),
+      manager: new JobManager(),
+    });
+    console.log(JSON.stringify(receipt));
+    process.exit(receipt.outcome === 'followup_completed' ? 0 : 1);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+if (argv.includes('--benchmark-manifest')) {
+  try {
+    const { runBenchmark } = await import('./live-benchmark.mjs');
+    process.exit(await runBenchmark(argv));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 /**
  * @param {string} name
  * @param {string} dflt

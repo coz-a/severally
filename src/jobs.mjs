@@ -24,7 +24,7 @@ import { redact, REDACTION_CAVEAT } from './redact.mjs';
 import { isRetriable, AUTO_RETRY_KINDS } from './failures.mjs';
 import { childEnv, operatorEnvProblem, runChild } from './run.mjs';
 import * as store from './store.mjs';
-import { materializeExposedPaths, exposeDiff, planInheritance, reexposeChange } from './expose-paths.mjs';
+import { ExposeError, materializeExposedPaths, exposeDiff, planInheritance, reexposeChange } from './expose-paths.mjs';
 import * as codex from './adapters/codex.mjs';
 import * as claudeCode from './adapters/claude-code.mjs';
 import * as antigravity from './adapters/antigravity.mjs';
@@ -59,11 +59,13 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
 /** @typedef {import('./store.mjs').IndexRow} IndexRow */
 /** @typedef {import('./store.mjs').BriefExposeEntry} BriefExposeEntry */
 
+/** @typedef {{phase: string, observed_at: string, elapsed_ms: number, last_event_at: string | null, event_count: number, attempt: number, deadline_at: string}} ProgressObservation */
+
 /** @typedef {import('./store.mjs').RunningRecord} StoredRound A round, or the marker of one still running elsewhere. */
 
 /**
  * A consultation this process runs: the round, plus what only a live process has.
- * @typedef {Round & {group_id: string, caller: string | null, retries: RetryRecord[], cancelRequested: boolean, _cancelFns: Array<() => void>, _request: ParsedRequest, _owner?: JobOwner | undefined, _handle?: ProcHandle | undefined, promise?: Promise<unknown>}} Job
+ * @typedef {Round & {group_id: string, caller: string | null, retries: RetryRecord[], cancelRequested: boolean, _cancelFns: Array<() => void>, _request: ParsedRequest, _owner?: JobOwner | undefined, _handle?: ProcHandle | undefined, _progress?: ProgressObservation | undefined, _progressText?: string | null | undefined, promise?: Promise<unknown>}} Job
  */
 
 /**
@@ -71,6 +73,7 @@ import { summarizeToolInputs } from './tool-inputs.mjs';
  * @typedef {object} ViewExtras
  * @property {boolean} [cancellable]
  * @property {string | null} [progress]
+ * @property {ProgressObservation | null} [progress_observation]
  * @property {string} [brief_note]
  * @property {ReturnType<typeof limitsSummary> | null} [limits]
  * @property {string} [next_step]
@@ -263,7 +266,7 @@ export class JobManager {
       store.removeRunning(jobId);
       return done;
     }
-    const { owner, ...round } = rec;
+    const { owner, progress_observation, progress_text, ...round } = rec;
     round.status = 'failed';
     round.finished_at = new Date().toISOString();
     round.failure = {
@@ -300,12 +303,13 @@ export class JobManager {
    * @returns {FullView}
    */
   #diskView(rec) {
-    const { owner, ...view } = rec;
+    const { owner, progress_observation, progress_text, ...view } = rec;
     return {
       ...view,
       // consult_cancel asks the process that owns it to stop it.
       cancellable: Boolean(owner) && (view.status === 'running' || view.status === 'queued'),
-      progress: null,
+      progress: owner ? (progress_text ?? null) : null,
+      progress_observation: owner ? (progress_observation ?? null) : null,
       record: view.record ? recordSummary(view) : null,
       brief: owner ? null : view.brief,
       limits: owner ? null : limitsSummary(),
@@ -396,10 +400,8 @@ export class JobManager {
     // While it runs, say what it is doing. "running" for twenty minutes tells
     // the lead nothing; a consultation visibly grinding through tool calls is
     // one it can cancel now rather than wait out.
-    rec.progress =
-      job.status === 'running' && job._handle
-        ? (ADAPTERS[job.cli]?.progress?.({ stdout: job._handle.stdoutSoFar() }) ?? null)
-        : null;
+    rec.progress = job.status === 'running' ? (job._progressText ?? null) : null;
+    rec.progress_observation = job._progress ?? null;
     rec.record = job.record ? recordSummary(job) : null;
     rec.prediction = job.prediction ?? null;
     rec.reflection = job.reflection ?? null;
@@ -917,7 +919,11 @@ export class JobManager {
       } catch (err) {
         store.cleanupJobDir(groupId);
         if (err instanceof RequestError || !(err instanceof Error) || !('code' in err) || !err.code) throw err;
-        throw new RequestError(err.message, err.code === 'too_large' ? 'expose_paths_too_large' : 'expose_path_invalid');
+        throw new RequestError(
+          err.message,
+          err.code === 'too_large' ? 'expose_paths_too_large' : 'expose_path_invalid',
+          err instanceof ExposeError ? err.details : undefined,
+        );
       }
       req._snapshot = path.join(snapshot, 'workspace');
       // The names a tool input can be matched against (tool-inputs.mjs).
@@ -1045,6 +1051,10 @@ export class JobManager {
     // The members of a follow-up to a group can be at different rounds.
     const { round } = firstMember;
     const sameRound = members.every((/** @type {Job} */ m) => m.round === round);
+    const material = firstMember.brief?.expose_paths;
+    /** @type {Record<string, number>} */
+    const skippedCounts = Object.create(null);
+    for (const item of material?.skipped ?? []) skippedCounts[item.reason] = (skippedCounts[item.reason] ?? 0) + 1;
     const common = {
       group_id: groupId,
       ...(sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {}),
@@ -1056,6 +1066,18 @@ export class JobManager {
       // consultation, but one about code that hands over no file is one the
       // consultant answers without having seen the repository.
       files_exposed: exposeManifest?.totals.files ?? 0,
+      // The full manifest remains in the record; bound the start response even
+      // when a directory contains a very large number of excluded paths.
+      ...(material
+        ? {
+            exposed_material: {
+              ...material,
+              skipped: material.skipped.slice(0, 20),
+              skipped_counts: skippedCounts,
+              skipped_omitted: Math.max(0, material.skipped.length - 20),
+            },
+          }
+        : {}),
       // A follow-up that asked for text only (expose_from_parent: false) was
       // told so; the earlier round's files are offered back only if it had any.
       ...(exposeManifest?.totals.files || (first?.parent && req.context.expose_from_parent === false)
@@ -1339,7 +1361,15 @@ export class JobManager {
       if (typeof first === 'string') return this.#fail(job, 'spawn_error', `config clis.${cli}.args: ${first}`);
       let invocation = first;
 
-      const attempt = (/** @type {number} */ timeout) => {
+      let attemptNumber = 0;
+      const attempt = async (/** @type {number} */ timeout) => {
+        attemptNumber += 1;
+        let eventCount = 0;
+        let itemCount = 0;
+        /** @type {string | null} */
+        let lastEventAt = null;
+        /** @type {string | null} */
+        let progressText = null;
         const { handle, done } = runChild({
           command: invocation.command,
           args: invocation.args,
@@ -1353,10 +1383,75 @@ export class JobManager {
           compactLine: adapter.compactLine,
           settleAfter: adapter.settleAfter,
           stopSignal: adapter.stopSignal,
+          onOutputLine: (line) => {
+            let event;
+            try {
+              event = JSON.parse(line);
+            } catch {
+              return;
+            }
+            if (cli === 'codex') {
+              if (
+                ![
+                  'thread.started',
+                  'turn.started',
+                  'turn.completed',
+                  'turn.failed',
+                  'item.started',
+                  'item.completed',
+                  'item.updated',
+                ].includes(event?.type)
+              )
+                return;
+              if (event.type.startsWith('item.')) {
+                itemCount++;
+                const kind = [
+                  'command_execution',
+                  'web_search',
+                  'file_change',
+                  'agent_message',
+                  'reasoning',
+                  'mcp_tool_call',
+                ].includes(event.item?.type)
+                  ? event.item.type
+                  : 'item';
+                progressText = `${itemCount} item event(s), last was ${kind}`;
+              }
+            } else if (cli === 'opencode') {
+              if (!['step_start', 'step_finish', 'text', 'tool_use'].includes(event?.type)) return;
+              progressText = `${eventCount + 1} event(s), last was ${event.type}`;
+            } else if (cli === 'antigravity') {
+              if (event?.event !== 'step_update' || !event.step_update) return;
+              progressText = `${eventCount + 1} step event(s), last was step_update`;
+            } else return;
+            eventCount++;
+            lastEventAt = new Date().toISOString();
+          },
         });
         job._handle = handle;
+        const observe = () => {
+          const now = new Date().toISOString();
+          job._progress = {
+            phase: eventCount ? 'events_observed' : 'started_no_activity_observed',
+            observed_at: now,
+            elapsed_ms: Date.now() - t0,
+            last_event_at: lastEventAt,
+            event_count: eventCount,
+            attempt: attemptNumber,
+            deadline_at: new Date(t0 + budgetMs).toISOString(),
+          };
+          job._progressText = progressText;
+          this.#mark(job);
+        };
+        observe();
+        const timer = setInterval(observe, 1000);
+        timer.unref();
         if (job.cancelRequested) handle.stop();
-        return done;
+        try {
+          return await done;
+        } finally {
+          clearInterval(timer);
+        }
       };
 
       // Two kinds of re-run, both inside the job's original wall-clock budget
@@ -1594,7 +1689,12 @@ export class JobManager {
   /** @param {Job} job */
   #mark(job) {
     try {
-      store.writeRunning({ ...this.#record(job), owner: job._owner });
+      store.writeRunning({
+        ...this.#record(job),
+        owner: job._owner,
+        progress_observation: job._progress,
+        progress_text: job._progressText,
+      });
     } catch {
       /* history is best effort */
     }
@@ -1613,6 +1713,8 @@ export class JobManager {
     store.cleanupJobDir(job.job_id);
 
     job._handle = undefined;
+    job._progress = undefined;
+    job._progressText = undefined;
     job._cancelFns = [];
   }
 

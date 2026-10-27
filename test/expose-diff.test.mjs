@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { sandboxEnv, reviewRequest, waitFor } from './helpers.mjs';
+import { sandboxEnv, reviewRequest, waitFor, fileSymlinkUnavailable } from './helpers.mjs';
 
 sandboxEnv();
 const { JobManager } = await import('../src/jobs.mjs');
@@ -166,13 +166,10 @@ test('the brief lists the copies as paths a consultant can open, and the deletio
   const { renderBrief } = await import('../src/brief.mjs');
   const { parseRequest } = await import('../src/schema.mjs');
   const dir = repo();
-  fs.symlinkSync('a/util.mjs', path.join(dir, 'link.mjs'));
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'sev-snap-'));
   const manifest = { entries: [], totals: { files: 0, bytes: 0 }, skipped: [] };
   exposeDiff(work, { repo: dir }, manifest, 20_000);
-  const entry = manifest.entries[0];
-  assert.deepEqual(entry.paths, ['a/util.mjs', 'b/util.mjs', 'new.mjs']);
-  assert.ok(!entry.changes.some((c) => c.startsWith('link.mjs')), 'a skipped symlink is not listed as shown');
+  assert.deepEqual(manifest.entries[0].paths, ['a/util.mjs', 'b/util.mjs', 'new.mjs']);
   const text = renderBrief(
     parseRequest(reviewRequest({ context: { proposal: 'p', facts: ['f'] } })),
     { round: 1, priorRounds: [] },
@@ -181,4 +178,14 @@ test('the brief lists the copies as paths a consultant can open, and the deletio
   assert.match(text, /- workspace\/repo\/a\/util\.mjs\n/);
   assert.doesNotMatch(text, /workspace\/repo\/\S+ \(/);
   assert.match(text, /deleted by the change, so not copied: gone\.txt/);
+});
+
+test('a symlink is not listed as an exposed change', { skip: fileSymlinkUnavailable() }, async () => {
+  const { exposeDiff } = await import('../src/expose-paths.mjs');
+  const dir = repo();
+  fs.symlinkSync('a/util.mjs', path.join(dir, 'link.mjs'));
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'sev-snap-'));
+  const manifest = { entries: [], totals: { files: 0, bytes: 0 }, skipped: [] };
+  exposeDiff(work, { repo: dir }, manifest, 20_000);
+  assert.ok(!manifest.entries[0].changes.some((c) => c.startsWith('link.mjs')));
 });

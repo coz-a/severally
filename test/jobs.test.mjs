@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import {
   sandboxEnv,
   reviewRequest,
@@ -1303,6 +1304,92 @@ test('a running consultation reports what it is doing', async () => {
 
   process.env.SEVERALLY_TIMEOUT_MS = '20000';
   process.env.STUB_BEHAVIOR = 'ok';
+});
+
+test('another manager sees the same persisted running progress without raw event content', async () => {
+  process.env.STUB_BEHAVIOR = 'hang';
+  const mgr = new JobManager();
+  const observer = new JobManager();
+  const started = mgr.start(reviewRequest());
+  try {
+    const seen = await waitFor(
+      () => {
+        const view = observer.view(started.job_id);
+        return view?.progress_observation?.event_count ? view : null;
+      },
+      { timeoutMs: 4000, intervalMs: 50 },
+    );
+    const local = mgr.view(started.job_id);
+    assert.deepEqual(local.progress_observation, seen.progress_observation);
+    assert.equal(local.progress, seen.progress);
+    const moduleUrl = new URL('../src/jobs.mjs', import.meta.url).href;
+    const remote = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `const { JobManager } = await import(${JSON.stringify(moduleUrl)}); console.log(JSON.stringify(new JobManager().view(${JSON.stringify(started.job_id)}).progress_observation));`,
+        ],
+        { encoding: 'utf8', env: process.env },
+      ),
+    );
+    assert.deepEqual(remote, seen.progress_observation);
+    assert.equal(seen.progress_observation.phase, 'events_observed');
+    assert.equal(seen.progress_observation.attempt, 1);
+    assert.ok(seen.progress_observation.deadline_at);
+    assert.doesNotMatch(JSON.stringify(seen.progress_observation), /stub-thread|command_execution|SECRET/);
+  } finally {
+    mgr.cancel(started.job_id);
+    await finish(mgr, started.job_id);
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
+});
+
+for (const target of ['opencode', 'antigravity']) {
+  test(`${target} running events are visible from another manager`, async () => {
+    process.env.STUB_BEHAVIOR = 'hang';
+    const mgr = new JobManager();
+    const observer = new JobManager();
+    const started = mgr.start(reviewRequest({ target }));
+    try {
+      const seen = await waitFor(
+        () => {
+          const view = observer.view(started.job_id);
+          return view?.progress_observation?.event_count ? view : null;
+        },
+        { timeoutMs: 5000, intervalMs: 50 },
+      );
+      assert.equal(seen.progress_observation.phase, 'events_observed');
+      assert.equal(mgr.view(started.job_id).progress, seen.progress);
+      assert.doesNotMatch(JSON.stringify(seen.progress_observation), /search_web|grep|ses_stub/);
+    } finally {
+      mgr.cancel(started.job_id);
+      await finish(mgr, started.job_id);
+      process.env.STUB_BEHAVIOR = 'ok';
+    }
+  });
+}
+
+test('progress observes events after the stdout capture limit', async () => {
+  process.env.STUB_BEHAVIOR = 'hang_after_capture_limit';
+  const mgr = new JobManager();
+  const observer = new JobManager();
+  const started = mgr.start(reviewRequest());
+  try {
+    const seen = await waitFor(
+      () => {
+        const view = observer.view(started.job_id);
+        return view?.progress?.includes('web_search') ? view : null;
+      },
+      { timeoutMs: 5000, intervalMs: 50 },
+    );
+    assert.ok(seen.progress_observation.event_count >= 3);
+  } finally {
+    mgr.cancel(started.job_id);
+    await finish(mgr, started.job_id);
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
 });
 
 // The server may report what it can derive -- the consultant's own

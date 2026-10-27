@@ -167,3 +167,19 @@ export async function waitFor(fn, { timeoutMs = 15000, intervalMs = 50 } = {}) {
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 }
+
+// Probe file symlink support without requiring elevated privileges on Windows.
+export function fileSymlinkUnavailable() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-symlink-probe-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'target'), 'x');
+    fs.symlinkSync(path.join(dir, 'target'), path.join(dir, 'link'), 'file');
+    return false;
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES' || error.code === 'ENOTSUP')
+      return `file symlinks unavailable: ${error.code}`;
+    throw error;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}

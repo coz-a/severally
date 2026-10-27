@@ -2,6 +2,8 @@
 // consultation, so it spends no quota. It says what it can see and no more:
 // login is read from each CLI's own status command where it has one, and where
 // it has none it is reported as not checked rather than as working.
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   POLICY,
   configProblem,
@@ -10,6 +12,8 @@ import {
   consultantAvailable,
   brokenConsultantNames,
   brokenConsultant,
+  timeoutMs,
+  protectedRoots,
 } from './policy.mjs';
 import { SEVERALLY_VERSION, staleInstall } from './server.mjs';
 import { findCommand, execCommandSync } from './platform.mjs';
@@ -110,18 +114,60 @@ function login(cli) {
   }
 }
 
+/** @param {import('./consultants.mjs').Consultant} consultant */
+function effectiveEffort(consultant) {
+  if (consultant.cli === 'antigravity') return 'in model name';
+  if (consultant.cli === 'opencode' && consultant.model.includes('#')) {
+    const variant = consultant.model.slice(consultant.model.indexOf('#') + 1);
+    return variant || 'no variant';
+  }
+  return consultant.effort ?? 'high';
+}
+
+// Match the adapter's canonical root and executable comparison without creating
+// a sandbox or treating this configuration check as proof of effective denial.
+function codexPlacementWarning() {
+  const command = findCommand(POLICY.clis.codex.cli);
+  if (!command) return null;
+  let executable;
+  try {
+    executable = fs.realpathSync.native(command);
+  } catch {
+    return 'Codex executable placement could not be resolved; check it against protected credential roots.';
+  }
+  for (const root of protectedRoots()) {
+    if (root.includes('*')) continue;
+    let canonical;
+    try {
+      canonical = fs.realpathSync.native(root);
+    } catch {
+      continue;
+    }
+    const relative = path.relative(canonical, executable);
+    if (relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
+      return 'Codex executable is inside a protected root; new files there may be readable. Move the executable outside credential roots and verify PATH.';
+    }
+  }
+  return null;
+}
+
 export function status() {
   const lines = [`severally ${SEVERALLY_VERSION}`, ''];
   const problem = configProblem();
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : 'ok'}`);
   for (const w of configWarnings()) lines.push(`  mistake (only that consultant or CLI is out of use): ${w}`);
   lines.push(`network: ${POLICY.network === 'off' ? 'off for every consultation (server.network)' : 'per request'}`, '');
+  const placementWarning = codexPlacementWarning();
+  if (placementWarning) lines.push(`warning: ${placementWarning}`, '');
   lines.push(`OpenCode credential recovery: ${credentialRecoveryStatus().detail}`, '');
 
-  lines.push('consultants:');
+  lines.push(
+    'consultants:',
+    '  availability means the CLI is enabled and found; login, quota and live consultation are not verified by it.',
+  );
   for (const c of POLICY.consultants) {
     lines.push(
-      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? 'available' : `not available: ${unavailableReason(c)}`}`,
+      `  ${c.name}: ${c.cli}, ${c.model}  ${consultantAvailable(c) ? 'available' : `not available: ${unavailableReason(c)}`} (effort: ${effectiveEffort(c)}, timeout: ${timeoutMs(c)} ms)`,
     );
   }
   for (const name of brokenConsultantNames()) lines.push(`  ${name}: not available: ${brokenConsultant(name)}`);
