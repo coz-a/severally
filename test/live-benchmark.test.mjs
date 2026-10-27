@@ -19,6 +19,7 @@ function runManifest(manifest, extra = {}, failClaude = false) {
     fs.writeFileSync(
       cli,
       `#!/usr/bin/env node\nif (process.argv.includes('--version')) { console.log('synthetic-claude 1.0'); } else { process.env.STUB_BEHAVIOR='invalid'; await import(${JSON.stringify(new URL('./fixtures/stub-claude.mjs', import.meta.url).href)}); }`,
+      { mode: 0o755 },
     );
     process.env.SEVERALLY_CLAUDE_BIN = cli;
   }
