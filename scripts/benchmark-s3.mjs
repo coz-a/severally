@@ -7,6 +7,17 @@ import { POLICY } from '../src/policy.mjs';
 
 /** @param {Uint8Array} bytes */
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+// The same file may be named through an OS-provided directory alias (such as
+// /var on macOS). Never accept a symlink as the selected file itself.
+/** @param {unknown} candidate @param {string} expected */
+function sameFixedFile(candidate, expected) {
+  if (typeof candidate !== 'string' || !path.isAbsolute(candidate)) return false;
+  try {
+    return fs.lstatSync(candidate).isFile() && fs.realpathSync.native(candidate) === fs.realpathSync.native(expected);
+  } catch {
+    return false;
+  }
+}
 /** @param {string} repo @param {string[]} args */
 function git(repo, args) {
   try {
@@ -86,7 +97,9 @@ export function prepareS3Material(manifest) {
   if (
     !Array.isArray(context?.expose_paths) ||
     context.expose_paths.length !== files.length ||
-    context.expose_paths.some((/** @type {unknown} */ p, /** @type {number} */ i) => p !== files[i]?.source) ||
+    context.expose_paths.some(
+      (/** @type {unknown} */ p, /** @type {number} */ i) => !files[i] || !sameFixedFile(p, files[i].source),
+    ) ||
     context.expose_diff ||
     context.expose_from_parent ||
     manifest.request?.followup_to ||
@@ -117,7 +130,7 @@ export function verifyS3Material(prepared, start) {
   for (const [i, expected] of prepared.files.entries()) {
     const entry = copied.entries[i];
     if (
-      entry?.source !== expected.source ||
+      !sameFixedFile(entry?.source, expected.source) ||
       entry.kind !== 'file' ||
       entry.files !== 1 ||
       entry.bytes !== expected.bytes ||

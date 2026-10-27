@@ -42,6 +42,39 @@ test('S3 validates a fixed clean repository and the actual copied bytes', () => 
   assert.throws(() => verifyS3Material(prepared, start), /copied.*match/i);
 });
 
+test('S3 accepts a parent-directory alias to the same fixed file', (t) => {
+  const { repo, manifest, start } = fixture();
+  const alias = `${repo}-alias`;
+  fs.symlinkSync(repo, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  t.after(() => fs.unlinkSync(alias));
+  const file = path.join(alias, 'source.mjs');
+  manifest.material.repo = alias;
+  manifest.request.context.expose_paths = [file];
+  start.exposed_material.entries[0].source = file;
+  const prepared = prepareS3Material(manifest);
+  assert.equal(verifyS3Material(prepared, start).verified, true);
+});
+
+test('S3 refuses a file symlink even when it resolves to the fixed file', (t) => {
+  const { repo, file, manifest, start } = fixture();
+  const link = `${repo}-file-link`;
+  try {
+    fs.symlinkSync(file, link, 'file');
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) {
+      t.skip(`file symlink unavailable: ${error.code}`);
+      return;
+    }
+    throw error;
+  }
+  t.after(() => fs.unlinkSync(link));
+  const prepared = prepareS3Material(manifest);
+  manifest.request.context.expose_paths = [link];
+  assert.throws(() => prepareS3Material(manifest), /expose_paths/i);
+  start.exposed_material.entries[0].source = link;
+  assert.throws(() => verifyS3Material(prepared, start), /copied.*match/i);
+});
+
 test('S3 refuses changed files, untracked paths and a changed request before launch', () => {
   const { repo, file, manifest } = fixture();
   fs.writeFileSync(file, 'changed');
