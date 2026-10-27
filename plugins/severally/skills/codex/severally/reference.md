@@ -40,6 +40,12 @@ Use `expose_diff` for a change and add only needed `expose_paths`. Ask the consu
 premises as unknowns. Zero files, exclusions, deletions and size caps are gaps to resolve or report, not
 evidence that code was checked.
 
+Check `exposed_material` in the start response: `totals` gives files and bytes, `entries` describes each
+selection, and `skipped` records exclusions and reasons. Compare the implementation with its actual imports
+and callers, then add the specific tests and configuration that affect the decision. If material is missing,
+add only the relevant paths in a follow-up; if a size cap prevents the start, narrow the requested paths to
+the files needed for the question and try again. A self-contained code excerpt does not require exposed files.
+
 1. **State the question in one sentence.** `objective` is optional: add it only when what you are after is not
    already in the question.
 2. **Write down what a useful answer looks like** (`success_criteria`) — e.g. "a concrete failure scenario with
@@ -153,7 +159,8 @@ A completed, cancelled or running job and a group ID are refused. Resolve auth/q
 explicit retry; do not loop them. If the configured primary CLI/model changed, or the failed attempt ran a
 fallback model, `retry_target_mismatch` requires a new explicit consultation. No unrequested model swap.
 
-To reuse history, `consult_list({ question: "cache", target: "claude-code", limit: 20 })` searches saved
+When the completed job ID is already in the conversation, use it directly. Otherwise,
+`consult_list({ question: "cache", target: "claude-code", limit: 20 })` searches saved
 questions by case-insensitive substring and consultant. Add `chain_id` to restrict a known exchange.
 Filters apply before the limit. Read candidate questions and ask which one if several fit; never silently
 continue a different consultation. `latest_completed_job_id` identifies the most recent answer in the
@@ -182,9 +189,14 @@ To recheck just one finding with the same code:
 ```
 consult_start({ request: {
   followup_to: "<that consultant's job_id>",
-  question: "Recheck f1 against the current code and the verdict I recorded."
+  question: "Recheck f1 against the current code and the verdict I recorded.",
+  context: { expose_paths: ["/abs/path/to/new-caller.mjs"] }
 } })
 ```
+
+This adds the newly needed caller to the paths normally recopied from that consultant's own earlier round.
+If the consultant's CLI or model changed, check the start result: earlier paths are not copied by default.
+Omit `context` if no additional files are needed; do not resend unchanged facts or the previous answer.
 
 Use a member's `job_id` for one consultant in a group. Use the group's `group_id` to ask them all again.
 The lead retrieves these IDs from the previous result; the user should not need to transcribe IDs or paths.
@@ -212,12 +224,11 @@ Report briefly: what you **checked** and what it showed, what you **adopted** an
 why, what is **still unverified** with the check that would settle it, and what it cost (rounds, wall-clock time,
 the usage the result reports).
 
-Write the rest back into the consultation, so it is still there when the decision is questioned a month from now:
+Save the points you checked in one call, so their evidence is available in the next round and later review:
 
 ```
 consult_record({ job_id: "...", entries: [
-  { id: "f1", verdict: "confirmed", effect: "capped the retries at 3", note: "reproduced with a 30s outage" },
-  { id: "c1", verdict: "unverified", effect: "load test deferred to Thursday's window" }
+  { id: "f1", verdict: "confirmed", effect: "capped the retries at 3", note: "reproduced with a 30s outage" }
 ]})
 ```
 
@@ -262,7 +273,7 @@ consult_record({ job_id: "...", reflection: {
 There is deliberately **no hit/miss label**; do not invent one. Write what changed in your understanding, or that
 nothing did, which is a real result.
 
-Then, when the record belongs in the repository:
+Only when a record is requested for the repository or another explicit destination, export it:
 
 ```
 consult_export({ chain_id: "..." })   // or group_id for a fan-out

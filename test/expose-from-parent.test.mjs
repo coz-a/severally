@@ -259,7 +259,7 @@ test('an inherited change path that now runs through a link out of the repositor
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sev-outside-'));
   fs.writeFileSync(path.join(outside, 'b.mjs'), 'SECRET-ELSEWHERE\n');
   fs.rmSync(path.join(dir, 'lib'), { recursive: true });
-  fs.symlinkSync(outside, path.join(dir, 'lib'));
+  fs.symlinkSync(outside, path.join(dir, 'lib'), process.platform === 'win32' ? 'junction' : 'dir');
   const next = await round(client, followup(first.view, { expose_from_parent: true }));
   assert.equal(next.cwd.includes('workspace/repo/lib/b.mjs'), false);
   assert.deepEqual(next.started.exposed_from_parent.left_out, [{ exposed_as: 'workspace/repo/lib/b.mjs', reason: 'symlink' }]);

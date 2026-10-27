@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { POLICY, isProtectedPath } from './policy.mjs';
-import { redactWithReport } from './redact.mjs';
+import { redact, redactWithReport } from './redact.mjs';
 
 /** @typedef {{ files: number, bytes: number }} ExposeTotals */
 
@@ -73,11 +73,13 @@ export class ExposeError extends Error {
   /**
    * @param {string} message
    * @param {string} code
+   * @param {unknown[] | undefined} [details]
    */
-  constructor(message, code) {
+  constructor(message, code, details = undefined) {
     super(message);
     this.name = 'ExposeError';
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -111,9 +113,26 @@ function isBinary(buf) {
 /**
  * @param {ExposeTotals} totals
  * @param {number} size
+ * @param {string} source
  */
-function ensureRoom(totals, size) {
-  checkBudget({ files: totals.files + 1, bytes: totals.bytes + size });
+function ensureRoom(totals, size, source) {
+  const observed = { files: totals.files + 1, bytes: totals.bytes + size };
+  try {
+    checkBudget(observed);
+  } catch (err) {
+    if (err instanceof ExposeError && err.code === 'too_large') {
+      err.details = [
+        {
+          kind: 'exposure_limit',
+          partial: true,
+          observed,
+          limits: { files: POLICY.input.exposeFilesMax, bytes: POLICY.input.exposeBytesMax },
+          crossing: { source: redact(source).slice(0, 1000), bytes: size },
+        },
+      ];
+    }
+    throw err;
+  }
 }
 
 /** @param {ExposeTotals} totals */
@@ -386,7 +405,7 @@ export function materializeExposedPaths(workdir, exposePaths) {
   const hashes = [];
   let redacted = false;
   const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals) => {
-    ensureRoom(totals, fs.statSync(abs).size);
+    ensureRoom(totals, fs.statSync(abs).size, abs);
     const base = path.join(root, `${index}-${path.basename(source)}`);
     const copy = copyMasked(abs, rel ? path.join(base, rel) : base);
     const out = copy.bytes;
@@ -492,7 +511,7 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   copied.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const hash = crypto.createHash('sha256');
   for (const c of copied) {
-    ensureRoom(manifest.totals, c.size);
+    ensureRoom(manifest.totals, c.size, path.join(top, c.path));
     const copy = copyMasked(path.join(top, c.path), path.join(root, c.path));
     const out = copy.bytes;
     manifest.redacted = Boolean(manifest.redacted || copy.redacted);

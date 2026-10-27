@@ -165,7 +165,7 @@ import { POLICY } from './policy.mjs';
  * @property {number | undefined} [rounds_remaining]
  */
 
-/** @typedef {Round & { owner?: Seat['owner'] }} RunningRecord The in-progress marker: a round record so far, plus who runs it. */
+/** @typedef {Round & { owner?: Seat['owner'], progress_observation?: import('./jobs.mjs').ProgressObservation | undefined, progress_text?: string | null | undefined }} RunningRecord The in-progress marker: a round record so far, plus who runs it. */
 
 /**
  * One line of history/index.jsonl.

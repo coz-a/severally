@@ -6,6 +6,10 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const args = process.argv.slice(2);
+if (args.includes('--version')) {
+  console.log('synthetic-codex 1.0');
+  process.exit(0);
+}
 if (process.env.STUB_ARGV_OUT) fs.writeFileSync(process.env.STUB_ARGV_OUT, JSON.stringify(args));
 if (process.env.STUB_ENV_OUT) fs.writeFileSync(process.env.STUB_ENV_OUT, JSON.stringify(process.env));
 // A recursive listing of the directory this consultant was launched in. It is
@@ -105,6 +109,12 @@ function run() {
     // A consultant that shrugs off SIGTERM: only SIGKILL to its group ends it.
     process.on('SIGTERM', () => {});
     if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(process.pid));
+    setInterval(() => {}, 1e9);
+    return;
+  }
+  if (behavior === 'hang_after_capture_limit') {
+    process.stdout.write(`${'x'.repeat(450_000)}\n`);
+    out({ type: 'item.started', item: { id: 'after-cap', type: 'web_search' } });
     setInterval(() => {}, 1e9);
     return;
   }

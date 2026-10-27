@@ -180,6 +180,8 @@ export class ProcHandle {
   constructor(child, readStdout = () => '') {
     this.child = child;
     this.killed = false;
+    /** @type {(() => void) | undefined} */
+    this.onStop = undefined;
     // What the child has written so far. A consultation runs for minutes, and
     // without this the only honest answer to "how is it going" is "running".
     this.stdoutSoFar = readStdout;
@@ -194,6 +196,7 @@ export class ProcHandle {
   stop(signal = 'SIGTERM') {
     if (this.killed || !this.child) return;
     this.killed = true;
+    this.onStop?.();
     const pid = this.child.pid;
     if (!pid) return;
     if (process.platform === 'win32') {
@@ -374,6 +377,7 @@ export class ProcHandle {
  * @param {(cancel: () => void) => void} [options.onCancelSignal]
  * @param {((line: string) => string) | null} [options.compactLine]
  * @param {((line: string) => number | null | undefined) | null} [options.settleAfter]
+ * @param {((line: string) => void) | null} [options.onOutputLine]
  * @param {NodeJS.Signals} [options.stopSignal]
  * @returns {{handle: ProcHandle, done: Promise<ChildResult>, pid: number | undefined}}
  */
@@ -387,6 +391,7 @@ export function runChild({
   onCancelSignal,
   compactLine = null,
   settleAfter = null,
+  onOutputLine = null,
   stopSignal = 'SIGTERM',
 }) {
   const child = spawn(command, args, {
@@ -448,13 +453,14 @@ export function runChild({
   // can shrink each event before it counts against the cap. The pending
   // partial line is bounded by the cap too; past it, the line is kept as is.
   let pending = '';
-  const byLine = Boolean(compactLine || settleAfter);
+  const byLine = Boolean(compactLine || settleAfter || onOutputLine);
   const compact = compactLine ?? ((/** @type {string} */ l) => l);
   const flushLines = () => {
     const lines = pending.split('\n');
     pending = lines.pop() ?? '';
     for (const l of lines) {
       if (settleAfter) watch(l);
+      onOutputLine?.(l);
       append('out', `${compact(l)}\n`);
     }
     if (pending.length > cap) {
@@ -478,25 +484,25 @@ export function runChild({
     handle.stop(stopSignal);
   }, timeoutMs);
 
-  if (onCancelSignal) {
-    onCancelSignal(() => {
-      cancelled = true;
-      handle.stop(stopSignal);
-    });
-  }
-
   /** @type {Promise<ChildResult>} */
   const done = new Promise((resolve) => {
     let settled = false;
     let pipesForced = false;
     /** @type {NodeJS.Timeout | undefined} */
     let orphanTimer;
+    /** @type {NodeJS.Timeout | undefined} */
+    let stopTimer;
+    /** @type {{code: number | null, signal: NodeJS.Signals | null} | undefined} */
+    let exitInfo;
+    let stopGraceElapsed = false;
     const finish = (/** @type {{ code: number | null, signal: NodeJS.Signals | null, spawnError?: string }} */ payload) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       clearTimeout(settleTimer);
       clearTimeout(orphanTimer);
+      clearTimeout(stopTimer);
+      handle.onStop = undefined;
       resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
     };
     const flushPending = () => {
@@ -505,11 +511,35 @@ export function runChild({
         pending = '';
       }
     };
+    const closeOrphanPipes = () => {
+      if (!exitInfo || settled) return;
+      pipesForced = true;
+      handle.forceKill();
+      flushPending();
+      child.stdout.destroy();
+      child.stderr.destroy();
+      finish(exitInfo);
+    };
+    // Once a stop has been requested, do not wait two further grace periods
+    // for descendants that inherited pipes. Do not report completion while
+    // the direct child is still alive: force it and await its exit first.
+    handle.onStop = () => {
+      stopTimer = setTimeout(() => {
+        stopGraceElapsed = true;
+        handle.forceKill();
+        closeOrphanPipes();
+      }, POLICY.killGraceMs);
+    };
     child.on('error', (err) => finish({ code: null, signal: null, spawnError: err.message }));
     // 'close' waits for the pipes as well as the child. Once the child has
     // exited, a grace later the rest of its group is stopped, and a grace
     // after that the pipes are closed from here, whoever still holds them.
     child.on('exit', (code, signal) => {
+      exitInfo = { code, signal };
+      if (stopGraceElapsed) {
+        closeOrphanPipes();
+        return;
+      }
       const grace = POLICY.killGraceMs;
       orphanTimer = setTimeout(() => {
         pipesForced = true;
@@ -531,6 +561,13 @@ export function runChild({
       finish({ code, signal });
     });
   });
+
+  if (onCancelSignal) {
+    onCancelSignal(() => {
+      cancelled = true;
+      handle.stop(stopSignal);
+    });
+  }
 
   if (input !== undefined && input !== null) {
     child.stdin.on('error', () => {

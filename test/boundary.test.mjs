@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { sandboxEnv, exploreRequest, reviewRequest, asConsultant, waitFor } from './helpers.mjs';
+import { sandboxEnv, exploreRequest, reviewRequest, asConsultant, waitFor, fileSymlinkUnavailable } from './helpers.mjs';
 
 const home = sandboxEnv();
 const JobManagerModule = await import('../src/jobs.mjs');
@@ -143,6 +143,12 @@ test('the agy hook refuses credential and history paths, symlinks resolved, and 
     'deny',
     'another sandbox',
   );
+  sandbox.cleanup();
+});
+
+test('the agy hook refuses a symlink to a protected file', { skip: fileSymlinkUnavailable() }, () => {
+  const sandbox = agySandbox({ workdir: workdir() });
+  const view = (p) => hook(sandbox, { name: 'view_file', args: { AbsolutePath: p } });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-link-'));
   fs.writeFileSync(path.join(dir, '.env'), 'X=1');
   fs.symlinkSync(path.join(dir, '.env'), path.join(dir, 'innocent.txt'));
@@ -175,8 +181,13 @@ test('claude-code is launched with read deny rules, and without web tools when t
   const on = claude.buildInvocation({ consultant: asConsultant('claude-code'), workdir: '/w', guardrails: 'g' }).args;
   const settings = JSON.parse(on[on.indexOf('--settings') + 1]);
   assert.ok(settings.permissions.deny.includes('Read(~/.ssh/**)'));
-  // The history lives under SEVERALLY_HOME, which the suite points outside the home directory.
-  assert.ok(settings.permissions.deny.includes(`Read(//${claude.posixAbsolute(home).replace(/^\/+/, '')}/history/**)`));
+  const history = path.join(home, 'history');
+  const relative = path.relative(os.homedir(), history).replaceAll('\\', '/');
+  const spec =
+    relative && !relative.startsWith('../') && !path.isAbsolute(relative)
+      ? `~/${relative}`
+      : `//${claude.posixAbsolute(history).replace(/^\/+/, '')}`;
+  assert.ok(settings.permissions.deny.includes(`Read(${spec}/**)`));
   assert.equal(claude.posixAbsolute('C:\\Users\\a'), '/c/Users/a');
   assert.ok(settings.permissions.deny.includes('Read(//**/.env)'));
   assert.equal(on[on.indexOf('--tools') + 1], 'WebSearch,WebFetch,Read,Glob,Grep');

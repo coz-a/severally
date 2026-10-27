@@ -47,10 +47,10 @@ test('packed tarball contains only README-referenced local images and resolves b
   assert.equal(packed.status, 0, `npm pack failed:\n${packed.stderr}`);
 
   const [packInfo] = JSON.parse(packed.stdout);
-  const archive = path.join(temp, packInfo.filename);
   const extractDir = path.join(temp, 'extracted');
   fs.mkdirSync(extractDir);
-  execFileSync('tar', ['-xzf', archive, '-C', extractDir], { windowsHide: true });
+  // GNU tar interprets a Windows drive colon in an archive path as a remote host.
+  execFileSync('tar', ['-xzf', packInfo.filename, '-C', 'extracted'], { cwd: temp, windowsHide: true });
   const packageDir = path.join(extractDir, 'package');
 
   const referencesByReadme = Object.fromEntries(

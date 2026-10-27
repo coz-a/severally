@@ -126,6 +126,12 @@ const GUARDRAILS_TAIL = [
   'set `evidence_basis` to "thin", put what you could not verify under `unknowns`, and put the checks you would',
   'have run under `next_checks`. That is a legitimate outcome, not a failure.',
   '',
+  'Prioritize findings that could change the decision and avoid duplicating detail unnecessarily across fields;',
+  'keep the relationships between findings, conditions and checks clear.',
+  'Give concrete grounds for each finding, including the relevant evidence or specific example, and retain',
+  'the unknowns, decision changers and disagreements that affect the advice. Aim for 3–5 findings and brief',
+  'field values as a soft target, not a cap: do not omit material disagreement, unknowns or evidence to meet it.',
+  '',
   'Output contract: reply with exactly one JSON object matching the provided schema. No prose, no markdown fences, no commentary before or after it. Empty arrays are fine; invented content is not.',
 ];
 

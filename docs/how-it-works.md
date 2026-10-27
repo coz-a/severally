@@ -78,6 +78,10 @@ there is no need to repeat the question's premises there. Code questions still n
 - A consultation stays readable after the server restarts, and from any other severally process on the machine.
   One still running elsewhere reads as running; one whose server stopped abruptly (a crash or a kill) before it
   finished comes back as `interrupted`; an ordinary shutdown records its running consultations as cancelled.
+- Once the child starts, `consult_get` reports `progress_observation`: the observation time, elapsed time, recognized event count,
+  attempt and deadline. Other processes read the same saved observation. No observed event means activity has not
+  been observed; it does not establish that the consultant is stopped or reasoning. Event bodies and commands are
+  not stored in this observation.
 - `consult_cancel` from another severally process leaves a request for the process running the consultation,
   which checks once a second and stops it.
 - A check the lead cannot run itself, such as one that needs another person's answer, comes back to you with the

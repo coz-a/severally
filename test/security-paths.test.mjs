@@ -94,14 +94,14 @@ test('configured paths reach the Codex and Claude CLI deny mechanisms', () => {
   );
   assert.ok(permissions.includes(`${JSON.stringify(fwd(fs.realpathSync.native(path.join(credentials, '.gemini'))))} = "none"`));
   const rules = claude.protectedReadRules();
-  assert.ok(
-    rules.some((r) => r.includes(claude.posixAbsolute(claudeHome))),
-    'Claude receives its relocated config directory',
-  );
-  assert.ok(
-    rules.some((r) => r.includes(claude.posixAbsolute(codexHome))),
-    'each consultant denies other configured credential stores',
-  );
+  const rulePath = (p) => {
+    const relative = path.relative(os.homedir(), p).replaceAll('\\', '/');
+    return relative && !relative.startsWith('../') && !path.isAbsolute(relative)
+      ? `~/${relative}`
+      : `//${claude.posixAbsolute(p).replace(/^\/+/, '')}`;
+  };
+  assert.ok(rules.includes(`Read(${rulePath(claudeHome)}/**)`), 'Claude receives its relocated config directory');
+  assert.ok(rules.includes(`Read(${rulePath(codexHome)}/**)`), 'each consultant denies other configured credential stores');
 });
 
 test('OpenCode read permissions deny configured credential directories', () => {

@@ -60,6 +60,7 @@ test('doctor uses the same evidence format and marks an unquoted read as inconcl
   });
   assert.equal(result.status, 1, result.stderr);
   const [row] = JSON.parse(result.stdout);
+  assert.match(row.protected_history_read, /^inconclusive: the control file was not quoted/);
   assert.equal(row.evidence.runner, 'doctor');
   assert.equal(row.evidence.schema_version, 1);
   assert.equal(row.evidence.checks.read.status, 'inconclusive');
