@@ -8,6 +8,49 @@ const { previewExposePaths, materializeExposedPaths, ExposeError, humanSize } = 
 
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
+test('hard links are refused directly and skipped in a directory, including after preview', (t) => {
+  const dir = tmp('severally-hardlink-');
+  const tree = path.join(dir, 'tree');
+  fs.mkdirSync(tree);
+  const source = path.join(dir, 'source');
+  const alias = path.join(tree, 'alias');
+  fs.writeFileSync(source, 'synthetic-private-canary');
+  fs.writeFileSync(path.join(tree, 'normal'), 'public');
+  previewExposePaths([source]);
+  try {
+    fs.linkSync(source, alias);
+  } catch (err) {
+    t.skip(`hard links unavailable: ${err.message}`);
+    return;
+  }
+  assert.throws(
+    () => previewExposePaths([alias]),
+    (err) => err instanceof ExposeError && err.code === 'invalid_type',
+  );
+  assert.throws(
+    () => materializeExposedPaths(tmp('severally-workdir-'), [source]),
+    (err) => err.code === 'invalid_type',
+  );
+  const work = tmp('severally-workdir-');
+  const manifest = materializeExposedPaths(work, [tree]);
+  assert.ok(manifest.skipped.some((entry) => entry.source === alias && entry.reason === 'hardlink'));
+  assert.equal(fs.existsSync(path.join(work, 'workspace', '0-tree', 'alias')), false);
+  assert.equal(fs.readFileSync(path.join(work, 'workspace', '0-tree', 'normal'), 'utf8'), 'public');
+});
+
+test('a file named inside a protected directory is not exposed', () => {
+  const dir = tmp('severally-protected-');
+  const protectedDir = path.join(dir, '.env.d');
+  fs.mkdirSync(protectedDir);
+  const file = path.join(protectedDir, 'opaque.txt');
+  fs.writeFileSync(file, 'synthetic-private-canary');
+  const work = tmp('severally-workdir-');
+  const manifest = materializeExposedPaths(work, [file]);
+  assert.equal(manifest.entries[0].files, 0);
+  assert.equal(manifest.skipped[0].reason, 'protected');
+  assert.equal(fs.existsSync(path.join(work, 'workspace', '0-opaque.txt')), false);
+});
+
 // Windows creates symlinks only with Developer Mode or elevation, so the
 // symlink cases are probed rather than assumed -- the same tolerance
 // antigravity-sandbox.mjs already applies to its credential link.

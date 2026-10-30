@@ -1729,6 +1729,8 @@ test(
       assert.ok(Date.now() - c.t0 < 8000, `${behavior} closed in ${Date.now() - c.t0} ms`);
       assert.equal(view.status, 'completed', behavior);
       assert.match(view.quality.caveat, /kept its output open/);
+      assert.match(view.quality.caveat, /pipes were closed.*may still be running/i);
+      assert.doesNotMatch(view.quality.caveat, /was stopped/i);
       await c.gone();
     }
   },
@@ -1753,6 +1755,8 @@ test(
     const view = await finish(c.mgr, c.started.job_id);
     assert.equal(view.status, 'failed');
     assert.equal(view.failure.kind, 'cli_error');
+    assert.match(view.failure.message, /pipes were closed.*may still be running/i);
+    assert.doesNotMatch(view.failure.message, /was stopped/i);
     await c.gone();
   },
 );

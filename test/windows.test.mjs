@@ -353,6 +353,30 @@ test('cancelling after the parent has exited leaves the descendant to the platfo
   );
 });
 
+test('Windows observes a detached child after its parent exits without inheriting pipes', { skip: !windows }, async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-detached-'));
+  const marker = path.join(dir, 'heartbeat');
+  // The child exits on its own: cleanup never signals a PID that could have been reused.
+  const child = `const fs=require('node:fs'); let n=0; const p=${JSON.stringify(marker)};
+    fs.writeFileSync(p,String(++n)); setInterval(()=>fs.writeFileSync(p,String(++n)),100);
+    setTimeout(()=>process.exit(0),4000);`;
+  const parent = `const fs=require('node:fs'); const {spawn}=require('node:child_process');
+    const c=spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:'ignore',windowsHide:true,detached:true});
+    c.unref(); const t=setInterval(()=>{if(fs.existsSync(${JSON.stringify(marker)})){clearInterval(t);process.exit(0)}},20);`;
+  t.after(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 4500));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const run = runChild({ command: process.execPath, args: ['-e', parent], env: childEnv('codex'), timeoutMs: 10000 });
+  await waitFor(() => fs.existsSync(marker));
+  await run.done;
+  run.handle.stop();
+  const before = fs.readFileSync(marker, 'utf8');
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const after = fs.readFileSync(marker, 'utf8');
+  t.diagnostic(JSON.stringify({ scenario: 'detached-child-after-parent-exit', child_heartbeat_continues: before !== after }));
+});
+
 test('Windows sandbox redirects native home and application config paths', { skip: !windows }, (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-home-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

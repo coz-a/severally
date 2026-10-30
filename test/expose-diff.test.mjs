@@ -126,6 +126,55 @@ function bare() {
   return { dir, g };
 }
 
+test('expose_diff excludes hard links and files inside protected directories', async (t) => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const { dir } = bare();
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sev-hardlink-'));
+  const privateFile = path.join(outside, 'private');
+  fs.writeFileSync(privateFile, 'synthetic-hardlink-canary');
+  try {
+    fs.linkSync(privateFile, path.join(dir, 'alias.txt'));
+  } catch (err) {
+    t.skip(`hard links unavailable: ${err.message}`);
+    return;
+  }
+  fs.mkdirSync(path.join(dir, '.env.d'));
+  fs.writeFileSync(path.join(dir, '.env.d', 'opaque.txt'), 'synthetic-ancestor-canary');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'changed\n');
+  const mgr = new JobManager();
+  const s = mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } }));
+  const job = mgr.jobs.get(s.job_id);
+  await job.promise;
+  const contents = JSON.stringify(job.brief);
+  assert.doesNotMatch(contents, /synthetic-hardlink-canary|synthetic-ancestor-canary/);
+  assert.ok(job.brief.expose_paths.skipped.some((entry) => entry.reason === 'hardlink'));
+  assert.ok(job.brief.expose_paths.skipped.some((entry) => entry.reason === 'protected'));
+  assert.equal(fs.existsSync(path.join(store.jobDir(s.job_id), 'work', 'workspace', 'repo', 'alias.txt')), false);
+  assert.equal(fs.existsSync(path.join(store.jobDir(s.job_id), 'work', 'workspace', 'repo', '.env.d', 'opaque.txt')), false);
+});
+
+test('expose_diff drops a tracked hard link from both the copy and diff text', async (t) => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const dir = repo();
+  const privateFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sev-hardlink-')), 'private');
+  fs.writeFileSync(privateFile, 'synthetic-tracked-canary\n');
+  const tracked = path.join(dir, 'a', 'util.mjs');
+  fs.rmSync(tracked);
+  try {
+    fs.linkSync(privateFile, tracked);
+  } catch (err) {
+    t.skip(`hard links unavailable: ${err.message}`);
+    return;
+  }
+  const mgr = new JobManager();
+  const s = mgr.start(reviewRequest({ context: { proposal: 'p', expose_diff: { repo: dir } } }));
+  const job = mgr.jobs.get(s.job_id);
+  await job.promise;
+  assert.doesNotMatch(JSON.stringify(job.brief), /synthetic-tracked-canary/);
+  assert.ok(job.brief.expose_paths.skipped.some((entry) => entry.reason === 'hardlink'));
+  assert.equal(fs.existsSync(path.join(store.jobDir(s.job_id), 'work', 'workspace', 'repo', 'a', 'util.mjs')), false);
+});
+
 test('a change that only deletes a file still starts, with the deletion in the brief', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const { dir } = bare();

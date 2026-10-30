@@ -55,8 +55,11 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.11.0 install
+npx -y severally-mcp@2.12.0 install
 ```
+
+When running from the root of this source checkout, npm can select an existing global server instead of the installer. If
+the command says it is the installed server, change to a directory outside the checkout and run it again.
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
 would change without changing anything.
@@ -117,8 +120,8 @@ same bug. A consultation takes time and real quota, so it is not for small fixes
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.11.0 install
-npx -y severally-mcp@2.11.0 status
+npx -y severally-mcp@2.12.0 install
+npx -y severally-mcp@2.12.0 status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation

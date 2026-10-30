@@ -54,8 +54,11 @@ Web を切ってもモデルへの送信は続きます。[送信内容と保護
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.11.0 install
+npx -y severally-mcp@2.12.0 install
 ```
+
+ソースのチェックアウトのルートでは、npm がインストーラの代わりに既存のグローバルサーバを選ぶ場合があります。
+インストール済みサーバだというエラーが出たら、チェックアウトの外のディレクトリに移動して再実行してください。
 
 インストーラは、`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
 変えずに変更内容だけを表示します。
@@ -114,8 +117,8 @@ Codex（gpt-6.1-sol）は、30秒のキャッシュを候補に挙げました�
 ターミナルでは、導入と登録確認を行えます。
 
 ```bash
-npx -y severally-mcp@2.11.0 install
-npx -y severally-mcp@2.11.0 status
+npx -y severally-mcp@2.12.0 install
+npx -y severally-mcp@2.12.0 status
 ```
 
 `status` は設定・使える相談相手・登録・ログイン状態を、相談を始めずに表示します。プロンプトは送りません。

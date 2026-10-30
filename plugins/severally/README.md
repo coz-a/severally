@@ -1,4 +1,4 @@
-# severally plugin
+# severally
 
 Ask coding agents for independent opinions, returned separately. The lead checks the grounds and records its decision.
 
@@ -13,6 +13,11 @@ You need Node.js 22 or newer and at least one installed, logged-in consultant CL
 
 Restart Claude Code. For the installer, other clients and platform limits, see the
 [installation guide](https://github.com/coz-a/severally/blob/main/docs/install.md).
+
+Check which consultant CLIs are detected with `npx -y severally-mcp@2.12.0 status`. Detection does not
+guarantee that a CLI is logged in or that a consultation will succeed. For updating and removing the plugin,
+see [updating](https://github.com/coz-a/severally/blob/main/docs/install.md#updating) and
+[uninstalling](https://github.com/coz-a/severally/blob/main/docs/install.md#uninstall).
 
 ## Usage
 

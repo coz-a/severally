@@ -37066,6 +37066,28 @@ import crypto2 from "node:crypto";
 import fs3 from "node:fs";
 import path4 from "node:path";
 import { spawnSync } from "node:child_process";
+function hasProtectedAncestor(source, cache = /* @__PURE__ */ new Map()) {
+  let current = path4.resolve(source);
+  const checked = [];
+  for (; ; ) {
+    const cached2 = cache.get(current);
+    if (cached2 !== void 0) {
+      for (const p of checked) cache.set(p, cached2);
+      return cached2;
+    }
+    checked.push(current);
+    if (isProtectedPath(current)) {
+      for (const p of checked) cache.set(p, true);
+      return true;
+    }
+    const parent = path4.dirname(current);
+    if (parent === current) {
+      for (const p of checked) cache.set(p, false);
+      return false;
+    }
+    current = parent;
+  }
+}
 function humanSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
@@ -37123,6 +37145,12 @@ function statEntry(source) {
   if (!stat.isFile() && !stat.isDirectory()) {
     throw new ExposeError(`expose_paths entry "${source}" is neither a file nor a directory`, "invalid_type");
   }
+  if (stat.isFile() && stat.nlink > 1) {
+    throw new ExposeError(
+      `expose_paths entry "${source}" has multiple hard links; provide an independent copy instead`,
+      "invalid_type"
+    );
+  }
   return stat;
 }
 function walkDir(root, dir, onFile, totals, skipped) {
@@ -37149,6 +37177,10 @@ function walkDir(root, dir, onFile, totals, skipped) {
     if (item.isDirectory()) {
       walkDir(root, child, onFile, totals, skipped);
     } else if (item.isFile()) {
+      if (fs3.lstatSync(child).nlink > 1) {
+        skipped.push({ source: child, reason: "hardlink" });
+        continue;
+      }
       onFile(child, path4.relative(root, child));
       checkBudget(totals);
     }
@@ -37213,6 +37245,10 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
       continue;
     }
     if (!stat.isFile()) continue;
+    if (stat.nlink > 1) {
+      skipped.push({ source: abs, reason: "hardlink" });
+      continue;
+    }
     onFile(abs, path4.normalize(rel));
     checkBudget(totals);
   }
@@ -37227,7 +37263,7 @@ function walkEntries(exposePaths, onFile) {
     const exposedAs = `workspace/${index}-${path4.basename(source)}`;
     const before = { files: totals.files, bytes: totals.bytes };
     const paths = [];
-    if (isProtectedPath(source)) {
+    if (hasProtectedAncestor(source)) {
       skipped.push({ source, reason: "protected" });
     } else if (stat.isFile()) {
       onFile(source, "", index, source, totals);
@@ -37272,7 +37308,20 @@ function materializeExposedPaths(workdir, exposePaths) {
   return manifest;
 }
 function copyMasked(abs, dest) {
-  const buf = fs3.readFileSync(abs);
+  const fd = fs3.openSync(abs, "r");
+  let buf;
+  try {
+    const stat = fs3.fstatSync(fd);
+    if (!stat.isFile() || stat.nlink > 1) {
+      throw new ExposeError(`expose_paths entry "${abs}" is no longer a single-link file`, "invalid_type");
+    }
+    buf = fs3.readFileSync(fd);
+    if (fs3.fstatSync(fd).nlink > 1) {
+      throw new ExposeError(`expose_paths entry "${abs}" acquired a hard link during copying`, "invalid_type");
+    }
+  } finally {
+    fs3.closeSync(fd);
+  }
   let out = buf;
   let redacted = false;
   if (!isBinary(buf)) {
@@ -37291,10 +37340,11 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const root = path4.join(workdir, "workspace", "repo");
   fs3.mkdirSync(root, { recursive: true, mode: 448 });
   const realTop = fs3.realpathSync(top);
+  const protectionCache = /* @__PURE__ */ new Map();
   const copied = [];
   for (const c of changes) {
     const abs = path4.join(top, c.path);
-    if (isProtectedPath(abs)) {
+    if (hasProtectedAncestor(abs, protectionCache)) {
       manifest.skipped.push({ source: abs, reason: "protected" });
       continue;
     }
@@ -37323,6 +37373,10 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
     }
     if (!stat.isFile()) {
       shown(c);
+      continue;
+    }
+    if (stat.nlink > 1) {
+      manifest.skipped.push({ source: abs, reason: "hardlink", ...named });
       continue;
     }
     shown(c);
@@ -41800,7 +41854,7 @@ var init_jobs = __esm({
             }
             break;
           }
-          const leftover = run.pipesForced && `${invocation.command} exited, but a process it started kept its output open and was stopped`;
+          const leftover = run.pipesForced && `${invocation.command} exited, but a process it started kept its output open; the pipes were closed and a descendant may still be running`;
           if (!interpreted.ok) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
             if (leftover) return this.#fail(job, "cli_error", leftover, interpreted.message);
@@ -41841,7 +41895,7 @@ var init_jobs = __esm({
             // The model that answered, which after a fallback is not the one asked.
             sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
             interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
-            leftover && "the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)",
+            leftover && "the answer parsed, but a process the consultant started kept its output open after it exited; the pipes were closed and a descendant may still be running",
             fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
             req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
             refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS)
@@ -42145,7 +42199,11 @@ var init_jobs = __esm({
         job.cancelRequested = true;
         for (const fn of job._cancelFns) fn();
         if (job._handle) job._handle.stop();
-        return { ...this.#jobView(job, void 0), status: "cancelling", cancel_effect: "consultant process group signalled" };
+        return {
+          ...this.#jobView(job, void 0),
+          status: "cancelling",
+          cancel_effect: "cancellation requested; process termination is not confirmed"
+        };
       }
       // Every field here is derived from the one `members` array it is handed, so a
       // group view can never report one status in `members` and another in
@@ -42190,6 +42248,13 @@ var init_jobs = __esm({
           brief: groupBrief,
           members_expected: group.job_ids.length,
           members_available: members2.length,
+          member_counts: {
+            completed: members2.filter((m) => m.status === "completed").length,
+            failed: members2.filter((m) => m.status === "failed").length,
+            cancelled: members2.filter((m) => m.status === "cancelled").length,
+            pending: members2.filter((m) => ["queued", "running", "cancelling"].includes(m.status)).length,
+            missing
+          },
           // History is capped, so an older member can already be gone. Say so:
           // a fan-out that quietly reports fewer answers than it asked for is
           // worse than one that admits the comparison is partial.
@@ -42197,7 +42262,7 @@ var init_jobs = __esm({
           members: trimmed2,
           comparison: null,
           cancellable: live,
-          next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer' : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
+          next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer' : missing > 0 ? "no available member produced a result; missing members have unknown outcomes. Report the missing history and each available failure or cancellation, then proceed on your own judgement" : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
           // The limits went out with consult_start, and consult_list has them;
           // by default they are not repeated here, where their size grows with
           // the number of consultants configured rather than asked.
@@ -42248,7 +42313,7 @@ var init_jobs = __esm({
             cancel_effect: asked ? `asked the severally process running it to stop ${asked} consultation(s); that takes up to ${CANCEL_POLL_MS / 1e3} s, and consult_get shows when it has` : "nothing to signal: no consultant in this fan-out is still running"
           };
         }
-        const signalled = group.job_ids.filter((jid) => {
+        const requested = group.job_ids.filter((jid) => {
           const j = this.jobs.get(jid);
           return j && (j.status === "running" || j.status === "queued");
         }).length;
@@ -42256,7 +42321,7 @@ var init_jobs = __esm({
         const total = group.job_ids.length;
         return {
           ...this.#shapeGroup(group, members2),
-          cancel_effect: signalled === 0 ? "nothing to signal: every consultant in this fan-out had already finished" : signalled === total ? "every consultant process group in this fan-out was signalled" : `${signalled} of ${total} consultant process groups in this fan-out were signalled; the rest had already finished`
+          cancel_effect: requested === 0 ? "nothing to signal: every consultant in this fan-out had already finished" : requested === total ? "cancellation requested for every consultant in this fan-out; process termination is not confirmed" : `cancellation requested for ${requested} of ${total} consultants; the rest had already finished; process termination is not confirmed`
         };
       }
       /**
@@ -42763,7 +42828,10 @@ function createServer(manager = new JobManager()) {
     },
     async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
       if (Boolean(job_id) === Boolean(group_id)) {
-        return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
+        return fail({
+          error: "invalid_request",
+          message: 'pass exactly one ID at the top level, for example {"job_id":"job_..."} or {"group_id":"group_..."}; do not wrap it in request'
+        });
       }
       if (ids && (group_id || detail)) {
         return fail({
@@ -42826,7 +42894,10 @@ function createServer(manager = new JobManager()) {
     },
     async ({ job_id, group_id }) => {
       if (Boolean(job_id) === Boolean(group_id)) {
-        return fail({ error: "invalid_request", message: "pass exactly one of job_id or group_id" });
+        return fail({
+          error: "invalid_request",
+          message: 'pass exactly one ID at the top level, for example {"job_id":"job_..."} or {"group_id":"group_..."}; do not wrap it in request'
+        });
       }
       const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(
         /** @type {string} */
@@ -42903,8 +42974,8 @@ function createServer(manager = new JobManager()) {
     {
       title: "List recent consultations",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, status, summary, verdicts, latest_completed_job_id and rounds_remaining. Optional target, question (case-insensitive substring), chain_id filters apply before limit. usage_totals is the tokens/cost reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
-      inputSchema: external_exports.object({
+      description: "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, status, summary, verdicts, latest_completed_job_id and rounds_remaining. Optional target, question (case-insensitive substring), chain_id filters apply before limit. Pass filters at the top level, not in request. usage_totals is the tokens/cost reported this session, retries included. A figure a CLI does not report is named under not_reported, not counted as zero.",
+      inputSchema: external_exports.strictObject({
         limit: external_exports.number().int().min(1).max(100).optional(),
         target: external_exports.string().trim().min(1).max(120).optional(),
         question: external_exports.string().trim().min(1).max(4e3).optional(),
@@ -42973,7 +43044,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.11.0";
+    SEVERALLY_VERSION = "2.12.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -42998,6 +43069,7 @@ A chain permits ${POLICY.maxRounds} rounds; spend follow-ups on deciding diverge
 Available (name: CLI, model):
 ${availableConsultants().map((c) => `          ${c.name}: ${c.cli}, ${c.model}`).join("\n") || "          (none -- no consultant CLI is installed)"}
 Pass the user's name/CLI/vendor/model wording; target_ambiguous lists candidates, target_unavailable lists available ones.
+For a user's second-opinion request without a named consultant, use targets: ["all"]; for a named consultant, use target.
 targets: ["all"] asks every available consultant, including your CLI (marked same lineage). Each gets an identical
 brief; one concurrency seat each. Model and limits are operator-owned.
 followup_to: completed job_id or group_id; only question is also needed. Inherits the prior inputs; explicit fields,

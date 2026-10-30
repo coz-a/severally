@@ -107,10 +107,13 @@ or withdrawn, specific changes to make and checks to run.
 `limits.network` reports the server default. A job's `network` and `boundary.network` describe that round;
 for example, a request with `network: "off"` can run without browsing while `limits.network` still says `"on"`.
 The displayed setting alone does not prove an attempted operation was refused.
-On Windows, cancellation kills the process tree while the parent is alive. If the parent has already exited,
+On Windows, cancellation attempts to stop the process tree while the parent is alive. If the parent has already exited,
 its PID is not reused for cancellation, because that could kill an unrelated process; descendants can remain.
 A test (`test/windows.test.mjs`) cancels a run whose parent has exited and reports in the CI log whether the
 descendant remained; the outcome is observed, not guaranteed.
+On Windows 10.0.26300 and Node 22.16.0, a synthetic child started in a separate process group continued
+after its parent exited without keeping the pipes open; a later cancellation did not stop it. In the same
+test, cancellation and timeout while the parent was alive stopped its heartbeat. Other conditions are unverified.
 
 - Each round is one file, and each verdict keeps its effect on the decision. The verdicts mean: `confirmed`, it
   held within the recorded scope; `refuted`, it did not hold in that check; `not_applicable`, true in general,
@@ -166,6 +169,10 @@ side, followed by `decision_changers` and `unknowns`. Matching stances can recom
 from a summary. The response also includes summary and findings (id, severity, point and grounds).
 Findings get more space than the other lists. Text shortened to fit is marked `truncated`, and
 `omitted` counts items left out of a list; no finding is ranked or rewritten by the server.
+
+Group `status: done` means all available members have stopped, not that all succeeded. `member_counts` reports
+completed, failed and cancelled members, pending members (queued, running or cancelling), and members missing
+from history. Check each member's status and report failures and missing members.
 
 The lead reads grounds already shown whole and checks deciding claims itself. For missing or shortened details,
 `consult_get({ job_id, ids: ["f2", "f5"] })` returns those points whole, with their grounds. A consultant's whole
@@ -233,7 +240,12 @@ configured symlinks are included. Arbitrary paths selected by CLI/plugin flags, 
 aliases or changes during a run beyond the checks described above are not guaranteed. Use absolute credential paths; keep credentials outside
 executable entries, and use a dedicated OS account with no unrelated secrets when these read gaps matter.
 
-`expose_paths` never copies protected files. Credentials are masked in the brief that is sent and in the answers
+`expose_paths` and `expose_diff` exclude recognized protected paths and their descendants. Files with more than one
+hard link are also excluded: a named file is rejected, while a file found in a directory or diff is reported as
+skipped. Make an independent copy if such a file is intended for exposure. The link count is checked again when
+opening and reading a file, but concurrent filesystem changes and filesystems that do not report link counts
+reliably remain outside this protection. These copy checks do not constrain what a consultant can read directly.
+Credentials are masked in the brief that is sent and in the answers
 that come back; a file a consultant opens on its own is read as it is. Other services' credentials in the
 server's environment (`AWS_*`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK`, any name ending in `_TOKEN`, `_SECRET` or
 `_API_KEY` …) are not passed to a consultant. Of the credentials, it gets its own vendor's keys, what you set in
@@ -432,3 +444,5 @@ The arguments of `consult_start` that matter most:
 `consult_list` filters history by `target`, case-insensitive question substring (`question`) and `chain_id`,
 before applying `limit`. Each row supplies `latest_completed_job_id` for its chain and `rounds_remaining`,
 including later failed rounds already spent. Check candidate content before continuing an ambiguous exchange.
+Pass filters at the top level, not inside `request`. Unknown arguments are rejected instead of silently returning
+an unfiltered list.

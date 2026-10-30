@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.11.0';
+export const SEVERALLY_VERSION = '2.12.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -108,6 +108,7 @@ ${
     .join('\n') || '          (none -- no consultant CLI is installed)'
 }
 Pass the user's name/CLI/vendor/model wording; target_ambiguous lists candidates, target_unavailable lists available ones.
+For a user's second-opinion request without a named consultant, use targets: ["all"]; for a named consultant, use target.
 targets: ["all"] asks every available consultant, including your CLI (marked same lineage). Each gets an identical
 brief; one concurrency seat each. Model and limits are operator-owned.
 followup_to: completed job_id or group_id; only question is also needed. Inherits the prior inputs; explicit fields,
@@ -220,7 +221,11 @@ export function createServer(manager = new JobManager()) {
     },
     async ({ job_id, group_id, wait_ms, detail, ids }, ctx) => {
       if (Boolean(job_id) === Boolean(group_id)) {
-        return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
+        return fail({
+          error: 'invalid_request',
+          message:
+            'pass exactly one ID at the top level, for example {"job_id":"job_..."} or {"group_id":"group_..."}; do not wrap it in request',
+        });
       }
       if (ids && (group_id || detail)) {
         return fail({
@@ -286,7 +291,11 @@ export function createServer(manager = new JobManager()) {
     },
     async ({ job_id, group_id }) => {
       if (Boolean(job_id) === Boolean(group_id)) {
-        return fail({ error: 'invalid_request', message: 'pass exactly one of job_id or group_id' });
+        return fail({
+          error: 'invalid_request',
+          message:
+            'pass exactly one ID at the top level, for example {"job_id":"job_..."} or {"group_id":"group_..."}; do not wrap it in request',
+        });
       }
       // Without group_id, job_id is set: exactly one of the two was checked above.
       const view = group_id ? manager.cancelGroup(group_id) : manager.cancel(/** @type {string} */ (job_id));
@@ -383,9 +392,10 @@ export function createServer(manager = new JobManager()) {
       description:
         "Recent consultations, earlier sessions' too (this_session is false), newest first, with their ids, " +
         'status, summary, verdicts, latest_completed_job_id and rounds_remaining. Optional target, question ' +
-        '(case-insensitive substring), chain_id filters apply before limit. usage_totals is the tokens/cost reported this session, ' +
+        '(case-insensitive substring), chain_id filters apply before limit. Pass filters at the top level, not in request. ' +
+        'usage_totals is the tokens/cost reported this session, ' +
         'retries included. A figure a CLI does not report is named under not_reported, not counted as zero.',
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         limit: z.number().int().min(1).max(100).optional(),
         target: z.string().trim().min(1).max(120).optional(),
         question: z.string().trim().min(1).max(4000).optional(),

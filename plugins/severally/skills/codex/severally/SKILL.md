@@ -43,7 +43,9 @@ brief and the files you hand it.
 
 2. **Collect** with `consult_get({ group_id })` (one consultant: `{ job_id }`). It waits by default; repeat
    while running. `progress` shows activity; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
-   `failed` means no advice, never "no concerns". Use successful answers even when another member fails.
+   For a group, `done` means all available members have stopped, not that all succeeded. Check `member_counts`
+   and each member: pending work and missing history are different. Report failures, cancellations and missing
+   members; `failed` means no advice, never "no concerns". Use successful answers even when another member fails.
 
 3. **Check, record once, report.** Follow **Before you hand the decision back** below. No reference fetch,
    export, prediction or reflection is required for a routine consultation.
@@ -89,7 +91,9 @@ become invalid after masking. Do not print original field values.
 
 Run the **one check that would change the decision**, using `decision_changers` and `next_checks`: a test,
 source read or documentation check. State why it matters. If it needs another person or production access,
-name what is still unverified. Save only what you checked in one call, before reporting:
+name what is still unverified. State the assumptions and scope of a calculation or simulation; do not present a
+result under those assumptions as a general guarantee. Distinguish a conditional recommendation from a decision
+already taken. Save only what you checked in one call, before reporting:
 
 ```
 consult_record({ job_id: "...", entries: [

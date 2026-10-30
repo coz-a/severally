@@ -81,7 +81,7 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.11.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.12.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | Option | What it does |

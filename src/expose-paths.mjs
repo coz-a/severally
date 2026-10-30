@@ -25,7 +25,7 @@ import { redact, redactWithReport } from './redact.mjs';
 /** @typedef {{ files: number, bytes: number }} ExposeTotals */
 
 /**
- * A path left out of the copy, with why: 'ignored', 'symlink', 'protected',
+ * A path left out of the copy, with why: 'ignored', 'symlink', 'hardlink', 'protected',
  * 'submodule', 'gone', 'masked' or 'replaced'. `exposed_as` names it where a
  * follow-up carries over an earlier round's entry.
  * @typedef {{ source: string, reason: string, exposed_as?: string | undefined }} SkippedPath
@@ -85,6 +85,34 @@ export class ExposeError extends Error {
 
 /** @param {unknown} err */
 const messageOf = (err) => (err instanceof Error ? err.message : String(err));
+
+/**
+ * @param {string} source
+ * @param {Map<string, boolean>} [cache]
+ */
+function hasProtectedAncestor(source, cache = new Map()) {
+  let current = path.resolve(source);
+  /** @type {string[]} */
+  const checked = [];
+  for (;;) {
+    const cached = cache.get(current);
+    if (cached !== undefined) {
+      for (const p of checked) cache.set(p, cached);
+      return cached;
+    }
+    checked.push(current);
+    if (isProtectedPath(current)) {
+      for (const p of checked) cache.set(p, true);
+      return true;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      for (const p of checked) cache.set(p, false);
+      return false;
+    }
+    current = parent;
+  }
+}
 
 /**
  * A size a reader can judge at a glance; the brief is read, not parsed.
@@ -170,6 +198,12 @@ function statEntry(source) {
   if (!stat.isFile() && !stat.isDirectory()) {
     throw new ExposeError(`expose_paths entry "${source}" is neither a file nor a directory`, 'invalid_type');
   }
+  if (stat.isFile() && stat.nlink > 1) {
+    throw new ExposeError(
+      `expose_paths entry "${source}" has multiple hard links; provide an independent copy instead`,
+      'invalid_type',
+    );
+  }
   return stat;
 }
 
@@ -218,6 +252,10 @@ function walkDir(root, dir, onFile, totals, skipped) {
     if (item.isDirectory()) {
       walkDir(root, child, onFile, totals, skipped);
     } else if (item.isFile()) {
+      if (fs.lstatSync(child).nlink > 1) {
+        skipped.push({ source: child, reason: 'hardlink' });
+        continue;
+      }
       onFile(child, path.relative(root, child));
       checkBudget(totals);
     }
@@ -315,6 +353,10 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
       continue;
     }
     if (!stat.isFile()) continue;
+    if (stat.nlink > 1) {
+      skipped.push({ source: abs, reason: 'hardlink' });
+      continue;
+    }
     onFile(abs, path.normalize(rel));
     checkBudget(totals);
   }
@@ -343,7 +385,7 @@ function walkEntries(exposePaths, onFile) {
     // that lists a directory, and a name it cannot see is a file it never reads.
     /** @type {string[]} */
     const paths = [];
-    if (isProtectedPath(source)) {
+    if (hasProtectedAncestor(source)) {
       skipped.push({ source, reason: 'protected' });
     } else if (stat.isFile()) {
       onFile(source, '', index, source, totals);
@@ -426,7 +468,20 @@ export function materializeExposedPaths(workdir, exposePaths) {
  * @param {string} dest
  */
 function copyMasked(abs, dest) {
-  const buf = fs.readFileSync(abs);
+  const fd = fs.openSync(abs, 'r');
+  let buf;
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || stat.nlink > 1) {
+      throw new ExposeError(`expose_paths entry "${abs}" is no longer a single-link file`, 'invalid_type');
+    }
+    buf = fs.readFileSync(fd);
+    if (fs.fstatSync(fd).nlink > 1) {
+      throw new ExposeError(`expose_paths entry "${abs}" acquired a hard link during copying`, 'invalid_type');
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
   let out = buf;
   let redacted = false;
   if (!isBinary(buf)) {
@@ -466,11 +521,13 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   // member's workspace is copied from here.
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const realTop = fs.realpathSync(top);
+  /** @type {Map<string, boolean>} */
+  const protectionCache = new Map();
   /** @type {{ path: string, size: number }[]} */
   const copied = [];
   for (const c of changes) {
     const abs = path.join(top, c.path);
-    if (isProtectedPath(abs)) {
+    if (hasProtectedAncestor(abs, protectionCache)) {
       manifest.skipped.push({ source: abs, reason: 'protected' });
       continue;
     }
@@ -503,6 +560,10 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
     // A submodule: its commit line stays in the diff, nothing to copy.
     if (!stat.isFile()) {
       shown(c);
+      continue;
+    }
+    if (stat.nlink > 1) {
+      manifest.skipped.push({ source: abs, reason: 'hardlink', ...named });
       continue;
     }
     shown(c);
