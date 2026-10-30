@@ -1587,7 +1587,8 @@ export class JobManager {
 
       // Without an answer, a process left holding the pipes is the failure to report.
       const leftover =
-        run.pipesForced && `${invocation.command} exited, but a process it started kept its output open and was stopped`;
+        run.pipesForced &&
+        `${invocation.command} exited, but a process it started kept its output open; the pipes were closed and a descendant may still be running`;
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
         if (leftover) return this.#fail(job, 'cli_error', leftover, interpreted.message);
@@ -1636,7 +1637,7 @@ export class JobManager {
         interpreted.recoveredError &&
           `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
         leftover &&
-          'the answer parsed, but a process the consultant started kept its output open after it exited and was stopped (one that left its process group may still be running)',
+          'the answer parsed, but a process the consultant started kept its output open after it exited; the pipes were closed and a descendant may still be running',
         fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
         req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
         refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS),
@@ -1990,7 +1991,11 @@ export class JobManager {
     job.cancelRequested = true;
     for (const fn of job._cancelFns) fn();
     if (job._handle) job._handle.stop();
-    return { ...this.#jobView(job, undefined), status: 'cancelling', cancel_effect: 'consultant process group signalled' };
+    return {
+      ...this.#jobView(job, undefined),
+      status: 'cancelling',
+      cancel_effect: 'cancellation requested; process termination is not confirmed',
+    };
   }
 
   // Every field here is derived from the one `members` array it is handed, so a
@@ -2056,6 +2061,13 @@ export class JobManager {
       brief: groupBrief,
       members_expected: group.job_ids.length,
       members_available: members.length,
+      member_counts: {
+        completed: members.filter((m) => m.status === 'completed').length,
+        failed: members.filter((m) => m.status === 'failed').length,
+        cancelled: members.filter((m) => m.status === 'cancelled').length,
+        pending: members.filter((m) => ['queued', 'running', 'cancelling'].includes(m.status)).length,
+        missing,
+      },
       // History is capped, so an older member can already be gone. Say so:
       // a fan-out that quietly reports fewer answers than it asked for is
       // worse than one that admits the comparison is partial.
@@ -2072,7 +2084,9 @@ export class JobManager {
           ? 'poll consult_get again with this group_id, or consult_cancel it'
           : anyResult
             ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer'
-            : 'no advice was obtained: no member of this fan-out produced a result (see each member\'s failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement',
+            : missing > 0
+              ? 'no available member produced a result; missing members have unknown outcomes. Report the missing history and each available failure or cancellation, then proceed on your own judgement'
+              : 'no advice was obtained: no member of this fan-out produced a result (see each member\'s failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement',
       // The limits went out with consult_start, and consult_list has them;
       // by default they are not repeated here, where their size grows with
       // the number of consultants configured rather than asked.
@@ -2137,26 +2151,25 @@ export class JobManager {
           : 'nothing to signal: no consultant in this fan-out is still running',
       };
     }
-    // Count what is actually about to be signalled before signalling it:
-    // cancel() short-circuits on a member that has already finished, so a
-    // blanket "everyone was signalled" would be a false report on a done group.
-    const signalled = group.job_ids.filter((jid) => {
+    // Count the live jobs receiving a cancellation request, including jobs
+    // that have not yet launched or whose parent has already exited.
+    const requested = group.job_ids.filter((jid) => {
       const j = this.jobs.get(jid);
       return j && (j.status === 'running' || j.status === 'queued');
     }).length;
     // Shape the view from the cancel() results, not from a fresh read: the
-    // children exit asynchronously, so a signalled member reads as
+    // children exit asynchronously, so a requested member reads as
     // "cancelling" until it is reaped, and the whole payload must say so.
     const members = group.job_ids.map((jid) => this.cancel(jid)).filter((v) => v != null);
     const total = group.job_ids.length;
     return {
       ...this.#shapeGroup(group, members),
       cancel_effect:
-        signalled === 0
+        requested === 0
           ? 'nothing to signal: every consultant in this fan-out had already finished'
-          : signalled === total
-            ? 'every consultant process group in this fan-out was signalled'
-            : `${signalled} of ${total} consultant process groups in this fan-out were signalled; the rest had already finished`,
+          : requested === total
+            ? 'cancellation requested for every consultant in this fan-out; process termination is not confirmed'
+            : `cancellation requested for ${requested} of ${total} consultants; the rest had already finished; process termination is not confirmed`,
     };
   }
 

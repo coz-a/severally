@@ -80,7 +80,7 @@ doctor の各行には `evidence`、live-check の出力には `compatibility:` 
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.11.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.12.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 | オプション | すること |

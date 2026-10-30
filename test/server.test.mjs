@@ -5,6 +5,7 @@ import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 
 sandboxEnv();
 const { createServer } = await import('../src/server.mjs');
+const store = await import('../src/store.mjs');
 
 async function connect() {
   const { server, manager } = createServer();
@@ -54,6 +55,19 @@ test('only the tools that change nothing are annotated read-only', async () => {
   assert.deepEqual(readOnly, ['consult_export', 'consult_get', 'consult_list']);
   for (const t of tools) assert.equal(typeof t.annotations?.readOnlyHint, 'boolean', `${t.name} declares readOnlyHint`);
   await close();
+});
+
+test('consult_list rejects wrapped filters instead of returning unfiltered history', async () => {
+  const { client, close } = await connect();
+  try {
+    const wrong = await client.callTool({ name: 'consult_list', arguments: { request: '{"question":"needle"}' } });
+    assert.equal(wrong.isError, true);
+    const right = await client.callTool({ name: 'consult_list', arguments: { question: 'needle' } });
+    assert.notEqual(right.isError, true);
+    assert.deepEqual(payload(right).jobs, []);
+  } finally {
+    await close();
+  }
 });
 
 test('consult_record says where job_id comes from, so it is passed instead of dropped', async () => {
@@ -230,6 +244,7 @@ test('a fan-out is started, fetched and compared through group_id over MCP', asy
   const view = payload(polled);
   assert.equal(view.status, 'done');
   assert.equal(view.members_available, 2);
+  assert.deepEqual(view.member_counts, { completed: 2, failed: 0, cancelled: 0, pending: 0, missing: 0 });
   assert.deepEqual(
     view.comparison.by_target.map((t) => t.target),
     ['codex', 'antigravity'],
@@ -243,6 +258,59 @@ test('a fan-out is started, fetched and compared through group_id over MCP', asy
   await close();
 });
 
+test('group counts over MCP distinguish pending, cancelled, failed, mixed and missing members', async () => {
+  const { client, manager, close } = await connect();
+  const start = async () =>
+    payload(
+      await client.callTool({
+        name: 'consult_start',
+        arguments: { request: reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }) },
+      }),
+    );
+  const get = async (group_id, wait_ms = 20000) =>
+    payload(await client.callTool({ name: 'consult_get', arguments: { group_id, wait_ms } }));
+  try {
+    process.env.STUB_BEHAVIOR = 'hang';
+    const pending = await start();
+    const running = await get(pending.group_id, 0);
+    assert.deepEqual(running.member_counts, { completed: 0, failed: 0, cancelled: 0, pending: 2, missing: 0 });
+    await client.callTool({ name: 'consult_cancel', arguments: { group_id: pending.group_id } });
+    await Promise.all(pending.jobs.map(({ job_id }) => manager.jobs.get(job_id).promise));
+    const cancelled = await get(pending.group_id, 0);
+    assert.deepEqual(cancelled.member_counts, { completed: 0, failed: 0, cancelled: 2, pending: 0, missing: 0 });
+
+    process.env.STUB_BEHAVIOR = 'usage_limit';
+    const failed = await start();
+    await Promise.all(failed.jobs.map(({ job_id }) => manager.jobs.get(job_id).promise));
+    const allFailed = await get(failed.group_id, 0);
+    assert.deepEqual(allFailed.member_counts, { completed: 0, failed: 2, cancelled: 0, pending: 0, missing: 0 });
+    assert.match(allFailed.next_step, /no advice was obtained/);
+
+    process.env.STUB_BEHAVIOR = 'ok';
+    const mixed = await start();
+    await Promise.all(mixed.jobs.map(({ job_id }) => manager.jobs.get(job_id).promise));
+    const job = manager.jobs.get(mixed.jobs[1].job_id);
+    const changes = {
+      status: 'failed',
+      result: null,
+      quality: null,
+      failure: { kind: 'usage_limit', message: 'quota', retriable: false },
+    };
+    Object.assign(job, changes);
+    store.persistRound({ ...store.loadRoundAt(job), ...changes }, { appendIndex: false });
+    let view = await get(mixed.group_id, 0);
+    assert.deepEqual(view.member_counts, { completed: 1, failed: 1, cancelled: 0, pending: 0, missing: 0 });
+    assert.ok(view.comparison.by_target[0].summary);
+    manager.groups.get(mixed.group_id).job_ids.push('job_missing_history');
+    view = await get(mixed.group_id, 0);
+    assert.deepEqual(view.member_counts, { completed: 1, failed: 1, cancelled: 0, pending: 0, missing: 1 });
+    assert.match(view.incomplete_note, /partial/);
+  } finally {
+    process.env.STUB_BEHAVIOR = 'ok';
+    await close();
+  }
+});
+
 test('consult_get and consult_cancel take exactly one of job_id or group_id', async () => {
   const { client, close } = await connect();
   for (const name of ['consult_get', 'consult_cancel']) {
@@ -253,6 +321,9 @@ test('consult_get and consult_cancel take exactly one of job_id or group_id', as
     const neither = await client.callTool({ name, arguments: {} });
     assert.equal(neither.isError, true, `${name} must refuse neither id`);
     assert.equal(payload(neither).error, 'invalid_request');
+    assert.match(payload(neither).message, /top.level/i);
+    assert.match(payload(neither).message, /"job_id"/);
+    assert.match(payload(neither).message, /"group_id"/);
 
     const unknown = await client.callTool({ name, arguments: { group_id: 'group_missing' } });
     assert.equal(unknown.isError, true);

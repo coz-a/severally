@@ -41,6 +41,7 @@ test('targets fans out to one job per consultant and returns a group', async () 
 
   const view = await finishGroup(mgr, started.group_id);
   assert.equal(view.status, 'done');
+  assert.deepEqual(view.member_counts, { completed: 2, failed: 0, cancelled: 0, pending: 0, missing: 0 });
   assert.equal(view.members.length, 2);
   assert.deepEqual(
     view.comparison.by_target.map((t) => t.target),
@@ -80,6 +81,7 @@ test('a group prints the shared brief once, not once per consultant', async () =
   // poll spends the lead's context on what it wrote itself a minute ago.
   const running = mgr.groupView(started.group_id);
   assert.equal(running.status, 'running');
+  assert.deepEqual(running.member_counts, { completed: 0, failed: 0, cancelled: 0, pending: 2, missing: 0 });
   for (const m of running.members) assert.equal(m.brief, undefined, 'a member never carries its own copy of the brief');
   assert.equal(running.brief, null);
   for (const m of mgr.groupView(started.group_id, { detail: 'full' }).members) {
@@ -304,11 +306,17 @@ test('cancelling a group stops every member', async () => {
     true,
   );
   assert.equal(cancelled.status, 'cancelling');
-  assert.match(cancelled.cancel_effect, /every consultant process group/);
+  assert.match(cancelled.cancel_effect, /cancellation requested.*every consultant/i);
+  assert.doesNotMatch(cancelled.cancel_effect, /signalled/i);
+  for (const member of cancelled.members) {
+    assert.match(member.cancel_effect, /cancellation requested/i);
+    assert.doesNotMatch(member.cancel_effect, /signalled/i);
+  }
   // Nobody has finished yet, so there is no side-by-side to carry.
   assert.equal(cancelled.comparison, null);
   await Promise.all(started.jobs.map((j) => mgr.jobs.get(j.job_id).promise));
   const after = mgr.groupView(started.group_id);
+  assert.deepEqual(after.member_counts, { completed: 0, failed: 0, cancelled: 2, pending: 0, missing: 0 });
   assert.equal(
     after.members.every((m) => m.status === 'cancelled'),
     true,
@@ -344,6 +352,7 @@ test('a fan-out in which every member failed says no advice was obtained', async
   process.env.STUB_BEHAVIOR = 'ok';
 
   assert.equal(view.status, 'done');
+  assert.deepEqual(view.member_counts, { completed: 0, failed: 2, cancelled: 0, pending: 0, missing: 0 });
   assert.equal(
     view.members.every((m) => m.status === 'failed'),
     true,
@@ -382,7 +391,32 @@ test('a fan-out where only one member answered is still told to compare', async 
 
   const view = mgr.groupView(started.group_id);
   assert.equal(view.status, 'done');
+  assert.deepEqual(view.member_counts, { completed: 1, failed: 1, cancelled: 0, pending: 0, missing: 0 });
   assert.match(view.next_step, /diverge/, 'one real answer is still worth comparing against the failure');
+});
+
+test('group counts distinguish missing history from pending work', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, started.group_id);
+  mgr.groups.get(started.group_id).job_ids.push('job_missing_history');
+  const view = mgr.groupView(started.group_id);
+  assert.equal(view.status, 'done');
+  assert.deepEqual(view.member_counts, { completed: 2, failed: 0, cancelled: 0, pending: 0, missing: 1 });
+});
+
+test('missing history does not imply that no advice was obtained', async () => {
+  process.env.STUB_BEHAVIOR = 'usage_limit';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  await finishGroup(mgr, started.group_id);
+  mgr.groups.get(started.group_id).job_ids.push('job_missing_history');
+  const view = mgr.groupView(started.group_id);
+  assert.equal(view.member_counts.missing, 1);
+  assert.match(view.next_step, /missing/i);
+  assert.doesNotMatch(view.next_step, /no advice was obtained/i);
+  process.env.STUB_BEHAVIOR = 'ok';
 });
 
 test('a group whose members age out of memory is read back from history', async () => {

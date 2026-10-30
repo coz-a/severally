@@ -364,7 +364,7 @@ export class ProcHandle {
 
 /**
  * `pipesForced` in the result: the child exited but something it started kept
- * stdout or stderr open past the kill grace, so the group was stopped and the
+ * stdout or stderr open past the kill grace, so stopping was attempted and the
  * pipes closed from this side. A descendant outside the group (setsid, or on
  * Windows once the parent is gone) may still be running.
  * @param {object} options
