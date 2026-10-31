@@ -211,7 +211,8 @@ import { POLICY } from './policy.mjs';
  * otherwise `live` (the seats held) and, when the cap is hit, `elsewhere`.
  * @typedef {{ ok: true, live: number, elsewhere?: undefined, chainBusy?: undefined }
  *   | { ok: false, live?: undefined, elsewhere?: undefined, chainBusy: { live: Seat, mine: Seat } }
- *   | { ok: false, live: number, elsewhere: number, chainBusy?: undefined }} SeatResult
+ *   | { ok: false, live: number, elsewhere: number, required: number, limit: number, retryable: boolean,
+ *       holders: { job_id: string, state: 'alive' }[], chainBusy?: undefined }} SeatResult
  */
 
 /**
@@ -722,7 +723,15 @@ export function takeSeats(seats, cap, held) {
       if (other) return { ok: false, chainBusy: { live: other, mine } };
     }
     if (live.length + seats.length > cap) {
-      return { ok: false, live: live.length, elsewhere: live.filter((x) => x.owner?.pid !== process.pid).length };
+      return {
+        ok: false,
+        live: live.length,
+        elsewhere: live.filter((x) => x.owner?.pid !== process.pid).length,
+        required: seats.length,
+        limit: cap,
+        retryable: seats.length <= cap,
+        holders: live.filter((s) => JOB_ID.test(s.job_id)).map((s) => ({ job_id: s.job_id, state: 'alive' })),
+      };
     }
     for (const seat of seats) {
       if (!JOB_ID.test(seat.job_id)) throw new Error(`not a job id: ${seat.job_id}`);

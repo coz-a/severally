@@ -9,6 +9,10 @@ const home = sandboxEnv();
 const gate = path.join(home, 'release-claude');
 fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ clis: { 'claude-code': { env: { STUB_GATE_FILE: gate } } } }));
 const { JobManager } = await import('../src/jobs.mjs');
+// Include the managed Windows launcher's startup, while still failing if the
+// reader waits out the entire budget instead of returning a new completion.
+const firstWaitMs = process.platform === 'win32' ? 10000 : 2500;
+const firstReturnLimitMs = firstWaitMs - 700;
 
 const start = (t) => {
   fs.rmSync(gate, { force: true });
@@ -29,8 +33,8 @@ for (const elsewhere of [false, true]) {
     const { owner, group_id } = start(t);
     const reader = elsewhere ? new JobManager() : owner;
     const startedAt = Date.now();
-    const first = await reader.waitGroup(group_id, 2500);
-    assert.ok(Date.now() - startedAt < 1800, 'return a newly finished member before the wait budget expires');
+    const first = await reader.waitGroup(group_id, firstWaitMs);
+    assert.ok(Date.now() - startedAt < firstReturnLimitMs, 'return a newly finished member before the wait budget expires');
     assert.equal(first.status, 'running');
     assert.equal(first.member_counts.completed, 1, 'the fast answer must be returned while the second is gated');
     assert.equal(first.comparison.by_target.find((m) => m.target === 'codex').stance, 'proceed');
@@ -57,8 +61,8 @@ for (const elsewhere of [false, true]) {
     const { owner, group_id } = start(t);
     const reader = elsewhere ? new JobManager() : owner;
     const startedAt = Date.now();
-    const first = await reader.waitGroup(group_id, 2500);
-    assert.ok(Date.now() - startedAt < 1800, 'failure is a new terminal event too');
+    const first = await reader.waitGroup(group_id, firstWaitMs);
+    assert.ok(Date.now() - startedAt < firstReturnLimitMs, 'failure is a new terminal event too');
     assert.equal(first.status, 'running');
     assert.equal(first.member_counts.failed, 1);
     assert.equal(first.members.find((m) => m.target === 'codex').failure.kind, 'auth');
@@ -109,8 +113,8 @@ test('a separate server process returns new completions and does not repeat an a
       reader.send({ groupId: group_id, waitMs });
     });
   const before = Date.now();
-  const first = await get(2500);
-  assert.ok(Date.now() - before < 1800);
+  const first = await get(firstWaitMs);
+  assert.ok(Date.now() - before < firstReturnLimitMs);
   assert.equal(first.member_counts.completed, 1);
   assert.equal(first.status, 'running');
   const waitingAt = Date.now();

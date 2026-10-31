@@ -69,6 +69,12 @@ there is no need to repeat the question's premises there. Code questions still n
 `review` still needs a proposal, and `debate` needs both a proposal and counterpoints.
 
 - While a consultation runs, the lead does not go ahead with the plan in question.
+- If shared capacity is full, start returns `concurrency_limit` before a model is called. Its `details` contains
+  required/used/available/missing seats, the limit, already-known live holder job IDs, other-session counts and bounded retry guidance.
+  The lead can wait on a known holder, or wait the suggested interval when only other sessions hold seats,
+  then resend the identical request at most twice within 60 seconds; this is a
+  suggested retry interval, not a promised start time. A request larger than total capacity is not retryable.
+  A successful start receipt must never be replayed. Do not cancel unrelated consultations or bypass the cap.
 - A transient failure (`rate_limited`, `cli_error`) is run again up to twice, after a short wait and inside the
   same time budget, with the same consultant and model; the earlier failures are listed under `retries`.
 - A consultant whose model has used up its account quota (`usage_limit`) is run again once on its `fallback_model`,
@@ -115,13 +121,17 @@ or withdrawn, specific changes to make and checks to run.
 a job's `boundary.network` records the applied launch policy.
 for example, a request with `network: "off"` can run without browsing while `limits.network` still says `"on"`.
 The displayed setting alone does not prove an attempted operation was refused.
-On Windows, cancellation attempts to stop the process tree while the parent is alive. If the parent has already exited,
-its PID is not reused for cancellation, because that could kill an unrelated process; descendants can remain.
-A test (`test/windows.test.mjs`) cancels a run whose parent has exited and reports in the CI log whether the
-descendant remained; the outcome is observed, not guaranteed.
-On Windows 10.0.26300 and Node 22.16.0, a synthetic child started in a separate process group continued
-after its parent exited without keeping the pipes open; a later cancellation did not stop it. In the same
-test, cancellation and timeout while the parent was alive stopped its heartbeat. Other conditions are unverified.
+On Windows 10+, each CLI is registered in a Job Object at process creation. Closing that Job stops its
+ordinary descendants, including detached children after the CLI exits. The Job handle is not inherited;
+cancellation targets the still-running launcher instead of signaling the exited CLI's potentially reused PID.
+The launcher uses built-in Windows PowerShell 5.1 and .NET `Add-Type`; policies that block compilation or
+native API access prevent launch. There is no fallback to an unmanaged launch. Such failures are reported
+in stderr; distinguishing launcher failures from CLI failures is currently limited.
+On Windows 10.0.26300.9711, Node 22.16.0 and PowerShell 5.1, the managed-launch tests cover parent exit,
+cancellation, timeout, Unicode stdin/arguments, cmd forwarding and exit status. See `test/windows-job.test.mjs`
+and `test/windows.test.mjs`. Older tests reproduced a surviving detached child before this change.
+Processes started through a service such as WMI, external job arrangements and all server-crash paths are
+not covered by this guarantee. A completed cancellation request alone is not proof of descendant cleanup.
 
 - Each round is one file, and each verdict keeps its effect on the decision. The verdicts mean: `confirmed`, it
   held within the recorded scope; `refuted`, it did not hold in that check; `not_applicable`, true in general,
@@ -202,9 +212,9 @@ coding tools' sessions, severally's own history and the other consultants' sandb
 
 Codex blocks paths, not names: its sandbox cannot express “`.env` anywhere”, so a repository's `.env` is
 readable. Credential directories, including the default `~/.codex` and a relocated `CODEX_HOME`, are denied
-as a whole when the executable lives elsewhere. If it lives inside a protected root, its containing entry
-is exempt and the other entries are a launch-time snapshot; new entries are not covered. New credential
-files must not be placed in that exempt executable entry. Existing symlink roots are resolved and registered
+as a whole when the executable lives elsewhere. Consultation start now rejects an executable inside a protected
+credential root with `unsafe_codex_placement`, before taking seats or calling a model. The underlying CLI
+permission builder still needs an executable exception in that layout, so use an external installation instead. Existing symlink roots are resolved and registered
 once by canonical path, avoiding duplicate Linux sandbox mounts through aliases.
 
 On Linux, a file-level deny can stop holding when the host replaces that file by rename during the run.
@@ -254,9 +264,10 @@ executable entries, and use a dedicated OS account with no unrelated secrets whe
 
 `expose_paths` and `expose_diff` exclude recognized protected paths and their descendants. Files with more than one
 hard link are also excluded: a named file is rejected, while a file found in a directory or diff is reported as
-skipped. Make an independent copy if such a file is intended for exposure. The link count is checked again when
-opening and reading a file, but concurrent filesystem changes and filesystems that do not report link counts
-reliably remain outside this protection. These copy checks do not constrain what a consultant can read directly.
+skipped. Make an independent copy if such a file is intended for exposure. Alongside link counts, file identity,
+size and modification times are compared before and after opening/reading; detected replacements or mutations
+refuse exposure. This is not an atomic snapshot of a tree or a guarantee against all concurrent changes and
+filesystems with unreliable metadata. These checks do not constrain what a consultant can read directly.
 Credentials are masked in the brief that is sent and in the answers
 that come back; a file a consultant opens on its own is read as it is. Other services' credentials in the
 server's environment (`AWS_*`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK`, any name ending in `_TOKEN`, `_SECRET` or

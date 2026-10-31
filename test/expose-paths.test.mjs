@@ -8,6 +8,92 @@ const { previewExposePaths, materializeExposedPaths, ExposeError, humanSize } = 
 
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
+test('materialize refuses a regular source replaced between inspection and open', (t) => {
+  const dir = tmp('severally-replaced-source-');
+  const source = path.join(dir, 'public.txt');
+  const replacement = path.join(dir, 'replacement.txt');
+  const work = tmp('severally-replaced-work-');
+  fs.writeFileSync(source, 'public original');
+  fs.writeFileSync(replacement, 'synthetic private replacement');
+  const open = fs.openSync;
+  let swapped = false;
+  t.mock.method(fs, 'openSync', (file, ...args) => {
+    if (file === source && !swapped) {
+      swapped = true;
+      fs.renameSync(replacement, source);
+    }
+    return open(file, ...args);
+  });
+  assert.throws(
+    () => materializeExposedPaths(work, [source]),
+    (error) => error instanceof ExposeError && error.code === 'invalid_type',
+  );
+  assert.equal(swapped, true, 'the race was actually exercised');
+  assert.equal(fs.existsSync(path.join(work, 'workspace', '0-public.txt')), false);
+});
+
+test('materialize accepts matching inode identities when path stats do not report a device number', (t) => {
+  const dir = tmp('severally-device-unreported-');
+  const source = path.join(dir, 'public.txt');
+  const work = tmp('severally-device-work-');
+  fs.writeFileSync(source, 'public');
+  const lstat = fs.lstatSync;
+  t.mock.method(fs, 'lstatSync', (file, ...args) => {
+    const stat = lstat(file, ...args);
+    if (file === source) stat.dev = 0; // Observed with Node 22 on Windows; fstat reports the volume serial.
+    return stat;
+  });
+  materializeExposedPaths(work, [source]);
+  assert.equal(fs.readFileSync(path.join(work, 'workspace', '0-public.txt'), 'utf8'), 'public');
+});
+
+test('materialize refuses an in-place source change between inspection and open', (t) => {
+  const dir = tmp('severally-mutated-source-');
+  const source = path.join(dir, 'public.txt');
+  const work = tmp('severally-mutated-work-');
+  fs.writeFileSync(source, 'original');
+  const open = fs.openSync;
+  let changed = false;
+  t.mock.method(fs, 'openSync', (file, ...args) => {
+    if (file === source && !changed) {
+      changed = true;
+      fs.writeFileSync(source, 'a larger in-place replacement');
+    }
+    return open(file, ...args);
+  });
+  assert.throws(
+    () => materializeExposedPaths(work, [source]),
+    (error) => error.code === 'invalid_type',
+  );
+  assert.equal(changed, true);
+});
+
+test('materialize refuses a parent directory replaced by a symlink after the source was selected', (t) => {
+  const dir = tmp('severally-parent-swap-');
+  const sourceDir = path.join(dir, 'public');
+  const other = path.join(dir, 'other');
+  fs.mkdirSync(sourceDir);
+  fs.mkdirSync(other);
+  const source = path.join(sourceDir, 'a.txt');
+  fs.writeFileSync(source, 'public original');
+  fs.writeFileSync(path.join(other, 'a.txt'), 'synthetic private replacement');
+  const lstat = fs.lstatSync;
+  let swapped = false;
+  t.mock.method(fs, 'lstatSync', (file, ...args) => {
+    if (file === source && !swapped) {
+      swapped = true;
+      fs.renameSync(sourceDir, path.join(dir, 'previous'));
+      fs.symlinkSync(other, sourceDir, process.platform === 'win32' ? 'junction' : 'dir');
+    }
+    return lstat(file, ...args);
+  });
+  assert.throws(
+    () => materializeExposedPaths(tmp('severally-parent-work-'), [source]),
+    (e) => e.code === 'invalid_type',
+  );
+  assert.equal(swapped, true);
+});
+
 test('hard links are refused directly and skipped in a directory, including after preview', (t) => {
   const dir = tmp('severally-hardlink-');
   const tree = path.join(dir, 'tree');

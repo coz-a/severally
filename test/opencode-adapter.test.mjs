@@ -54,11 +54,11 @@ test('the invocation pins print mode, the event stream and the model', () => {
   // must be gone rather than tolerated.
   assert.equal(inv.args.includes('--pure'), false, 'opencode 2.x rejects --pure with a usage dump');
   assert.equal(inv.args.indexOf('-m'), inv.args.length - 4, 'the model flag carries the chosen model');
-  assert.equal(DEFAULT_MODELS.opencode, 'zai-coding-plan/glm-5.3');
-  assert.equal(inv.args[inv.args.indexOf('-m') + 1], `${DEFAULT_MODELS.opencode}#high`, 'effort rides as the variant');
+  assert.equal(DEFAULT_MODELS.opencode, 'openrouter/deepseek/deepseek-v4.1-flash-1017#high');
+  assert.equal(inv.args[inv.args.indexOf('-m') + 1], DEFAULT_MODELS.opencode, 'high variant is supplied exactly once');
   // The shipped default is still worth pinning somewhere -- sandboxEnv() clears
   // SEVERALLY_OPENCODE_MODEL, so this reads the default and not the host's knob.
-  assert.equal(DEFAULT_MODELS.opencode, 'zai-coding-plan/glm-5.3');
+  assert.equal(DEFAULT_MODELS.opencode, 'openrouter/deepseek/deepseek-v4.1-flash-1017#high');
   // opencode takes the brief on stdin; the brief must never be an argv value.
   assert.equal(inv.args.filter((a) => a === '--title').length, 1);
   assert.equal(inv.args.includes('-f'), false);

@@ -39,10 +39,10 @@ export const CLI_IDS = Object.freeze(['codex', 'claude-code', 'antigravity', 'op
 // The model each CLI's consultant runs when the operator defines none.
 /** @type {Readonly<Record<CliId, string>>} */
 export const DEFAULT_MODELS = Object.freeze({
-  codex: 'gpt-6-astra',
+  codex: 'gpt-6.1-sol',
   'claude-code': 'claude-opus-5-5',
   antigravity: 'gemini-4-argon-high',
-  opencode: 'zai-coding-plan/glm-5.3',
+  opencode: 'openrouter/deepseek/deepseek-v4.1-flash-1017#high',
 });
 
 // The lineage a CLI's own host model belongs to, for a caller that declared no

@@ -106,7 +106,13 @@ function installerFixture(t) {
   }
   const root = fileURLToPath(new URL('../', import.meta.url));
   const checkout = path.join(dir, 'checkout');
-  for (const relative of ['scripts/install.mjs', 'src/platform.mjs', 'plugins/severally', 'package.json']) {
+  for (const relative of [
+    'scripts/install.mjs',
+    'src/platform.mjs',
+    'src/windows-job.mjs',
+    'plugins/severally',
+    'package.json',
+  ]) {
     const dest = path.join(checkout, relative);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     copyTree(path.join(root, relative), dest);

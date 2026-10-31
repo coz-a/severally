@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.13.0';
+export const SEVERALLY_VERSION = '2.14.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -111,6 +111,8 @@ Pass the user's name/CLI/vendor/model wording; target_ambiguous lists candidates
 For a user's second-opinion request without a named consultant, use targets: ["all"]; for a named consultant, use target.
 targets: ["all"] asks every available consultant, including your CLI (marked same lineage). Each gets an identical
 brief; one concurrency seat each. Model and limits are operator-owned.
+concurrency_limit starts nothing. Follow details: wait on already-known holders or retry_after_ms;
+at most two retries within 60 seconds, only if retryable. Never inspect/cancel unrelated work or replay a start receipt.
 followup_to: completed job_id or group_id; only question is also needed. Inherits the prior inputs; explicit fields,
 even empty, replace them. Files are recopied in their current state; add expose_paths or set expose_from_parent: false.
 retry_of: failed job_id alone replays saved inputs in a new chain, with current files and a link to the failure.

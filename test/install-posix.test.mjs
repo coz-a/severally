@@ -15,7 +15,14 @@ function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-install-posix-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const checkout = path.join(dir, 'checkout');
-  for (const relative of ['scripts/install.mjs', 'src/platform.mjs', 'plugins/severally', '.agents', 'package.json']) {
+  for (const relative of [
+    'scripts/install.mjs',
+    'src/platform.mjs',
+    'src/windows-job.mjs',
+    'plugins/severally',
+    '.agents',
+    'package.json',
+  ]) {
     const dest = path.join(checkout, relative);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.cpSync(path.join(root, relative), dest, { recursive: true });

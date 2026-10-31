@@ -220,7 +220,7 @@ export class RequestError extends Error {
   /**
    * @param {string} message
    * @param {string} [code]
-   * @param {unknown[]} [details]
+   * @param {unknown[] | Record<string, unknown>} [details]
    */
   constructor(message, code = 'invalid_request', details = undefined) {
     super(message);

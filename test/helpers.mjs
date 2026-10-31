@@ -50,7 +50,10 @@ export function sandboxEnv(overrides = {}) {
   // finds an entry for it exactly as an operator's real auth.json would.
   fs.writeFileSync(
     path.join(credHome, '.local', 'share', 'opencode', 'auth.json'),
-    '{"zai-coding-plan":{"type":"api","key":"test-key"}}',
+    JSON.stringify({
+      'zai-coding-plan': { type: 'api', key: 'test-key' },
+      [DEFAULT_MODELS.opencode.split('/')[0]]: { type: 'api', key: 'test-key' },
+    }),
   );
 
   Object.assign(process.env, {

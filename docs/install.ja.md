@@ -25,11 +25,11 @@ severally を入れる前に、相談したい CLI を少なくとも 1 つ入�
 
 Codex の実行ファイルは`~/.codex` や移設した `CODEX_HOME` などの認証情報ディレクトリの外に置いてください。
 相談を始める前に、シンボリックリンクの参照先も含め、実行ファイルと認証情報のパスを確認してください。実行ファイルが
-保護対象のディレクトリ内にある場合は例外が必要になり、同じディレクトリに新しく作られたファイルを相談相手が読める
-場合があります。CLI の導入手順に従って実行ファイルを外に移すか再インストールし、`PATH` が意図したインストールを
-指していることを確かめてください。例外となる実行ファイルのディレクトリには認証情報を置かないでください。この緩和策は
-Linux と Codex 0.164.0 で合成ファイルを使って検証しました。同じ条件での macOS と Windows の検証は未実施です。
-残る制限は[読み取りの制限](how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)を参照してください。
+保護対象のディレクトリ内にある構成は `unsafe_codex_placement` で拒否します。`~/.codex/packages` 配下の standalone
+版も対象です。CLI の導入手順に従って外へ導入するか、`clis.codex.bin` に外部のインストールを指定してください。
+保護ルートの中を指すシンボリックリンクでは配置を変えたことになりません。認証情報は元の場所に残せます。
+`status` はモデルを呼ばずに配置を診断します。この開始前チェックは、個別ファイルの rename 置換や任意パスの
+読取り制限を解消するものではありません。[残る制限](how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)を参照してください。
 
 OpenCode 2.x の認証回復には、Node の任意機能である `node:sqlite` も必要です。severally は実行時に利用できるかを
 確かめます。古い Node 22 の一部ではフラグなしで使えません。`severally-mcp status` はログイン状態とは別に、この
@@ -47,10 +47,10 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 - Windows ではPowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
   `PATHEXT` から探します（`.exe`、`.cmd`、`.bat`、空白を含むパスにも対応します）。
 
-インストーラとサーバは、CI で Linux・macOS・Windows のテストをしています。Claude Code と Codex のマーケットプレイスからの
-導入と、実際の CLI での動作を試したのは Linux だけです。Windows で相談を取り消すと、相談相手の CLI が動いている間なら
-プロセスの木ごと止まります。CLI が先に終わっていた場合は、CLI が起動したプロセスが残ることがあります。
-その場合に何が残るかは、テストで観察しているだけで、保証していません。
+インストーラとサーバは、CI で Linux・macOS・Windows のテストをしています。マーケットプレイスからの導入を
+試したのは Linux です。Windows では Windows 10 以降、PowerShell 5.1、および .NET の `Add-Type` と
+ネイティブ API を許可する環境が必要です。管理された起動・停止の実機試験と残る制限は
+[停止の仕組み](how-it-works.ja.md#記録)を参照してください。
 
 ## CLI 更新後の互換性確認
 
@@ -80,13 +80,13 @@ doctor の各行には `evidence`、live-check の出力には `compatibility:` 
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.13.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.14.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 npm がインストーラの代わりに導入済みのサーバを選ぶときは、パッケージとインストーラの実行ファイルを別々に指定します。
 
 ```bash
-npx --yes --package=severally-mcp@2.13.0 -- severally-install --dry-run
+npx --yes --package=severally-mcp@2.14.0 -- severally-install --dry-run
 ```
 
 変更内容を確認したら、`--dry-run` を外してインストールします。ソースのルートからも使えます。

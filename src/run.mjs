@@ -1,7 +1,7 @@
 // Child-process plumbing: sanitised environment, own process group, hard
 // wall-clock timeout, cancellation, and output caps.
 
-import { spawnCommand as spawn } from './platform.mjs';
+import { spawnCommand as spawn, spawnManagedCommand } from './platform.mjs';
 import path from 'node:path';
 import { POLICY } from './policy.mjs';
 
@@ -394,7 +394,7 @@ export function runChild({
   onOutputLine = null,
   stopSignal = 'SIGTERM',
 }) {
-  const child = spawn(command, args, {
+  const child = spawnManagedCommand(command, args, {
     cwd,
     // PWD is the parent's otherwise, and opencode takes its project root from
     // it: on 2026-10-17 a consultant globbed the lead's own directory. Every

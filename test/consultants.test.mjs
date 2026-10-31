@@ -13,6 +13,14 @@ import {
   CLI_IDS,
 } from '../src/consultants.mjs';
 
+test('unconfigured consultants use Sol high and DeepSeek high defaults', () => {
+  const { consultants } = buildConsultants({});
+  assert.equal(DEFAULT_MODELS.codex, 'gpt-6.1-sol');
+  assert.equal(DEFAULT_MODELS.opencode, 'openrouter/deepseek/deepseek-v4.1-flash-1017#high');
+  assert.equal(consultants.find((c) => c.cli === 'codex').effort ?? 'high', 'high');
+  assert.equal(consultants.find((c) => c.cli === 'opencode').effort ?? 'high', 'high');
+});
+
 const c = (name, cli, model, extra = {}) =>
   Object.freeze({
     name,
