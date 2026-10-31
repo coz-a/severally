@@ -11,7 +11,7 @@ import { exportChain, ExportError } from './export.mjs';
 
 /** @typedef {import('@modelcontextprotocol/server').CallToolResult} CallToolResult */
 
-export const SEVERALLY_VERSION = '2.12.0';
+export const SEVERALLY_VERSION = '2.13.0';
 
 // consult_get waits this long when no wait_ms is given: a call that forgot it
 // would otherwise return at once and be repeated. Up to 45 s, under the 60 s
@@ -199,8 +199,10 @@ export function createServer(manager = new JobManager()) {
       annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; ` +
+        'A group wait returns when another member finishes; check available advice while others run, then wait again for new completions. ' +
         'progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. ' +
         'A group includes statuses and comparison.by_target: actual model, stance, concrete recommendation, conditions, points/grounds, redaction observations and truncation markers. Null observations are unknown; matching stances need not recommend the same action. ' +
+        "network is this round's web policy; limits.network is the server default. " +
         'Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; ' +
         'job_id alone gets one whole answer. detail: full adds the brief/question. ' +
         'Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.',

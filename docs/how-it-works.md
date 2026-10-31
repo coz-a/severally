@@ -75,9 +75,16 @@ there is no need to repeat the question's premises there. Code questions still n
   if the config names one. The answer says that the fallback gave it, and `model` shows the one that answered.
 - A consultant that runs out of time leaves the end of what it had written beside the failure, marked partial:
   something to read, not an answer.
-- A consultation stays readable after the server restarts, and from any other severally process on the machine.
+- A consultation saved to history stays readable after the server restarts, and from any other severally process on the machine.
   One still running elsewhere reads as running; one whose server stopped abruptly (a crash or a kill) before it
   finished comes back as `interrupted`; an ordinary shutdown records its running consultations as cancelled.
+- If saving an answer fails, `consult_get` still returns the answer with `history_warning`. Its `stage` distinguishes
+  a round write failure from an index failure; `round_saved`, `index_saved` and `recovery_saved` say which copies reached disk.
+  Fix the storage permissions or free space, then get the job again to retry saving without calling the consultant.
+  A saved terminal recovery marker also lets another server finish the save; it is not reported as running or interrupted.
+  If no recovery copy could be saved, get the job from its owning server before it restarts or the answer leaves memory.
+  A group save failure is reported separately at start and get. Get the group again from its owning server after fixing storage;
+  keep the member job IDs to retrieve saved answers individually if the group is lost.
 - Once the child starts, `consult_get` reports `progress_observation`: the observation time, elapsed time, recognized event count,
   attempt and deadline. Other processes read the same saved observation. No observed event means activity has not
   been observed; it does not establish that the consultant is stopped or reasoning. Event bodies and commands are
@@ -104,7 +111,8 @@ or withdrawn, specific changes to make and checks to run.
 
 ## Records
 
-`limits.network` reports the server default. A job's `network` and `boundary.network` describe that round;
+`limits.network` reports the server default. The `network` returned for a job or group describes that round;
+a job's `boundary.network` records the applied launch policy.
 for example, a request with `network: "off"` can run without browsing while `limits.network` still says `"on"`.
 The displayed setting alone does not prove an attempted operation was refused.
 On Windows, cancellation attempts to stop the process tree while the parent is alive. If the parent has already exited,
@@ -167,9 +175,13 @@ The comparison puts each consultant's actual answering model, stance and concret
 side, followed by `decision_changers` and `unknowns`. Matching stances can recommend different options.
 `recommendation` is separate from stance; when absent in older history it is `null` (not declared), never inferred
 from a summary. The response also includes summary and findings (id, severity, point and grounds).
+Proposed `next_checks` include the check, its `method` and `expected_signal`, within the same text budget.
 Findings get more space than the other lists. Text shortened to fit is marked `truncated`, and
 `omitted` counts items left out of a list; no finding is ranked or rewritten by the server.
 
+A group wait returns when a new member finishes, so the lead can check its answer while others continue.
+The next wait observes a new completion or reaches its wait limit; already returned answers do not cause an
+immediate polling loop. Another server observes completions through history at one-second intervals.
 Group `status: done` means all available members have stopped, not that all succeeded. `member_counts` reports
 completed, failed and cancelled members, pending members (queued, running or cancelling), and members missing
 from history. Check each member's status and report failures and missing members.

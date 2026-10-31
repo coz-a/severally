@@ -343,6 +343,14 @@ test("the README's npx line names the version being released", async () => {
   }
 });
 
+test('standalone plugin instructions link to the package release rather than changing main docs', () => {
+  const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const text = fs.readFileSync(new URL('../plugins/severally/README.md', import.meta.url), 'utf8');
+  const guides = [...text.matchAll(/https:\/\/github\.com\/coz-a\/severally\/blob\/([^/]+)\/(?:docs\/install|README)[^\s)]*/g)];
+  assert.ok(guides.length >= 3);
+  for (const [, ref] of guides) assert.equal(ref, `v${version}`);
+});
+
 // The one-line description is the same sentence in the README and in
 // package.json, so npm and the repository say one thing.
 test("the README's short description is package.json's description", async () => {

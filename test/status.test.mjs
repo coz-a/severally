@@ -65,6 +65,10 @@ const run = (f, flags = []) =>
       HOME: f.home,
       SEVERALLY_HOME: f.sev,
       SEVERALLY_CONFIG: '',
+      SEVERALLY_CODEX_BIN: 'codex',
+      SEVERALLY_CLAUDE_BIN: 'claude',
+      SEVERALLY_AGY_BIN: 'agy',
+      SEVERALLY_OPENCODE_BIN: 'opencode',
       PATH: `${f.pathDir}:${path.dirname(process.execPath)}`,
     },
   });
@@ -171,4 +175,141 @@ test('status warns when the configured Codex executable is inside a protected ro
   const safe = statusFor(outsideExecutable);
   assert.equal(safe.status, 0, safe.stderr);
   assert.doesNotMatch(safe.stdout, /Codex executable.*inside a protected root/i);
+});
+
+function configuredProbe(t, source) {
+  const home = sandboxEnv();
+  const dir = path.join(home, '相談 CLI with spaces');
+  fs.mkdirSync(dir);
+  const script = path.join(dir, 'probe.mjs');
+  fs.writeFileSync(script, source);
+  const command = path.join(dir, process.platform === 'win32' ? 'consultant.cmd' : 'consultant');
+  fs.writeFileSync(
+    command,
+    process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "%~dp0probe.mjs" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`,
+    { mode: 0o755 },
+  );
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const config = path.join(home, 'config.json');
+  const runStatus = (settings, extraEnv = {}) => {
+    fs.writeFileSync(config, JSON.stringify(settings));
+    return spawnSync(process.execPath, [bin, 'status'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: path.dirname(process.execPath),
+        SEVERALLY_CONFIG: config,
+        SEVERALLY_CODEX_BIN: '',
+        SEVERALLY_CLAUDE_BIN: '',
+        SEVERALLY_AGY_BIN: '',
+        SEVERALLY_OPENCODE_BIN: '',
+        ...extraEnv,
+      },
+      timeout: 25000,
+      windowsHide: true,
+    });
+  };
+  return { home, command, runStatus };
+}
+
+test('status probes the configured executable and relocated credentials without exposing account details', (t) => {
+  const f = configuredProbe(
+    t,
+    `
+    import fs from 'node:fs';
+    import path from 'node:path';
+    if (process.argv.slice(2).join(' ') !== 'auth status --json') process.exit(8);
+    console.log(JSON.stringify({
+      loggedIn: fs.readFileSync(path.join(process.env.CLAUDE_CONFIG_DIR, 'auth-test'), 'utf8') === 'test-credential',
+      email: 'private@example.com', token: 'must-not-print-this-token'
+    }));
+  `,
+  );
+  const auth = path.join(f.home, '認証情報');
+  fs.mkdirSync(auth);
+  fs.writeFileSync(path.join(auth, 'auth-test'), 'test-credential');
+  const r = f.runStatus({
+    consultants: { review: { cli: 'claude-code', model: 'claude-opus-5-5' } },
+    clis: { 'claude-code': { bin: f.command, env: { CLAUDE_CONFIG_DIR: auth } } },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /claude-code +logged in/);
+  assert.match(r.stdout, /Claude Code +not installed/, 'host registration is checked separately on PATH');
+  assert.doesNotMatch(r.stdout, /private@example|must-not-print/);
+});
+
+test('status distinguishes an unsupported login command from a logged-out account', (t) => {
+  const f = configuredProbe(t, `console.error('unknown subcommand login: private@example.com'); process.exitCode = 2;`);
+  const r = f.runStatus({
+    consultants: { review: { cli: 'codex', model: 'gpt-6-astra' } },
+    clis: { codex: { bin: f.command } },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /codex +could not tell/);
+  assert.doesNotMatch(r.stdout, /not logged in|private@example/);
+});
+
+test('status checks OpenCode credentials from the consultation credential source', (t) => {
+  const f = configuredProbe(
+    t,
+    `
+    import fs from 'node:fs';
+    import path from 'node:path';
+    if (process.argv.slice(2).join(' ') !== 'auth list') process.exit(8);
+    const auth = JSON.parse(fs.readFileSync(path.join(process.env.XDG_DATA_HOME, 'opencode', 'auth.json'), 'utf8'));
+    for (const _ of Object.keys(auth)) console.log('provider stored credential');
+  `,
+  );
+  const credentials = path.join(f.home, '移設した認証', '.local', 'share', 'opencode');
+  fs.mkdirSync(credentials, { recursive: true });
+  fs.writeFileSync(path.join(credentials, 'auth.json'), '{"provider-a":{},"provider-b":{}}');
+  const r = f.runStatus(
+    {
+      consultants: { review: { cli: 'opencode', model: 'provider/model' } },
+      clis: { opencode: { bin: f.command } },
+    },
+    { SEVERALLY_OPENCODE_CRED_HOME: path.join(f.home, '移設した認証') },
+  );
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /opencode +2 saved credentials/);
+});
+
+test('status reports a configured logged-out CLI without confusing it with probe failure', (t) => {
+  const f = configuredProbe(t, `console.error('Not logged in'); process.exitCode = 1;`);
+  const r = f.runStatus({
+    consultants: { review: { cli: 'codex', model: 'gpt-6-astra' } },
+    clis: { codex: { bin: f.command } },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /codex +not logged in/);
+});
+
+test('status does not execute a disabled consultant CLI', (t) => {
+  const f = configuredProbe(t, `import fs from 'node:fs'; fs.writeFileSync(process.env.PROBE_MARKER, 'called');`);
+  const marker = path.join(f.home, 'disabled-probe-called');
+  const r = f.runStatus({
+    consultants: { review: { cli: 'codex', model: 'gpt-6-astra' } },
+    clis: { codex: { bin: f.command, enabled: false, env: { PROBE_MARKER: marker } } },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /codex +not checked.*disabled/);
+  assert.equal(fs.existsSync(marker), false);
+});
+
+test('status probes independent logins concurrently and bounds silent CLI waits', (t) => {
+  const f = configuredProbe(t, `setInterval(() => {}, 1000);`);
+  const started = Date.now();
+  const r = f.runStatus({
+    consultants: {
+      codex: { cli: 'codex', model: 'gpt-6-astra' },
+      claude: { cli: 'claude-code', model: 'claude-opus-5-5' },
+    },
+    clis: { codex: { bin: f.command }, 'claude-code': { bin: f.command } },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /codex +could not tell.*timed out/);
+  assert.match(r.stdout, /claude-code +could not tell.*timed out/);
+  assert.ok(Date.now() - started < 10000, 'two silent probes share the wait rather than each consuming it');
 });

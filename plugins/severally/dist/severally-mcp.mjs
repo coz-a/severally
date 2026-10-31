@@ -674,17 +674,6 @@ function findCommand(command, { cwd = process.cwd(), env = process.env } = {}) {
   }
   return null;
 }
-function execCommandSync(command, args, options = {}) {
-  const encoding = "utf8";
-  const opts = { windowsHide: true, encoding, ...options };
-  const batch = batchInvocation(command, args, opts);
-  const result = batch ? nativeSpawnSync(batch.command, batch.args, batch.options) : import_cross_spawn.default.sync(command, args, opts);
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw Object.assign(new Error(`${command} exited with ${result.status ?? result.signal}`), result);
-  }
-  return result.stdout;
-}
 var import_which, import_cross_spawn, import_escape;
 var init_platform = __esm({
   "src/platform.mjs"() {
@@ -25400,8 +25389,8 @@ function liftWireOnlyMaterial(message, kind) {
   };
 }
 function codecResultValidator(codec2, method) {
-  const probe = codec2.validateResult(method, void 0);
-  if (!probe.ok && probe.reason === "not-in-era") return void 0;
+  const probe2 = codec2.validateResult(method, void 0);
+  if (!probe2.ok && probe2.reason === "not-in-era") return void 0;
   return { "~standard": {
     version: 1,
     vendor: "mcp-wire-codec",
@@ -38571,37 +38560,69 @@ function loadChain(chainId) {
     }
   });
 }
-function persistRound(record2, { appendIndex = true } = {}) {
-  fs4.mkdirSync(path6.join(POLICY.home, "history", record2.chain_id), { recursive: true, mode: 448 });
+function persistRound(record2, { appendIndex = true, preserveSaved = false } = {}) {
+  if (!appendIndex) return writeRound(record2, false);
+  const file2 = roundPath(record2.chain_id, record2.round);
+  try {
+    fs4.mkdirSync(path6.dirname(file2), { recursive: true, mode: 448 });
+    return withDirectoryLock(`${file2}.lock`, "history", () => {
+      if (preserveSaved) {
+        try {
+          record2 = JSON.parse(fs4.readFileSync(file2, "utf8"));
+        } catch (err) {
+          if (!(err instanceof Error && "code" in err && err.code === "ENOENT")) throw err;
+        }
+      }
+      writeRound(record2, true);
+    });
+  } catch (err) {
+    throw err instanceof HistoryWriteError ? err : new HistoryWriteError("round", err);
+  }
+}
+function writeRound(record2, appendIndex) {
   const file2 = roundPath(record2.chain_id, record2.round);
   const tmp = `${file2}.${process.pid}.tmp`;
   try {
+    fs4.mkdirSync(path6.join(POLICY.home, "history", record2.chain_id), { recursive: true, mode: 448 });
     fs4.writeFileSync(tmp, JSON.stringify(record2, null, 2), { mode: 384 });
     fs4.renameSync(tmp, file2);
   } catch (err) {
-    fs4.rmSync(tmp, { force: true });
-    throw err;
+    try {
+      fs4.rmSync(tmp, { force: true });
+    } catch {
+    }
+    throw new HistoryWriteError("round", err);
   }
-  if (!appendIndex || indexRow(record2.job_id)) return;
-  fs4.appendFileSync(
-    path6.join(POLICY.home, "history", "index.jsonl"),
-    `${JSON.stringify({
-      job_id: record2.job_id,
-      chain_id: record2.chain_id,
-      round: record2.round,
-      target: record2.target,
-      cli: record2.cli ?? null,
-      initiator: record2.initiator ?? null,
-      mode: record2.mode,
-      status: record2.status,
-      failure_kind: record2.failure?.kind ?? null,
-      model: record2.model,
-      created_at: record2.created_at,
-      duration_ms: record2.duration_ms
-    })}
+  if (!appendIndex) return;
+  try {
+    withDirectoryLock(path6.join(POLICY.home, "history", "index.lock"), "history index", () => {
+      if (indexRow(record2.job_id)) return;
+      fs4.appendFileSync(
+        path6.join(POLICY.home, "history", "index.jsonl"),
+        // A failed append may leave an unterminated JSON prefix. Start on a
+        // fresh line so that prefix cannot swallow this complete record.
+        `
+${JSON.stringify({
+          job_id: record2.job_id,
+          chain_id: record2.chain_id,
+          round: record2.round,
+          target: record2.target,
+          cli: record2.cli ?? null,
+          initiator: record2.initiator ?? null,
+          mode: record2.mode,
+          status: record2.status,
+          failure_kind: record2.failure?.kind ?? null,
+          model: record2.model,
+          created_at: record2.created_at,
+          duration_ms: record2.duration_ms
+        })}
 `,
-    { mode: 384 }
-  );
+        { mode: 384 }
+      );
+    });
+  } catch (err) {
+    throw new HistoryWriteError("index", err);
+  }
 }
 function updateRound(fallback, update) {
   const file2 = roundPath(fallback.chain_id, fallback.round);
@@ -38787,7 +38808,18 @@ function loadGroup(groupId) {
 function persistGroup(group) {
   const dir = path6.join(POLICY.home, "history", "groups");
   fs4.mkdirSync(dir, { recursive: true, mode: 448 });
-  fs4.writeFileSync(path6.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 384 });
+  const file2 = path6.join(dir, `${group.group_id}.json`);
+  const tmp = `${file2}.${process.pid}.tmp`;
+  try {
+    fs4.writeFileSync(tmp, JSON.stringify(group, null, 2), { mode: 384 });
+    fs4.renameSync(tmp, file2);
+  } catch (err) {
+    try {
+      fs4.rmSync(tmp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
 }
 function cleanupJobDir(jobId) {
   for (const dir of [jobDir(jobId), sandboxHome(jobId)]) {
@@ -38797,12 +38829,21 @@ function cleanupJobDir(jobId) {
     }
   }
 }
-var roundPath, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS, continuesChain, cancelFile, cancelRequested;
+var roundPath, HistoryWriteError, JOB_ID, GROUP_ID, runningDir, runningFile, seatsDir, seatFile, LOCK_WAIT_MS, LOCK_STALE_MS, continuesChain, cancelFile, cancelRequested;
 var init_store = __esm({
   "src/store.mjs"() {
     "use strict";
     init_policy();
     roundPath = (chainId, round) => path6.join(POLICY.home, "history", chainId, `round-${String(round).padStart(2, "0")}.json`);
+    HistoryWriteError = class extends Error {
+      /** @param {'round' | 'index'} stage @param {unknown} cause */
+      constructor(stage, cause) {
+        super(`could not save history ${stage}`, { cause });
+        this.stage = stage;
+        const code = cause instanceof Error && "code" in cause ? String(cause.code) : "";
+        this.code = /^[A-Z0-9_]{1,40}$/.test(code) ? code : null;
+      }
+    };
     JOB_ID = /^job_[0-9a-f]{12}$/;
     GROUP_ID = /^group_[0-9a-f]{12}$/;
     runningDir = () => path6.join(POLICY.home, "history", "running");
@@ -40546,7 +40587,13 @@ function byTarget(m, budget) {
   );
   const alternatives = list("alternative_options", r.alternatives, 1, (a, n) => clip2(a.option, n), 1 / 3);
   const unknowns = list("unknowns", r.unknowns, 1, (u, n) => ({ id: u.id, item: clip2(u.item, n) }), 1 / 2);
-  const nextChecks = list("next_checks", r.next_checks, 1, (c, n) => ({ id: c.id, check: clip2(c.check, n) }), 1 / 2);
+  const nextChecks = list(
+    "next_checks",
+    r.next_checks,
+    3,
+    (c, n) => ({ id: c.id, check: clip2(c.check, n), method: clip2(c.method, n), expected_signal: clip2(c.expected_signal, n) }),
+    1 / 2
+  );
   const disagreements = list(
     "remaining_disagreements",
     r.remaining_disagreements,
@@ -40641,6 +40688,7 @@ function pointsOf(view, ids) {
     stance: r.stance,
     evidence_basis: r.evidence_basis,
     caveat: view.quality?.caveat ?? null,
+    ...view.history_warning ? { history_warning: view.history_warning } : {},
     redaction: view.quality?.redaction ?? { files: null, brief: null, result: null },
     points,
     // What this projection leaves out, counted; the whole answer is one call away.
@@ -40776,6 +40824,7 @@ var init_jobs = __esm({
         this._cancelWatch = null;
         this.jobs = /* @__PURE__ */ new Map();
         this.groups = /* @__PURE__ */ new Map();
+        this._groupObserved = /* @__PURE__ */ new Map();
         this.order = [];
         ensureDirs();
       }
@@ -40791,6 +40840,9 @@ var init_jobs = __esm({
         if (done) return done;
         const live = loadRunning(jobId);
         if (!live) return loadRound(jobId);
+        if (["completed", "failed", "cancelled"].includes(live.status)) {
+          return this.#recoverHistory(live);
+        }
         const state = ownerState(jobId, live.owner);
         return state === "alive" ? live : this.#interrupt(jobId, live, state);
       }
@@ -40805,6 +40857,7 @@ var init_jobs = __esm({
        * @returns {Round}
        */
       #interrupt(jobId, rec, state) {
+        if (["completed", "failed", "cancelled"].includes(rec.status)) return this.#recoverHistory(rec);
         const done = loadRound(jobId);
         if (done) {
           removeRunning(jobId);
@@ -40820,14 +40873,9 @@ var init_jobs = __esm({
           retriable: true,
           delivered_advice: false
         };
-        try {
-          persistRound(round);
-        } catch {
-          return round;
-        }
-        removeRunning(jobId);
+        const warning = this.#saveHistory(round);
         if (state === "dead") cleanupJobDir(jobId);
-        return round;
+        return warning ? { ...round, history_warning: warning } : round;
       }
       /** Close out the consultations whose process died, and remove their job directories. */
       sweepInterrupted() {
@@ -40927,7 +40975,12 @@ var init_jobs = __esm({
        */
       #jobView(job, detail) {
         this.#refreshRound(job);
+        if (job.history_warning) {
+          job.history_warning = this.#saveHistory(this.#record(job), true);
+          this.#refreshRound(job);
+        }
         const rec = this.#record(job);
+        if (job.history_warning) rec.history_warning = job.history_warning;
         rec.cancellable = job.status === "running" || job.status === "queued";
         rec.progress = job.status === "running" ? job._progressText ?? null : null;
         rec.progress_observation = job._progress ?? null;
@@ -40981,7 +41034,7 @@ var init_jobs = __esm({
           seen.add(jobId);
           const state = ownerState(jobId, live.owner);
           const saved = state === "alive" ? null : loadRoundAt(live);
-          const rec = state === "alive" ? live : saved ?? /** @type {Round} */
+          const rec = state === "alive" || ["completed", "failed", "cancelled"].includes(live.status) ? live : saved ?? /** @type {Round} */
           { ...live, status: "failed", failure: { kind: "interrupted" } };
           candidates.push({ at: rec.created_at ?? "", load: () => rec });
         }
@@ -41034,7 +41087,8 @@ var init_jobs = __esm({
             this_session: this.jobs.has(j.job_id),
             predicted: Boolean(j.prediction),
             reflected: Boolean(j.reflection),
-            initiator: j.initiator ?? null
+            initiator: j.initiator ?? null,
+            ...j.history_warning ? { history_warning: j.history_warning } : {}
           };
         });
       }
@@ -41427,10 +41481,7 @@ var init_jobs = __esm({
           job_ids: members2.map((m) => m.job_id)
         };
         this.groups.set(groupId, group);
-        try {
-          persistGroup(group);
-        } catch {
-        }
+        this.#saveGroup(group);
         for (const job of members2) {
           const chain = { round: job.round, priorRounds: this.#chainHistory(job.chain_id) };
           const observed = renderBriefWithReport(req, chain, exposeManifest);
@@ -41450,6 +41501,8 @@ var init_jobs = __esm({
         for (const item of material?.skipped ?? []) skippedCounts[item.reason] = (skippedCounts[item.reason] ?? 0) + 1;
         const common = {
           group_id: groupId,
+          network: req.network,
+          ...group.history_warning ? { history_warning: group.history_warning } : {},
           ...sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {},
           ...fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {},
           ...retryFrom ? { retry_of: retryFrom.job_id } : {},
@@ -41607,6 +41660,7 @@ var init_jobs = __esm({
         if (!group) return;
         if (group.job_ids.some((jid) => this.jobs.has(jid))) return;
         this.groups.delete(groupId);
+        this._groupObserved.delete(groupId);
       }
       /**
        * @param {Job} job
@@ -41950,11 +42004,7 @@ var init_jobs = __esm({
       }
       /** @param {Job} job */
       #finish(job) {
-        try {
-          persistRound(this.#record(job));
-        } catch {
-        }
-        removeRunning(job.job_id);
+        job.history_warning = this.#saveHistory(this.#record(job));
         releaseSeat(job.job_id);
         LIVE_HERE.delete(job.job_id);
         cleanupJobDir(job.job_id);
@@ -41962,6 +42012,63 @@ var init_jobs = __esm({
         job._progress = void 0;
         job._progressText = void 0;
         job._cancelFns = [];
+      }
+      /**
+       * @param {Round} round
+       * @param {boolean} [recover]
+       * @returns {import('./store.mjs').HistoryWarning | undefined}
+       */
+      #saveHistory(round, recover = false) {
+        try {
+          persistRound(round, { preserveSaved: recover });
+          removeRunning(round.job_id);
+          return void 0;
+        } catch (err) {
+          const stage = err instanceof HistoryWriteError ? err.stage : "round";
+          const warning = {
+            stage,
+            round_saved: stage === "index",
+            index_saved: false,
+            recovery_saved: true,
+            code: err instanceof HistoryWriteError ? err.code : null,
+            message: stage === "index" ? "the answer is saved, but its history index is incomplete; lookup and continuation after restart are not yet reliable" : "the answer is available, but its round could not be saved to history",
+            recovery: "fix the history storage permissions or free disk space, then call consult_get with this job_id to retry saving without calling the consultant"
+          };
+          try {
+            writeRunning({ ...round, history_warning: warning });
+          } catch {
+            warning.recovery_saved = false;
+            warning.recovery = "fix history storage and call consult_get with this job_id before this server restarts or the answer leaves memory; no recoverable terminal copy could be saved";
+            removeRunning(round.job_id);
+          }
+          return warning;
+        }
+      }
+      /** @param {StoredRound} rec @returns {Round} */
+      #recoverHistory(rec) {
+        const { history_warning, owner, progress_observation, progress_text, ...round } = (
+          /** @type {StoredRound} */
+          loadRoundAt(rec) ?? rec
+        );
+        const warning = this.#saveHistory(round, true);
+        return warning ? { ...round, history_warning: warning } : round;
+      }
+      /** @param {Group} group */
+      #saveGroup(group) {
+        const { history_warning, ...record2 } = group;
+        try {
+          persistGroup(record2);
+          delete group.history_warning;
+        } catch (err) {
+          const code = err instanceof Error && "code" in err ? String(err.code) : "";
+          group.history_warning = {
+            stage: "group",
+            recovery_saved: false,
+            code: /^[A-Z0-9_]{1,40}$/.test(code) ? code : null,
+            message: "the group could not be saved; its comparison and group follow-up may be unavailable after this server restarts",
+            recovery: "fix history storage and call consult_get with this group_id before restart to retry saving; keep each member job_id to retrieve saved member answers individually"
+          };
+        }
       }
       // The lead's own column: what they checked, what it turned out to be, and
       // what it changed. Nothing here is inferred -- the server refuses an id the
@@ -42219,6 +42326,8 @@ var init_jobs = __esm({
         const live = cancelling || members2.some((m) => m.status === "running" || m.status === "queued");
         const missing = group.job_ids.length - members2.length;
         const anyResult = members2.some((m) => m.result);
+        const waitingStep = anyResult ? "check the available advice while other members run, then poll consult_get again with this group_id for later results, or consult_cancel it" : "poll consult_get again with this group_id, or consult_cancel it";
+        const networks = new Set(members2.map((m) => m.network ?? null));
         const firstBrief = members2.find((m) => m.brief)?.brief ?? null;
         const groupBrief = firstBrief && !full ? { ...firstBrief, full_with: `consult_get({ group_id: "${group.group_id}", detail: "full" }) or consult_export` } : firstBrief;
         const trimmed2 = members2.map(({ brief, limits, ...rest }) => {
@@ -42232,6 +42341,7 @@ var init_jobs = __esm({
             duration_ms: rest.duration_ms,
             progress: progress4,
             cancel_effect: rest.cancel_effect,
+            ...rest.history_warning ? { history_warning: rest.history_warning } : {},
             ...full && rest.brief_note ? { brief_note: rest.brief_note } : {},
             failure: rest.failure && { kind: rest.failure.kind, retriable: rest.failure.retriable, message },
             // The failure's detail, and a message or progress past its length, are in the member's own view.
@@ -42241,6 +42351,8 @@ var init_jobs = __esm({
         const question = full ? group.question : cut(group.question, QUESTION_CHARS);
         const view = {
           group_id: group.group_id,
+          network: networks.size === 1 ? members2[0]?.network ?? null : null,
+          ...group.history_warning ? { history_warning: group.history_warning } : {},
           status: cancelling ? "cancelling" : live ? "running" : "done",
           mode: group.mode,
           question,
@@ -42262,7 +42374,7 @@ var init_jobs = __esm({
           members: trimmed2,
           comparison: null,
           cancellable: live,
-          next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? "poll consult_get again with this group_id, or consult_cancel it" : anyResult ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer' : missing > 0 ? "no available member produced a result; missing members have unknown outcomes. Report the missing history and each available failure or cancellation, then proceed on your own judgement" : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
+          next_step: cancelling ? "poll consult_get with this group_id until every member reads cancelled" : live ? waitingStep : anyResult ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer' : missing > 0 ? "no available member produced a result; missing members have unknown outcomes. Report the missing history and each available failure or cancellation, then proceed on your own judgement" : `no advice was obtained: no member of this fan-out produced a result (see each member's failure.kind). Say so plainly -- this is not "the consultants had no concerns" -- and proceed on your own judgement`,
           // The limits went out with consult_start, and consult_list has them;
           // by default they are not repeated here, where their size grows with
           // the number of consultants configured rather than asked.
@@ -42279,6 +42391,7 @@ var init_jobs = __esm({
       groupView(groupId, opts) {
         const group = this.groups.get(groupId) ?? loadGroup(groupId);
         if (!group) return null;
+        if (group.history_warning) this.#saveGroup(group);
         return this.#shapeGroup(
           group,
           group.job_ids.map((jid) => this.view(jid, opts)).filter((v) => v != null),
@@ -42292,14 +42405,32 @@ var init_jobs = __esm({
        * @param {AbortSignal} [signal]
        */
       async waitGroup(groupId, waitMs, opts, signal) {
-        const group = this.groups.get(groupId);
-        if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
-        const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
-        if (budget > 0) {
-          const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
-          await settled(Promise.all(promises), budget, signal);
+        const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
+        const observed = this._groupObserved.get(groupId) ?? /* @__PURE__ */ new Set();
+        const terminal = (view2) => view2.members.filter((m) => ["completed", "failed", "cancelled"].includes(m.status)).map((m) => m.job_id);
+        let view = this.groupView(groupId, opts);
+        while (view && ["running", "cancelling"].includes(view.status) && !terminal(view).some((jid) => !observed.has(jid)) && Date.now() < until && !signal?.aborted) {
+          const group = this.groups.get(groupId);
+          const pending = (group?.job_ids ?? []).flatMap((jid) => {
+            const job = this.jobs.get(jid);
+            return job && ["queued", "running"].includes(job.status) && job.promise ? [job.promise] : [];
+          });
+          await settled(
+            pending.length ? Promise.race(pending) : null,
+            Math.min(pending.length ? Infinity : 1e3, until - Date.now()),
+            signal
+          );
+          view = this.groupView(groupId, opts);
         }
-        return this.groupView(groupId, opts);
+        if (view && view.status !== "done") {
+          this._groupObserved.set(groupId, new Set(terminal(view)));
+          while (this._groupObserved.size > POLICY.maxJobsRetained) {
+            const oldest = this._groupObserved.keys().next().value;
+            if (oldest === void 0) break;
+            this._groupObserved.delete(oldest);
+          }
+        } else this._groupObserved.delete(groupId);
+        return view;
       }
       /** @param {string} groupId */
       cancelGroup(groupId) {
@@ -42815,7 +42946,7 @@ function createServer(manager = new JobManager()) {
     {
       title: "Get consultation status or result",
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. A group includes statuses and comparison.by_target: actual model, stance, concrete recommendation, conditions, points/grounds, redaction observations and truncation markers. Null observations are unknown; matching stances need not recommend the same action. Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; job_id alone gets one whole answer. detail: full adds the brief/question. Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.`,
+      description: `Wait for job_id or group_id (default ${DEFAULT_WAIT_MS} ms; wait_ms: 0 polls). Repeat while running; A group wait returns when another member finishes; check available advice while others run, then wait again for new completions. progress is sent every 15 s. completed has advice; failed has failure.kind and no advice. A group includes statuses and comparison.by_target: actual model, stance, concrete recommendation, conditions, points/grounds, redaction observations and truncation markers. Null observations are unknown; matching stances need not recommend the same action. network is this round's web policy; limits.network is the server default. Read grounds already present. For missing/shortened deciding points use job_id + ids: ["f2", "u1"]; job_id alone gets one whole answer. detail: full adds the brief/question. Check deciding claims, batch checked entries in consult_record, then report; unchecked points stay unverified.`,
       inputSchema: external_exports.object({
         job_id: external_exports.string().min(1).optional(),
         group_id: external_exports.string().min(1).optional(),
@@ -43044,7 +43175,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.12.0";
+    SEVERALLY_VERSION = "2.13.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -43108,38 +43239,62 @@ __export(status_exports, {
 });
 import fs13 from "node:fs";
 import path15 from "node:path";
-function registration({ cmd, checks }) {
+async function probe(command, args, env, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { problem: "status time budget exhausted" };
+  try {
+    const { done } = runChild({
+      command,
+      args,
+      env,
+      timeoutMs: Math.min(PROBE_TIMEOUT_MS, remaining)
+    });
+    const result = await done;
+    if (result.timedOut) return { problem: "timed out; run the CLI status command directly" };
+    if (result.spawnError || result.signal || result.pipesForced || result.truncated) {
+      return { problem: "probe failed; run the CLI status command directly" };
+    }
+    return { result };
+  } catch {
+    return { problem: "probe failed; check the executable and run its status command directly" };
+  }
+}
+async function registration({ cmd, checks }, deadline) {
   if (!findCommand(cmd)) return "not installed";
   let ran = false;
   for (const args of checks) {
-    try {
-      const out = execCommandSync(cmd, args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
+    const check2 = await probe(cmd, args, process.env, deadline);
+    if (check2.result?.code === 0) {
       ran = true;
-      if (/(^|[\s@:])severally([\s@:]|$)/m.test(out)) return "registered (listed by the client)";
-    } catch (err) {
-      if (typeof thrown(err, "status") === "number") ran = true;
+      if (/(^|[\s@:])severally([\s@:]|$)/m.test(check2.result.stdout)) return "registered (listed by the client)";
+    } else {
+      if (typeof check2.result?.code === "number") ran = true;
     }
   }
   return ran ? "not registered" : `could not tell (${cmd} ${checks.map((a) => a.join(" ")).join(" / ")} failed)`;
 }
-function login(cli) {
+async function login(cli, deadline) {
   const check2 = LOGIN[cli];
   if (!check2) return "not checked (no login status command)";
-  if (!findCommand(check2.cmd)) return "not installed";
-  let out;
-  let ok = true;
-  try {
-    out = execCommandSync(check2.cmd, check2.args, { encoding: "utf8", timeout: 2e4, stdio: ["ignore", "pipe", "pipe"] });
-  } catch (e) {
-    if (typeof thrown(e, "status") !== "number") return `could not tell (${check2.cmd} ${check2.args.join(" ")} failed)`;
-    out = `${thrown(e, "stdout") ?? ""}`;
-    ok = false;
+  const configured = POLICY.clis[cli];
+  const problem = operatorEnvProblem(cli, configured.extraEnv);
+  if (problem) return `not checked (clis.${cli}.env needs fixing: ${problem})`;
+  const env = childEnv(cli, {}, configured.extraEnv);
+  if (cli === "opencode") {
+    env.XDG_DATA_HOME = path15.join(opencodeCredentialsHome(), ".local", "share");
   }
+  const command = findCommand(configured.cli, { env });
+  if (!command) return "not installed (configured executable; check clis bin or PATH)";
+  if (!configured.available) return "not checked (CLI disabled in configuration)";
+  const response = await probe(command, check2.args, env, deadline);
+  if (!response.result) return `could not tell (${response.problem})`;
+  const { stdout, stderr, code } = response.result;
   try {
-    const v = check2.read(out, ok);
+    if (cli === "opencode" && code !== 0) throw new Error("unsupported response");
+    const v = check2.read(stdout, code === 0, stderr);
     return v === true ? "logged in" : v || "not logged in";
   } catch {
-    return `could not tell (${check2.cmd} ${check2.args.join(" ")} answered in an unexpected form)`;
+    return `could not tell (${check2.args.join(" ")} unsupported or answered unexpectedly; update the CLI or check it directly)`;
   }
 }
 function effectiveEffort(consultant) {
@@ -43174,7 +43329,11 @@ function codexPlacementWarning() {
   }
   return null;
 }
-function status() {
+async function status() {
+  const deadline = Date.now() + STATUS_TIMEOUT_MS;
+  const loginClis = [...new Set(POLICY.consultants.map((c) => c.cli))];
+  const registrations = CLIENTS.map((client) => registration(client, deadline));
+  const logins = loginClis.map((cli) => login(cli, deadline));
   const lines = [`severally ${SEVERALLY_VERSION}`, ""];
   const problem = configProblem();
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : "ok"}`);
@@ -43201,14 +43360,16 @@ function status() {
     ""
   );
   lines.push("clients:");
-  for (const client of CLIENTS) lines.push(`  ${client.label.padEnd(12)} ${registration(client)}`);
+  const registered = await Promise.all(registrations);
+  for (const [i, client] of CLIENTS.entries()) lines.push(`  ${client.label.padEnd(12)} ${registered[i]}`);
   lines.push("", "login (out of quota is not checked; the first consultation shows it):");
-  for (const cli of [...new Set(POLICY.consultants.map((c) => c.cli))]) lines.push(`  ${cli.padEnd(12)} ${login(cli)}`);
+  const loggedIn = await Promise.all(logins);
+  for (const [i, cli] of loginClis.entries()) lines.push(`  ${cli.padEnd(12)} ${loggedIn[i]}`);
   process.stdout.write(`${lines.join("\n")}
 `);
   return problem ? 1 : 0;
 }
-var CLIENTS, thrown, LOGIN;
+var PROBE_TIMEOUT_MS, STATUS_TIMEOUT_MS, CLIENTS, LOGIN;
 var init_status = __esm({
   "src/status.mjs"() {
     "use strict";
@@ -43216,6 +43377,9 @@ var init_status = __esm({
     init_server();
     init_platform();
     init_opencode_sandbox();
+    init_run();
+    PROBE_TIMEOUT_MS = 5e3;
+    STATUS_TIMEOUT_MS = 2e4;
     CLIENTS = [
       {
         label: "Claude Code",
@@ -43236,15 +43400,28 @@ var init_status = __esm({
       { label: "Antigravity", cmd: "agy", checks: [["mcp", "list"]] },
       { label: "OpenCode", cmd: "opencode", checks: [["mcp", "list"]] }
     ];
-    thrown = (e, key) => typeof e === "object" && e !== null ? Reflect.get(e, key) : void 0;
     LOGIN = {
-      "claude-code": { cmd: "claude", args: ["auth", "status", "--json"], read: (out) => JSON.parse(out).loggedIn === true },
+      "claude-code": {
+        args: ["auth", "status", "--json"],
+        read: (out) => {
+          const parsed = JSON.parse(out);
+          if (typeof parsed.loggedIn !== "boolean") throw new Error("unsupported response");
+          return parsed.loggedIn;
+        }
+      },
       // Codex prints its answer on stderr; the exit status carries the verdict.
-      codex: { cmd: "codex", args: ["login", "status"], read: (out, ok) => ok },
+      codex: {
+        args: ["login", "status"],
+        read: (out, ok, stderr) => {
+          if (ok) return true;
+          if (/\bnot logged in\b/i.test(`${out}
+${stderr}`)) return false;
+          throw new Error("unsupported response");
+        }
+      },
       // OpenCode can also take keys from the environment, so no saved credential
       // is a warning, not a verdict.
       opencode: {
-        cmd: "opencode",
         args: ["auth", "list"],
         read: (out) => {
           const n = out.split("\n").filter((l) => /\bstored\b/.test(l)).length;
@@ -43277,7 +43454,7 @@ if (process.argv[2] === "install") {
   await import(installer.href);
 } else if (process.argv[2] === "status") {
   const { status: status2 } = await Promise.resolve().then(() => (init_status(), status_exports));
-  process.exitCode = status2();
+  process.exitCode = await status2();
 } else {
   const { main: main2 } = await Promise.resolve().then(() => (init_server(), server_exports));
   main2().catch((err) => {

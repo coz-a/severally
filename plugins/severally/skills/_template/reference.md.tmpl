@@ -94,10 +94,13 @@ with no `target` or `targets` (see Follow-ups).
 
 While you wait, `consult_get` blocks for up to its limit (ten minutes where the client allows it). To work on
 something independent in between, pass a shorter `wait_ms` and come back.
+A group wait also returns when a new member finishes. Check its advice while the others continue, then call
+again to wait for another completion; an answer already returned does not make later waits return immediately.
+`done` still means that all available members have stopped. Keep later disagreements in the final comparison.
 
 `comparison.by_target` holds, per consultant: actual model, stance, recommendation, summary, confidence, evidence basis, finding points (each
 with its `id`, severity and grounds), `severity_counts`, `decision_changers`, alternatives, unknowns (`u1` …),
-next_checks (`c1` …), remaining disagreements, its `caveat`, and how many of its points carry no verdict yet.
+next_checks (`c1` …, with method and expected signal), remaining disagreements, its `caveat`, and how many of its points carry no verdict yet.
 Long texts are cut and the column says so (`truncated`); a list that could not hold every item says how many it
 left out (`omitted`), so an empty list there is not "none given". Read grounds already shown whole; fetch missing
 or shortened deciding points with `consult_get({ job_id, ids: ["f2"] })`. `consult_get({ job_id })` returns one

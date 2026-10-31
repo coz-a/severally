@@ -21,7 +21,8 @@ itself, then carries on from what it found. For an important decision, such as a
 it consults before asking you to approve it, and asks you only about what is yours to decide.
 
 For example, a cache review can reveal that member-specific prices would leak to other users. The lead
-checks the pricing assumptions, chooses what can be cached, and records what remains unverified. The
+checks the pricing assumptions, chooses what can be cached, and records what remains unverified. When the
+code changes, it sends those checks and the current files to the same consultant. The
 [worked example](docs/how-it-works.md#example) follows the separate recommendations through that decision.
 
 Consultations send the brief, exposed files and anything the consultant reads to that CLI's model.
@@ -55,11 +56,14 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.12.0 install
+npx -y severally-mcp@2.13.0 install
 ```
 
-When running from the root of this source checkout, npm can select an existing global server instead of the installer. If
-the command says it is the installed server, change to a directory outside the checkout and run it again.
+If npm selects an existing global server from this source checkout, explicitly select the installer:
+
+```bash
+npx --yes --package=severally-mcp@2.13.0 -- severally-install
+```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
 would change without changing anything.
@@ -120,8 +124,8 @@ same bug. A consultation takes time and real quota, so it is not for small fixes
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.12.0 install
-npx -y severally-mcp@2.12.0 status
+npx -y severally-mcp@2.13.0 install
+npx -y severally-mcp@2.13.0 status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation
@@ -140,11 +144,9 @@ Ask for consultations, follow-ups and Markdown exports in your agent's chat.
 
 ### Answers, checks and failures
 
-Sensitive-key masking, redaction observations, `recommendation`, `refuted` and shared verification notes are
-available from v2.10.0. Earlier answers remain readable; unavailable fields are shown as unknown or undeclared.
-
 The agent can work on independent tasks while it waits. Time varies with the CLI, model and load. The default
 budget for the whole consultation is 30 minutes, separate from one `consult_get` wait; it can be configured.
+When asking several consultants, the lead can check the first answers while the others continue.
 Each answer includes a stance, a separate concrete recommendation, findings with grounds, unknowns and proposed checks.
 Matching stances can recommend different options; older answers without a recommendation remain not declared.
 A failure (`usage_limit`, `timeout` and so on) means no advice was obtained.
@@ -153,6 +155,11 @@ The lead checks the claims that could change the decision and records evidence s
 It reports each consultant's actual model, the deciding point and its ID, what the check showed, its
 recommendation and what remains unverified. Different conclusions stay separate. If one consultant fails,
 the successful answers remain usable; the agent can retry just the failed consultation when needed.
+
+Ask "Stop the current consultation" to cancel, or "Check the answers that have arrived first" to use partial
+success. A timeout can mean the brief needs narrowing or the budget needs increasing; an authentication
+failure needs a login check with `status` before retrying. Cancellation requests process termination; on
+Windows, descendants can remain if the CLI has already exited. See [failure and stop details](docs/how-it-works.md#how-a-consultation-runs).
 
 ### Follow-ups and history
 
@@ -206,18 +213,13 @@ the server does not tell it where your repository is. It can still read any file
 the credential paths the table marks blocked. The one exception is Claude Code in a consultation that exposes files:
 it can then read only those copies.
 Codex does not block by file name, so a `.env` in your repository is readable to it.
-Credential directories, including the default `~/.codex`, are denied as a whole when the Codex executable lives
-elsewhere. A protected root containing the executable instead keeps its executable entry readable and denies
-the other entries present at launch; new entries are not covered. On Linux, individually denied files replaced
-by rename during a run can become readable. Recognized absolute credential-location variables are protected;
-arbitrary credential locations are not automatically discovered. Legacy `jobs/<id>/home` directories created
-after launch are also outside this protection. Keep the executable outside credential roots and avoid running
-pre-1.7 severally alongside current consultations; see the [tested limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading).
-OpenCode's guard checks each read's path and its canonical target, including symlink aliases. Replacement of a
-canonical path between the hook and the CLI's read remains outside its guarantee. These changes were checked
-on Linux with Codex 0.164.0 and OpenCode 2.0.24; enforcement on macOS, Windows and other CLI versions is unverified.
-On Windows, Codex runs in its elevated sandbox, because the unelevated one cannot deny reads. If Codex has not set
-that sandbox up yet, the first consultation asks for administrator approval.
+Codex also has gaps for individually denied files replaced by rename, new entries beside an executable inside
+a credential root, and legacy job homes created after launch. Keep executables outside credential roots and
+avoid running pre-1.7 severally alongside current consultations. OpenCode cannot guarantee reads against a
+path replacement between its guard and the actual read. Enforcement was checked on Linux with Codex 0.164.0
+and OpenCode 2.0.24; macOS, Windows and other CLI versions remain unverified. On Windows, Codex's elevated
+sandbox may need initial administrator approval. The [mechanisms, safe-use conditions and tested limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading)
+cover these gaps and recognized credential locations; arbitrary credential locations are not automatically found.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then

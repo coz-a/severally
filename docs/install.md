@@ -81,8 +81,17 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.12.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.13.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
+
+If npm selects an installed server instead of the installer, name the package and installer executable separately:
+
+```bash
+npx --yes --package=severally-mcp@2.13.0 -- severally-install --dry-run
+```
+
+Check the proposed changes, then omit `--dry-run` to install. This also works from the source checkout;
+an installed runtime named `severally-mcp` does not supply the `severally-install` executable.
 
 | Option | What it does |
 |---|---|
@@ -123,8 +132,16 @@ file is valid, which consultants this machine can reach (and why the others cann
 is the same version, which clients have severally registered, and whether each CLI is logged in. The login check
 reads each CLI's own status command and sends no prompt: `claude auth status` for Claude Code, `codex login status`
 for Codex, and for OpenCode the number of credentials saved by `opencode auth list` (keys in the environment also
-work, so none saved is only a warning). Antigravity has no such command, so it shows "not checked". Running out of
-quota is not checked; the first consultation shows that.
+work, so none saved is only a warning). Login probes use the consultation's configured `clis.<cli>.bin` and
+`env`, including a relocated Codex or Claude credential directory. OpenCode's probe uses the credential source
+selected by `SEVERALLY_OPENCODE_CRED_HOME`, as consultations do. Client registration is checked separately using
+the host's commands on `PATH`; a custom consultant executable does not change which host is checked.
+
+Independent probes run together. Each command waits up to five seconds and all probes share a twenty-second
+budget, plus the configured process-stop grace. A timeout or an unsupported login command is reported as
+"could not tell", with a direct-check or update step; it is not reported as logged out. Disabled CLIs are not
+probed. Account details and credentials are not printed. Antigravity has no login status command, so it shows
+"not checked". Neither remaining quota nor a successful live consultation is verified by status.
 
 To check one client yourself, after restarting it. Skip the lines for CLIs you don't have:
 

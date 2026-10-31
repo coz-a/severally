@@ -3,6 +3,9 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { JobManager } from '../src/jobs.mjs';
 import { POLICY, timeoutMs } from '../src/policy.mjs';
 import { redact } from '../src/redact.mjs';
@@ -22,6 +25,48 @@ function requiredArg(argv, name) {
 const nonempty = (value) => typeof value === 'string' && value.trim().length > 0;
 /** @param {unknown} value */
 const nonemptyList = (value) => Array.isArray(value) && value.length > 0 && value.every(nonempty);
+
+// Source checkout provenance is separate from an installed host's running
+// server version. A digest does not attest which files another process loaded.
+function sourceProvenance() {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const files = ['package.json'];
+  /** @param {string} directory */
+  const collect = (directory) => {
+    for (const item of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
+      const relative = `${directory}/${item.name}`;
+      if (item.isDirectory()) collect(relative);
+      else if (item.isFile() && item.name.endsWith('.mjs')) files.push(relative);
+    }
+  };
+  collect('src');
+  const hash = crypto.createHash('sha256');
+  for (const file of files.sort())
+    hash
+      .update(file)
+      .update('\0')
+      .update(fs.readFileSync(path.join(root, file)));
+  let revision = null;
+  try {
+    revision = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 2000,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    // Packed installations need not have a Git checkout.
+  }
+  return {
+    package_version: JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version,
+    revision,
+    entrypoint: 'src/jobs.mjs',
+    tree_sha256: hash.digest('hex'),
+    hash_method: 'SHA256(sorted UTF8 relative path + NUL + bytes), package.json and src/**/*.mjs',
+    note: 'Source files observed before this direct run; not an attestation of an installed host server.',
+  };
+}
 
 // Inferred from the adapter's arguments; this is not a serving receipt.
 /** @param {{cli: string, model: string, effort: string | null}} consultant */
@@ -53,6 +98,9 @@ export async function runBenchmark(argv) {
   if (manifest.scenario === 'S4' && parsed.targets.length !== 1) throw new Error('S4 requires exactly one consultant');
   if (manifest.scenario === 'S4' && !nonempty(manifest.followup_question))
     throw new Error('S4 requires a fixed follow-up question');
+  const budget = manifest.consultation_budget_ms ?? null;
+  if (budget !== null && (!Number.isSafeInteger(budget) || budget < 1 || budget > 1_800_000))
+    throw new Error('consultation_budget_ms must be an integer from 1 to 1800000');
   const fixedMaterial = manifest.scenario === 'S3' ? prepareS3Material(manifest) : null;
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
@@ -62,10 +110,14 @@ export async function runBenchmark(argv) {
     scenario: manifest.scenario,
     manifest_sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
     route: 'direct_job_manager',
+    source: sourceProvenance(),
     started_at: startedAt,
     finished_at: null,
     duration_ms: null,
     outcome: 'in_progress',
+    termination_reason: null,
+    consultation_budget_ms: budget,
+    consultation_budget_note: 'Bounds model work, including retries; CLI version probes and process kill grace are additional.',
     runtime: { platform: process.platform, os_release: os.release(), node: process.version },
     criteria: redact({ useful_conditions: manifest.useful_conditions, acceptable_findings: manifest.acceptable_findings }),
     material: redact(manifest.material),
@@ -76,8 +128,11 @@ export async function runBenchmark(argv) {
     scenario_assessment: null,
     material_verified: null,
     human_actions: null,
+    host_observation: null,
     planned_concurrency: Array.isArray(manifest.request.targets) ? manifest.request.targets.length : 1,
     request_bytes: Buffer.byteLength(JSON.stringify(manifest.request), 'utf8'),
+    request_sha256: crypto.createHash('sha256').update(JSON.stringify(manifest.request)).digest('hex'),
+    request_hash_method: 'SHA256(UTF8(JSON.stringify(request)))',
     followup: null,
     members: [],
     error: null,
@@ -94,11 +149,18 @@ export async function runBenchmark(argv) {
   };
   /** @type {JobManager | null} */
   let mgr = null;
+  /** @type {NodeJS.Timeout | undefined} */
+  let deadlineTimer;
   try {
     const manager = new JobManager();
     mgr = manager;
     const started = manager.start(manifest.request);
     const members = 'job_id' in started ? [started] : started.jobs;
+    if (budget !== null)
+      deadlineTimer = setTimeout(() => {
+        receipt.termination_reason = 'benchmark_deadline';
+        for (const member of members) manager.cancel(member.job_id);
+      }, budget);
     receipt.members = members.map((member) => ({
       job_id: member.job_id,
       target: member.target,
@@ -131,6 +193,7 @@ export async function runBenchmark(argv) {
       save();
     }
     await Promise.all(members.map((member) => manager.jobs.get(member.job_id)?.promise));
+    clearTimeout(deadlineTimer);
     receipt.members = members.map((member) => {
       const view = manager.view(member.job_id);
       const consultant = POLICY.consultants.find((c) => c.name === member.target);
@@ -165,10 +228,14 @@ export async function runBenchmark(argv) {
       !materialMismatch && receipt.members.every((/** @type {{status: string}} */ m) => m.status === 'completed')
         ? 'completed'
         : 'failed';
+    receipt.termination_reason ??= receipt.outcome === 'completed' ? 'completed' : 'consultant_failure';
   } catch (error) {
     if (mgr) await mgr.shutdown();
     receipt.outcome = 'failed';
     receipt.error = redact(error instanceof Error ? error.message : String(error));
+    receipt.termination_reason ??= 'runner_error';
+  } finally {
+    clearTimeout(deadlineTimer);
   }
   receipt.finished_at = new Date().toISOString();
   receipt.duration_ms = Date.now() - startMs;

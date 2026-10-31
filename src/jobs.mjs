@@ -228,6 +228,8 @@ export class JobManager {
     this.jobs = new Map();
     /** @type {Map<string, Group>} */
     this.groups = new Map();
+    /** @type {Map<string, Set<string>>} Terminal members already returned by a group wait. */
+    this._groupObserved = new Map();
     /** @type {string[]} */
     this.order = [];
     store.ensureDirs();
@@ -246,6 +248,9 @@ export class JobManager {
     const live = store.loadRunning(jobId);
     // Its owner may have finished between the two reads: the round is there now.
     if (!live) return store.loadRound(jobId);
+    if (['completed', 'failed', 'cancelled'].includes(live.status)) {
+      return this.#recoverHistory(live);
+    }
     const state = ownerState(jobId, live.owner);
     return state === 'alive' ? live : this.#interrupt(jobId, live, state);
   }
@@ -261,6 +266,7 @@ export class JobManager {
    * @returns {Round}
    */
   #interrupt(jobId, rec, state) {
+    if (['completed', 'failed', 'cancelled'].includes(rec.status)) return this.#recoverHistory(rec);
     const done = store.loadRound(jobId);
     if (done) {
       store.removeRunning(jobId);
@@ -276,17 +282,12 @@ export class JobManager {
       retriable: true,
       delivered_advice: false,
     };
-    try {
-      store.persistRound(round);
-    } catch {
-      return round;
-    }
-    store.removeRunning(jobId);
+    const warning = this.#saveHistory(round);
     // An overdue owner may still be running its consultant: leave its working
     // directory to it. ponytail: if the pid was reused instead, that
     // directory stays behind until removed by hand.
     if (state === 'dead') store.cleanupJobDir(jobId);
-    return round;
+    return warning ? { ...round, history_warning: warning } : round;
   }
 
   /** Close out the consultations whose process died, and remove their job directories. */
@@ -394,8 +395,13 @@ export class JobManager {
    */
   #jobView(job, detail) {
     this.#refreshRound(job);
+    if (job.history_warning) {
+      job.history_warning = this.#saveHistory(this.#record(job), true);
+      this.#refreshRound(job);
+    }
     /** @type {FullView} */
     const rec = this.#record(job);
+    if (job.history_warning) rec.history_warning = job.history_warning;
     rec.cancellable = job.status === 'running' || job.status === 'queued';
     // While it runs, say what it is doing. "running" for twenty minutes tells
     // the lead nothing; a consultation visibly grinding through tool calls is
@@ -472,7 +478,7 @@ export class JobManager {
       const saved = state === 'alive' ? null : store.loadRoundAt(live);
       // The marker of a round whose owner is gone: shown as interrupted, with no failure detail to give.
       const rec =
-        state === 'alive'
+        state === 'alive' || ['completed', 'failed', 'cancelled'].includes(live.status)
           ? live
           : (saved ?? /** @type {Round} */ ({ ...live, status: 'failed', failure: { kind: 'interrupted' } }));
       candidates.push({ at: rec.created_at ?? '', load: () => rec });
@@ -535,6 +541,7 @@ export class JobManager {
         predicted: Boolean(j.prediction),
         reflected: Boolean(j.reflection),
         initiator: j.initiator ?? null,
+        ...(j.history_warning ? { history_warning: j.history_warning } : {}),
       };
     });
   }
@@ -1022,11 +1029,7 @@ export class JobManager {
       job_ids: members.map((/** @type {Job} */ m) => m.job_id),
     };
     this.groups.set(groupId, group);
-    try {
-      store.persistGroup(group);
-    } catch {
-      /* history is best effort */
-    }
+    this.#saveGroup(group);
 
     // A fan-out is only comparable if every consultant answered the same
     // question in the same words: every member's brief is the same request,
@@ -1057,6 +1060,8 @@ export class JobManager {
     for (const item of material?.skipped ?? []) skippedCounts[item.reason] = (skippedCounts[item.reason] ?? 0) + 1;
     const common = {
       group_id: groupId,
+      network: req.network,
+      ...(group.history_warning ? { history_warning: group.history_warning } : {}),
       ...(sameRound ? { round, rounds_remaining: POLICY.maxRounds - round } : {}),
       ...(fromGroup ? { followup_to_group: fromGroup.group.group_id, skipped: fromGroup.skipped } : {}),
       ...(retryFrom ? { retry_of: retryFrom.job_id } : {}),
@@ -1244,6 +1249,7 @@ export class JobManager {
     if (!group) return;
     if (group.job_ids.some((jid) => this.jobs.has(jid))) return;
     this.groups.delete(groupId);
+    this._groupObserved.delete(groupId);
   }
 
   /**
@@ -1703,12 +1709,7 @@ export class JobManager {
 
   /** @param {Job} job */
   #finish(job) {
-    try {
-      store.persistRound(this.#record(job));
-    } catch {
-      /* history is best effort */
-    }
-    store.removeRunning(job.job_id);
+    job.history_warning = this.#saveHistory(this.#record(job));
     store.releaseSeat(job.job_id);
     LIVE_HERE.delete(job.job_id);
     store.cleanupJobDir(job.job_id);
@@ -1717,6 +1718,72 @@ export class JobManager {
     job._progress = undefined;
     job._progressText = undefined;
     job._cancelFns = [];
+  }
+
+  /**
+   * @param {Round} round
+   * @param {boolean} [recover]
+   * @returns {import('./store.mjs').HistoryWarning | undefined}
+   */
+  #saveHistory(round, recover = false) {
+    try {
+      store.persistRound(round, { preserveSaved: recover });
+      store.removeRunning(round.job_id);
+      return undefined;
+    } catch (err) {
+      const stage = err instanceof store.HistoryWriteError ? err.stage : 'round';
+      /** @type {import('./store.mjs').HistoryWarning} */
+      const warning = {
+        stage,
+        round_saved: stage === 'index',
+        index_saved: false,
+        recovery_saved: true,
+        code: err instanceof store.HistoryWriteError ? err.code : null,
+        message:
+          stage === 'index'
+            ? 'the answer is saved, but its history index is incomplete; lookup and continuation after restart are not yet reliable'
+            : 'the answer is available, but its round could not be saved to history',
+        recovery:
+          'fix the history storage permissions or free disk space, then call consult_get with this job_id to retry saving without calling the consultant',
+      };
+      try {
+        store.writeRunning({ ...round, history_warning: warning });
+      } catch {
+        warning.recovery_saved = false;
+        warning.recovery =
+          'fix history storage and call consult_get with this job_id before this server restarts or the answer leaves memory; no recoverable terminal copy could be saved';
+        store.removeRunning(round.job_id);
+      }
+      return warning;
+    }
+  }
+
+  /** @param {StoredRound} rec @returns {Round} */
+  #recoverHistory(rec) {
+    const { history_warning, owner, progress_observation, progress_text, ...round } = /** @type {StoredRound} */ (
+      store.loadRoundAt(rec) ?? rec
+    );
+    const warning = this.#saveHistory(round, true);
+    return warning ? { ...round, history_warning: warning } : round;
+  }
+
+  /** @param {Group} group */
+  #saveGroup(group) {
+    const { history_warning, ...record } = group;
+    try {
+      store.persistGroup(record);
+      delete group.history_warning;
+    } catch (err) {
+      const code = err instanceof Error && 'code' in err ? String(err.code) : '';
+      group.history_warning = {
+        stage: 'group',
+        recovery_saved: false,
+        code: /^[A-Z0-9_]{1,40}$/.test(code) ? code : null,
+        message: 'the group could not be saved; its comparison and group follow-up may be unavailable after this server restarts',
+        recovery:
+          'fix history storage and call consult_get with this group_id before restart to retry saving; keep each member job_id to retrieve saved member answers individually',
+      };
+    }
   }
 
   // The lead's own column: what they checked, what it turned out to be, and
@@ -2017,6 +2084,10 @@ export class JobManager {
     // exactly the "the consultants had no concerns" summary that a failure
     // must never be turned into.
     const anyResult = members.some((m) => m.result);
+    const waitingStep = anyResult
+      ? 'check the available advice while other members run, then poll consult_get again with this group_id for later results, or consult_cancel it'
+      : 'poll consult_get again with this group_id, or consult_cancel it';
+    const networks = new Set(members.map((m) => m.network ?? null));
     // Every member of a fan-out was sent the byte-identical brief -- that is
     // the whole point of a fan-out -- so printing it once per member says the
     // same thing three times. Hoist one copy to the group and strip it from
@@ -2043,6 +2114,7 @@ export class JobManager {
         duration_ms: rest.duration_ms,
         progress,
         cancel_effect: rest.cancel_effect,
+        ...(rest.history_warning ? { history_warning: rest.history_warning } : {}),
         ...(full && rest.brief_note ? { brief_note: rest.brief_note } : {}),
         failure: rest.failure && { kind: rest.failure.kind, retriable: rest.failure.retriable, message },
         // The failure's detail, and a message or progress past its length, are in the member's own view.
@@ -2052,6 +2124,8 @@ export class JobManager {
     const question = full ? group.question : cut(group.question, QUESTION_CHARS);
     const view = {
       group_id: group.group_id,
+      network: networks.size === 1 ? (members[0]?.network ?? null) : null,
+      ...(group.history_warning ? { history_warning: group.history_warning } : {}),
       status: cancelling ? 'cancelling' : live ? 'running' : 'done',
       mode: group.mode,
       question,
@@ -2081,7 +2155,7 @@ export class JobManager {
       next_step: cancelling
         ? 'poll consult_get with this group_id until every member reads cancelled'
         : live
-          ? 'poll consult_get again with this group_id, or consult_cancel it'
+          ? waitingStep
           : anyResult
             ? 'compare each stance and read the finding_points grounds below; truncated marks shortened text and omitted counts missing items. Fetch deciding points with consult_get({ job_id, ids: ["f2", "u1", "c1"] }) when their grounds or details are missing or shortened; do not fetch grounds already shown whole. Check deciding claims locally, then followup_to a member only where a divergence would change your decision. Save what checking showed for every member in one consult_record({ records: [{ job_id, entries: [{ id, verdict, effect }] }, ...] }) call; consult_get({ job_id }) returns the whole answer'
             : missing > 0
@@ -2108,6 +2182,7 @@ export class JobManager {
   groupView(groupId, opts) {
     const group = this.groups.get(groupId) ?? store.loadGroup(groupId);
     if (!group) return null;
+    if (group.history_warning) this.#saveGroup(group);
     return this.#shapeGroup(
       group,
       group.job_ids.map((jid) => this.view(jid, opts)).filter((v) => v != null),
@@ -2122,16 +2197,41 @@ export class JobManager {
    * @param {AbortSignal} [signal]
    */
   async waitGroup(groupId, waitMs, opts, signal) {
-    const group = this.groups.get(groupId);
-    // A fan-out from another process or an earlier session: nothing here to
-    // wait on, so report what the history holds.
-    if (!group) return this.#waitOnDisk(() => this.groupView(groupId, opts), waitMs, signal);
-    const budget = Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
-    if (budget > 0) {
-      const promises = group.job_ids.map((jid) => this.jobs.get(jid)?.promise).filter(Boolean);
-      await settled(Promise.all(promises), budget, signal);
+    const until = Date.now() + Math.min(Math.max(0, waitMs ?? 0), POLICY.maxWaitMs);
+    const observed = this._groupObserved.get(groupId) ?? new Set();
+    const terminal = (/** @type {NonNullable<ReturnType<JobManager['groupView']>>} */ view) =>
+      view.members.filter((m) => ['completed', 'failed', 'cancelled'].includes(m.status)).map((m) => m.job_id);
+    let view = this.groupView(groupId, opts);
+    while (
+      view &&
+      ['running', 'cancelling'].includes(view.status) &&
+      !terminal(view).some((jid) => !observed.has(jid)) &&
+      Date.now() < until &&
+      !signal?.aborted
+    ) {
+      const group = this.groups.get(groupId);
+      const pending = (group?.job_ids ?? []).flatMap((jid) => {
+        const job = this.jobs.get(jid);
+        return job && ['queued', 'running'].includes(job.status) && job.promise ? [job.promise] : [];
+      });
+      // The owner wakes on the next member. Another process observes the same
+      // transition through history, at the existing one-second polling interval.
+      await settled(
+        pending.length ? Promise.race(pending) : null,
+        Math.min(pending.length ? Infinity : 1000, until - Date.now()),
+        signal,
+      );
+      view = this.groupView(groupId, opts);
     }
-    return this.groupView(groupId, opts);
+    if (view && view.status !== 'done') {
+      this._groupObserved.set(groupId, new Set(terminal(view)));
+      while (this._groupObserved.size > POLICY.maxJobsRetained) {
+        const oldest = this._groupObserved.keys().next().value;
+        if (oldest === undefined) break;
+        this._groupObserved.delete(oldest);
+      }
+    } else this._groupObserved.delete(groupId);
+    return view;
   }
 
   /** @param {string} groupId */
@@ -2642,7 +2742,13 @@ function byTarget(m, budget) {
   );
   const alternatives = list('alternative_options', r.alternatives, 1, (a, n) => clip(a.option, n), 1 / 3);
   const unknowns = list('unknowns', r.unknowns, 1, (u, n) => ({ id: u.id, item: clip(u.item, n) }), 1 / 2);
-  const nextChecks = list('next_checks', r.next_checks, 1, (c, n) => ({ id: c.id, check: clip(c.check, n) }), 1 / 2);
+  const nextChecks = list(
+    'next_checks',
+    r.next_checks,
+    3,
+    (c, n) => ({ id: c.id, check: clip(c.check, n), method: clip(c.method, n), expected_signal: clip(c.expected_signal, n) }),
+    1 / 2,
+  );
   const disagreements = list(
     'remaining_disagreements',
     r.remaining_disagreements,
@@ -2769,6 +2875,7 @@ export function pointsOf(view, ids) {
     stance: r.stance,
     evidence_basis: r.evidence_basis,
     caveat: view.quality?.caveat ?? null,
+    ...(view.history_warning ? { history_warning: view.history_warning } : {}),
     redaction: view.quality?.redaction ?? { files: null, brief: null, result: null },
     points,
     // What this projection leaves out, counted; the whole answer is one call away.

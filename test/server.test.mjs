@@ -241,7 +241,11 @@ test('a fan-out is started, fetched and compared through group_id over MCP', asy
   assert.equal(started.poll_with, `consult_get({ group_id: "${started.group_id}" })`);
   const polled = await client.callTool({ name: 'consult_get', arguments: { group_id: started.group_id } });
   assert.notEqual(polled.isError, true, 'the poll_with advice must be a valid call');
-  const view = payload(polled);
+  let view = payload(polled);
+  assert.ok(view.member_counts.completed >= 1, 'the first get makes finished advice available');
+  while (view.status === 'running') {
+    view = payload(await client.callTool({ name: 'consult_get', arguments: { group_id: started.group_id } }));
+  }
   assert.equal(view.status, 'done');
   assert.equal(view.members_available, 2);
   assert.deepEqual(view.member_counts, { completed: 2, failed: 0, cancelled: 0, pending: 0, missing: 0 });

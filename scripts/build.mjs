@@ -154,6 +154,15 @@ export function generateSkills() {
     fs.mkdirSync(out, { recursive: true });
     for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(out, name), text);
   }
+  const readmePath = path.join(root, 'plugins', 'severally', 'README.md');
+  const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const readme = fs
+    .readFileSync(readmePath, 'utf8')
+    .replace(
+      /https:\/\/github\.com\/coz-a\/severally\/blob\/(?:main|v[^/]+)\/(?=(?:docs\/install|README))/g,
+      `https://github.com/coz-a/severally/blob/v${version}/`,
+    );
+  fs.writeFileSync(readmePath, readme);
 }
 
 export async function bundle() {

@@ -73,6 +73,7 @@ test('a short fan-out exposes each finding with its grounds and actual answering
       column.finding_points,
       answers[i].result.findings.map(({ id, severity, point, grounds }) => ({ id, severity, point, grounds })),
     );
+    assert.deepEqual(column.next_checks, answers[i].result.next_checks, 'preserve the proposed method and expected signal');
     assert.equal(column.truncated, undefined);
     assert.deepEqual(mgr.view(column.job_id).result, answers[i].result, 'the stored answer stays whole');
   }
