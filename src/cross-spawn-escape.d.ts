@@ -5,3 +5,10 @@ declare module 'cross-spawn/lib/util/escape.js' {
   const escape: { command: typeof command; argument: typeof argument };
   export default escape;
 }
+
+declare module 'cross-spawn/lib/parse.js' {
+  import type { SpawnOptions } from 'node:child_process';
+  export default function parse(command: string, args: readonly string[], options: SpawnOptions): {
+    command: string; args: string[]; options: SpawnOptions; file?: string | undefined;
+  };
+}

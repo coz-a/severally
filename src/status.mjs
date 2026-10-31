@@ -2,7 +2,6 @@
 // consultation, so it spends no quota. It says what it can see and no more:
 // login is read from each CLI's own status command where it has one, and where
 // it has none it is reported as not checked rather than as working.
-import fs from 'node:fs';
 import path from 'node:path';
 import {
   POLICY,
@@ -13,11 +12,11 @@ import {
   brokenConsultantNames,
   brokenConsultant,
   timeoutMs,
-  protectedRoots,
   opencodeCredentialsHome,
 } from './policy.mjs';
 import { SEVERALLY_VERSION, staleInstall } from './server.mjs';
 import { findCommand } from './platform.mjs';
+import { launchProblem as codexPlacementWarning } from './adapters/codex.mjs';
 import { credentialRecoveryStatus } from './adapters/opencode-sandbox.mjs';
 import { childEnv, operatorEnvProblem, runChild } from './run.mjs';
 
@@ -170,33 +169,6 @@ function effectiveEffort(consultant) {
     return variant || 'no variant';
   }
   return consultant.effort ?? 'high';
-}
-
-// Match the adapter's canonical root and executable comparison without creating
-// a sandbox or treating this configuration check as proof of effective denial.
-function codexPlacementWarning() {
-  const command = findCommand(POLICY.clis.codex.cli);
-  if (!command) return null;
-  let executable;
-  try {
-    executable = fs.realpathSync.native(command);
-  } catch {
-    return 'Codex executable placement could not be resolved; check it against protected credential roots.';
-  }
-  for (const root of protectedRoots()) {
-    if (root.includes('*')) continue;
-    let canonical;
-    try {
-      canonical = fs.realpathSync.native(root);
-    } catch {
-      continue;
-    }
-    const relative = path.relative(canonical, executable);
-    if (relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
-      return 'Codex executable is inside a protected root; new files there may be readable. Move the executable outside credential roots and verify PATH.';
-    }
-  }
-  return null;
 }
 
 export async function status() {

@@ -4,7 +4,10 @@ import path from 'node:path';
 import which from 'which';
 import spawn from 'cross-spawn';
 import escape from 'cross-spawn/lib/util/escape.js';
-import { spawn as nativeSpawn, spawnSync as nativeSpawnSync } from 'node:child_process';
+import parseSpawn from 'cross-spawn/lib/parse.js';
+import { ChildProcess, spawn as nativeSpawn, spawnSync as nativeSpawnSync } from 'node:child_process';
+import { PassThrough } from 'node:stream';
+import { windowsJobInvocation } from './windows-job.mjs';
 
 /**
  * @param {string} source
@@ -61,6 +64,43 @@ function batchInvocation(command, args, options) {
 export function spawnCommand(command, args, options = {}) {
   const batch = batchInvocation(command, args, options);
   return batch ? nativeSpawn(batch.command, batch.args, batch.options) : spawn(command, args, options);
+}
+
+/**
+ * Processes launched through runChild use a Windows launch Job; direct
+ * synchronous probes and taskkill keep the ordinary spawn path. Preserve the existing cmd/shebang preparation.
+ * @param {string} command
+ * @param {readonly string[]} args
+ * @param {SpawnOpts & { stdio: ['pipe', 'pipe', 'pipe'] }} options
+ * @returns {import('node:child_process').ChildProcessWithoutNullStreams}
+ */
+export function spawnManagedCommand(command, args, options) {
+  if (process.platform !== 'win32') return spawnCommand(command, args, options);
+  const batch = batchInvocation(command, args, options);
+  const parsed = batch ?? parseSpawn(command, args, options);
+  // cross-spawn may turn an unresolved command into a cmd.exe invocation.
+  // Check the requested file too, before accepting that interpreter.
+  const executable = findCommand(command, options) ? findCommand(parsed.command, options) : null;
+  if (!executable) {
+    // Never let another resolver silently launch an unmanaged process.
+    // Preserve spawn's asynchronous ENOENT contract without starting a process.
+    const failed = Object.assign(new ChildProcess(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    });
+    process.nextTick(() => {
+      failed.stdout.end();
+      failed.stderr.end();
+      failed.emit('error', Object.assign(new Error(`spawn ${command} ENOENT`), { code: 'ENOENT' }));
+      failed.emit('close', null, null);
+    });
+    return /** @type {import('node:child_process').ChildProcessWithoutNullStreams} */ (failed);
+  }
+  const managed = windowsJobInvocation(executable, parsed.args, parsed.options);
+  return /** @type {import('node:child_process').ChildProcessWithoutNullStreams} */ (
+    nativeSpawn(managed.command, managed.args, managed.options)
+  );
 }
 
 // Explicit script paths are supported by cross-spawn's shebang handling too.

@@ -84,3 +84,16 @@ test('comments preserve CR, LF, CRLF and CR terminates a line comment', () => {
     assert.deepEqual(parseJsonc(src), expected, JSON.stringify(src));
   }
 });
+
+// Adopted from the actual source consultation's c1: a non-BMP comment must
+// consume two UTF-16 positions while CR/LF and a later invalid token stay put.
+test('non-BMP comments preserve UTF-16 error offsets and reject the original invalid input', () => {
+  for (const lineBreak of ['\r', '\n', '\r\n']) {
+    const source = `/*😀*/${lineBreak}[1, @]`;
+    const stripped = stripJsonc(source);
+    assert.equal(stripped, `      ${lineBreak}[1, @]`);
+    assert.equal(stripped.length, source.length);
+    assert.equal(stripped.indexOf('@'), source.indexOf('@'));
+    assert.throws(() => parseJsonc(source), SyntaxError);
+  }
+});

@@ -35,6 +35,22 @@ const claude = await import('../src/adapters/claude-code.mjs');
 const { prepareSandbox } = await import('../src/adapters/opencode-sandbox.mjs');
 const fwd = (p) => p.replaceAll('\\', '/');
 
+test('unsafe Codex executable placement is refused before any job or shared seat is created', () => {
+  const root = path.join(home, 'unsafe-launch-root');
+  const binary = path.join(root, 'packages', 'codex.mjs');
+  fs.mkdirSync(path.dirname(binary), { recursive: true });
+  fs.writeFileSync(binary, '#!/usr/bin/env node\nprocess.exit(42);\n', { mode: 0o700 });
+  const configPath = path.join(home, 'unsafe-launch-config.json');
+  fs.writeFileSync(configPath, JSON.stringify({ clis: { codex: { bin: binary, env: { CODEX_HOME: root } } } }));
+  const env = { ...process.env, SEVERALLY_CONFIG: configPath };
+  delete env.SEVERALLY_CODEX_BIN;
+  const moduleUrl = new URL('../src/jobs.mjs', import.meta.url).href;
+  const script = `import assert from 'node:assert/strict'; const {JobManager}=await import(${JSON.stringify(moduleUrl)});
+    const m=new JobManager(); assert.throws(()=>m.start({target:'codex', question:'Check public input'}),
+    e=>e.code==='unsafe_codex_placement' && /outside credential roots/.test(e.message)); assert.equal(m.jobs.size,0);`;
+  execFileSync(process.execPath, ['--input-type=module', '-e', script], { env });
+});
+
 for (const linked of [false, true]) {
   test(`the ${linked ? 'linked' : 'direct'} default Codex home is denied whole when the executable lives outside it`, () => {
     const userHome = fs.mkdtempSync(path.join(home, 'default-home-'));

@@ -35,7 +35,7 @@ test("exposes the three protocol tools, the lead's record, and a history listing
   // Which names reach a consultant depends on the operator's config, so
   // target is a plain string and the description lists who can be asked.
   assert.equal(req.properties.target.type, 'string');
-  assert.match(start.description, /^ {10}opencode: opencode, zai-coding-plan\/glm-5\.3$/m);
+  assert.match(start.description, /^ {10}opencode: opencode, openrouter\/deepseek\/deepseek-v4\.1-flash-1017#high$/m);
   assert.match(start.description, /targets: \["all"\]/);
   assert.doesNotMatch(start.description, /claude:claude-opus|allowed_models|suffix/);
   assert.deepEqual(req.properties.mode.enum, ['explore', 'review', 'debate']);
@@ -87,7 +87,7 @@ test('start -> get -> structured result, over MCP', async () => {
   const { client, close } = await connect();
   const started = payload(await client.callTool({ name: 'consult_start', arguments: { request: reviewRequest() } }));
   assert.ok(started.job_id);
-  assert.equal(started.limits.models.codex, 'gpt-6-astra');
+  assert.equal(started.limits.models.codex, 'gpt-6.1-sol');
 
   const view = payload(await client.callTool({ name: 'consult_get', arguments: { job_id: started.job_id, wait_ms: 20000 } }));
   assert.equal(view.status, 'completed');

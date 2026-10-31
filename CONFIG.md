@@ -49,9 +49,10 @@ to launch each CLI and whether it is on; `consultants` says who can be asked. Al
 the server reads no other top-level key.
 
 Without `consultants`, the server makes one consultant per CLI, named after the CLI, on its built-in model:
-`codex` → `gpt-6-astra`, `claude-code` → `claude-opus-5-5`, `antigravity` → `gemini-4-argon-high`,
-`opencode` → `zai-coding-plan/glm-5.3`. With `consultants`, those are the whole list: the built-in ones are
-not added.
+`codex` → `gpt-6.1-sol` (effort `high`), `claude-code` → `claude-opus-5-5`,
+`antigravity` → `gemini-4-argon-high`, `opencode` → `openrouter/deepseek/deepseek-v4.1-flash-1017#high`.
+OpenCode's `#high` selects the high effort variant; a bare trailing `#` explicitly selects no variant.
+With `consultants`, those are the whole list: the built-in ones are not added.
 
 ## `clis.<cli>`
 
@@ -103,7 +104,7 @@ If your existing CLI consultants are enough, no changes are needed. To add an Op
 
    The trailing `#` selects no effort variant. For a custom compatible API or a local model, use the provider
    example below as well; listing a model in your own OpenCode config does not copy its provider settings.
-3. Restart the client and run `npx -y severally-mcp@2.13.0 status`. Confirm the new consultant is available and
+3. Restart the client and run `npx -y severally-mcp@2.14.0 status`. Confirm the new consultant is available and
    OpenCode is logged in. This does not send a prompt or prove the model exists or has quota.
 4. Ask “Ask qwen whether a 30-second cache meets a 60-second freshness limit.” An `auth` failure calls for
    checking provider credentials; `model_unavailable` calls for checking the exact model and provider config.
@@ -112,6 +113,10 @@ If your existing CLI consultants are enough, no changes are needed. To add an Op
 The API and local routes have different validation limits: OpenRouter read an exposed file and returned the
 required answer shape in the dated checks below; the tested Ollama model answered from the brief but did not
 read the exposed file. These checks do not establish that every listed model can review code reliably.
+
+Preserve your other consultant entries: an explicit `consultants` object replaces the default list.
+From a source checkout, `npm run init-config -- --print` shows a template without writing; ordinary generation
+refuses to overwrite an existing configuration unless `--force` is explicitly supplied.
 
 OpenCode is the way to consult other model families. A `provider/model` listed by `opencode models` can be
 configured as a consultant, but listing it does not prove your provider offers it, has quota, or can return the

@@ -44,9 +44,9 @@ const PEERS = {
     label: 'OpenCode CLI (whichever models the operator set up: GLM, DeepSeek, ...)',
     short: 'OpenCode',
     reach:
-      'you want another training lineage on the question (GLM by default; the operator may have set up others, such as DeepSeek), or a further reading when the first three stay neck and neck',
-    en: 'GLM',
-    jp: 'GLM',
+      'you want another training lineage on the question (DeepSeek by default; the operator may have set up others, such as GLM), or a further reading when the first three stay neck and neck',
+    en: 'DeepSeek',
+    jp: 'DeepSeek',
     jpVerb: 'に聞いて',
   },
 };
@@ -73,7 +73,13 @@ const EVERYONE_TRIGGERS = [
 // this", the natural Japanese "XにVERBして" form, and "Xにレビューしてもらって".
 /** @param {{ en: string, jp: string, jpVerb: string }} p */
 function triggersFor(p) {
-  return [`"ask ${p.en}"`, `"get ${p.en} to review this"`, `"${p.jp}${p.jpVerb}"`, `"${p.jp}にレビューしてもらって"`];
+  const names = p.en === 'DeepSeek' ? [p, { en: 'GLM', jp: 'GLM', jpVerb: p.jpVerb }] : [p];
+  return names.flatMap((name) => [
+    `"ask ${name.en}"`,
+    `"get ${name.en} to review this"`,
+    `"${name.jp}${name.jpVerb}"`,
+    `"${name.jp}にレビューしてもらって"`,
+  ]);
 }
 
 // Claude Code only: the tools that send nothing out run without a permission
@@ -159,7 +165,7 @@ export function generateSkills() {
   const readme = fs
     .readFileSync(readmePath, 'utf8')
     .replace(
-      /https:\/\/github\.com\/coz-a\/severally\/blob\/(?:main|v[^/]+)\/(?=(?:docs\/install|README))/g,
+      /https:\/\/github\.com\/coz-a\/severally\/blob\/(?:main|v[^/]+)\/(?=(?:docs\/(?:install|how-it-works)|README))/g,
       `https://github.com/coz-a/severally/blob/v${version}/`,
     );
   fs.writeFileSync(readmePath, readme);

@@ -334,6 +334,73 @@ const othersHold = (seats) => {
 };
 const clearSeats = () => fs.rmSync(path.join(home, 'slots'), { recursive: true, force: true });
 
+test('busy admission returns a locked, bounded diagnosis without exposing other questions or process details', async () => {
+  const { POLICY } = await import('../src/policy.mjs');
+  clearSeats();
+  const holders = Array.from({ length: POLICY.maxConcurrent }, () => seat(process.ppid));
+  othersHold(holders);
+  const mgr = new JobManager();
+  let details;
+  assert.throws(
+    () => mgr.start(reviewRequest()),
+    (err) => {
+      assert.equal(err.code, 'concurrency_limit');
+      assert.doesNotMatch(err.message, /or cancel it/i, 'do not suggest cancelling an unrelated holder');
+      details = err.details;
+      assert.equal(details.retryable, true);
+      assert.equal(details.required, 1);
+      assert.equal(details.in_use, POLICY.maxConcurrent);
+      assert.equal(details.available, 0);
+      assert.equal(details.limit, POLICY.maxConcurrent);
+      assert.equal(details.missing, 1);
+      assert.equal(details.retry_after_ms, 1000);
+      assert.deepEqual(details.holders, [], 'do not invite fetching unrelated sessions and their briefs');
+      assert.equal(details.elsewhere, POLICY.maxConcurrent);
+      assert.equal(details.max_retries, 2);
+      assert.equal(details.retry_budget_ms, 60000);
+      return true;
+    },
+  );
+  assert.equal(mgr.jobs.size, 0, 'rejected starts create no job or model call');
+  store.releaseSeat(holders[0].job_id);
+  process.env.STUB_BEHAVIOR = 'ok';
+  const admitted = mgr.start(reviewRequest());
+  await mgr.jobs.get(admitted.job_id).promise;
+  assert.equal(mgr.jobs.size, 1, 'retry after release admits once');
+  clearSeats();
+});
+
+test("busy admission names only this manager's already-known jobs as wait targets", async () => {
+  const { POLICY } = await import('../src/policy.mjs');
+  clearSeats();
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const own = mgr.start(reviewRequest());
+  othersHold(Array.from({ length: POLICY.maxConcurrent - 1 }, () => seat(process.ppid)));
+  assert.throws(
+    () => mgr.start(reviewRequest()),
+    (err) => {
+      assert.deepEqual(err.details.holders, [{ job_id: own.job_id, state: 'alive' }]);
+      assert.equal(err.details.elsewhere, POLICY.maxConcurrent - 1);
+      return true;
+    },
+  );
+  await mgr.jobs.get(own.job_id).promise;
+  clearSeats();
+});
+
+test('oversized atomic seat requests are permanent configuration conditions, not promises to retry', () => {
+  clearSeats();
+  const seats = [seat(process.pid), seat(process.pid)];
+  const result = store.takeSeats(seats, 1, () => true);
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, false);
+  assert.equal(result.required, 2);
+  assert.equal(result.limit, 1);
+  assert.deepEqual(result.holders, []);
+  clearSeats();
+});
+
 test('the concurrency cap counts consultations other severally processes are running', async () => {
   const { POLICY } = await import('../src/policy.mjs');
   clearSeats();

@@ -25,11 +25,12 @@ its installer prepares the server and client registration, not the consultant's 
 
 Keep the Codex executable outside credential directories, including `~/.codex` and a relocated `CODEX_HOME`.
 Check the resolved executable and credential paths, including symlink targets, before starting consultations.
-An executable inside a protected credential root requires an exception, and new files in that root can then be
-readable. Follow the CLI's installation instructions to move or reinstall it outside that root, then verify that
-`PATH` resolves to the intended installation. Do not put credentials in the exempt executable directory. This
-mitigation was tested with synthetic files on Linux and Codex 0.164.0; these cases remain untested on macOS and
-Windows. See [reading restrictions](how-it-works.md#how-a-consultant-is-kept-to-reading) for the remaining limits.
+A consultation is refused with `unsafe_codex_placement` when the executable resolves inside a protected root,
+including the standalone install under `~/.codex/packages`. Follow the CLI's installation instructions to
+install outside that root, or set `clis.codex.bin` to an external installation. A symlink into the protected
+root does not change placement. Credentials can remain in their existing directory. `status` diagnoses
+placement without starting a model. This start guard does not resolve file-level rename or arbitrary-path
+read restrictions; see [reading restrictions](how-it-works.md#how-a-consultant-is-kept-to-reading).
 
 OpenCode 2.x credential recovery also needs Node's optional `node:sqlite` module. severally detects whether it is
 available; some older Node 22 releases do not provide it without a flag. `severally-mcp status` reports this
@@ -47,10 +48,10 @@ Beyond Node.js 22 or newer and a logged-in CLI, as in the README:
 - Windows runs natively from PowerShell or Command Prompt; WSL is not required. CLIs are found through
   `PATH`/`PATHEXT` (`.exe`, `.cmd`, `.bat`, paths with spaces included).
 
-The installer and the server are tested on Linux, macOS and Windows in CI. The Claude Code and Codex marketplace
-routes and the real CLIs have been tried on Linux only. On Windows, cancelling a consultation stops its process
-tree while the consultant's CLI is still running. If the CLI has already exited, processes it started may survive;
-what remains in that case is observed, not guaranteed.
+The installer and server are tested on Linux, macOS and Windows in CI. Marketplace installation routes
+have been tried on Linux. Windows requires Windows 10+, built-in PowerShell 5.1 and permission to use
+.NET `Add-Type` and native APIs. See [managed launch and stop limits](how-it-works.md#records) for the
+real-Windows checks and remaining restrictions.
 
 ## Checking CLI compatibility after an update
 
@@ -81,13 +82,13 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.13.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.14.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 If npm selects an installed server instead of the installer, name the package and installer executable separately:
 
 ```bash
-npx --yes --package=severally-mcp@2.13.0 -- severally-install --dry-run
+npx --yes --package=severally-mcp@2.14.0 -- severally-install --dry-run
 ```
 
 Check the proposed changes, then omit `--dry-run` to install. This also works from the source checkout;

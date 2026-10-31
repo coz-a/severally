@@ -117,7 +117,7 @@ test('the old targets key is a config problem, not a silently ignored one', asyn
 
 test('a removed per-model environment variable has no effect', async () => {
   const policy = await loadPolicy({ SEVERALLY_CODEX_MODEL: 'foo' }, 'removed-env');
-  assert.equal(policy.consultantByName('codex').model, 'gpt-6-astra');
+  assert.equal(policy.consultantByName('codex').model, 'gpt-6.1-sol');
 });
 
 test('server-wide limits come from the config file, clamped, and the env still wins', async () => {
@@ -193,7 +193,7 @@ test('consulting an unavailable consultant is refused before a job exists', () =
   assert.equal(result.code, 'target_unavailable');
   assert.match(
     result.message,
-    /available: codex \(codex, gpt-6-astra\), claude-code \(claude-code, claude-opus-5-5\), opencode /,
+    /available: codex \(codex, gpt-6.1-sol\), claude-code \(claude-code, claude-opus-5-5\), opencode /,
   );
 });
 

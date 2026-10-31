@@ -47,6 +47,7 @@ turning off the web still sends material to the model. See [what is sent and the
   it is available. Normal login can still work without it. See [recovery requirements](docs/install.md#requirements).
 - At least one of the four CLIs, installed and logged in. One is enough: with only Claude Code, you can still ask a
   fresh Claude Code session.
+- Windows 10+ with built-in PowerShell 5.1 and permission to use .NET `Add-Type`; see [platform requirements](docs/install.md#requirements).
 
 Prepare the CLI you want to consult using the [installation and login links](docs/install.md#requirements).
 
@@ -56,13 +57,13 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.13.0 install
+npx -y severally-mcp@2.14.0 install
 ```
 
 If npm selects an existing global server from this source checkout, explicitly select the installer:
 
 ```bash
-npx --yes --package=severally-mcp@2.13.0 -- severally-install
+npx --yes --package=severally-mcp@2.14.0 -- severally-install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -78,21 +79,28 @@ To check the registration, see [CLI](#cli). Other install routes and platform-sp
 
 ### Asking
 
-In your restarted agent's chat, ask:
+First check which consultant CLIs are detected, without starting a consultation or spending quota:
 
-```text
-Ask Codex: Our read-only public API gets 100 requests per minute.
-Updates may appear 60 seconds late. Is a 30-second cache reasonable?
+```bash
+npx -y severally-mcp@2.14.0 status
 ```
 
-If Codex is not installed, use a consultant marked `available` by `status`. Availability indicates the CLI was
-found; it does not guarantee login or a successful consultation. A report looks like this; the
-answering model, checks and unverified points depend on the consultation:
+`available` means the CLI was found, not that login or a live consultation has been verified.
+If Codex is detected, ask in your restarted agent's chat. If only another CLI is installed, substitute its name:
 
 ```text
-Codex (gpt-6.1-sol) suggested a 30-second cache: it is within the 60-second allowance.
-Delays from other cache layers are unverified; check that their combined delay stays
-within 60 seconds before adopting it.
+Ask Codex: Our public API must return data no more than 60 seconds old.
+The upstream data may already be 40 seconds old when fetched; assume zero fetch time.
+Is a fixed 30-second TTL reasonable? State the conditions and the smallest useful check.
+```
+
+An illustrative report follows. Actual answering models, point IDs and check results depend on the consultation:
+
+```text
+Recommendation: revise the 30-second proposal; under these assumptions, use TTL <= 20 seconds.
+Codex (gpt-6.1-sol, f1) said upstream age and cache residence must be added.
+The lead checked the counterexample 40 + 29 = 69 seconds and rejected the 30-second proposal.
+Refreshing at the expiry boundary (elapsed >= 20 seconds) has not yet been tested.
 ```
 
 Then ask: "Ask the same consultant what changes if updates must appear within five seconds."
@@ -124,8 +132,8 @@ same bug. A consultation takes time and real quota, so it is not for small fixes
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.13.0 install
-npx -y severally-mcp@2.13.0 status
+npx -y severally-mcp@2.14.0 install
+npx -y severally-mcp@2.14.0 status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation
@@ -158,8 +166,9 @@ the successful answers remain usable; the agent can retry just the failed consul
 
 Ask "Stop the current consultation" to cancel, or "Check the answers that have arrived first" to use partial
 success. A timeout can mean the brief needs narrowing or the budget needs increasing; an authentication
-failure needs a login check with `status` before retrying. Cancellation requests process termination; on
-Windows, descendants can remain if the CLI has already exited. See [failure and stop details](docs/how-it-works.md#how-a-consultation-runs).
+failure needs a login check with `status` before retrying. Cancellation requests process termination.
+Windows uses a launch Job to stop ordinary descendants even after the CLI exits; see the
+[requirements and stop limits](docs/how-it-works.md#records).
 
 ### Follow-ups and history
 
@@ -212,14 +221,13 @@ Every consultant starts in a working directory of its own that holds only copies
 the server does not tell it where your repository is. It can still read any file your user account can read, except
 the credential paths the table marks blocked. The one exception is Claude Code in a consultation that exposes files:
 it can then read only those copies.
-Codex does not block by file name, so a `.env` in your repository is readable to it.
-Codex also has gaps for individually denied files replaced by rename, new entries beside an executable inside
-a credential root, and legacy job homes created after launch. Keep executables outside credential roots and
-avoid running pre-1.7 severally alongside current consultations. OpenCode cannot guarantee reads against a
-path replacement between its guard and the actual read. Enforcement was checked on Linux with Codex 0.164.0
-and OpenCode 2.0.24; macOS, Windows and other CLI versions remain unverified. On Windows, Codex's elevated
-sandbox may need initial administrator approval. The [mechanisms, safe-use conditions and tested limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading)
-cover these gaps and recognized credential locations; arbitrary credential locations are not automatically found.
+Codex cannot deny by name, so a repository's `.env` is readable. A Codex executable inside a credential root
+is refused before consultation starts: install it outside those roots and check placement with `status`.
+Individually denied files replaced by rename and legacy job homes created after launch remain limitations.
+Do not run pre-1.7 severally alongside current consultations. OpenCode cannot guarantee reads against a path
+replacement between its guard and the read. The [mechanisms, tested conditions and limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading)
+state the CLI, OS and version scope. Arbitrary credential locations are not automatically found.
+On Windows, Codex's elevated sandbox may need initial administrator approval.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
@@ -240,7 +248,7 @@ state and records. Every argument is described in the tool descriptions the agen
 |---|---|
 | `consult_start` | Starts one (`target`) or several (`targets`) consultations; `retry_of` replays only a failed job |
 | `consult_get` | Waits for a consultation and returns its state or answer; with `ids`, just those points of the answer |
-| `consult_cancel` | Stops a consultation or a whole fan-out, and its consultant processes, also one another session started |
+| `consult_cancel` | Requests termination of a consultation and its processes, including a group or another session's work. See [stop limits](#answers-checks-and-failures) |
 | `consult_record` | Writes the lead's verdicts on an answer's points, and what the answer added |
 | `consult_list` | Finds consultations by consultant, question or chain; includes continuation IDs and session usage |
 | `consult_export` | Returns a consultation, follow-ups and verdicts included, as Markdown |

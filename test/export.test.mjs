@@ -42,7 +42,7 @@ test('one consultation exports as one readable record: what was asked, answered,
   assert.match(markdown, /Capped the retries at 3\./);
   assert.match(markdown, /Reproduced with a 30s outage\./);
   assert.match(markdown, /codex/);
-  assert.match(markdown, /gpt-6-astra/);
+  assert.match(markdown, /gpt-6.1-sol/);
 });
 
 test('a point nobody checked is shown as unchecked, not left out', async () => {
@@ -193,7 +193,7 @@ test('export starts with checked points, evidence and effects, and links to thei
   assert.match(summary, /confirmed/);
   assert.match(summary, /Held the release pending a cap\./);
   assert.match(summary, /Observed retries in outage test\./);
-  assert.match(summary, /codex.*gpt-6-astra/);
+  assert.match(summary, /codex.*gpt-6.1-sol/);
   assert.ok(summary.includes(`[${view.job_id} / f1](#${view.job_id}-f1)`));
   assert.ok(markdown.includes(`<a id="${view.job_id}-f1"></a>`));
   assert.match(summary, /Unverified points: 2/);

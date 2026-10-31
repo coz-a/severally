@@ -714,6 +714,11 @@ export class JobManager {
     // The operator's setting only ever closes: a request cannot reopen the web.
     if (POLICY.network === 'off') req.network = 'off';
 
+    if (req.targets.some((name) => consultantByName(name)?.cli === 'codex')) {
+      const problem = codex.launchProblem();
+      if (problem) throw new RequestError(problem, 'unsafe_codex_placement');
+    }
+
     if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
       throw new RequestError(
         `the members of group "${followupTo}" no longer resolve to the consultants that answered them; follow up each member by its job_id`,
@@ -766,11 +771,31 @@ export class JobManager {
       );
     }
     if (!taken.ok) {
+      const holders = taken.holders.filter((h) => this.jobs.has(h.job_id));
       throw new RequestError(
         `this would run ${taken.live + seats.length} consultations at once; the cap is ${POLICY.maxConcurrent}` +
           (taken.elsewhere ? `, and ${taken.elsewhere} of the ${taken.live} running are in other severally processes` : '') +
-          '. Wait for one to finish (consult_get) or cancel it',
+          '. No job was started; see details for recovery',
         'concurrency_limit',
+        {
+          retryable: taken.retryable,
+          required: taken.required,
+          in_use: taken.live,
+          available: Math.max(0, taken.limit - taken.live),
+          limit: taken.limit,
+          missing: Math.max(0, taken.live + taken.required - taken.limit),
+          // Only suggest waiting on jobs already in this lead's context.
+          // Fetching an unrelated holder would expose its question and also
+          // offer cancellation of somebody else's work.
+          holders,
+          elsewhere: taken.live - holders.length,
+          retry_after_ms: taken.retryable ? 1000 : null,
+          max_retries: taken.retryable ? 2 : 0,
+          retry_budget_ms: taken.retryable ? 60_000 : 0,
+          recovery: taken.retryable
+            ? 'Wait on an already-known listed job with consult_get, or wait retry_after_ms if only other sessions hold seats; then resend the identical request at most twice within 60 seconds. No job was started. Do not inspect or cancel unrelated work or change limits.'
+            : 'This request exceeds total capacity; waiting cannot admit it. Ask the operator to choose fewer consultants or configure capacity.',
+        },
       );
     }
     // A request refused from here on gives its seats back.

@@ -367,7 +367,7 @@ function walkGit(dir, exposedAs, onFile, totals, skipped) {
 // round gave it.
 /**
  * @param {ExposePathSpec[]} exposePaths
- * @param {(abs: string, rel: string, index: number, source: string, totals: ExposeTotals) => void} onFile
+ * @param {(abs: string, rel: string, index: number, source: string, totals: ExposeTotals, expected: string) => void} onFile
  * @returns {ExposeManifest}
  */
 function walkEntries(exposePaths, onFile) {
@@ -376,6 +376,12 @@ function walkEntries(exposePaths, onFile) {
   const skipped = [];
   const entries = exposePaths.map((p, i) => {
     const { source, index } = typeof p === 'string' ? { source: p, index: i } : p;
+    let realSource;
+    try {
+      realSource = fs.realpathSync.native(source);
+    } catch (err) {
+      throw new ExposeError(`expose_paths entry "${source}" cannot be resolved: ${messageOf(err)}`, 'not_found');
+    }
     const stat = statEntry(source);
     // Indexed, so two entries whose basenames collide (two different
     // util.mjs) stay apart, and the brief can name each one exactly.
@@ -388,13 +394,13 @@ function walkEntries(exposePaths, onFile) {
     if (hasProtectedAncestor(source)) {
       skipped.push({ source, reason: 'protected' });
     } else if (stat.isFile()) {
-      onFile(source, '', index, source, totals);
+      onFile(source, '', index, source, totals, realSource);
       checkBudget(totals);
     } else {
       /** @type {(abs: string, rel: string) => void} */
       const add = (abs, rel) => {
         paths.push(rel.split(path.sep).join('/'));
-        onFile(abs, rel, index, source, totals);
+        onFile(abs, rel, index, source, totals, path.join(realSource, rel));
       };
       walkGit(source, exposedAs, add, totals, skipped) || walkDir(source, source, add, totals, skipped);
     }
@@ -446,10 +452,10 @@ export function materializeExposedPaths(workdir, exposePaths) {
   /** @type {import('node:crypto').Hash[]} */
   const hashes = [];
   let redacted = false;
-  const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals) => {
+  const manifest = walkEntries(exposePaths, (abs, rel, index, source, totals, expected) => {
     ensureRoom(totals, fs.statSync(abs).size, abs);
     const base = path.join(root, `${index}-${path.basename(source)}`);
-    const copy = copyMasked(abs, rel ? path.join(base, rel) : base);
+    const copy = copyMasked(abs, rel ? path.join(base, rel) : base, expected);
     const out = copy.bytes;
     redacted ||= copy.redacted;
     (hashes[index] ??= crypto.createHash('sha256')).update(`${rel}\0`).update(out);
@@ -466,18 +472,47 @@ export function materializeExposedPaths(workdir, exposePaths) {
 /**
  * @param {string} abs
  * @param {string} dest
+ * @param {string} expected Canonical path selected before walking the source.
  */
-function copyMasked(abs, dest) {
-  const fd = fs.openSync(abs, 'r');
+function copyMasked(abs, dest, expected) {
+  const sameLocation = () => path.relative(expected, fs.realpathSync.native(abs)) === '';
+  const before = fs.lstatSync(abs);
+  if (!before.isFile() || before.nlink > 1 || isProtectedPath(abs))
+    throw new ExposeError(`expose_paths entry "${abs}" changed before copying`, 'invalid_type');
+  const fd = fs.openSync(abs, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
   let buf;
   try {
     const stat = fs.fstatSync(fd);
-    if (!stat.isFile() || stat.nlink > 1) {
+    // Node 22 on Windows reports dev=0 for path stats but a volume serial for
+    // descriptor stats. Zero is unavailable, not a different volume. Compare
+    // inode identity in both cases and device identity when both report it.
+    const sameFile = (/** @type {fs.Stats} */ a, /** @type {fs.Stats} */ b) =>
+      a.ino === b.ino && (!a.dev || !b.dev || a.dev === b.dev);
+    if (
+      !stat.isFile() ||
+      stat.nlink > 1 ||
+      !sameFile(stat, before) ||
+      stat.size !== before.size ||
+      stat.mtimeMs !== before.mtimeMs ||
+      stat.ctimeMs !== before.ctimeMs ||
+      !sameLocation()
+    ) {
       throw new ExposeError(`expose_paths entry "${abs}" is no longer a single-link file`, 'invalid_type');
     }
     buf = fs.readFileSync(fd);
-    if (fs.fstatSync(fd).nlink > 1) {
-      throw new ExposeError(`expose_paths entry "${abs}" acquired a hard link during copying`, 'invalid_type');
+    const after = fs.fstatSync(fd);
+    const current = fs.lstatSync(abs);
+    if (
+      after.nlink > 1 ||
+      after.size !== stat.size ||
+      after.mtimeMs !== stat.mtimeMs ||
+      after.ctimeMs !== stat.ctimeMs ||
+      current.isSymbolicLink() ||
+      !sameFile(current, stat) ||
+      isProtectedPath(abs) ||
+      !sameLocation()
+    ) {
+      throw new ExposeError(`expose_paths entry "${abs}" changed during copying`, 'invalid_type');
     }
   } finally {
     fs.closeSync(fd);
@@ -573,7 +608,7 @@ function copyRepoFiles(workdir, top, changes, manifest, shown, gone = null) {
   const hash = crypto.createHash('sha256');
   for (const c of copied) {
     ensureRoom(manifest.totals, c.size, path.join(top, c.path));
-    const copy = copyMasked(path.join(top, c.path), path.join(root, c.path));
+    const copy = copyMasked(path.join(top, c.path), path.join(root, c.path), path.join(realTop, c.path));
     const out = copy.bytes;
     manifest.redacted = Boolean(manifest.redacted || copy.redacted);
     hash.update(`${c.path}\0`).update(out);

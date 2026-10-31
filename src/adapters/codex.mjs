@@ -101,6 +101,33 @@ export const RESERVED_FLAGS = [
 
 const PROFILE = 'severally';
 
+// Reject the detectable configuration that requires opening part of a
+// credential root to re-execute Codex. This is a configuration check, not a
+// claim that arbitrary files elsewhere on disk are isolated.
+export function launchProblem() {
+  const command = findCommand(POLICY.clis.codex.cli);
+  if (!command) return null;
+  let executable;
+  try {
+    executable = fs.realpathSync.native(command);
+  } catch {
+    return 'Codex executable placement could not be resolved; check it against protected credential roots.';
+  }
+  for (const root of protectedRoots()) {
+    if (root.includes('*')) continue;
+    let canonical;
+    try {
+      canonical = fs.realpathSync.native(root);
+    } catch {
+      continue;
+    }
+    const relative = path.relative(canonical, executable);
+    if (relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+      return 'Codex executable is inside a protected root; new files there may be readable. Move the executable outside credential roots and verify PATH before consulting.';
+  }
+  return null;
+}
+
 /** @param {string} dir @returns {string[]} */
 const listDir = (dir) => {
   try {

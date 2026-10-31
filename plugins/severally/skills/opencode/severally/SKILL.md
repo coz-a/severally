@@ -14,6 +14,11 @@ brief and the files you hand it. The Codex consultant additionally has a read-on
 
 ## A normal consultation is three calls
 
+Act on a real request to consult, including natural variants of the examples. A quoted request, a
+mention of a model or an ordinary small edit alone is not a request to launch a consultation.
+Use the premises already available in the conversation; do not make the user fill in a form.
+
+
 1. **Start** with one decidable question. For a code change, read its imports and callers, then select the
    diff, relevant caller, tests and configuration. Use `expose_diff` for the change and `expose_paths` for
    needed files outside it; do not send a whole repository by default. Example:
@@ -42,7 +47,8 @@ brief and the files you hand it. The Codex consultant additionally has a read-on
    on the decision instead of widening to the whole repository or looping consultations.
 
 2. **Collect** with `consult_get({ group_id })` (one consultant: `{ job_id }`). It waits by default; repeat
-   while running. A group wait returns as each new member finishes: check the available advice while the
+   while running. If start instead returns `concurrency_limit`, no consultant has started:
+   follow the bounded recovery below. A group wait returns as each new member finishes: check the available advice while the
    others run, then collect again for later disagreements. `progress` reports observed events, not inferred
    reasoning; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
    For a group, `done` means all available members have stopped, not that all succeeded. Check `member_counts`
@@ -54,6 +60,15 @@ brief and the files you hand it. The Codex consultant additionally has a read-on
 
 Detailed recovery, limits, prediction and reflection are in `reference.md`, in the same directory as this file.
 Read only when needed.
+
+## When capacity is busy
+
+Read `details.retryable`. If false, waiting cannot admit this request. If true, wait on a listed
+holder's `job_id` with `consult_get`, then resend the identical request at most **two** times within
+**60 seconds** total. These are shared jobs: do not cancel unrelated work. A missing holder may have
+finished or not published its marker; respect `retry_after_ms` before rechecking. A job/group receipt
+means start succeeded: never replay it. Stop when the retry budget is used; report the busy state.
+Do not change limits, home, targets or models to bypass the operator's cap.
 
 ## Pick the consultant
 
@@ -111,24 +126,18 @@ form; legacy notes remain local until recorded again. Keep detailed or private l
 Confirmed does not mean adopted. Reading alone stays unverified; remaining
 points need no entry. Report the deciding point, consultant and actual model, job/point ID, grounds, your
 check, adoption or rejection and remaining unknowns. Preserve opposite stances even with a shared finding.
+Lead with your recommendation and its deciding check. For several consultants use one compact row each:
+actual model, recommendation, point ID, check and result, decision; finish with unresolved conditions.
+Do not fetch whole answers, record unchecked points or export by default when the needed grounds are present.
 
 ## Follow-ups and approval
 
-For "recheck this", reuse the completed member's `job_id` already in the result; do not list or ask the user
-to copy it. Use `consult_list` only when the relevant saved job is not in the current context, then use the
-matching chain's `latest_completed_job_id` and check `rounds_remaining`.
-`consult_start({ request: { followup_to: "<job_id>", question: "Recheck f1 against the current code and my recorded check.",
-  context: { expose_paths: ["/abs/path/to/new-caller.mjs"] } } })` adds only newly needed material; omit
-`context` if none is needed. Record the check first so the consultant receives it with its own history.
-For a failed member use `consult_start({ request: { retry_of: "<failed job_id>" } })` with no other fields,
-after fixing auth/quota causes; keep successful answers. The retry is a new chain linked to the failure.
-Find saved consultations with `consult_list({ question: "cache", target: "codex" })`.
-Ask for a choice once when several saved candidates fit; retrieve the IDs yourself. In a changed-requirement
-follow-up, state the changed premise and ask which advice is retained or withdrawn, the concrete next change,
-and its verification. A prior cache collision check does not establish authentication order or bypass.
-
-A group's `group_id` asks every eligible member again; use a member's `job_id` for one. Files are recopied in
-their current state, changes and deletions noted; add needed `expose_paths`. See the reference for recovery.
+For "recheck this", reuse the completed member's `job_id`; do not ask the user to transcribe it.
+If it is not in context, use `consult_list` and the matching chain's `latest_completed_job_id`.
+Pass `followup_to` plus the new question; current files and recorded checks are sent again.
+A previous `confirmed` verdict covers the earlier files and check, not the changed code.
+Use `retry_of` alone for a failed member after fixing the cause; keep successful answers.
+Detailed follow-up examples and changed-requirement checks are in the reference.
 
 Use this for expensive decisions, close options or a stalled investigation, not routine edits.
 **Before you ask the user to approve** a hard-to-reverse change nobody else reviewed, consult first and check
