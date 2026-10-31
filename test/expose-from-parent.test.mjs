@@ -321,12 +321,20 @@ test('a group follow-up copies again what the fan-out exposed, not what one memb
   const dir = tree();
   process.env.STUB_BEHAVIOR = 'ok';
   const start = async (request) => payload(await client.callTool({ name: 'consult_start', arguments: { request } }));
+  const finishGroup = async (groupId) => {
+    let view;
+    do {
+      view = payload(await client.callTool({ name: 'consult_get', arguments: { group_id: groupId, wait_ms: 20000 } }));
+    } while (view.status === 'running');
+    assert.equal(view.status, 'done');
+    assert.equal(view.member_counts.completed, 2);
+  };
   const group = await start({
     targets: ['codex', 'claude-code'],
     question: 'q',
     context: { expose_paths: [path.join(dir, 'one.mjs')] },
   });
-  await client.callTool({ name: 'consult_get', arguments: { group_id: group.group_id, wait_ms: 20000 } });
+  await finishGroup(group.group_id);
   const member = await start({
     followup_to: group.jobs[0].job_id,
     question: 'q2',
@@ -340,6 +348,6 @@ test('a group follow-up copies again what the fan-out exposed, not what one memb
     again.exposed_from_parent.entries.map((e) => e.exposed_as),
     ['workspace/0-one.mjs'],
   );
-  await client.callTool({ name: 'consult_get', arguments: { group_id: again.group_id, wait_ms: 20000 } });
+  await finishGroup(again.group_id);
   await client.close();
 });

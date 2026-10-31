@@ -28,6 +28,38 @@ const finishGroup = async (mgr, groupId) => {
   return mgr.groupView(groupId);
 };
 
+test('a failed group save warns while returning member answers and can be retried without consulting again', async (t) => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const original = fs.writeFileSync;
+  let blocked = true;
+  t.mock.method(fs, 'writeFileSync', (...args) => {
+    if (blocked && /history[\\/]groups[\\/]/.test(String(args[0]))) {
+      throw Object.assign(new Error('injected group capacity failure'), { code: 'ENOSPC' });
+    }
+    return original(...args);
+  });
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
+  assert.equal(started.history_warning.stage, 'group');
+  const promises = started.jobs.map((j) => mgr.jobs.get(j.job_id).promise);
+  const view = await finishGroup(mgr, started.group_id);
+  assert.equal(view.status, 'done');
+  assert.equal(view.member_counts.completed, 2);
+  assert.equal(view.history_warning.stage, 'group');
+  assert.match(view.history_warning.recovery, /member.*job_id/);
+  assert.equal(new JobManager().groupView(started.group_id), null);
+  assert.equal(new JobManager().view(started.jobs[0].job_id).status, 'completed');
+  blocked = false;
+  assert.equal(mgr.groupView(started.group_id).history_warning, undefined);
+  const saved = new JobManager().groupView(started.group_id);
+  assert.equal(saved.status, 'done');
+  assert.equal(saved.comparison.by_target.length, 2);
+  assert.deepEqual(
+    started.jobs.map((j) => mgr.jobs.get(j.job_id).promise),
+    promises,
+  );
+});
+
 test('targets fans out to one job per consultant and returns a group', async () => {
   process.env.STUB_BEHAVIOR = 'ok';
   const mgr = new JobManager();
@@ -112,6 +144,17 @@ test('a single target keeps the old response shape and gains a group_id', async 
   assert.ok(started.group_id);
   assert.equal(started.jobs, undefined);
   await mgr.jobs.get(started.job_id).promise;
+});
+
+test('a group exposes the round network setting separately from the server default', async () => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'], network: 'off' }));
+  const view = await finishGroup(mgr, started.group_id);
+  assert.equal(started.network, 'off');
+  assert.equal(started.limits.network, 'on');
+  assert.equal(view.network, 'off');
+  assert.equal(new JobManager().groupView(started.group_id).network, 'off');
 });
 
 test('naming the same consultant twice is refused', () => {

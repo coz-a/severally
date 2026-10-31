@@ -531,7 +531,8 @@ test('a running poll leaves out the limits; a fan-out carries one copy, on the g
   assert.ok(mgr.view(job_id).limits, 'the finished view carries them again');
   process.env.STUB_BEHAVIOR = 'ok';
   const { group_id } = mgr.start(reviewRequest({ target: undefined, targets: ['codex', 'claude-code'] }));
-  const group = await mgr.waitGroup(group_id, 20_000, { detail: 'full' });
+  await Promise.all(mgr.groups.get(group_id).job_ids.map((jid) => mgr.jobs.get(jid).promise));
+  const group = await mgr.waitGroup(group_id, 0, { detail: 'full' });
   assert.ok(group.limits);
   assert.ok(group.members.every((m) => !('limits' in m)));
   // By default a finished group leaves them out too: they grow with every consultant configured.

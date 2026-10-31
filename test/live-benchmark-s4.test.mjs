@@ -11,7 +11,7 @@ sandboxEnv({ STUB_BEHAVIOR: 'ok' });
 const { JobManager } = await import('../src/jobs.mjs');
 const { resumeS4 } = await import('../scripts/live-benchmark-s4.mjs');
 
-async function fixture(t) {
+async function fixture(t, manifestOptions = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-s4-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   process.env.STUB_BRIEF_DIR = dir;
@@ -24,7 +24,11 @@ async function fixture(t) {
   const receiptPath = path.join(dir, 'receipt.json');
   const assessmentPath = path.join(dir, 'assessment.json');
   const manifestPath = path.join(dir, 'manifest.json');
-  const manifest = JSON.stringify({ scenario: 'S4', followup_question: 'Recheck f1 against the recorded evidence.' });
+  const manifest = JSON.stringify({
+    scenario: 'S4',
+    followup_question: 'Recheck f1 against the recorded evidence.',
+    ...manifestOptions,
+  });
   fs.writeFileSync(manifestPath, manifest);
   const receipt = {
     scenario: 'S4',
@@ -151,6 +155,25 @@ test('S4 retains a failed follow-up and does not infer scenario success', async 
   assert.equal(result.outcome, 'followup_failed');
   assert.equal(result.followup.status, 'failed');
   assert.equal(result.scenario_assessment, null);
+});
+
+test('S4 applies the fixed consultation budget to the follow-up and retains its cancellation', async (t) => {
+  const f = await fixture(t, { consultation_budget_ms: 250 });
+  process.env.STUB_BEHAVIOR = 'hang';
+  t.after(() => {
+    process.env.STUB_BEHAVIOR = 'ok';
+  });
+  const result = await resumeS4({
+    receiptPath: f.receiptPath,
+    assessmentPath: f.assessmentPath,
+    manifestPath: f.manifestPath,
+    manager: f.manager,
+  });
+  assert.equal(result.outcome, 'followup_failed');
+  assert.equal(result.followup.status, 'cancelled');
+  assert.equal(result.followup.termination_reason, 'benchmark_deadline');
+  assert.equal(result.followup.consultation_budget_ms, 250);
+  assert.ok(result.followup.duration_ms < 8000);
 });
 
 test('S4 records which verification notes were shortened before the follow-up', async (t) => {

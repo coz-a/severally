@@ -42,7 +42,9 @@ brief and the files you hand it.
    on the decision instead of widening to the whole repository or looping consultations.
 
 2. **Collect** with `consult_get({ group_id })` (one consultant: `{ job_id }`). It waits by default; repeat
-   while running. `progress` shows activity; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
+   while running. A group wait returns as each new member finishes: check the available advice while the
+   others run, then collect again for later disagreements. `progress` reports observed events, not inferred
+   reasoning; `consult_cancel({ group_id })` or `{ job_id }` stops the work.
    For a group, `done` means all available members have stopped, not that all succeeded. Check `member_counts`
    and each member: pending work and missing history are different. Report failures, cancellations and missing
    members; `failed` means no advice, never "no concerns". Use successful answers even when another member fails.

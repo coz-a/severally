@@ -61,6 +61,18 @@ import { POLICY } from './policy.mjs';
 /** @typedef {import('./run.mjs').UsageRecord} UsageRecord */
 
 /**
+ * A completed answer can be usable even when its durable history is incomplete.
+ * @typedef {object} HistoryWarning
+ * @property {'round' | 'index' | 'group'} stage
+ * @property {boolean} [round_saved]
+ * @property {boolean} [index_saved]
+ * @property {boolean} recovery_saved
+ * @property {string | null} code
+ * @property {string} message
+ * @property {string} recovery
+ */
+
+/**
  * What the server derived from a normalized answer and the checks around it.
  * @typedef {object} Quality
  * @property {string[]} missing_sections
@@ -163,6 +175,7 @@ import { POLICY } from './policy.mjs';
  * @property {string[] | undefined} [retry_context] Prior completed jobs carried into a retry's new chain.
  * @property {number | undefined} [rounds_used]
  * @property {number | undefined} [rounds_remaining]
+ * @property {HistoryWarning | undefined} [history_warning]
  */
 
 /** @typedef {Round & { owner?: Seat['owner'], progress_observation?: import('./jobs.mjs').ProgressObservation | undefined, progress_text?: string | null | undefined }} RunningRecord The in-progress marker: a round record so far, plus who runs it. */
@@ -209,6 +222,7 @@ import { POLICY } from './policy.mjs';
  * @property {Mode} mode
  * @property {string} question
  * @property {string[]} job_ids
+ * @property {HistoryWarning | undefined} [history_warning]
  */
 
 export function ensureDirs() {
@@ -386,43 +400,89 @@ export function loadChain(chainId) {
 // consultation, so counting rounds there never counts edits.
 /**
  * @param {Round} record
- * @param {{ appendIndex?: boolean }} [opts]
+ * @param {{ appendIndex?: boolean, preserveSaved?: boolean }} [opts]
  */
-export function persistRound(record, { appendIndex = true } = {}) {
-  fs.mkdirSync(path.join(POLICY.home, 'history', record.chain_id), { recursive: true, mode: 0o700 });
+export function persistRound(record, { appendIndex = true, preserveSaved = false } = {}) {
+  if (!appendIndex) return writeRound(record, false);
+  const file = roundPath(record.chain_id, record.round);
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    return withDirectoryLock(`${file}.lock`, 'history', () => {
+      if (preserveSaved) {
+        try {
+          record = JSON.parse(fs.readFileSync(file, 'utf8'));
+        } catch (err) {
+          if (!(err instanceof Error && 'code' in err && err.code === 'ENOENT')) throw err;
+        }
+      }
+      writeRound(record, true);
+    });
+  } catch (err) {
+    throw err instanceof HistoryWriteError ? err : new HistoryWriteError('round', err);
+  }
+}
+
+/** @param {Round} record @param {boolean} appendIndex */
+function writeRound(record, appendIndex) {
   // Written aside and renamed into place, so a write that fails part-way
   // leaves the round as it was rather than a damaged file.
   const file = roundPath(record.chain_id, record.round);
   const tmp = `${file}.${process.pid}.tmp`;
   try {
+    fs.mkdirSync(path.join(POLICY.home, 'history', record.chain_id), { recursive: true, mode: 0o700 });
     fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, file);
   } catch (err) {
-    fs.rmSync(tmp, { force: true });
-    throw err;
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Keep the original storage error when cleanup is also denied.
+    }
+    throw new HistoryWriteError('round', err);
   }
   // A consultation already in the index is not added again: a round closed out
   // as interrupted can still be finished later by a process that was only
   // slow, and one closed out twice (two servers sweeping at once) is one line.
-  if (!appendIndex || indexRow(record.job_id)) return;
-  fs.appendFileSync(
-    path.join(POLICY.home, 'history', 'index.jsonl'),
-    `${JSON.stringify({
-      job_id: record.job_id,
-      chain_id: record.chain_id,
-      round: record.round,
-      target: record.target,
-      cli: record.cli ?? null,
-      initiator: record.initiator ?? null,
-      mode: record.mode,
-      status: record.status,
-      failure_kind: record.failure?.kind ?? null,
-      model: record.model,
-      created_at: record.created_at,
-      duration_ms: record.duration_ms,
-    })}\n`,
-    { mode: 0o600 },
-  );
+  if (!appendIndex) return;
+  try {
+    // Different rounds share this file. Serialize appends, including recovery
+    // from a short write, so a concurrent writer cannot interleave its row.
+    withDirectoryLock(path.join(POLICY.home, 'history', 'index.lock'), 'history index', () => {
+      if (indexRow(record.job_id)) return;
+      fs.appendFileSync(
+        path.join(POLICY.home, 'history', 'index.jsonl'),
+        // A failed append may leave an unterminated JSON prefix. Start on a
+        // fresh line so that prefix cannot swallow this complete record.
+        `\n${JSON.stringify({
+          job_id: record.job_id,
+          chain_id: record.chain_id,
+          round: record.round,
+          target: record.target,
+          cli: record.cli ?? null,
+          initiator: record.initiator ?? null,
+          mode: record.mode,
+          status: record.status,
+          failure_kind: record.failure?.kind ?? null,
+          model: record.model,
+          created_at: record.created_at,
+          duration_ms: record.duration_ms,
+        })}\n`,
+        { mode: 0o600 },
+      );
+    });
+  } catch (err) {
+    throw new HistoryWriteError('index', err);
+  }
+}
+
+export class HistoryWriteError extends Error {
+  /** @param {'round' | 'index'} stage @param {unknown} cause */
+  constructor(stage, cause) {
+    super(`could not save history ${stage}`, { cause });
+    this.stage = stage;
+    const code = cause instanceof Error && 'code' in cause ? String(cause.code) : '';
+    this.code = /^[A-Z0-9_]{1,40}$/.test(code) ? code : null;
+  }
 }
 
 /**
@@ -730,7 +790,19 @@ export function loadGroup(groupId) {
 export function persistGroup(group) {
   const dir = path.join(POLICY.home, 'history', 'groups');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(path.join(dir, `${group.group_id}.json`), JSON.stringify(group, null, 2), { mode: 0o600 });
+  const file = path.join(dir, `${group.group_id}.json`);
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(group, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Preserve the storage failure even when temporary-file cleanup fails.
+    }
+    throw err;
+  }
 }
 
 /** @param {string} jobId */

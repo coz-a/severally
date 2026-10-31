@@ -28,7 +28,13 @@ const structured = {
   references: [],
 };
 
-function run() {
+async function run() {
+  // Hold one fan-out member until its test explicitly releases it.
+  if (process.env.STUB_GATE_FILE) {
+    while (!fs.existsSync(process.env.STUB_GATE_FILE)) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
   if (process.env.STUB_BRIEF_OUT) fs.writeFileSync(process.env.STUB_BRIEF_OUT, stdin);
   // STUB_BRIEF_OUT is a single shared path: in a fan-out several children would
   // overwrite each other's brief, so also drop one file per target.

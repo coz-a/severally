@@ -28,7 +28,7 @@ if (process.argv[2] === 'install') {
   await import(installer.href);
 } else if (process.argv[2] === 'status') {
   const { status } = await import('../src/status.mjs');
-  process.exitCode = status();
+  process.exitCode = await status();
 } else {
   const { main } = await import('../src/server.mjs');
   main().catch((err) => {

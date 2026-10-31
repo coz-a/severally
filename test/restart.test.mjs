@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { sandboxEnv, reviewRequest, waitFor } from './helpers.mjs';
 
 const home = sandboxEnv();
-const { JobManager } = await import('../src/jobs.mjs');
+const { JobManager, pointsOf } = await import('../src/jobs.mjs');
 const store = await import('../src/store.mjs');
 
 const indexLines = (jobId) =>
@@ -24,6 +24,155 @@ const alive = (pid) => {
     return false;
   }
 };
+
+for (const [method, code, stage] of [
+  ['writeFileSync', 'ENOSPC', 'round'],
+  ['renameSync', 'EACCES', 'round'],
+  ['appendFileSync', 'ENOSPC', 'index'],
+]) {
+  test(`a ${stage} ${method} failure keeps completed advice and recovers without another consultation`, async (t) => {
+    process.env.STUB_BEHAVIOR = 'ok';
+    const original = fs[method];
+    let blocked = true;
+    t.mock.method(fs, method, (...args) => {
+      if (blocked && (stage === 'index' ? String(args[0]).endsWith('index.jsonl') : /round-\d+\.json/.test(String(args[0])))) {
+        throw Object.assign(new Error('injected storage failure'), { code });
+      }
+      return original(...args);
+    });
+    const mgr = new JobManager();
+    const started = mgr.start(reviewRequest());
+    const job = mgr.jobs.get(started.job_id);
+    const execution = job.promise;
+    await execution;
+    const result = mgr.view(started.job_id);
+    assert.equal(result.status, 'completed');
+    assert.ok(result.result.findings.length);
+    assert.equal(result.history_warning.stage, stage);
+    assert.equal(result.history_warning.round_saved, stage === 'index');
+    assert.equal(result.history_warning.index_saved, false);
+    assert.equal(result.history_warning.recovery_saved, true);
+    assert.equal(result.history_warning.code, code);
+    assert.match(result.history_warning.recovery, /consult_get/);
+    assert.equal(mgr.groupView(started.group_id).members[0].history_warning.stage, stage);
+    assert.equal(pointsOf(result, ['f1']).history_warning.stage, stage);
+    assert.equal(fs.existsSync(path.join(home, 'slots', `${started.job_id}.json`)), false);
+    assert.equal(fs.existsSync(store.jobDir(started.job_id)), false);
+    assert.equal(store.loadRunning(started.job_id).status, 'completed');
+
+    // A different manager must find the terminal answer, not a fictitious running job.
+    const restarted = new JobManager();
+    restarted.sweepInterrupted();
+    assert.equal(store.loadRunning(started.job_id).status, 'completed');
+    assert.equal(restarted.view(started.job_id).status, 'completed');
+    assert.equal(restarted.list().find((r) => r.job_id === started.job_id).status, 'completed');
+    blocked = false;
+    const recovered = restarted.view(started.job_id);
+    assert.equal(recovered.status, 'completed');
+    assert.deepEqual(recovered.result, result.result);
+    assert.equal(recovered.history_warning, undefined);
+    assert.equal(store.loadRunning(started.job_id), null);
+    assert.equal(indexLines(started.job_id), 1);
+    assert.equal(new JobManager().view(started.job_id).status, 'completed');
+    assert.equal(mgr.jobs.get(started.job_id).promise, execution);
+    mgr.view(started.job_id);
+    assert.equal(indexLines(started.job_id), 1);
+  });
+}
+
+test('when neither the round nor its recovery marker can be saved the owner warns about restart loss', async (t) => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const started = mgr.start(reviewRequest());
+  const original = fs.writeFileSync;
+  let blocked = true;
+  t.mock.method(fs, 'writeFileSync', (...args) => {
+    if (blocked && /history[\\/](?:chain_|running)/.test(String(args[0]))) {
+      throw Object.assign(new Error('injected permission failure'), { code: 'EACCES' });
+    }
+    return original(...args);
+  });
+  await mgr.jobs.get(started.job_id).promise;
+  const result = mgr.view(started.job_id);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.history_warning.recovery_saved, false);
+  assert.match(result.history_warning.recovery, /before.*restart/i);
+  assert.equal(store.loadRunning(started.job_id), null, 'a stale running marker must not survive a failed terminal write');
+  blocked = false;
+  assert.equal(mgr.view(started.job_id).history_warning, undefined);
+  assert.equal(new JobManager().view(started.job_id).status, 'completed');
+  assert.equal(indexLines(started.job_id), 1);
+});
+
+test('saving recovered history preserves checks another session writes after the owner reads its cached round', async (t) => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const append = fs.appendFileSync;
+  let blocked = true;
+  t.mock.method(fs, 'appendFileSync', (...args) => {
+    if (blocked && String(args[0]).endsWith('index.jsonl')) {
+      throw Object.assign(new Error('injected index failure'), { code: 'ENOSPC' });
+    }
+    return append(...args);
+  });
+  const started = mgr.start(reviewRequest());
+  const job = mgr.jobs.get(started.job_id);
+  await job.promise;
+  assert.equal(job.history_warning.stage, 'index');
+  blocked = false;
+  const other = new JobManager();
+  other.view(started.job_id);
+  const read = fs.readFileSync;
+  let interleave = true;
+  t.mock.method(fs, 'readFileSync', (...args) => {
+    const bytes = read(...args);
+    if (interleave && args[0] === store.roundPath(job.chain_id, job.round)) {
+      interleave = false;
+      other.record({ job_id: started.job_id, entries: [{ id: 'f1', verdict: 'confirmed', note: 'Saved concurrently.' }] });
+    }
+    return bytes;
+  });
+  mgr.view(started.job_id);
+  assert.equal(new JobManager().view(started.job_id).record.entries[0].note, 'Saved concurrently.');
+  assert.equal(indexLines(started.job_id), 1);
+});
+
+test('a partially appended index row cannot hide recovered advice or the next completed consultation', async (t) => {
+  process.env.STUB_BEHAVIOR = 'ok';
+  const mgr = new JobManager();
+  const append = fs.appendFileSync;
+  let blocked = true;
+  let partial = false;
+  t.mock.method(fs, 'appendFileSync', (...args) => {
+    if (blocked && String(args[0]).endsWith('index.jsonl')) {
+      if (!partial) {
+        partial = true;
+        append(args[0], String(args[1]).slice(0, 25), args[2]);
+      }
+      throw Object.assign(new Error('injected partial index append'), { code: 'ENOSPC' });
+    }
+    return append(...args);
+  });
+  const damaged = mgr.start(reviewRequest());
+  await mgr.jobs.get(damaged.job_id).promise;
+  assert.equal(mgr.jobs.get(damaged.job_id).history_warning.stage, 'index');
+  assert.equal(store.loadRunning(damaged.job_id).status, 'completed');
+  blocked = false;
+
+  // Another completed job must remain findable even before the damaged job
+  // gets its own retry; a partial JSON tail must not swallow its index row.
+  const next = mgr.start(reviewRequest());
+  await mgr.jobs.get(next.job_id).promise;
+  assert.equal(new JobManager().view(next.job_id)?.status, 'completed');
+  const recovered = mgr.view(damaged.job_id);
+  assert.equal(recovered.history_warning, undefined);
+  assert.equal(new JobManager().view(damaged.job_id)?.status, 'completed');
+  assert.equal(store.loadRunning(damaged.job_id), null);
+  assert.equal(store.indexRows().filter((row) => row.job_id === damaged.job_id).length, 1);
+  assert.equal(store.indexRows().filter((row) => row.job_id === next.job_id).length, 1);
+  mgr.view(damaged.job_id);
+  assert.equal(store.indexRows().filter((row) => row.job_id === damaged.job_id).length, 1);
+});
 
 test('a finished consultation is still found by another server process', async () => {
   process.env.STUB_BEHAVIOR = 'ok';

@@ -151,6 +151,36 @@ test('benchmark records terminal status and usage but leaves usefulness and serv
   assert.ok(receipt.members[0].usage);
   assert.equal(receipt.adoption, null);
   assert.match(receipt.manifest_sha256, /^[0-9a-f]{64}$/);
+  assert.equal(receipt.source.package_version, JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url))).version);
+  assert.equal(receipt.source.entrypoint, 'src/jobs.mjs');
+  assert.match(receipt.source.tree_sha256, /^[0-9a-f]{64}$/);
+  assert.match(receipt.source.hash_method, /relative path.*NUL.*bytes/);
+  assert.equal(receipt.host_observation, null);
+  assert.equal(receipt.request_sha256, crypto.createHash('sha256').update(JSON.stringify(manifest().request)).digest('hex'));
+  assert.equal(receipt.request_hash_method, 'SHA256(UTF8(JSON.stringify(request)))');
+  assert.equal(receipt.consultation_budget_ms, null);
+  assert.equal(receipt.termination_reason, 'completed');
+});
+
+test('benchmark budget cancels an unresponsive consultant and keeps the failed trial', () => {
+  const input = manifest();
+  input.consultation_budget_ms = 250;
+  const { proc, receipt } = runManifest(input, { STUB_BEHAVIOR: 'hang', SEVERALLY_TIMEOUT_MS: '10000' });
+  assert.equal(proc.status, 1, proc.stderr);
+  assert.equal(receipt.consultation_budget_ms, 250);
+  assert.equal(receipt.termination_reason, 'benchmark_deadline');
+  assert.equal(receipt.outcome, 'failed');
+  assert.equal(receipt.members[0].status, 'cancelled');
+  assert.ok(receipt.duration_ms < 8000);
+});
+
+test('benchmark rejects an invalid consultation budget before reserving a receipt', () => {
+  const input = manifest();
+  input.consultation_budget_ms = -1;
+  const { proc, receipt } = runManifest(input);
+  assert.notEqual(proc.status, 0);
+  assert.match(proc.stderr, /consultation_budget_ms/);
+  assert.equal(receipt, null);
 });
 
 test('S2 records each member including failures and does not infer independent views', () => {

@@ -23,7 +23,7 @@ severally を入れる前に、相談したい CLI を少なくとも 1 つ入�
 導入後は新しいターミナルを開き、CLI を `PATH` から使えるようにしてください。severally は CLI の既存のログインを使います。
 インストーラが準備するのはサーバとクライアントへの登録で、相談相手のアカウントは設定しません。
 
-Codex の実行ファイルは、`~/.codex` や移設した `CODEX_HOME` などの認証情報ディレクトリの外に置いてください。
+Codex の実行ファイルは`~/.codex` や移設した `CODEX_HOME` などの認証情報ディレクトリの外に置いてください。
 相談を始める前に、シンボリックリンクの参照先も含め、実行ファイルと認証情報のパスを確認してください。実行ファイルが
 保護対象のディレクトリ内にある場合は例外が必要になり、同じディレクトリに新しく作られたファイルを相談相手が読める
 場合があります。CLI の導入手順に従って実行ファイルを外に移すか再インストールし、`PATH` が意図したインストールを
@@ -32,19 +32,19 @@ Linux と Codex 0.164.0 で合成ファイルを使って検証しました。�
 残る制限は[読み取りの制限](how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)を参照してください。
 
 OpenCode 2.x の認証回復には、Node の任意機能である `node:sqlite` も必要です。severally は実行時に利用できるかを
-確かめます。古い Node 22 の一部では、フラグなしで使えません。`severally-mcp status` はログイン状態とは別に、この
-機能の状態を表示します。利用できない場合は、Node.js を現在サポートされている版へ更新してください。通常の CLI
+確かめます。古い Node 22 の一部ではフラグなしで使えません。`severally-mcp status` はログイン状態とは別に、この
+機能の状態を表示します。利用できない場合は、Node.js を現在サポートされているバージョンへ更新してください。通常の CLI
 ログインと、認証回復を必要としない相談は引き続き受け付けます。OpenCode のセッション DB がある状態でモデルのエラーが
 起きた場合にも、元のエラーに認証回復を使えない理由を添えます。これは元のエラーの原因を断定するものではありません。
 Node の最低要件は 22 のままです。
 
 README に書いた Node.js 22 以降とログイン済みの CLI のほかに、次の条件があります。
 
-- macOS / Linux では、npm のグローバルのフォルダについて必要なことはありません。既定のプラグイン方式（下記）は
+- macOS / Linux ではnpm のグローバルのフォルダについて必要なことはありません。既定のプラグイン方式（下記）は
   `npm install -g` で、Codex のプラグインが起動する `severally-mcp` コマンドを `PATH` に置きます。npm がグローバルに
   入れられないとき（たとえば sudo が要る、npm のグローバルのフォルダが `PATH` に無い）は、インストーラが代わりに
   Codex を直接登録します。ほかに必要なことはありません。`--manual` を付ければ、このコマンドは要りません。
-- Windows では、PowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
+- Windows ではPowerShell かコマンドプロンプトからネイティブに動きます。WSL は要りません。CLI は `PATH` と
   `PATHEXT` から探します（`.exe`、`.cmd`、`.bat`、空白を含むパスにも対応します）。
 
 インストーラとサーバは、CI で Linux・macOS・Windows のテストをしています。Claude Code と Codex のマーケットプレイスからの
@@ -54,7 +54,7 @@ README に書いた Node.js 22 以降とログイン済みの CLI のほかに�
 
 ## CLI 更新後の互換性確認
 
-通常の `npm test` は、オフラインの fixture で確認します。次のコマンドは明示的に実際の相談を始め、選んだ CLI の
+通常の `npm test` はオフラインの fixture で確認します。次のコマンドは明示的に実際の相談を始め、選んだ CLI の
 使用枠を消費します。認証済みの CLI がある環境で、ソースのチェックアウトから実行してください。
 
 ```bash
@@ -70,8 +70,8 @@ node scripts/live-check.mjs --target codex --mode cancel
 500 ミリ秒後に取消しを求めます。すでに相談が終わっていれば、取消しの結果は判定不能です。ジョブを取り消せたことだけ
 では、子孫プロセスの終了は確認できません。Windows で親が先に終了した場合は、特に別の確認が必要です。
 
-doctor の各行には `evidence`、live-check の出力には `compatibility:` に続く JSON の記録が付きます。共通形式には、
-形式の版、日時、severally と CLI の版、OS と Node の版、設定したモデルと effort、起動時に指定したモデル、相談・
+doctor の各行には `evidence`、live-check の出力には `compatibility:` に続く JSON の記録が付きます。共通形式には
+形式のバージョン、日時、severally と CLI のバージョン、OS と Node のバージョン、設定したモデルと effort、起動時に指定したモデル、相談・
 読取り・禁止操作・追加質問・取消しの結果を残します。試していない検査は `not_run`、観測できない実モデルと実効 effort
 は `null` です。現在のジョブ記録だけではプロバイダーが実際に使ったモデルと effort を独立に確認できないため、これらの
 スクリプトでは観測値を null のまま残します。起動の成功や設定値を、実効値の証拠にはしません。ツール名やイベント形式の
@@ -80,8 +80,17 @@ doctor の各行には `evidence`、live-check の出力には `compatibility:` 
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.12.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.13.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
+
+npm がインストーラの代わりに導入済みのサーバを選ぶときは、パッケージとインストーラの実行ファイルを別々に指定します。
+
+```bash
+npx --yes --package=severally-mcp@2.13.0 -- severally-install --dry-run
+```
+
+変更内容を確認したら、`--dry-run` を外してインストールします。ソースのルートからも使えます。
+`severally-mcp` という名前の導入済みランタイムには、`severally-install` の実行ファイルは含まれません。
 
 | オプション | すること |
 |---|---|
@@ -94,7 +103,7 @@ npx -y severally-mcp@2.12.0 install [--dry-run] [--manual] [--force] [--skip-glo
 
 ## クローンから入れる
 
-macOS / Linux では、次のコマンドを実行します。
+macOS / Linux では次のコマンドを実行します。
 
 ```bash
 git clone https://github.com/coz-a/severally.git
@@ -103,7 +112,7 @@ npm install                 # 依存パッケージを取得する
 node scripts/install.mjs    # --dry-run を付けると、何も変えずに変更内容だけを表示する
 ```
 
-Windows では、PowerShell で次のコマンドを実行します。
+Windows ではPowerShell で次のコマンドを実行します。
 
 ```powershell
 git clone https://github.com/coz-a/severally.git
@@ -112,18 +121,26 @@ npm.cmd install
 node scripts/install.mjs
 ```
 
-インストールのあとは、クローンしたフォルダを移しても消しても構いません。Node.js は残しておく必要があります。
+インストールのあとはクローンしたフォルダを移しても消しても構いません。Node.js は残しておく必要があります。
 `npm run init-config`（README の[設定](../README.ja.md#設定)を参照）を使うなら、フォルダは残してください。
 
 ## 登録の確かめ方
 
 `npx -y severally-mcp@latest status` を実行すると、相談を始めずに、まとめて確かめられます。設定ファイルが正しいか、
-この機械から使える相談相手（使えないものはその理由）、入っている写しの版がそろっているか、どのクライアントに
-severally が登録されているか、各 CLI にログインしているかを表示します。ログインの確認は、各 CLI 自身の状態確認
+この機械から使える相談相手（使えないものはその理由）、入っている写しのバージョンがそろっているか、どのクライアントに
+severally が登録されているか、各 CLI にログインしているかを表示します。ログインの確認は各 CLI 自身の状態確認
 コマンドを読むだけで、プロンプトは送りません。Claude Code は `claude auth status`、Codex は `codex login status` です。
 OpenCode は `opencode auth list` で保存されている認証情報の数を見ます（環境変数のキーでも動くので、保存が無くても
-警告にとどめます）。Antigravity にはそうしたコマンドが無いので「not checked」と表示します。使用枠を使い切って
-いないかは確かめません。それは最初の相談で分かります。
+警告にとどめます）。ログインの確認には相談用の `clis.<cli>.bin` と `env` を使います。
+Codex や Claude の認証先を移設した設定も反映します。OpenCode は相談と同じく、
+`SEVERALLY_OPENCODE_CRED_HOME` が指定する認証元を確認します。クライアント登録はホストの `PATH` 上のコマンドで
+別に確認するため、相談先の実行ファイルを変更しても登録の確認先は変わりません。
+
+独立した確認は並行して実行します。各コマンドの待機上限は5秒、全確認の共通予算は20秒で、プロセス停止には
+設定済みの猶予時間が加わります。時間切れやログイン確認コマンドの未対応は「could not tell」と表示し、
+直接確認する方法や更新を案内します。未ログインとは表示しません。無効にした CLI は実行せず、
+アカウント情報や認証情報も表示しません。ログイン確認コマンドのない Antigravity は「not checked」と表示します。
+status では使用枠の残量や実相談の成功は確かめません。
 
 クライアントごとに自分で確かめるときは、再起動したあとに次を実行します。持っていない CLI の行は飛ばしてください。
 
@@ -173,12 +190,12 @@ Node.js 22 以降が `PATH` に入っている必要があります。ツール�
 Codex、Antigravity、OpenCode からも使うなら、クローンしてインストーラも実行します（[クローンから入れる](#クローンから入れる)を参照）。
 インストーラはマーケットプレイス版を見つけると、Claude Code はそちらに任せます。マーケットプレイス版より先に
 インストーラを実行していた場合は、もう一度実行してください。そのままだと Claude Code が severally を二重に読み込みます。
-インストーラは、自分が以前に入れた Claude Code 用の写しと登録を、バックアップしてから取り除きます。マーケットプレイス版が
+インストーラは自分が以前に入れた Claude Code 用の写しと登録を、バックアップしてから取り除きます。マーケットプレイス版が
 入ったあとは、同じインストーラの実行でそれも更新されます（[更新](#更新)を参照）。
 
 ## 2 つのインストール方式
 
-インストーラは、severally を 2 つの方式のどちらかで登録します。macOS / Linux の既定はプラグイン方式、Windows の
+インストーラはseverally を 2 つの方式のどちらかで登録します。macOS / Linux の既定はプラグイン方式、Windows の
 既定は手動方式です。macOS / Linux でも手動方式にするには `--manual` を付けます。
 
 | | プラグイン方式（macOS / Linux の既定） | 手動方式（`--manual`、Windows の既定） |
@@ -191,7 +208,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
 
 ## インストーラが変えるもの
 
-- サーバを依存パッケージごと `~/.severally/runtime/severally-mcp.mjs` に写します。どの登録も、クローンした
+- サーバを依存パッケージごと `~/.severally/runtime/severally-mcp.mjs` に写します。どの登録もクローンした
   フォルダではなく、この写しを指します。
 - macOS / Linux のプラグイン方式では、runtime を `severally-runtime` というパッケージ名で npm のグローバルにも入れます。
   これで、Codex のプラグインが起動する `severally-mcp` コマンドが入ります。以前のインストールが残した `severally-mcp`
@@ -200,7 +217,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   登録して、そう表示します。登録は `--manual` と同じ `codex mcp add` で、長い `consult_get` の待ちも同じです。
   `--skip-global` を付けるとグローバルなインストールを飛ばしますが、`PATH` 上の `severally-mcp` がすでに写した
   runtime を指している場合しか受け付けません。手動方式ではグローバルなインストールは要りません。
-- クライアントの設定は、各 CLI のコマンド（`plugin add` / `mcp add`）だけで変えます。例外は手動で登録する Codex で、
+- クライアントの設定は各 CLI のコマンド（`plugin add` / `mcp add`）だけで変えます。例外は手動で登録する Codex で、
   `config.toml` の `[mcp_servers.severally]` の表に `tool_timeout_sec = 660` の 1 行も書きます（Codex のプラグインと
   同じ長い待ちにするためで、`codex mcp add` では設定できません）。表にすでに `tool_timeout_sec` があれば、その値を
   残し、待ち時間もそれに合わせます。1 行を書けなければ、長い待ちなしで Codex を登録し、そう表示します。
@@ -228,7 +245,7 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   この 5 つをまだ許可していなければ、端末で「Let Claude Code run ... without asking each time? [Y/n]」と訊きます
   （既定は Y）。`--allow-local-tools` を付けると、訊かずに足します（スクリプトからのインストール向け）。端末が無く、
   フラグも無いときは何も変えず、フラグを付けてやり直す方法を表示します。先に `settings.json` をバックアップし、
-  ほかの設定は残し、同じ規則を二重には足しません。規則の接頭辞は、プラグイン方式とマーケットプレイス版では
+  ほかの設定は残し、同じ規則を二重には追加しません。規則の接頭辞は、プラグイン方式とマーケットプレイス版では
   `mcp__plugin_severally_severally__`、手動方式では `mcp__severally__` です。手で足すときは、
   `~/.claude/settings.json` に次を書きます（`--manual` では `mcp__plugin_severally_severally__` を
   `mcp__severally__` に読み替えます）。
@@ -248,10 +265,10 @@ Codex、Antigravity、OpenCode からも使うなら、クローンしてイン�
   [mcp_servers.severally.tools.consult_get]
   approval_mode = "approve"
   ```
-- **OpenCode** は、自分の `permission` の設定で変えていなければ、MCP ツールを確認なしで使います。
+- **OpenCode** は自分の `permission` の設定で変えていなければ、MCP ツールを確認なしで使います。
 - **Antigravity**: MCP ツールを 1 つずつ許可する規則の書き方を確かめていないので、ここでは扱いません。
 
-インストーラは、Codex・Antigravity・OpenCode の許可には触りません。
+インストーラはCodex・Antigravity・OpenCode の許可には触りません。
 
 ### 相談の開始の確認も省く
 
@@ -267,14 +284,14 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 
 ## 更新
 
-1.7 より前の版から更新するときは、旧版の相談を終えるか取り消し、旧版のサーバを止めてから更新してください。
-旧版を現在の版による相談と同時に動かさないでください。Linux の合成試験では、現在の相談相手の起動後に作られた
+1.7 より前のバージョンから更新するときは、旧バージョンの相談を終えるか取り消し、旧バージョンのサーバを止めてから更新してください。
+旧バージョンを現在のバージョンによる相談と同時に動かさないでください。Linux の合成試験では、現在の相談相手の起動後に作られた
 旧形式の `jobs/<id>/home` を読み取れました。更新後はクライアントを再起動し、新しいサーバを使ってください。
 
 `npx -y severally-mcp@latest install` の `@latest` を付けると、npx は毎回 npm に最新版を問い合わせ、
-キャッシュにある古い版は使いません。版ごとの変更点は[リリース](https://github.com/coz-a/severally/releases)にあります。
+キャッシュにある古いバージョンは使いません。バージョンごとの変更点は[リリース](https://github.com/coz-a/severally/releases)にあります。
 
-開発中のクローンでは、`npm run build` のあとに `node scripts/install.mjs` を再実行すると、
+開発中のクローンでは`npm run build` のあとに `node scripts/install.mjs` を再実行すると、
 生成したサーバとSkillを各クライアントのインストール先に反映できます。既存の直接登録を置き換える必要がある場合は `--force` を付けます。実行後はクライアントを再起動してください。
 
 
@@ -283,7 +300,7 @@ Claude Code なら許可リストに `mcp__plugin_severally_severally__consult_s
 インストーラは新しいサーバの構文を確かめ、前の runtime とマーケットプレイスのファイルを `~/.severally/backups/` に
 バックアップしてから置き換えます。そのあとクライアントを再起動します。
 
-クローンしたフォルダそのものを登録していた古いバージョンで入れた場合は、一度だけ `--force` を付けてください。既存の登録が、
+クローンしたフォルダそのものを登録していた古いバージョンで入れた場合は、一度だけ `--force` を付けてください。既存の登録が
 写した runtime を指すように切り替わります。付けなければ、既存の登録はそのまま残ります。
 
 マーケットプレイスから入れた場合は、Claude Code にマーケットプレイス版の severally がすでに入っていれば、インストーラが
@@ -295,7 +312,7 @@ Claude Code の中で実行するコマンド `/plugin marketplace update severa
 選びます。Codex、Antigravity、OpenCode は `~/.severally/runtime` にある別の写しを使い、どちらの写しも同じ
 `~/.severally/config.json` を読みます。インストーラが両方を同じバージョンにそろえます。設定の書き方が変わる
 リリースでは、これが大事になります。`~/.severally/runtime` か `~/.claude/skills/severally` の
-写しが、答えているサーバと違うバージョンなら、`consult_start` の応答の `stale_install` がそれを知らせます。中身は、
+写しが答えているサーバと違うバージョンなら、`consult_start` の応答の `stale_install` がそれを知らせます。中身は
 それぞれの写しのバージョンと、そろえるためのコマンドです。
 
 ## アンインストール

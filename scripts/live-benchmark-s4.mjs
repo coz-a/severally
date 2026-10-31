@@ -19,11 +19,16 @@ export async function resumeS4({ receiptPath, assessmentPath, manifestPath, mana
   const lock = fs.openSync(lockPath, 'wx', 0o600);
   /** @type {string | null} */
   let startedFollowupId = null;
+  /** @type {NodeJS.Timeout | undefined} */
+  let deadlineTimer;
   try {
     const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
     const assessment = JSON.parse(fs.readFileSync(assessmentPath, 'utf8'));
     const manifestBytes = fs.readFileSync(manifestPath);
     const manifest = JSON.parse(manifestBytes.toString('utf8'));
+    const budget = manifest.consultation_budget_ms ?? null;
+    if (budget !== null && (!Number.isSafeInteger(budget) || budget < 1 || budget > 1_800_000))
+      throw new Error('consultation_budget_ms must be an integer from 1 to 1800000');
     if (receipt.scenario !== 'S4' || receipt.outcome !== 'awaiting_assessment')
       throw new Error('S4 receipt state requires reconciliation before another follow-up');
     if (
@@ -106,6 +111,12 @@ export async function resumeS4({ receiptPath, assessmentPath, manifestPath, mana
     const started = manager.start({ followup_to: receipt.job_id, question: manifest.followup_question });
     if (!('job_id' in started)) throw new Error('S4 requires one follow-up member');
     startedFollowupId = started.job_id;
+    let terminationReason = 'consultant_failure';
+    if (budget !== null)
+      deadlineTimer = setTimeout(() => {
+        terminationReason = 'benchmark_deadline';
+        manager.cancel(started.job_id);
+      }, budget);
     receipt.followup = {
       job_id: started.job_id,
       status: 'running',
@@ -113,9 +124,12 @@ export async function resumeS4({ receiptPath, assessmentPath, manifestPath, mana
       duration_ms: null,
       usage: null,
       failure_kind: null,
+      consultation_budget_ms: budget,
+      termination_reason: null,
     };
     save();
     await manager.jobs.get(started.job_id)?.promise;
+    clearTimeout(deadlineTimer);
     const followup = manager.view(started.job_id);
     receipt.followup = {
       job_id: started.job_id,
@@ -124,6 +138,8 @@ export async function resumeS4({ receiptPath, assessmentPath, manifestPath, mana
       duration_ms: Date.now() - followupStarted,
       usage: followup?.usage ?? null,
       failure_kind: followup?.failure?.kind ?? null,
+      consultation_budget_ms: budget,
+      termination_reason: followup?.status === 'completed' ? 'completed' : terminationReason,
     };
     receipt.outcome = followup?.status === 'completed' ? 'followup_completed' : 'followup_failed';
     save();
@@ -135,6 +151,7 @@ export async function resumeS4({ receiptPath, assessmentPath, manifestPath, mana
     }
     throw error;
   } finally {
+    clearTimeout(deadlineTimer);
     fs.closeSync(lock);
     fs.unlinkSync(lockPath);
   }
