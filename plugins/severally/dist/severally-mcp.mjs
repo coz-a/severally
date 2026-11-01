@@ -39082,7 +39082,7 @@ function filesystemPermissions() {
     if (executableEntry)
       return listDir(p).filter((n) => n !== executableEntry).map((n) => `${p}/${n}`);
     const star = p.indexOf("/*/");
-    if (star === -1) return [p];
+    if (star === -1) return process.platform === "win32" && !fs5.existsSync(p) ? [] : [p];
     const [parent, rest] = [p.slice(0, star), p.slice(star + 3)];
     return listDir(parent).map((n) => `${parent}/${n}/${rest}`).filter((q) => fs5.existsSync(q));
   });
@@ -43384,7 +43384,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.14.0";
+    SEVERALLY_VERSION = "2.14.1";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

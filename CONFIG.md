@@ -104,7 +104,7 @@ If your existing CLI consultants are enough, no changes are needed. To add an Op
 
    The trailing `#` selects no effort variant. For a custom compatible API or a local model, use the provider
    example below as well; listing a model in your own OpenCode config does not copy its provider settings.
-3. Restart the client and run `npx -y severally-mcp@2.14.0 status`. Confirm the new consultant is available and
+3. Restart the client and run `npx -y severally-mcp@2.14.1 status`. Confirm the new consultant is available and
    OpenCode is logged in. This does not send a prompt or prove the model exists or has quota.
 4. Ask “Ask qwen whether a 30-second cache meets a 60-second freshness limit.” An `auth` failure calls for
    checking provider credentials; `model_unavailable` calls for checking the exact model and provider config.

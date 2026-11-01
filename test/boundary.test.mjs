@@ -562,6 +562,26 @@ test('codex expands legacy job homes, since its profile has no wildcard', () => 
   }
 });
 
+test('on Windows, codex is not handed protected paths that do not exist', () => {
+  const missing = path.join(os.homedir(), '.netrc');
+  const present = path.join(os.homedir(), '.ssh');
+  assert.equal(fs.existsSync(missing), false);
+  fs.mkdirSync(present, { recursive: true });
+  const moduleUrl = new URL('../src/adapters/codex.mjs', import.meta.url).href;
+  const rules = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `Object.defineProperty(process, 'platform', { value: 'win32' }); const a = await import(${JSON.stringify(moduleUrl)}); console.log(a.filesystemPermissions());`,
+    ],
+    { encoding: 'utf8' },
+  ).stdout;
+  const fwd = (p) => fs.realpathSync.native(p).replaceAll('\\', '/');
+  assert.ok(!rules.includes(`${JSON.stringify(missing.replaceAll('\\', '/'))} = "none"`), rules);
+  assert.ok(rules.includes(`${JSON.stringify(fwd(present))} = "none"`), rules);
+});
+
 test('synthetic credentials are masked in the sent brief and exposed file copies', async () => {
   const store = await import('../src/store.mjs');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'severally-mask-probe-'));
