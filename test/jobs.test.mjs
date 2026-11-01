@@ -123,6 +123,8 @@ test('with no caller in the request and no host markers in the environment, no c
 
 test('the consultant is launched with the restriction flags and none that widen permissions', async () => {
   const argvOut = path.join(os.tmpdir(), `pc-argv-${Date.now()}.json`);
+  // A signed-in Codex has its home; on Windows a missing protected path is not passed.
+  fs.mkdirSync(path.join(os.homedir(), '.codex'), { recursive: true });
   process.env.STUB_BEHAVIOR = 'ok';
   process.env.STUB_ARGV_OUT = argvOut;
   const mgr = new JobManager();
