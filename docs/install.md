@@ -82,13 +82,13 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.14.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.14.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 If npm selects an installed server instead of the installer, name the package and installer executable separately:
 
 ```bash
-npx --yes --package=severally-mcp@2.14.0 -- severally-install --dry-run
+npx --yes --package=severally-mcp@2.14.1 -- severally-install --dry-run
 ```
 
 Check the proposed changes, then omit `--dry-run` to install. This also works from the source checkout;

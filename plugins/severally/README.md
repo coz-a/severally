@@ -15,16 +15,16 @@ You need Node.js 22 or newer and at least one installed, logged-in consultant CL
 ```
 
 Restart Claude Code. For the installer, other clients and platform limits, see the
-[installation guide](https://github.com/coz-a/severally/blob/v2.14.0/docs/install.md).
+[installation guide](https://github.com/coz-a/severally/blob/v2.14.1/docs/install.md).
 
-Check which consultant CLIs are detected with `npx -y severally-mcp@2.14.0 status`. Detection does not
+Check which consultant CLIs are detected with `npx -y severally-mcp@2.14.1 status`. Detection does not
 guarantee that a CLI is logged in or that a consultation will succeed. For updating and removing the plugin,
-see [updating](https://github.com/coz-a/severally/blob/v2.14.0/docs/install.md#updating) and
-[uninstalling](https://github.com/coz-a/severally/blob/v2.14.0/docs/install.md#uninstall).
+see [updating](https://github.com/coz-a/severally/blob/v2.14.1/docs/install.md#updating) and
+[uninstalling](https://github.com/coz-a/severally/blob/v2.14.1/docs/install.md#uninstall).
 
 ## Usage
 
-Run `npx -y severally-mcp@2.14.0 status` to find a detected consultant. In your restarted agent's chat, ask
+Run `npx -y severally-mcp@2.14.1 status` to find a detected consultant. In your restarted agent's chat, ask
 using its name (Codex below is an example):
 
 ```text
@@ -40,11 +40,11 @@ For example: "Use TTL <= 20 seconds under these assumptions. Codex (gpt-6.1-sol,
 I checked 40 + 29 = 69 seconds and rejected TTL30; refreshing when elapsed >= 20 seconds remains untested."
 The model, point IDs and check results depend on the run.
 Ask "Stop the current consultation" to request termination, or "Check the answers that have arrived first"
-while others run. Windows uses a launch Job; see the [requirements and stop limits](https://github.com/coz-a/severally/blob/v2.14.0/docs/how-it-works.md#records).
+while others run. Windows uses a launch Job; see the [requirements and stop limits](https://github.com/coz-a/severally/blob/v2.14.1/docs/how-it-works.md#records).
 
 The brief, exposed files and anything the consultant reads go to its model; read restrictions have limits.
-See the [English guide](https://github.com/coz-a/severally/blob/v2.14.0/README.md) or
-[日本語ガイド](https://github.com/coz-a/severally/blob/v2.14.0/README.ja.md) for the report example and protection limits.
+See the [English guide](https://github.com/coz-a/severally/blob/v2.14.1/README.md) or
+[日本語ガイド](https://github.com/coz-a/severally/blob/v2.14.1/README.ja.md) for the report example and protection limits.
 
 Guide links are pinned to this package's release tag by the build, so they also work when the plugin is
 distributed separately. For unreleased source changes, use the documents in the same source checkout.
@@ -53,7 +53,7 @@ distributed separately. For unreleased source changes, use the documents in the 
 
 This directory contains the bundled MCP server and generated host-specific skills. In a source checkout,
 edit the source and skill templates at the repository root, then run `npm run build`.
-See [contribution and test instructions](https://github.com/coz-a/severally/blob/v2.14.0/README.md#contributing).
+See [contribution and test instructions](https://github.com/coz-a/severally/blob/v2.14.1/README.md#contributing).
 Report issues or propose changes in the [repository](https://github.com/coz-a/severally).
 
 ## License

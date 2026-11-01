@@ -80,13 +80,13 @@ doctor の各行には `evidence`、live-check の出力には `compatibility:` 
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.14.0 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@2.14.1 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 npm がインストーラの代わりに導入済みのサーバを選ぶときは、パッケージとインストーラの実行ファイルを別々に指定します。
 
 ```bash
-npx --yes --package=severally-mcp@2.14.0 -- severally-install --dry-run
+npx --yes --package=severally-mcp@2.14.1 -- severally-install --dry-run
 ```
 
 変更内容を確認したら、`--dry-run` を外してインストールします。ソースのルートからも使えます。

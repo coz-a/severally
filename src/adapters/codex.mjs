@@ -181,7 +181,11 @@ export function filesystemPermissions() {
         .filter((n) => n !== executableEntry)
         .map((n) => `${p}/${n}`);
     const star = p.indexOf('/*/');
-    if (star === -1) return [p];
+    // Codex on Windows creates a missing denied path as a directory before
+    // applying its ACE, and the ACE outlives the run: an absent ~/.npmrc or
+    // ~/.git-credentials would come back as a directory the user's tools
+    // cannot read as a file. Pass only what exists there.
+    if (star === -1) return process.platform === 'win32' && !fs.existsSync(p) ? [] : [p];
     const [parent, rest] = [p.slice(0, star), p.slice(star + 3)];
     return listDir(parent)
       .map((n) => `${parent}/${n}/${rest}`)

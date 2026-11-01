@@ -217,6 +217,13 @@ credential root with `unsafe_codex_placement`, before taking seats or calling a 
 permission builder still needs an executable exception in that layout, so use an external installation instead. Existing symlink roots are resolved and registered
 once by canonical path, avoiding duplicate Linux sandbox mounts through aliases.
 
+On Windows, Codex creates a missing denied path as a directory before denying it, and keeps its deny entries
+after the run. severally therefore passes Codex only the protected paths that exist at launch, so an absent
+`~/.npmrc` or `~/.git-credentials` does not become a directory; a protected file created later is not denied
+there. The entry-by-entry denies of the refused in-root layout also reached Codex's own daemon directories, whose
+access list must hold a single entry, and stopped plain `codex` from starting. Both follow Codex's source and
+user reports; severally has not run them on Windows.
+
 On Linux, a file-level deny can stop holding when the host replaces that file by rename during the run.
 Synthetic probes on 2026-10-24 with Codex 0.164.0 reproduced this for a default-home auth file and a readable
 new sibling before the default-home change. On 2026-10-26, synthetic probes with the revised adapter on
