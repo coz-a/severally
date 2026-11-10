@@ -224,6 +224,16 @@ there. The entry-by-entry denies of the refused in-root layout also reached Code
 access list must hold a single entry, and stopped plain `codex` from starting. Both follow Codex's source and
 user reports; severally has not run them on Windows.
 
+On Windows, Codex is launched with `windows.sandbox="mxc"`. With the elevated sandbox, a report on Codex 0.167.0
+showed the sandbox user unable to reach the working directory: every command failed to start (Windows error 267,
+access denied), and the consultant read nothing. When Codex reports that it cannot prepare MXC, severally runs the
+same consultation once more with `windows.sandbox="elevated"` and keeps that setting until the server restarts. The
+boundary record names the sandbox used. A command that never started (`exit_code` -1) is not counted as a read,
+so the answer notes that the files went unread. The same report saw Codex write `turn.completed` and its answer and
+then not exit; severally now stops Codex 10 seconds after `turn.completed` or `turn.failed` and keeps the answer,
+noting that it was stopped, or that it could not be stopped. Cancelled and unparsable answers still fail. The MXC
+deny-read behaviour has not been run by severally on Windows.
+
 On Linux, a file-level deny can stop holding when the host replaces that file by rename during the run.
 Synthetic probes on 2026-10-24 with Codex 0.164.0 reproduced this for a default-home auth file and a readable
 new sibling before the default-home change. On 2026-10-26, synthetic probes with the revised adapter on

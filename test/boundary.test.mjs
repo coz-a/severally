@@ -208,10 +208,33 @@ test('codex is launched without sub-agent tools', () => {
   assert.ok(args.includes('agents.enabled=false'), 'codex enables sub-agents by default');
 });
 
-test('codex asks for the elevated sandbox on Windows only', () => {
+test('codex asks for a Windows sandbox on Windows only', () => {
   const args = codex.buildInvocation({ consultant: asConsultant('codex'), workdir: '/w', schemaPath: '/s' }).args;
   // The unelevated Windows sandbox refuses a profile with deny-read entries.
-  assert.equal(args.includes('windows.sandbox="elevated"'), process.platform === 'win32');
+  assert.equal(
+    args.some((a) => a.startsWith('windows.sandbox=')),
+    process.platform === 'win32',
+  );
+});
+
+test('on Windows, codex tries the MXC sandbox and falls back to elevated only on an MXC failure of its own', () => {
+  const moduleUrl = new URL('../src/adapters/codex.mjs', import.meta.url).href;
+  const script = `Object.defineProperty(process, 'platform', { value: 'win32' });
+const a = await import(${JSON.stringify(moduleUrl)});
+const mode = () => a.buildInvocation({ consultant: { model: 'm' }, workdir: '/w', schemaPath: '/s' }).args.find((x) => x.startsWith('windows.sandbox='));
+const line = (item) => JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', ...item } });
+const steps = [mode()];
+// A file that quotes the message, read by a command that ran, is not Codex failing.
+steps.push(a.fallBackFromMxc({ stdout: line({ status: 'completed', exit_code: 0, aggregated_output: 'failed to prepare MXC sandbox: x' }) }), mode());
+steps.push(a.fallBackFromMxc({ stdout: line({ status: 'failed', exit_code: -1, aggregated_output: 'failed to prepare MXC sandbox: x' }) }), mode());
+steps.push(a.fallBackFromMxc({ stderr: 'native MXC is unavailable on this executor' }));
+console.log(JSON.stringify(steps));`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+  assert.deepEqual(
+    JSON.parse(r.stdout),
+    ['windows.sandbox="mxc"', false, 'windows.sandbox="mxc"', true, 'windows.sandbox="elevated"', false],
+    r.stderr,
+  );
 });
 
 test('codex turns web search off with the network', () => {

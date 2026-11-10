@@ -56,13 +56,13 @@ Web を切ってもモデルへの送信は続きます。[送信内容と保護
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.14.1 install
+npx -y severally-mcp@2.14.2 install
 ```
 
 ソースのチェックアウトで npm が既存のグローバルサーバを選ぶ場合は、インストーラを明示して実行してください。
 
 ```bash
-npx --yes --package=severally-mcp@2.14.1 -- severally-install
+npx --yes --package=severally-mcp@2.14.2 -- severally-install
 ```
 
 インストーラは`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -81,7 +81,7 @@ npx --yes --package=severally-mcp@2.14.1 -- severally-install
 まずターミナルで、相談相手として検出された CLI を確認します。この確認では相談を始めず、使用枠を消費しません。
 
 ```bash
-npx -y severally-mcp@2.14.1 status
+npx -y severally-mcp@2.14.2 status
 ```
 
 `available` は CLI の検出結果です。ログインや実相談の成功を保証しません。Codex が検出されていれば、
@@ -130,8 +130,8 @@ Codex（gpt-6.1-sol、f1）は、上流の古さと保持時間を合算すべ�
 ターミナルでは導入と登録確認を行えます。
 
 ```bash
-npx -y severally-mcp@2.14.1 install
-npx -y severally-mcp@2.14.1 status
+npx -y severally-mcp@2.14.2 install
+npx -y severally-mcp@2.14.2 status
 ```
 
 `status` は設定・使える相談相手・登録・ログイン状態を、相談を始めずに表示します。プロンプトは送りません。
@@ -220,7 +220,8 @@ Codex は名前による拒否ができないため、リポジトリの `.env` 
 1.7 より前の severally を並行実行しないでください。OpenCode も、検査から読取りまでのパス差替えは保証しません。
 [保護の仕組み・確認済みの条件と制限](docs/how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)に、
 CLI・OS・版ごとの範囲を記載しています。任意の資格情報保存先は自動検出しません。
-Windows の Codex は、elevated サンドボックスの初期準備で管理者の承認を求める場合があります。
+Windows の Codex は MXC サンドボックスで動かします。MXC を使えない環境では elevated サンドボックスに切り替え、
+その初期準備で管理者の承認を求める場合があります。
 
 **ディスクを読めて Web も閲覧できる相談相手は、読んだ内容を URL に載せて外に持ち出せます**。開いたページに、
 そうするよう書かれていた場合などです。それを防ぎたいときは、エージェントが `network: "off"` を渡します。その回の

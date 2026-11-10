@@ -57,13 +57,13 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.14.1 install
+npx -y severally-mcp@2.14.2 install
 ```
 
 If npm selects an existing global server from this source checkout, explicitly select the installer:
 
 ```bash
-npx --yes --package=severally-mcp@2.14.1 -- severally-install
+npx --yes --package=severally-mcp@2.14.2 -- severally-install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -82,7 +82,7 @@ To check the registration, see [CLI](#cli). Other install routes and platform-sp
 First check which consultant CLIs are detected, without starting a consultation or spending quota:
 
 ```bash
-npx -y severally-mcp@2.14.1 status
+npx -y severally-mcp@2.14.2 status
 ```
 
 `available` means the CLI was found, not that login or a live consultation has been verified.
@@ -132,8 +132,8 @@ same bug. A consultation takes time and real quota, so it is not for small fixes
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.14.1 install
-npx -y severally-mcp@2.14.1 status
+npx -y severally-mcp@2.14.2 install
+npx -y severally-mcp@2.14.2 status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation
@@ -227,7 +227,8 @@ Individually denied files replaced by rename and legacy job homes created after 
 Do not run pre-1.7 severally alongside current consultations. OpenCode cannot guarantee reads against a path
 replacement between its guard and the read. The [mechanisms, tested conditions and limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading)
 state the CLI, OS and version scope. Arbitrary credential locations are not automatically found.
-On Windows, Codex's elevated sandbox may need initial administrator approval.
+On Windows, Codex runs in its MXC sandbox; where MXC is unavailable, it falls back to the elevated sandbox, which may
+need initial administrator approval.
 
 **A consultant that can both read your disk and browse could carry what it read out in a URL**, for example if a
 page it opens tells it to. To prevent that, the agent passes `network: "off"`: every consultant in that round then
