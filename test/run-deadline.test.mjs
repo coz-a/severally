@@ -62,8 +62,9 @@ test('a child that wrote its done line before the deadline is stopped as stalled
   const run = runChild({
     command: process.execPath,
     args: ['-e', "console.log('done'); setInterval(() => {}, 1000)"],
-    timeoutMs: 300,
-    settleAfter: (line) => (line === 'done' ? 60_000 : null),
+    // Long enough for a Windows launch to get the line out before the deadline.
+    timeoutMs: 3000,
+    settleAfter: (line) => (line.trim() === 'done' ? 60_000 : null),
   });
   const result = await run.done;
   assert.equal(result.stalled, true);
