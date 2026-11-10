@@ -28,12 +28,19 @@
 //                         directory entries are not affected. File-name rules
 //                         (.env anywhere) cannot be expressed: an unrooted
 //                         `**` glob is refused.
-//   windows.sandbox="elevated"  Windows only. The unelevated restricted-token
+//   windows.sandbox="mxc"  Windows only. The unelevated restricted-token
 //                         sandbox cannot enforce deny-read entries and refuses
 //                         to run ("cannot enforce deny-read restrictions
 //                         directly"); --ignore-user-config drops the user's
-//                         own setting, so it is set here. The first run may
-//                         ask for administrator approval of Codex's setup.
+//                         own setting, so it is set here. MXC first: where the
+//                         elevated sandbox's user could not reach the working
+//                         directory, every command failed to start (Windows
+//                         error 267, access denied) and the consultant never
+//                         read a file. Where MXC cannot be prepared, the
+//                         consultation is re-run once with "elevated", which
+//                         the rest of this server process then keeps
+//                         (fallBackFromMxc). The first elevated run may ask
+//                         for administrator approval of Codex's setup.
 //   hooks.enabled=false   no hook inheritance.
 //   agents.enabled=false  no sub-agent tools. Codex enables them by default and
 //                         --ignore-user-config keeps that default: on
@@ -61,7 +68,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { POLICY, protectedRoots } from '../policy.mjs';
+import { POLICY, protectedRoots, codexExitGraceMs } from '../policy.mjs';
 import { findCommand } from '../platform.mjs';
 import { classifyMessage } from '../failures.mjs';
 
@@ -100,6 +107,9 @@ export const RESERVED_FLAGS = [
 ];
 
 const PROFILE = 'severally';
+
+// ponytail: remembered per server process; a restart tries MXC again.
+let windowsSandbox = 'mxc';
 
 // Reject the detectable configuration that requires opening part of a
 // credential root to re-execute Codex. This is a configuration check, not a
@@ -230,7 +240,7 @@ export function buildInvocation({ workdir, schemaPath, consultant, network = 'on
     `default_permissions="${PROFILE}"`,
     '-c',
     `permissions.${PROFILE}.filesystem=${filesystemPermissions()}`,
-    ...(process.platform === 'win32' ? ['-c', 'windows.sandbox="elevated"'] : []),
+    ...(process.platform === 'win32' ? ['-c', `windows.sandbox="${windowsSandbox}"`] : []),
     '-C',
     workdir,
     '--output-schema',
@@ -250,6 +260,9 @@ export function buildInvocation({ workdir, schemaPath, consultant, network = 'on
  * @property {unknown} [text]
  * @property {unknown} [message]
  * @property {unknown} [usage]
+ * @property {unknown} [status]
+ * @property {unknown} [exit_code]
+ * @property {unknown} [aggregated_output]
  * @typedef {CodexItem & { error?: { message?: unknown }, item?: CodexItem }} CodexEvent
  */
 
@@ -275,18 +288,7 @@ function walkUsage(node, acc) {
  * @returns {Interpreted}
  */
 export function interpret({ stdout, stderr, code, lastMessageText }) {
-  /** @type {CodexEvent[]} */
-  const events = [];
-  for (const line of (stdout || '').split('\n')) {
-    const t = line.trim();
-    if (!t.startsWith('{')) continue;
-    try {
-      events.push(JSON.parse(t));
-    } catch {
-      /* partial line */
-    }
-  }
-
+  const events = parseEvents(stdout);
   const errorEvents = events.filter((e) => e.type === 'error' || e.type === 'turn.failed');
   /** @type {Record<string, number>} */
   const usage = {};
@@ -359,9 +361,73 @@ export function progress({ stdout }) {
   return `${items.length} item event(s), last was ${kind}`;
 }
 
+/** @param {string | undefined} stdout @returns {CodexEvent[]} */
+function parseEvents(stdout) {
+  /** @type {CodexEvent[]} */
+  const events = [];
+  for (const line of (stdout || '').split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    try {
+      events.push(JSON.parse(t));
+    } catch {
+      /* a partial line */
+    }
+  }
+  return events;
+}
+
+/**
+ * How long Codex may stay alive after this line, or null. Its turn is over
+ * once turn.completed (or turn.failed) is out; a process that then does not
+ * exit would otherwise hold a finished answer until the budget ran out.
+ * @param {string} line
+ * @returns {number | null}
+ */
+export function settleAfter(line) {
+  if (!line.includes('"turn.')) return null;
+  try {
+    const type = JSON.parse(line)?.type;
+    return type === 'turn.completed' || type === 'turn.failed' ? codexExitGraceMs() : null;
+  } catch {
+    return null;
+  }
+}
+
+const MXC_FAILURE = /failed to prepare MXC sandbox|MXC is unavailable|MXC sandbox execution requires/i;
+
+/**
+ * Whether this run was launched with the MXC sandbox and Codex could not
+ * prepare it; if so, later launches use the elevated sandbox. Only Codex's own
+ * messages are looked at -- an error event, a command that never started, its
+ * stderr -- never a command's output, which may be a file that quotes them.
+ * @param {{ stdout?: string, stderr?: string }} run
+ * @returns {boolean}
+ */
+export function fallBackFromMxc({ stdout, stderr }) {
+  if (process.platform !== 'win32' || windowsSandbox !== 'mxc') return false;
+  const messages = parseEvents(stdout).map((e) =>
+    e.type === 'error' || e.type === 'turn.failed'
+      ? String(e.message ?? e.error?.message ?? '')
+      : e.item?.type === 'command_execution' && notStarted(e.item)
+        ? String(e.item.aggregated_output ?? '')
+        : '',
+  );
+  if (![...messages, stderr ?? ''].some((m) => MXC_FAILURE.test(m))) return false;
+  windowsSandbox = 'elevated';
+  return true;
+}
+
+// On Windows a command the sandbox could not launch ends failed with
+// exit_code -1 and Codex's own message as its output ("Failed to create
+// unified exec process: CreateProcessWithLogonW failed: 267"); it read nothing.
+/** @param {CodexItem} item */
+const notStarted = (item) => item.status === 'failed' && item.exit_code === -1;
+
 /**
  * The calls that can read a file. Codex reads through its shell, and a command
- * that exits non-zero (an rg with no match) still looked, so failed ones count.
+ * that exits non-zero (an rg with no match) still looked, so failed ones count;
+ * one that never started is `command_execution:not_started`, and does not.
  * ponytail: any command counts, an ls as much as a cat, so this catches an
  * answer given without looking at all, not one that skipped a file; telling
  * them apart would mean parsing the command line.
@@ -371,7 +437,8 @@ export const FILE_READ_TOOLS = ['command_execution', 'command_execution:error'];
 /**
  * Tool calls seen in the event stream, counted by item type (and by tool for
  * MCP and collaboration calls, which is where a sub-agent spawn shows up);
- * `:error` when the item ended failed or declined.
+ * `:error` when the item ended failed or declined, `:not_started` for a
+ * command the sandbox could not launch.
  * @param {{ stdout?: string }} run
  * @returns {Record<string, number>}
  */
@@ -391,7 +458,12 @@ export function toolCalls({ stdout }) {
     if (!item?.type || !['item.started', 'item.completed'].includes(e.type)) continue;
     if (['agent_message', 'reasoning', 'error'].includes(item.type)) continue;
     const base = item.tool ? `${item.type}:${item.tool}` : item.type;
-    const name = item.status === 'failed' || item.status === 'declined' ? `${base}:error` : base;
+    const name =
+      item.type === 'command_execution' && notStarted(item)
+        ? `${base}:not_started`
+        : item.status === 'failed' || item.status === 'declined'
+          ? `${base}:error`
+          : base;
     seen.set(item.id ?? `${name}#${seen.size}`, name);
   }
   return [...seen.values()].reduce((/** @type {Record<string, number>} */ o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
@@ -457,9 +529,12 @@ export function usageRecord(raw) {
  * @returns {Boundary}
  */
 export function boundary({ args }) {
+  const windows = args.find((a) => a.startsWith('windows.sandbox='));
   return {
     reads: 'whole disk except the protected paths (permission profile)',
-    shell: 'permission profile: commands run, writes and shell network blocked',
+    shell: `permission profile: commands run, writes and shell network blocked${
+      windows ? ` (Windows sandbox: ${windows.slice('windows.sandbox='.length).replaceAll('"', '')})` : ''
+    }`,
     web: args.includes('tools.web_search=true'),
     writes: false,
     mcp: false,

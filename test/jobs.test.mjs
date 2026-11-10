@@ -782,9 +782,31 @@ test('a Codex answer given without running a single command on the exposed files
   process.env.STUB_BEHAVIOR = 'failed_command';
   const failed = await finish(mgr, mgr.start(req).job_id);
   assert.doesNotMatch(failed.quality.caveat ?? '', /files were exposed/, 'a command that exits non-zero still looked');
+  process.env.STUB_BEHAVIOR = 'unstarted_command';
+  const unstarted = await finish(mgr, mgr.start(req).job_id);
+  assert.match(
+    unstarted.quality.caveat,
+    /no call to read one succeeded \(1 could not start\)/,
+    'a command that never started read nothing',
+  );
+  assert.equal(unstarted.tool_calls['command_execution:not_started'], 1);
   process.env.STUB_BEHAVIOR = 'ok';
   const looked = await finish(mgr, mgr.start(req).job_id);
   assert.doesNotMatch(looked.quality.caveat ?? '', /files were exposed/);
+});
+
+test('a Codex answer whose process stays after turn.completed is kept, and says it was stopped', async () => {
+  process.env.SEVERALLY_CODEX_AFTER_TURN_MS = '200';
+  process.env.STUB_BEHAVIOR = 'linger_after_turn';
+  try {
+    const mgr = new JobManager();
+    const view = await finish(mgr, mgr.start(reviewRequest()).job_id);
+    assert.equal(view.status, 'completed');
+    assert.match(view.quality.caveat, /finished its answer but did not exit on its own, and was stopped/);
+  } finally {
+    delete process.env.SEVERALLY_CODEX_AFTER_TURN_MS;
+    process.env.STUB_BEHAVIOR = 'ok';
+  }
 });
 
 test('a Codex consultation keeps the commands it ran, and how many of the handed-over files they name', async () => {

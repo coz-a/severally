@@ -1498,6 +1498,7 @@ export class JobManager {
       let authTried = false;
       let autoRetries = 0;
       let fallenBack = false;
+      let sandboxFellBack = false;
       for (;;) {
         // Read off the consultant's own event stream, last attempt only; null
         // where the CLI does not stream its tool calls (Claude Code).
@@ -1542,6 +1543,26 @@ export class JobManager {
         const recoveredError = interpreted.ok ? interpreted.recoveredError : null;
         if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
           interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
+        }
+        // Codex on Windows could not prepare its MXC sandbox: whatever it
+        // answered, it read nothing, so the same consultation runs again
+        // under the elevated sandbox.
+        if (!sandboxFellBack && adapter.fallBackFromMxc?.(run)) {
+          sandboxFellBack = true;
+          const remaining = budgetMs - (Date.now() - t0);
+          if (remaining >= MIN_RETRY_MS) {
+            const next = launch({ ...consultant, model: job.model });
+            if (typeof next === 'string') return this.#fail(job, 'spawn_error', `config clis.${cli}.args: ${next}`);
+            invocation = next;
+            job.retries.push({
+              failure_kind: interpreted.ok ? 'cli_error' : interpreted.failureKind,
+              reason: 'the Windows MXC sandbox could not be prepared; re-run with the elevated sandbox',
+              at: new Date().toISOString(),
+              usage: adapter.usageRecord(interpreted.usageRaw),
+            });
+            run = await attempt(remaining);
+            continue;
+          }
         }
         if (interpreted.ok) break;
         // No envelope at all: what stderr holds is the dump from stopping it,
@@ -1618,8 +1639,10 @@ export class JobManager {
 
       // Without an answer, a process left holding the pipes is the failure to report.
       const leftover =
-        run.pipesForced &&
-        `${invocation.command} exited, but a process it started kept its output open; the pipes were closed and a descendant may still be running`;
+        (run.stopFailed &&
+          `${invocation.command} finished its turn but did not exit, and could not be stopped; it may still be running`) ||
+        (run.pipesForced &&
+          `${invocation.command} exited, but a process it started kept its output open; the pipes were closed and a descendant may still be running`);
       if (!interpreted.ok) {
         job.usage = adapter.usageRecord(interpreted.usageRaw);
         if (leftover) return this.#fail(job, 'cli_error', leftover, interpreted.message);
@@ -1667,7 +1690,12 @@ export class JobManager {
         sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
         interpreted.recoveredError &&
           `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
-        leftover &&
+        run.stopFailed
+          ? "the answer parsed, but the consultant's CLI did not exit after finishing and could not be stopped; it may still be running"
+          : run.stalled
+            ? "the consultant's CLI finished its answer but did not exit on its own, and was stopped"
+            : null,
+        run.pipesForced &&
           'the answer parsed, but a process the consultant started kept its output open after it exited; the pipes were closed and a descendant may still be running',
         fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
         req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
@@ -2581,8 +2609,11 @@ function adviceCaveat(normalized) {
 function unreadCaveat(calls, readTools) {
   if (!calls || !readTools) return null;
   if (readTools.some((t) => calls[t])) return null;
-  const failed = readTools.reduce((n, t) => n + (calls[`${t}:error`] ?? 0), 0);
-  const how = failed ? `${failed} failed or were refused` : 'none was made';
+  const count = (/** @type {string} */ suffix) => readTools.reduce((n, t) => n + (calls[`${t}:${suffix}`] ?? 0), 0);
+  const [failed, notStarted] = [count('error'), count('not_started')];
+  const how =
+    [failed && `${failed} failed or were refused`, notStarted && `${notStarted} could not start`].filter(Boolean).join(', ') ||
+    'none was made';
   return `files were exposed, but no call to read one succeeded (${how})`;
 }
 

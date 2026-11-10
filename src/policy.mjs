@@ -428,6 +428,11 @@ export function agyExitGraceMs() {
   };
 }
 
+/** How long Codex may stay alive after turn.completed or turn.failed; read like agyExitGraceMs(). */
+export function codexExitGraceMs() {
+  return limit('SEVERALLY_CODEX_AFTER_TURN_MS', undefined, 10_000, 100, 600_000);
+}
+
 /**
  * Where the Antigravity consultant's real credentials live; the per-job
  * sandbox links its token out of this tree. Read at call time for the same

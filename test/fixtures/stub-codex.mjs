@@ -142,11 +142,13 @@ function run() {
       : 'setInterval(()=>{},1e9)';
     const gc = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'inherit', 'inherit'] });
     if (process.env.STUB_GRANDCHILD_PID_OUT) fs.writeFileSync(process.env.STUB_GRANDCHILD_PID_OUT, String(gc.pid));
-    out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
+    // A wedged stub has not finished its turn; a turn.completed would let it
+    // be stopped as done rather than run into the deadline.
     if (behavior.endsWith('_hang')) {
       setInterval(() => {}, 1e9);
       return;
     }
+    out({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
     if (behavior.endsWith('_leak')) {
       // No answer, and an error naming a credential: the failure detail the
       // leftover process leaves is built from it.
@@ -189,18 +191,40 @@ function run() {
   }
 
   // A consultant handed files looks at them, through its shell; one that runs
-  // no command at all (no_commands) or only one that exits non-zero
-  // (failed_command) is what the unread caveat is about.
+  // no command at all (no_commands), only one that exits non-zero
+  // (failed_command) or only one the sandbox could not launch
+  // (unstarted_command, as Codex on Windows reports it) is what the unread
+  // caveat is about.
   if (fs.existsSync('workspace') && behavior !== 'no_commands') {
-    const status = behavior === 'failed_command' ? 'failed' : 'completed';
     const command = "/bin/bash -lc 'cat workspace/0-a.mjs'";
-    out({ type: 'item.started', item: { id: 'c1', type: 'command_execution', command, status: 'in_progress' } });
+    out({ type: 'item.started', item: { id: 'c1', type: 'command_execution', command, status: 'in_progress', exit_code: null } });
     out({
       type: 'item.completed',
-      item: { id: 'c1', type: 'command_execution', command, aggregated_output: 'SECRET FILE BODY', status },
+      item:
+        behavior === 'unstarted_command'
+          ? {
+              id: 'c1',
+              type: 'command_execution',
+              command,
+              aggregated_output: 'Failed to create unified exec process: CreateProcessWithLogonW failed: 267',
+              exit_code: -1,
+              status: 'failed',
+            }
+          : {
+              id: 'c1',
+              type: 'command_execution',
+              command,
+              aggregated_output: 'SECRET FILE BODY',
+              status: behavior === 'failed_command' ? 'failed' : 'completed',
+            },
     });
   }
   out({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 300, output_tokens: 450 } });
   if (lastMessagePath) fs.writeFileSync(lastMessagePath, answer());
+  // The turn is over and the answer written, but the process stays.
+  if (behavior === 'linger_after_turn') {
+    setInterval(() => {}, 1e9);
+    return;
+  }
   process.exit(0);
 }

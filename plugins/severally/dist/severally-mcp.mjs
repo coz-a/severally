@@ -1161,6 +1161,9 @@ function agyExitGraceMs() {
     afterFinish: limit("SEVERALLY_AGY_AFTER_FINISH_MS", void 0, 6e4, 100, 6e5)
   };
 }
+function codexExitGraceMs() {
+  return limit("SEVERALLY_CODEX_AFTER_TURN_MS", void 0, 1e4, 100, 6e5);
+}
 function credentialsHome() {
   return str("SEVERALLY_AGY_CRED_HOME", os.homedir());
 }
@@ -38352,7 +38355,7 @@ function runChild({
   timeoutMs: timeoutMs2,
   onCancelSignal,
   compactLine: compactLine2 = null,
-  settleAfter: settleAfter2 = null,
+  settleAfter: settleAfter3 = null,
   onOutputLine = null,
   stopSignal: stopSignal2 = "SIGTERM"
 }) {
@@ -38378,7 +38381,7 @@ function runChild({
   let settleTimer;
   let settleAt = Infinity;
   const watch = (line) => {
-    const ms = settleAfter2?.(line);
+    const ms = settleAfter3?.(line);
     if (ms == null || Date.now() + ms >= settleAt) return;
     settleAt = Date.now() + ms;
     clearTimeout(settleTimer);
@@ -38406,13 +38409,13 @@ function runChild({
     }
   };
   let pending = "";
-  const byLine = Boolean(compactLine2 || settleAfter2 || onOutputLine);
+  const byLine = Boolean(compactLine2 || settleAfter3 || onOutputLine);
   const compact = compactLine2 ?? ((l) => l);
   const flushLines = () => {
     const lines = pending.split("\n");
     pending = lines.pop() ?? "";
     for (const l of lines) {
-      if (settleAfter2) watch(l);
+      if (settleAfter3) watch(l);
       onOutputLine?.(l);
       append("out", `${compact(l)}
 `);
@@ -38431,12 +38434,14 @@ function runChild({
   });
   child.stderr.on("data", (c) => append("err", c));
   const timer = setTimeout(() => {
-    timedOut = true;
+    if (settleAt === Infinity) timedOut = true;
+    else stalled = true;
     handle.stop(stopSignal2);
   }, timeoutMs2);
   const done = new Promise((resolve) => {
     let settled2 = false;
     let pipesForced = false;
+    let stopFailed = false;
     let orphanTimer;
     let stopTimer;
     let exitInfo;
@@ -38449,7 +38454,7 @@ function runChild({
       clearTimeout(orphanTimer);
       clearTimeout(stopTimer);
       handle.onStop = void 0;
-      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
+      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, stopFailed, ...payload });
     };
     const flushPending = () => {
       if (byLine && pending) {
@@ -38471,6 +38476,15 @@ function runChild({
         stopGraceElapsed = true;
         handle.forceKill();
         closeOrphanPipes();
+        if (settled2 || exitInfo || !stalled) return;
+        stopTimer = setTimeout(() => {
+          if (exitInfo) return;
+          stopFailed = true;
+          flushPending();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          finish({ code: null, signal: null });
+        }, POLICY.killGraceMs);
       }, POLICY.killGraceMs);
     };
     child.on("error", (err) => finish({ code: null, signal: null, spawnError: err.message }));
@@ -39029,10 +39043,12 @@ __export(codex_exports, {
   RESERVED_FLAGS: () => RESERVED_FLAGS,
   boundary: () => boundary,
   buildInvocation: () => buildInvocation,
+  fallBackFromMxc: () => fallBackFromMxc,
   filesystemPermissions: () => filesystemPermissions,
   interpret: () => interpret,
   launchProblem: () => launchProblem,
   progress: () => progress,
+  settleAfter: () => settleAfter,
   toolCalls: () => toolCalls,
   toolInputs: () => toolInputs,
   usageRecord: () => usageRecord
@@ -39120,7 +39136,7 @@ function buildInvocation({ workdir, schemaPath, consultant, network = "on" }) {
     `default_permissions="${PROFILE}"`,
     "-c",
     `permissions.${PROFILE}.filesystem=${filesystemPermissions()}`,
-    ...process.platform === "win32" ? ["-c", 'windows.sandbox="elevated"'] : [],
+    ...process.platform === "win32" ? ["-c", `windows.sandbox="${windowsSandbox}"`] : [],
     "-C",
     workdir,
     "--output-schema",
@@ -39142,15 +39158,7 @@ function walkUsage(node2, acc) {
   for (const v of Object.values(node2)) if (v && typeof v === "object") walkUsage(v, acc);
 }
 function interpret({ stdout, stderr, code, lastMessageText }) {
-  const events3 = [];
-  for (const line of (stdout || "").split("\n")) {
-    const t = line.trim();
-    if (!t.startsWith("{")) continue;
-    try {
-      events3.push(JSON.parse(t));
-    } catch {
-    }
-  }
+  const events3 = parseEvents(stdout);
   const errorEvents = events3.filter((e) => e.type === "error" || e.type === "turn.failed");
   const usage = {};
   for (const e of events3) walkUsage(e, usage);
@@ -39202,6 +39210,36 @@ function progress({ stdout }) {
   const kind = last.item?.type ?? last.type;
   return `${items.length} item event(s), last was ${kind}`;
 }
+function parseEvents(stdout) {
+  const events3 = [];
+  for (const line of (stdout || "").split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      events3.push(JSON.parse(t));
+    } catch {
+    }
+  }
+  return events3;
+}
+function settleAfter(line) {
+  if (!line.includes('"turn.')) return null;
+  try {
+    const type = JSON.parse(line)?.type;
+    return type === "turn.completed" || type === "turn.failed" ? codexExitGraceMs() : null;
+  } catch {
+    return null;
+  }
+}
+function fallBackFromMxc({ stdout, stderr }) {
+  if (process.platform !== "win32" || windowsSandbox !== "mxc") return false;
+  const messages = parseEvents(stdout).map(
+    (e) => e.type === "error" || e.type === "turn.failed" ? String(e.message ?? e.error?.message ?? "") : e.item?.type === "command_execution" && notStarted(e.item) ? String(e.item.aggregated_output ?? "") : ""
+  );
+  if (![...messages, stderr ?? ""].some((m) => MXC_FAILURE.test(m))) return false;
+  windowsSandbox = "elevated";
+  return true;
+}
 function toolCalls({ stdout }) {
   const seen = /* @__PURE__ */ new Map();
   for (const line of (stdout || "").split("\n")) {
@@ -39217,7 +39255,7 @@ function toolCalls({ stdout }) {
     if (!item?.type || !["item.started", "item.completed"].includes(e.type)) continue;
     if (["agent_message", "reasoning", "error"].includes(item.type)) continue;
     const base = item.tool ? `${item.type}:${item.tool}` : item.type;
-    const name = item.status === "failed" || item.status === "declined" ? `${base}:error` : base;
+    const name = item.type === "command_execution" && notStarted(item) ? `${base}:not_started` : item.status === "failed" || item.status === "declined" ? `${base}:error` : base;
     seen.set(item.id ?? `${name}#${seen.size}`, name);
   }
   return [...seen.values()].reduce((o, n) => ({ ...o, [n]: (o[n] ?? 0) + 1 }), {});
@@ -39262,9 +39300,10 @@ function usageRecord(raw) {
   };
 }
 function boundary({ args }) {
+  const windows = args.find((a) => a.startsWith("windows.sandbox="));
   return {
     reads: "whole disk except the protected paths (permission profile)",
-    shell: "permission profile: commands run, writes and shell network blocked",
+    shell: `permission profile: commands run, writes and shell network blocked${windows ? ` (Windows sandbox: ${windows.slice("windows.sandbox=".length).replaceAll('"', "")})` : ""}`,
     web: args.includes("tools.web_search=true"),
     writes: false,
     mcp: false,
@@ -39272,7 +39311,7 @@ function boundary({ args }) {
     tools: null
   };
 }
-var FORBIDDEN_FLAGS, RESERVED_FLAGS, PROFILE, listDir, FILE_READ_TOOLS;
+var FORBIDDEN_FLAGS, RESERVED_FLAGS, PROFILE, windowsSandbox, listDir, MXC_FAILURE, notStarted, FILE_READ_TOOLS;
 var init_codex = __esm({
   "src/adapters/codex.mjs"() {
     "use strict";
@@ -39300,6 +39339,7 @@ var init_codex = __esm({
       "--cyber-access-program"
     ];
     PROFILE = "severally";
+    windowsSandbox = "mxc";
     listDir = (dir) => {
       try {
         return fs5.readdirSync(dir);
@@ -39307,6 +39347,8 @@ var init_codex = __esm({
         return [];
       }
     };
+    MXC_FAILURE = /failed to prepare MXC sandbox|MXC is unavailable|MXC sandbox execution requires/i;
+    notStarted = (item) => item.status === "failed" && item.exit_code === -1;
     FILE_READ_TOOLS = ["command_execution", "command_execution:error"];
   }
 });
@@ -39699,7 +39741,7 @@ __export(antigravity_exports, {
   interpret: () => interpret3,
   prepareSandbox: () => prepareSandbox,
   progress: () => progress2,
-  settleAfter: () => settleAfter,
+  settleAfter: () => settleAfter2,
   stopSignal: () => stopSignal,
   toolCalls: () => toolCalls2,
   toolInputs: () => toolInputs2,
@@ -39774,7 +39816,7 @@ function toolInputs2({ stdout }) {
   }
   return [...seen.values()].flat();
 }
-function settleAfter(line) {
+function settleAfter2(line) {
   if (!line.includes('"result"') && !line.includes('"finish"')) return null;
   let e;
   try {
@@ -40684,8 +40726,9 @@ function adviceCaveat(normalized) {
 function unreadCaveat(calls, readTools) {
   if (!calls || !readTools) return null;
   if (readTools.some((t) => calls[t])) return null;
-  const failed = readTools.reduce((n, t) => n + (calls[`${t}:error`] ?? 0), 0);
-  const how = failed ? `${failed} failed or were refused` : "none was made";
+  const count = (suffix) => readTools.reduce((n, t) => n + (calls[`${t}:${suffix}`] ?? 0), 0);
+  const [failed, notStarted2] = [count("error"), count("not_started")];
+  const how = [failed && `${failed} failed or were refused`, notStarted2 && `${notStarted2} could not start`].filter(Boolean).join(", ") || "none was made";
   return `files were exposed, but no call to read one succeeded (${how})`;
 }
 function refusedToolCaveat(calls, allowed) {
@@ -42022,6 +42065,7 @@ var init_jobs = __esm({
           let authTried = false;
           let autoRetries = 0;
           let fallenBack = false;
+          let sandboxFellBack = false;
           for (; ; ) {
             job.tool_calls = adapter.toolCalls?.(run) ?? null;
             job.tool_inputs = adapter.toolInputs ? summarizeToolInputs(adapter.toolInputs(run), req._exposedFiles) : null;
@@ -42054,6 +42098,23 @@ var init_jobs = __esm({
             const recoveredError = interpreted.ok ? interpreted.recoveredError : null;
             if (interpreted.ok && recoveredError && !parses(interpreted.text)) {
               interpreted = { ok: false, ...recoveredError, usageRaw: interpreted.usageRaw };
+            }
+            if (!sandboxFellBack && adapter.fallBackFromMxc?.(run)) {
+              sandboxFellBack = true;
+              const remaining2 = budgetMs - (Date.now() - t0);
+              if (remaining2 >= MIN_RETRY_MS) {
+                const next = launch({ ...consultant, model: job.model });
+                if (typeof next === "string") return this.#fail(job, "spawn_error", `config clis.${cli}.args: ${next}`);
+                invocation = next;
+                job.retries.push({
+                  failure_kind: interpreted.ok ? "cli_error" : interpreted.failureKind,
+                  reason: "the Windows MXC sandbox could not be prepared; re-run with the elevated sandbox",
+                  at: (/* @__PURE__ */ new Date()).toISOString(),
+                  usage: adapter.usageRecord(interpreted.usageRaw)
+                });
+                run = await attempt(remaining2);
+                continue;
+              }
             }
             if (interpreted.ok) break;
             if (run.stalled && !interpreted.usageRaw) {
@@ -42117,7 +42178,7 @@ var init_jobs = __esm({
             }
             break;
           }
-          const leftover = run.pipesForced && `${invocation.command} exited, but a process it started kept its output open; the pipes were closed and a descendant may still be running`;
+          const leftover = run.stopFailed && `${invocation.command} finished its turn but did not exit, and could not be stopped; it may still be running` || run.pipesForced && `${invocation.command} exited, but a process it started kept its output open; the pipes were closed and a descendant may still be running`;
           if (!interpreted.ok) {
             job.usage = adapter.usageRecord(interpreted.usageRaw);
             if (leftover) return this.#fail(job, "cli_error", leftover, interpreted.message);
@@ -42158,7 +42219,8 @@ var init_jobs = __esm({
             // The model that answered, which after a fallback is not the one asked.
             sameVendorCaveat(job.caller, job.caller_model, { ...consultant, model: job.model }),
             interpreted.recoveredError && `the consultant's CLI reported an error mid-run and then finished its answer: ${redact(interpreted.recoveredError.message).slice(0, 300)}`,
-            leftover && "the answer parsed, but a process the consultant started kept its output open after it exited; the pipes were closed and a descendant may still be running",
+            run.stopFailed ? "the answer parsed, but the consultant's CLI did not exit after finishing and could not be stopped; it may still be running" : run.stalled ? "the consultant's CLI finished its answer but did not exit on its own, and was stopped" : null,
+            run.pipesForced && "the answer parsed, but a process the consultant started kept its output open after it exited; the pipes were closed and a descendant may still be running",
             fallenBack && `answered by ${job.model}: ${consultant.model}'s quota was used up`,
             req._snapshot && unreadCaveat(job.tool_calls, adapter.FILE_READ_TOOLS),
             refusedToolCaveat(job.tool_calls, adapter.ALLOWED_TOOLS)
@@ -43384,7 +43446,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.14.1";
+    SEVERALLY_VERSION = "2.14.2";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);

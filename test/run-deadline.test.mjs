@@ -57,3 +57,17 @@ for (const mode of ['timeout', 'cancel'])
       assert.ok(elapsed < 1800, `timeout and one grace should settle before 1800 ms; observed ${elapsed} ms`);
     },
   );
+
+test('a child that wrote its done line before the deadline is stopped as stalled, not timed out', async () => {
+  const run = runChild({
+    command: process.execPath,
+    args: ['-e', "console.log('done'); setInterval(() => {}, 1000)"],
+    // Long enough for a Windows launch to get the line out before the deadline.
+    timeoutMs: 3000,
+    settleAfter: (line) => (line.trim() === 'done' ? 60_000 : null),
+  });
+  const result = await run.done;
+  assert.equal(result.stalled, true);
+  assert.equal(result.timedOut, false);
+  assert.match(result.stdout, /done/);
+});

@@ -263,6 +263,7 @@ export class ProcHandle {
  * @property {boolean} cancelled
  * @property {boolean} stalled
  * @property {boolean} pipesForced
+ * @property {boolean} [stopFailed] stopped after its done line, it did not exit; its output so far is what is returned
  * @property {string} [spawnError]
  */
 
@@ -360,6 +361,7 @@ export class ProcHandle {
  * @property {(line: string) => string} [compactLine]
  * @property {(line: string) => number | null | undefined} [settleAfter]
  * @property {NodeJS.Signals} [stopSignal]
+ * @property {(run: { stdout?: string, stderr?: string }) => boolean} [fallBackFromMxc] the run could not prepare Codex's Windows MXC sandbox; later launches use the elevated one
  */
 
 /**
@@ -479,8 +481,11 @@ export function runChild({
   });
   child.stderr.on('data', (c) => append('err', c));
 
+  // A child that already wrote its done line is only late to exit: what it
+  // finished inside the budget is still its answer.
   const timer = setTimeout(() => {
-    timedOut = true;
+    if (settleAt === Infinity) timedOut = true;
+    else stalled = true;
     handle.stop(stopSignal);
   }, timeoutMs);
 
@@ -488,6 +493,7 @@ export function runChild({
   const done = new Promise((resolve) => {
     let settled = false;
     let pipesForced = false;
+    let stopFailed = false;
     /** @type {NodeJS.Timeout | undefined} */
     let orphanTimer;
     /** @type {NodeJS.Timeout | undefined} */
@@ -503,7 +509,7 @@ export function runChild({
       clearTimeout(orphanTimer);
       clearTimeout(stopTimer);
       handle.onStop = undefined;
-      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, ...payload });
+      resolve({ stdout, stderr, truncated, timedOut, cancelled, stalled, pipesForced, stopFailed, ...payload });
     };
     const flushPending = () => {
       if (byLine && pending) {
@@ -522,12 +528,23 @@ export function runChild({
     };
     // Once a stop has been requested, do not wait two further grace periods
     // for descendants that inherited pipes. Do not report completion while
-    // the direct child is still alive: force it and await its exit first.
+    // the direct child is still alive: force it and await its exit first --
+    // except after its done line, when the answer is already out: a grace
+    // later it is returned, marked stopFailed, rather than held indefinitely.
     handle.onStop = () => {
       stopTimer = setTimeout(() => {
         stopGraceElapsed = true;
         handle.forceKill();
         closeOrphanPipes();
+        if (settled || exitInfo || !stalled) return;
+        stopTimer = setTimeout(() => {
+          if (exitInfo) return;
+          stopFailed = true;
+          flushPending();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          finish({ code: null, signal: null });
+        }, POLICY.killGraceMs);
       }, POLICY.killGraceMs);
     };
     child.on('error', (err) => finish({ code: null, signal: null, spawnError: err.message }));
