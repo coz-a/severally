@@ -111,17 +111,18 @@ const PROFILE = 'severally';
 // ponytail: remembered per server process; a restart tries MXC again.
 let windowsSandbox = 'mxc';
 
-// Reject the detectable configuration that requires opening part of a
-// credential root to re-execute Codex. This is a configuration check, not a
-// claim that arbitrary files elsewhere on disk are isolated.
-export function launchProblem() {
+// The standalone installer puts the executable in ~/.codex/packages, so this
+// placement is the usual one and a consultation runs from it. `status` says
+// what it costs: that root is then denied entry by entry (see
+// filesystemPermissions), and an entry made after launch is not on the list.
+export function placementNote() {
   const command = findCommand(POLICY.clis.codex.cli);
   if (!command) return null;
   let executable;
   try {
     executable = fs.realpathSync.native(command);
   } catch {
-    return 'Codex executable placement could not be resolved; check it against protected credential roots.';
+    return 'Codex executable placement could not be resolved, so whether it is inside a protected credential root is unknown.';
   }
   for (const root of protectedRoots()) {
     if (root.includes('*')) continue;
@@ -133,7 +134,7 @@ export function launchProblem() {
     }
     const relative = path.relative(canonical, executable);
     if (relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-      return 'Codex executable is inside a protected root; new files there may be readable. Move the executable outside credential roots and verify PATH before consulting.';
+      return 'Codex executable is inside a protected root (the standalone install under ~/.codex/packages is): the entries already there are denied one by one, and new files made there during a consultation may be readable.';
   }
   return null;
 }

@@ -39046,7 +39046,7 @@ __export(codex_exports, {
   fallBackFromMxc: () => fallBackFromMxc,
   filesystemPermissions: () => filesystemPermissions,
   interpret: () => interpret,
-  launchProblem: () => launchProblem,
+  placementNote: () => placementNote,
   progress: () => progress,
   settleAfter: () => settleAfter,
   toolCalls: () => toolCalls,
@@ -39055,14 +39055,14 @@ __export(codex_exports, {
 });
 import fs5 from "node:fs";
 import path8 from "node:path";
-function launchProblem() {
+function placementNote() {
   const command = findCommand(POLICY.clis.codex.cli);
   if (!command) return null;
   let executable;
   try {
     executable = fs5.realpathSync.native(command);
   } catch {
-    return "Codex executable placement could not be resolved; check it against protected credential roots.";
+    return "Codex executable placement could not be resolved, so whether it is inside a protected credential root is unknown.";
   }
   for (const root of protectedRoots()) {
     if (root.includes("*")) continue;
@@ -39074,7 +39074,7 @@ function launchProblem() {
     }
     const relative = path8.relative(canonical, executable);
     if (relative && relative !== ".." && !relative.startsWith(`..${path8.sep}`) && !path8.isAbsolute(relative))
-      return "Codex executable is inside a protected root; new files there may be readable. Move the executable outside credential roots and verify PATH before consulting.";
+      return "Codex executable is inside a protected root (the standalone install under ~/.codex/packages is): the entries already there are denied one by one, and new files made there during a consultation may be readable.";
   }
   return null;
 }
@@ -41450,10 +41450,6 @@ var init_jobs = __esm({
           groupFollowup: Boolean(fromGroup)
         });
         if (POLICY.network === "off") req.network = "off";
-        if (req.targets.some((name) => consultantByName(name)?.cli === "codex")) {
-          const problem = launchProblem();
-          if (problem) throw new RequestError(problem, "unsafe_codex_placement");
-        }
         if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
           throw new RequestError(
             `the members of group "${followupTo}" no longer resolve to the consultants that answered them; follow up each member by its job_id`,
@@ -43446,7 +43442,7 @@ var init_server = __esm({
     init_schema();
     init_jobs();
     init_export();
-    SEVERALLY_VERSION = "2.14.2";
+    SEVERALLY_VERSION = "2.15.0";
     DEFAULT_WAIT_MS = process.env.SEVERALLY_MAX_WAIT_MS ? POLICY.maxWaitMs : Math.min(POLICY.maxWaitMs, 45e3);
     PROGRESS_EVERY_MS = 15e3;
     semver = (v) => String(v).split(".").map(Number);
@@ -43587,8 +43583,8 @@ async function status() {
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : "ok"}`);
   for (const w of configWarnings()) lines.push(`  mistake (only that consultant or CLI is out of use): ${w}`);
   lines.push(`network: ${POLICY.network === "off" ? "off for every consultation (server.network)" : "per request"}`, "");
-  const placementWarning = launchProblem();
-  if (placementWarning) lines.push(`warning: ${placementWarning}`, "");
+  const placement = placementNote();
+  if (placement) lines.push(`note: ${placement}`, "");
   lines.push(`OpenCode credential recovery: ${credentialRecoveryStatus().detail}`, "");
   lines.push(
     "consultants:",

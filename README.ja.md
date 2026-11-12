@@ -56,13 +56,13 @@ Web を切ってもモデルへの送信は続きます。[送信内容と保護
 macOS、Linux、Windows（PowerShell またはコマンドプロンプト）のどれでも、次の 1 行で入れられます。
 
 ```bash
-npx -y severally-mcp@2.14.2 install
+npx -y severally-mcp@latest install
 ```
 
 ソースのチェックアウトで npm が既存のグローバルサーバを選ぶ場合は、インストーラを明示して実行してください。
 
 ```bash
-npx --yes --package=severally-mcp@2.14.2 -- severally-install
+npx --yes --package=severally-mcp@latest -- severally-install
 ```
 
 インストーラは`PATH` で見つかった CLI のそれぞれに severally を登録します。末尾に `--dry-run` を付けると、何も
@@ -81,7 +81,7 @@ npx --yes --package=severally-mcp@2.14.2 -- severally-install
 まずターミナルで、相談相手として検出された CLI を確認します。この確認では相談を始めず、使用枠を消費しません。
 
 ```bash
-npx -y severally-mcp@2.14.2 status
+npx -y severally-mcp@latest status
 ```
 
 `available` は CLI の検出結果です。ログインや実相談の成功を保証しません。Codex が検出されていれば、
@@ -130,8 +130,8 @@ Codex（gpt-6.1-sol、f1）は、上流の古さと保持時間を合算すべ�
 ターミナルでは導入と登録確認を行えます。
 
 ```bash
-npx -y severally-mcp@2.14.2 install
-npx -y severally-mcp@2.14.2 status
+npx -y severally-mcp@latest install
+npx -y severally-mcp@latest status
 ```
 
 `status` は設定・使える相談相手・登録・ログイン状態を、相談を始めずに表示します。プロンプトは送りません。
@@ -215,7 +215,8 @@ API キーで呼び出すモデル（OpenRouter や、OpenAI 互換のほかの 
 場所を伝えません。それでも、あなたのユーザーアカウントで読めるファイルは、表で「拒否」とした秘密のパスを除いて
 読めます。例外はファイルを渡した相談での Claude Code です。そのときは、渡したファイルの写ししか読めません。
 Codex は名前による拒否ができないため、リポジトリの `.env` を読めます。実行ファイルが資格情報ルートの中にある
-構成は、相談開始前に拒否します。実行ファイルをその外に置き、`status` で配置を確認してください。
+構成（`~/.codex/packages` 配下の standalone 版など）では、そのルートに既にある項目を 1 つずつ拒否します。相談中にそこへ
+新しく作られたファイルは読めます。`status` はこの配置を表示します。
 個別拒否ファイルの rename 置換と、起動後に作られる旧形式ジョブの home の読取りは未解決です。
 1.7 より前の severally を並行実行しないでください。OpenCode も、検査から読取りまでのパス差替えは保証しません。
 [保護の仕組み・確認済みの条件と制限](docs/how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)に、

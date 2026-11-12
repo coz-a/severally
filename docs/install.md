@@ -23,14 +23,13 @@ you do not need all four. These official guides cover installation and authentic
 Open a new terminal after installation so the CLI is on `PATH`. severally uses the CLI's existing login;
 its installer prepares the server and client registration, not the consultant's account.
 
-Keep the Codex executable outside credential directories, including `~/.codex` and a relocated `CODEX_HOME`.
-Check the resolved executable and credential paths, including symlink targets, before starting consultations.
-A consultation is refused with `unsafe_codex_placement` when the executable resolves inside a protected root,
-including the standalone install under `~/.codex/packages`. Follow the CLI's installation instructions to
-install outside that root, or set `clis.codex.bin` to an external installation. A symlink into the protected
-root does not change placement. Credentials can remain in their existing directory. `status` diagnoses
-placement without starting a model. This start guard does not resolve file-level rename or arbitrary-path
-read restrictions; see [reading restrictions](how-it-works.md#how-a-consultant-is-kept-to-reading).
+Codex's standalone install under `~/.codex/packages` works as it is. Its executable is then inside a
+credential directory, so severally denies the entries already in that directory one by one instead of the
+directory as a whole, and a file created there during a consultation is readable. `status` notes this
+placement without starting a model. To have the whole directory denied, install Codex outside `~/.codex` and
+a relocated `CODEX_HOME`, or set `clis.codex.bin` to an installation outside them; a symlink into the
+directory does not change placement, and credentials can remain where they are. Neither placement resolves
+file-level rename or arbitrary-path read restrictions; see [reading restrictions](how-it-works.md#how-a-consultant-is-kept-to-reading).
 
 OpenCode 2.x credential recovery also needs Node's optional `node:sqlite` module. severally detects whether it is
 available; some older Node 22 releases do not provide it without a flag. `severally-mcp status` reports this
@@ -82,13 +81,13 @@ raw probe rows and relevant CLI events beside the record when investigating chan
 ## Command line
 
 ```bash
-npx -y severally-mcp@2.14.2 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 If npm selects an installed server instead of the installer, name the package and installer executable separately:
 
 ```bash
-npx --yes --package=severally-mcp@2.14.2 -- severally-install --dry-run
+npx --yes --package=severally-mcp@latest -- severally-install --dry-run
 ```
 
 Check the proposed changes, then omit `--dry-run` to install. This also works from the source checkout;

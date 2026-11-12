@@ -16,7 +16,7 @@ import {
 } from './policy.mjs';
 import { SEVERALLY_VERSION, staleInstall } from './server.mjs';
 import { findCommand } from './platform.mjs';
-import { launchProblem as codexPlacementWarning } from './adapters/codex.mjs';
+import { placementNote } from './adapters/codex.mjs';
 import { credentialRecoveryStatus } from './adapters/opencode-sandbox.mjs';
 import { childEnv, operatorEnvProblem, runChild } from './run.mjs';
 
@@ -181,8 +181,8 @@ export async function status() {
   lines.push(`config: ${problem ? `needs fixing, every consultation is refused until it is -- ${problem}` : 'ok'}`);
   for (const w of configWarnings()) lines.push(`  mistake (only that consultant or CLI is out of use): ${w}`);
   lines.push(`network: ${POLICY.network === 'off' ? 'off for every consultation (server.network)' : 'per request'}`, '');
-  const placementWarning = codexPlacementWarning();
-  if (placementWarning) lines.push(`warning: ${placementWarning}`, '');
+  const placement = placementNote();
+  if (placement) lines.push(`note: ${placement}`, '');
   lines.push(`OpenCode credential recovery: ${credentialRecoveryStatus().detail}`, '');
 
   lines.push(
