@@ -23,13 +23,12 @@ severally を入れる前に、相談したい CLI を少なくとも 1 つ入�
 導入後は新しいターミナルを開き、CLI を `PATH` から使えるようにしてください。severally は CLI の既存のログインを使います。
 インストーラが準備するのはサーバとクライアントへの登録で、相談相手のアカウントは設定しません。
 
-Codex の実行ファイルは`~/.codex` や移設した `CODEX_HOME` などの認証情報ディレクトリの外に置いてください。
-相談を始める前に、シンボリックリンクの参照先も含め、実行ファイルと認証情報のパスを確認してください。実行ファイルが
-保護対象のディレクトリ内にある構成は `unsafe_codex_placement` で拒否します。`~/.codex/packages` 配下の standalone
-版も対象です。CLI の導入手順に従って外へ導入するか、`clis.codex.bin` に外部のインストールを指定してください。
-保護ルートの中を指すシンボリックリンクでは配置を変えたことになりません。認証情報は元の場所に残せます。
-`status` はモデルを呼ばずに配置を診断します。この開始前チェックは、個別ファイルの rename 置換や任意パスの
-読取り制限を解消するものではありません。[残る制限](how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)を参照してください。
+`~/.codex/packages` 配下に入る Codex の standalone 版は、そのまま使えます。このとき実行ファイルは認証情報
+ディレクトリの中にあるため、severally はディレクトリ全体ではなく、そこに既にある項目を 1 つずつ拒否します。相談中に
+そこへ新しく作られたファイルは読めます。`status` はモデルを呼ばずにこの配置を表示します。ディレクトリ全体を
+拒否させるには、Codex を `~/.codex` や移設した `CODEX_HOME` の外に導入するか、`clis.codex.bin` に外部の
+インストールを指定してください。ディレクトリの中を指すシンボリックリンクでは配置を変えたことになりません。認証情報は
+元の場所に残せます。どちらの配置でも、個別ファイルの rename 置換や任意パスの読取り制限は解消しません。[残る制限](how-it-works.ja.md#相談相手を読み取りだけにとどめる仕組み)を参照してください。
 
 OpenCode 2.x の認証回復には、Node の任意機能である `node:sqlite` も必要です。severally は実行時に利用できるかを
 確かめます。古い Node 22 の一部ではフラグなしで使えません。`severally-mcp status` はログイン状態とは別に、この
@@ -80,13 +79,13 @@ doctor の各行には `evidence`、live-check の出力には `compatibility:` 
 ## コマンドライン
 
 ```bash
-npx -y severally-mcp@2.14.2 install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
+npx -y severally-mcp@latest install [--dry-run] [--manual] [--force] [--skip-global] [--allow-local-tools]
 ```
 
 npm がインストーラの代わりに導入済みのサーバを選ぶときは、パッケージとインストーラの実行ファイルを別々に指定します。
 
 ```bash
-npx --yes --package=severally-mcp@2.14.2 -- severally-install --dry-run
+npx --yes --package=severally-mcp@latest -- severally-install --dry-run
 ```
 
 変更内容を確認したら、`--dry-run` を外してインストールします。ソースのルートからも使えます。

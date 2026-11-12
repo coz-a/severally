@@ -212,9 +212,10 @@ coding tools' sessions, severally's own history and the other consultants' sandb
 
 Codex blocks paths, not names: its sandbox cannot express “`.env` anywhere”, so a repository's `.env` is
 readable. Credential directories, including the default `~/.codex` and a relocated `CODEX_HOME`, are denied
-as a whole when the executable lives elsewhere. Consultation start now rejects an executable inside a protected
-credential root with `unsafe_codex_placement`, before taking seats or calling a model. The underlying CLI
-permission builder still needs an executable exception in that layout, so use an external installation instead. Existing symlink roots are resolved and registered
+as a whole when the executable lives elsewhere. When the executable is inside one, as the standalone install
+under `~/.codex/packages` is, the consultation still runs: the entries already in that root are denied one by
+one, leaving out the entry that holds the executable, and an entry created after launch is not denied.
+`status` notes this placement. Existing symlink roots are resolved and registered
 once by canonical path, avoiding duplicate Linux sandbox mounts through aliases.
 
 On Windows, Codex creates a missing denied path as a directory before denying it, and keeps its deny entries
@@ -249,7 +250,7 @@ executable admitted new siblings; and a legacy `jobs/<id>/home` created after la
 Existing legacy homes were denied, and public-file reads succeeded. Moving the executable outside the
 credential root kept replaced and new children of that root denied. Denying the whole root and adding a
 read exception for its executable directory also denied the executable in this probe, so that configuration
-cannot replace the entry snapshot. Keep the executable outside credential roots and avoid running pre-1.7
+cannot replace the entry snapshot. Avoid running pre-1.7
 severally alongside current consultations. These probes did not call a model or repeat an authenticated
 consultation; macOS and Windows remain untested for these cases.
 

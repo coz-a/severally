@@ -148,7 +148,7 @@ test('status shows effective effort and timeout while distinguishing availabilit
   assert.match(result.stdout, /availability.*CLI.*live consultation.*not verified/i);
 });
 
-test('status warns when the configured Codex executable is inside a protected root', () => {
+test('status notes when the configured Codex executable is inside a protected root', () => {
   const home = sandboxEnv();
   const credentials = path.join(home, 'codex-credentials');
   const outside = path.join(home, 'outside');

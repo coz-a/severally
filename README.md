@@ -57,13 +57,13 @@ The command below installs severally and registers it with existing CLIs; it doe
 One line, on macOS, Linux and Windows (PowerShell or Command Prompt):
 
 ```bash
-npx -y severally-mcp@2.14.2 install
+npx -y severally-mcp@latest install
 ```
 
 If npm selects an existing global server from this source checkout, explicitly select the installer:
 
 ```bash
-npx --yes --package=severally-mcp@2.14.2 -- severally-install
+npx --yes --package=severally-mcp@latest -- severally-install
 ```
 
 The installer registers severally with each CLI it finds on `PATH`. Add `--dry-run` at the end to print what it
@@ -82,7 +82,7 @@ To check the registration, see [CLI](#cli). Other install routes and platform-sp
 First check which consultant CLIs are detected, without starting a consultation or spending quota:
 
 ```bash
-npx -y severally-mcp@2.14.2 status
+npx -y severally-mcp@latest status
 ```
 
 `available` means the CLI was found, not that login or a live consultation has been verified.
@@ -132,8 +132,8 @@ same bug. A consultation takes time and real quota, so it is not for small fixes
 Use the terminal to install or check the registration:
 
 ```bash
-npx -y severally-mcp@2.14.2 install
-npx -y severally-mcp@2.14.2 status
+npx -y severally-mcp@latest install
+npx -y severally-mcp@latest status
 ```
 
 `status` shows configuration, available consultants, registrations and login without starting a consultation
@@ -221,8 +221,9 @@ Every consultant starts in a working directory of its own that holds only copies
 the server does not tell it where your repository is. It can still read any file your user account can read, except
 the credential paths the table marks blocked. The one exception is Claude Code in a consultation that exposes files:
 it can then read only those copies.
-Codex cannot deny by name, so a repository's `.env` is readable. A Codex executable inside a credential root
-is refused before consultation starts: install it outside those roots and check placement with `status`.
+Codex cannot deny by name, so a repository's `.env` is readable. When the Codex executable is inside a credential
+root, as the standalone install under `~/.codex/packages` is, the entries already in that root are denied one by
+one, and a file created there during a consultation is readable; `status` notes this placement.
 Individually denied files replaced by rename and legacy job homes created after launch remain limitations.
 Do not run pre-1.7 severally alongside current consultations. OpenCode cannot guarantee reads against a path
 replacement between its guard and the read. The [mechanisms, tested conditions and limits](docs/how-it-works.md#how-a-consultant-is-kept-to-reading)

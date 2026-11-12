@@ -714,11 +714,6 @@ export class JobManager {
     // The operator's setting only ever closes: a request cannot reopen the web.
     if (POLICY.network === 'off') req.network = 'off';
 
-    if (req.targets.some((name) => consultantByName(name)?.cli === 'codex')) {
-      const problem = codex.launchProblem();
-      if (problem) throw new RequestError(problem, 'unsafe_codex_placement');
-    }
-
     if (fromGroup && fromGroup.links.some((l, i) => l.parent.target !== req.targets[i])) {
       throw new RequestError(
         `the members of group "${followupTo}" no longer resolve to the consultants that answered them; follow up each member by its job_id`,

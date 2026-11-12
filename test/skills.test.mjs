@@ -332,14 +332,15 @@ test('no skill recommends a smaller default than the one consultant-count rule',
   }
 });
 
-test("the README's npx line names the version being released", async () => {
+// A pinned version in a README goes stale with every release and names a
+// version npm may not have yet; @latest (not a bare name, which npx may serve
+// from an old cached copy) is always the newest published one.
+test("the README's npx lines ask for @latest, never a pinned version", async () => {
   const fs = await import('node:fs');
-  const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   for (const readme of ['README.md', 'README.ja.md']) {
     const text = fs.readFileSync(new URL(`../${readme}`, import.meta.url), 'utf8');
-    const named = [...text.matchAll(/severally-mcp@(\d+\.\d+\.\d+) install/g)].map((m) => m[1]);
-    assert.ok(named.length > 0, `${readme} has an npx line`);
-    for (const v of named) assert.equal(v, version, `${readme} names ${v}, the package is ${version}`);
+    assert.match(text, /npx -y severally-mcp@latest install/, `${readme} has an npx line`);
+    assert.doesNotMatch(text, /severally-mcp@\d/, `${readme} pins a version`);
   }
 });
 
